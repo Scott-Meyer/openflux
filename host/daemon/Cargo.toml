@@ -27,7 +27,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 hidapi = { version = "2.6", default-features = false, features = ["macos-shared-device", "linux-native-basic-udev", "windows-native"] }
 libc = "0.2"
 libusb1-sys = { version = "0.7", features = ["vendored"] }
-rcgen = "0.13"
+rcgen = "0.14"
 rusb = "0.9"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-pemfile = "2"
