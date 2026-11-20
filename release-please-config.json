@@ -119,10 +119,15 @@
     },
     "keyboard/bridge": {
       "component": "bridge",
-      "release-type": "rust",
+      "release-type": "simple",
       "initial-version": "1.0.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
         {
           "type": "toml",
           "path": "/Cargo.lock",
@@ -137,10 +142,15 @@
     },
     "keyboard/display": {
       "component": "display",
-      "release-type": "rust",
+      "release-type": "simple",
       "initial-version": "1.0.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
         {
           "type": "toml",
           "path": "/Cargo.lock",
