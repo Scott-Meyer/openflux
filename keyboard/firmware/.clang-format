@@ -1,0 +1,10 @@
+# Firmware C style: 4-space indent, attached braces, 120 columns.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 120
+IndentCaseLabels: true
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AlignConsecutiveMacros: true
+PointerAlignment: Right
+SortIncludes: Never

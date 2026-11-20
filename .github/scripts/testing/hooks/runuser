@@ -1,0 +1,15 @@
+#!/bin/sh
+# Stand-in for runuser -u <user> -- <command>: runs the command as the current
+# user, with /usr/bin/openfluxd replaced by the stand-in next to this file.
+set -eu
+[ "$1" = -u ] || { echo "fake runuser: expected -u" >&2; exit 2; }
+echo "runuser $*" >> "${FAKE_HOOKS:?}/calls.log"
+shift 2
+[ "$1" = -- ] && shift
+here="$(cd "$(dirname "$0")" && pwd)"
+for a do
+    shift
+    [ "$a" = /usr/bin/openfluxd ] && a="${here}/openfluxd"
+    set -- "$@" "$a"
+done
+exec "$@"

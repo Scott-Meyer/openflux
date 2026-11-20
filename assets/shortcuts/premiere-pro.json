@@ -1,0 +1,256 @@
+{
+  "name": "Adobe Premiere Pro",
+  "source": "https://helpx.adobe.com/premiere-pro/using/default-keyboard-shortcuts-cc.html",
+  "platforms": [
+    "mac",
+    "windows"
+  ],
+  "apps": {
+    "macos": [
+      "com.adobe.PremierePro"
+    ],
+    "windows": [
+      "Adobe Premiere Pro.exe"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "Selection tool",
+      "context": "Tools",
+      "label": "Select",
+      "mac": "V",
+      "windows": "V"
+    },
+    {
+      "name": "Track Select Forward tool",
+      "context": "Tools",
+      "label": "Track Fwd",
+      "mac": "A",
+      "windows": "A"
+    },
+    {
+      "name": "Ripple Edit tool",
+      "context": "Tools",
+      "label": "Ripple",
+      "mac": "B",
+      "windows": "B"
+    },
+    {
+      "name": "Rolling Edit tool",
+      "context": "Tools",
+      "label": "Rolling",
+      "mac": "N",
+      "windows": "N"
+    },
+    {
+      "name": "Rate Stretch tool",
+      "context": "Tools",
+      "label": "Stretch",
+      "mac": "R",
+      "windows": "R"
+    },
+    {
+      "name": "Razor tool",
+      "context": "Tools",
+      "label": "Razor",
+      "mac": "C",
+      "windows": "C"
+    },
+    {
+      "name": "Slip tool",
+      "context": "Tools",
+      "label": "Slip",
+      "mac": "Y",
+      "windows": "Y"
+    },
+    {
+      "name": "Slide tool",
+      "context": "Tools",
+      "label": "Slide",
+      "mac": "U",
+      "windows": "U"
+    },
+    {
+      "name": "Pen tool",
+      "context": "Tools",
+      "label": "Pen",
+      "mac": "P",
+      "windows": "P"
+    },
+    {
+      "name": "Hand tool",
+      "context": "Tools",
+      "label": "Hand",
+      "mac": "H",
+      "windows": "H"
+    },
+    {
+      "name": "Zoom tool",
+      "context": "Tools",
+      "label": "Zoom",
+      "mac": "Z",
+      "windows": "Z"
+    },
+    {
+      "name": "Play or stop",
+      "context": "Playback",
+      "label": "Play/Stop",
+      "mac": "Space",
+      "windows": "Space"
+    },
+    {
+      "name": "Shuttle left",
+      "context": "Playback",
+      "label": "Rev",
+      "mac": "J",
+      "windows": "J"
+    },
+    {
+      "name": "Shuttle stop",
+      "context": "Playback",
+      "label": "Stop",
+      "mac": "K",
+      "windows": "K"
+    },
+    {
+      "name": "Shuttle right",
+      "context": "Playback",
+      "label": "Fwd",
+      "mac": "L",
+      "windows": "L"
+    },
+    {
+      "name": "Step back one frame",
+      "context": "Playback",
+      "label": "Prev Frame",
+      "mac": "Left",
+      "windows": "Left"
+    },
+    {
+      "name": "Step forward one frame",
+      "context": "Playback",
+      "label": "Next Frame",
+      "mac": "Right",
+      "windows": "Right"
+    },
+    {
+      "name": "Mark In",
+      "context": "Timeline",
+      "label": "Mark In",
+      "mac": "I",
+      "windows": "I"
+    },
+    {
+      "name": "Mark Out",
+      "context": "Timeline",
+      "label": "Mark Out",
+      "mac": "O",
+      "windows": "O"
+    },
+    {
+      "name": "Add marker",
+      "context": "Timeline",
+      "label": "Marker",
+      "mac": "M",
+      "windows": "M"
+    },
+    {
+      "name": "Add edit (cut at playhead)",
+      "context": "Timeline",
+      "label": "Cut",
+      "mac": "Cmd+K",
+      "windows": "Ctrl+K"
+    },
+    {
+      "name": "Ripple trim previous edit to playhead",
+      "context": "Timeline",
+      "label": "Trim Start",
+      "mac": "Q",
+      "windows": "Q"
+    },
+    {
+      "name": "Ripple trim next edit to playhead",
+      "context": "Timeline",
+      "label": "Trim End",
+      "mac": "W",
+      "windows": "W"
+    },
+    {
+      "name": "Ripple delete",
+      "context": "Timeline",
+      "label": "Ripple Del",
+      "mac": "Shift+Delete",
+      "windows": "Shift+Delete"
+    },
+    {
+      "name": "Toggle snap in timeline",
+      "context": "Timeline",
+      "label": "Snap",
+      "mac": "S",
+      "windows": "S"
+    },
+    {
+      "name": "Zoom in timeline",
+      "context": "Timeline",
+      "label": "Zoom In",
+      "mac": "=",
+      "windows": "="
+    },
+    {
+      "name": "Zoom out timeline",
+      "context": "Timeline",
+      "label": "Zoom Out",
+      "mac": "-",
+      "windows": "-"
+    },
+    {
+      "name": "Zoom to sequence",
+      "context": "Timeline",
+      "label": "Fit Seq",
+      "mac": "\\",
+      "windows": "\\"
+    },
+    {
+      "name": "Apply default video transition",
+      "context": "Timeline",
+      "label": "Vid Trans",
+      "mac": "Cmd+D",
+      "windows": "Ctrl+D"
+    },
+    {
+      "name": "Apply default audio transition",
+      "context": "Timeline",
+      "label": "Aud Trans",
+      "mac": "Cmd+Shift+D",
+      "windows": "Ctrl+Shift+D"
+    },
+    {
+      "name": "Import media",
+      "context": "File",
+      "label": "Import",
+      "mac": "Cmd+I",
+      "windows": "Ctrl+I"
+    },
+    {
+      "name": "Export media",
+      "context": "File",
+      "label": "Export",
+      "mac": "Cmd+M",
+      "windows": "Ctrl+M"
+    },
+    {
+      "name": "Save project",
+      "context": "File",
+      "label": "Save",
+      "mac": "Cmd+S",
+      "windows": "Ctrl+S"
+    },
+    {
+      "name": "Undo",
+      "context": "Edit",
+      "label": "Undo",
+      "mac": "Cmd+Z",
+      "windows": "Ctrl+Z"
+    }
+  ]
+}

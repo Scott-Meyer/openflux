@@ -1,0 +1,217 @@
+{
+  "name": "Microsoft Outlook",
+  "source": "https://support.microsoft.com/en-us/office/keyboard-shortcuts-for-outlook-3cdeb221-7ae5-4c1d-8c1d-9e63216c1efd",
+  "platforms": [
+    "windows"
+  ],
+  "apps": {
+    "windows": [
+      "OUTLOOK.EXE",
+      "olk.exe"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "New message",
+      "context": "Mail",
+      "windows": "Ctrl+Shift+M"
+    },
+    {
+      "name": "Reply",
+      "context": "Mail",
+      "windows": "Ctrl+R"
+    },
+    {
+      "name": "Reply all",
+      "context": "Mail",
+      "windows": "Ctrl+Shift+R"
+    },
+    {
+      "name": "Forward",
+      "context": "Mail",
+      "windows": "Ctrl+F"
+    },
+    {
+      "name": "Send",
+      "context": "Mail",
+      "windows": "Ctrl+Enter"
+    },
+    {
+      "name": "Check for new messages",
+      "context": "Mail",
+      "label": "Check new",
+      "windows": "F9"
+    },
+    {
+      "name": "Go to Inbox",
+      "context": "Mail",
+      "windows": "Ctrl+Shift+I"
+    },
+    {
+      "name": "Go to Outbox",
+      "context": "Mail",
+      "windows": "Ctrl+Shift+O"
+    },
+    {
+      "name": "Mark as read",
+      "context": "Mail",
+      "windows": "Ctrl+Q"
+    },
+    {
+      "name": "Mark as unread",
+      "context": "Mail",
+      "label": "Mark as",
+      "windows": "Ctrl+U"
+    },
+    {
+      "name": "Flag for follow up",
+      "context": "Mail",
+      "label": "Flag follow",
+      "windows": "Ctrl+Shift+G"
+    },
+    {
+      "name": "Open the Address Book",
+      "context": "Mail",
+      "label": "Address Book",
+      "windows": "Ctrl+Shift+B"
+    },
+    {
+      "name": "Check names",
+      "context": "Mail",
+      "windows": "Ctrl+K"
+    },
+    {
+      "name": "Delete and ignore a conversation",
+      "context": "Mail",
+      "label": "Delete",
+      "windows": "Ctrl+Shift+D"
+    },
+    {
+      "name": "Move to a folder",
+      "context": "Mail",
+      "label": "Folder",
+      "windows": "Ctrl+Shift+V"
+    },
+    {
+      "name": "Search",
+      "context": "Mail",
+      "windows": "Ctrl+E"
+    },
+    {
+      "name": "Print",
+      "context": "Mail",
+      "windows": "Ctrl+P"
+    },
+    {
+      "name": "New appointment",
+      "context": "Items",
+      "label": "New",
+      "windows": "Ctrl+Shift+A"
+    },
+    {
+      "name": "New contact",
+      "context": "Items",
+      "windows": "Ctrl+Shift+C"
+    },
+    {
+      "name": "New meeting request",
+      "context": "Items",
+      "label": "New meeting",
+      "windows": "Ctrl+Shift+Q"
+    },
+    {
+      "name": "New task",
+      "context": "Items",
+      "windows": "Ctrl+Shift+K"
+    },
+    {
+      "name": "New note",
+      "context": "Items",
+      "windows": "Ctrl+Shift+N"
+    },
+    {
+      "name": "New folder",
+      "context": "Items",
+      "windows": "Ctrl+Shift+E"
+    },
+    {
+      "name": "Go to Mail",
+      "context": "Calendar",
+      "windows": "Ctrl+1"
+    },
+    {
+      "name": "Go to Calendar",
+      "context": "Calendar",
+      "label": "Calendar",
+      "windows": "Ctrl+2"
+    },
+    {
+      "name": "Go to People",
+      "context": "Calendar",
+      "windows": "Ctrl+3"
+    },
+    {
+      "name": "Go to Tasks",
+      "context": "Calendar",
+      "windows": "Ctrl+4"
+    },
+    {
+      "name": "Day view",
+      "context": "Calendar",
+      "windows": "Ctrl+Alt+1"
+    },
+    {
+      "name": "Work week view",
+      "context": "Calendar",
+      "label": "Work week",
+      "windows": "Ctrl+Alt+2"
+    },
+    {
+      "name": "Week view",
+      "context": "Calendar",
+      "windows": "Ctrl+Alt+3"
+    },
+    {
+      "name": "Month view",
+      "context": "Calendar",
+      "windows": "Ctrl+Alt+4"
+    },
+    {
+      "name": "Go to a date",
+      "context": "Calendar",
+      "windows": "Ctrl+G"
+    },
+    {
+      "name": "Next day",
+      "context": "Calendar",
+      "windows": "Ctrl+Right"
+    },
+    {
+      "name": "Previous day",
+      "context": "Calendar",
+      "windows": "Ctrl+Left"
+    },
+    {
+      "name": "Next week",
+      "context": "Calendar",
+      "windows": "Alt+Down"
+    },
+    {
+      "name": "Previous week",
+      "context": "Calendar",
+      "label": "Previous",
+      "windows": "Alt+Up"
+    },
+    {
+      "name": "Next month",
+      "context": "Calendar",
+      "windows": "Alt+PageDown"
+    },
+    {
+      "name": "Previous month",
+      "context": "Calendar",
+      "label": "Previous",
+      "windows": "Alt+PageUp"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+Package: openflux-factory-restore
+Version: 1.0.0
+Architecture: aarch64
+Maintainer: OpenFlux Contributors
+Description: Restores the keyboard's factory software, replacing OpenFlux
+Section: utils
+Priority: optional

@@ -1,0 +1,302 @@
+{
+  "name": "Finder",
+  "source": "https://support.apple.com/en-us/102650",
+  "platforms": [
+    "mac"
+  ],
+  "apps": {
+    "macos": [
+      "com.apple.finder"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "Duplicate the selected files",
+      "context": "Finder",
+      "label": "Duplicate",
+      "mac": "Cmd+D"
+    },
+    {
+      "name": "Eject the selected disk or volume",
+      "context": "Finder",
+      "label": "Eject disk",
+      "mac": "Cmd+E"
+    },
+    {
+      "name": "Start a Spotlight search in the Finder window",
+      "context": "Finder",
+      "label": "Spotlight",
+      "mac": "Cmd+F"
+    },
+    {
+      "name": "Show the Get Info window for a selected file",
+      "context": "Finder",
+      "label": "Get Info",
+      "mac": "Cmd+I"
+    },
+    {
+      "name": "Show the original file for the selected alias",
+      "context": "Finder",
+      "label": "Original",
+      "mac": "Cmd+R"
+    },
+    {
+      "name": "Open the Computer window",
+      "context": "Finder",
+      "label": "Computer",
+      "mac": "Shift+Cmd+C"
+    },
+    {
+      "name": "Open the desktop folder",
+      "context": "Finder",
+      "label": "Desktop",
+      "mac": "Shift+Cmd+D"
+    },
+    {
+      "name": "Open the Recents window",
+      "context": "Finder",
+      "label": "Recents",
+      "mac": "Shift+Cmd+F"
+    },
+    {
+      "name": "Open a Go to Folder window",
+      "context": "Finder",
+      "label": "Go Folder",
+      "mac": "Shift+Cmd+G"
+    },
+    {
+      "name": "Open the Home folder of the current macOS user account",
+      "context": "Finder",
+      "label": "Home folder",
+      "mac": "Shift+Cmd+H"
+    },
+    {
+      "name": "Open iCloud Drive",
+      "context": "Finder",
+      "label": "ICloud Drive",
+      "mac": "Shift+Cmd+I"
+    },
+    {
+      "name": "Open the Network window",
+      "context": "Finder",
+      "label": "Network",
+      "mac": "Shift+Cmd+K"
+    },
+    {
+      "name": "Open the Downloads folder",
+      "context": "Finder",
+      "label": "Downloads",
+      "mac": "Option+Cmd+L"
+    },
+    {
+      "name": "Create a new folder",
+      "context": "Finder",
+      "label": "Create new",
+      "mac": "Shift+Cmd+N"
+    },
+    {
+      "name": "Open the Documents folder",
+      "context": "Finder",
+      "label": "Documents",
+      "mac": "Shift+Cmd+O"
+    },
+    {
+      "name": "Show or hide the Preview pane in Finder windows",
+      "context": "Finder",
+      "label": "Preview pane",
+      "mac": "Shift+Cmd+P"
+    },
+    {
+      "name": "Open the AirDrop window",
+      "context": "Finder",
+      "label": "AirDrop",
+      "mac": "Shift+Cmd+R"
+    },
+    {
+      "name": "Show or hide the tab bar in Finder windows",
+      "context": "Finder",
+      "label": "Tab bar",
+      "mac": "Shift+Cmd+T"
+    },
+    {
+      "name": "Add selected Finder item to the Dock",
+      "context": "Finder",
+      "label": "Add Finder",
+      "mac": "Ctrl+Shift+Cmd+T"
+    },
+    {
+      "name": "Open the Utilities folder",
+      "context": "Finder",
+      "label": "Utilities",
+      "mac": "Shift+Cmd+U"
+    },
+    {
+      "name": "Add the selected item to the sidebar",
+      "context": "Finder",
+      "label": "Add item",
+      "mac": "Ctrl+Cmd+T"
+    },
+    {
+      "name": "Hide or show the path bar in Finder windows",
+      "context": "Finder",
+      "label": "Path bar",
+      "mac": "Option+Cmd+P"
+    },
+    {
+      "name": "Hide or show the Sidebar in Finder windows",
+      "context": "Finder",
+      "label": "Sidebar",
+      "mac": "Option+Cmd+S"
+    },
+    {
+      "name": "Hide or show the status bar in Finder windows",
+      "context": "Finder",
+      "label": "Status bar",
+      "mac": "Cmd+/"
+    },
+    {
+      "name": "Show View Options",
+      "context": "Finder",
+      "label": "View Options",
+      "mac": "Cmd+J"
+    },
+    {
+      "name": "Open the Connect to Server window",
+      "context": "Finder",
+      "label": "Connect",
+      "mac": "Cmd+K"
+    },
+    {
+      "name": "Make an alias of the selected item",
+      "context": "Finder",
+      "label": "Alias item",
+      "mac": "Ctrl+Cmd+A"
+    },
+    {
+      "name": "Open a new Finder window",
+      "context": "Finder",
+      "label": "New Finder",
+      "mac": "Cmd+N"
+    },
+    {
+      "name": "Create a new Smart Folder",
+      "context": "Finder",
+      "label": "Create new",
+      "mac": "Option+Cmd+N"
+    },
+    {
+      "name": "Show or hide the tab bar when a single tab is open in the current Finder window",
+      "context": "Finder",
+      "label": "Tab bar when",
+      "mac": "Cmd+T"
+    },
+    {
+      "name": "Show or hide the toolbar when a single tab is open in the current Finder window",
+      "context": "Finder",
+      "label": "Toolbar when",
+      "mac": "Option+Cmd+T"
+    },
+    {
+      "name": "Move the files in the Clipboard from their original location to the current location",
+      "context": "Finder",
+      "label": "Move files",
+      "mac": "Option+Cmd+V"
+    },
+    {
+      "name": "Use Quick Look to preview the selected files",
+      "context": "Finder",
+      "label": "Quick Look",
+      "mac": "Cmd+Y"
+    },
+    {
+      "name": "View a Quick Look slideshow of the selected files",
+      "context": "Finder",
+      "label": "Quick Look",
+      "mac": "Option+Cmd+Y"
+    },
+    {
+      "name": "View the items in the Finder window as icons",
+      "context": "Finder",
+      "label": "Items Finder",
+      "mac": "Cmd+1"
+    },
+    {
+      "name": "View the items in a Finder window as a list",
+      "context": "Finder",
+      "label": "Items Finder",
+      "mac": "Cmd+2"
+    },
+    {
+      "name": "View the items in a Finder window in columns",
+      "context": "Finder",
+      "label": "Items Finder",
+      "mac": "Cmd+3"
+    },
+    {
+      "name": "View the items in a Finder window in a gallery",
+      "context": "Finder",
+      "label": "Items Finder",
+      "mac": "Cmd+4"
+    },
+    {
+      "name": "Go to the previous folder",
+      "context": "Finder",
+      "label": "Previous",
+      "mac": "Cmd+["
+    },
+    {
+      "name": "Go to the next folder",
+      "context": "Finder",
+      "label": "Next folder",
+      "mac": "Cmd+]"
+    },
+    {
+      "name": "Open the folder that contains the current folder",
+      "context": "Finder",
+      "label": "Folder",
+      "mac": "Cmd+Up"
+    },
+    {
+      "name": "Open the folder that contains the current folder in a new window",
+      "context": "Finder",
+      "label": "Folder",
+      "mac": "Ctrl+Cmd+Up"
+    },
+    {
+      "name": "Open the selected item",
+      "context": "Finder",
+      "label": "Item",
+      "mac": "Cmd+Down"
+    },
+    {
+      "name": "Open the selected folder",
+      "context": "Finder",
+      "label": "Folder",
+      "mac": "Right"
+    },
+    {
+      "name": "Close the selected folder",
+      "context": "Finder",
+      "label": "Close folder",
+      "mac": "Left"
+    },
+    {
+      "name": "Move the selected item to the Trash",
+      "context": "Finder",
+      "label": "Move item",
+      "mac": "Cmd+Backspace"
+    },
+    {
+      "name": "Empty the Trash",
+      "context": "Finder",
+      "label": "Empty Trash",
+      "mac": "Shift+Cmd+Backspace"
+    },
+    {
+      "name": "Empty the Trash without confirmation dialog",
+      "context": "Finder",
+      "label": "Empty Trash",
+      "mac": "Option+Shift+Cmd+Backspace"
+    }
+  ]
+}

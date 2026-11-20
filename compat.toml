@@ -1,0 +1,81 @@
+# OpenFlux interface registry.
+#
+# Every boundary between independently released components is a named
+# interface with a MAJOR.MINOR version. A minor bump only adds; a major bump
+# breaks. Requirements are ranges within one major (">=1.2, <2.0"). The update
+# engine reads these declarations from each release and only proposes updates
+# that keep every component working. docs/compatibility.md explains the model.
+#
+# Rules for contributors:
+# - Change an interface: bump its version here in the same change that alters
+#   the provider. Additive change: bump MINOR. Breaking change: bump MAJOR and
+#   read "Breaking changes" in docs/compatibility.md first.
+# - A consumer that starts relying on an addition raises its requirement.
+# - Interfaces are never renamed or reused.
+# - Component versions are maintained by the release tooling.
+#
+# `openflux-release compat --compat compat.toml` checks this file.
+
+schema = 1
+
+[interfaces.bridge-usb]
+version = "1.0"
+kind = "protocol"
+summary = "Host to bridge command protocol over USB: files, packages, live data and identity."
+
+[interfaces.firmware-usb]
+version = "1.1"
+kind = "protocol"
+summary = "Host to firmware command protocol over USB, including entry to the boot loader."
+
+[interfaces.uart]
+version = "1.0"
+kind = "protocol"
+summary = "Bridge to firmware serial link inside the keyboard."
+
+[interfaces.display-ipc]
+version = "1.0"
+kind = "protocol"
+summary = "Bridge to display channel carrying live data and display commands."
+
+[interfaces.keymap]
+version = "1.0"
+kind = "data"
+summary = "Binary keymap format stored by the firmware."
+
+[interfaces.profile-settings]
+version = "1.0"
+kind = "data"
+summary = "Per-profile actuation and default-layer settings stored by the firmware."
+
+[interfaces.calibration-lfs]
+version = "1.0"
+kind = "data"
+summary = "Per-unit sensor calibration files in the firmware's littlefs partition."
+
+[interfaces.config]
+version = "1.0"
+kind = "data"
+summary = "Display configuration JSON schema: themes, layouts and widgets."
+
+[components.host]
+version = "1.0.0"
+provides = []
+requires = { bridge-usb = ">=1.0, <2.0", firmware-usb = ">=1.0, <2.0", keymap = ">=1.0, <2.0", profile-settings = ">=1.0, <2.0", calibration-lfs = ">=1.0, <2.0", config = ">=1.0, <2.0" }
+
+[components.firmware]
+version = "1.0.0"
+provides = ["firmware-usb", "uart", "keymap", "profile-settings", "calibration-lfs"]
+update-transport = ["firmware-usb"]
+
+[components.bridge]
+version = "1.0.0"
+provides = ["bridge-usb", "display-ipc"]
+requires = { uart = ">=1.0, <2.0" }
+update-transport = ["bridge-usb"]
+
+[components.display]
+version = "1.0.0"
+provides = ["config"]
+requires = { display-ipc = ">=1.0, <2.0" }
+update-transport = ["bridge-usb"]

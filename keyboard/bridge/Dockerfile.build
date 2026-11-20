@@ -1,0 +1,14 @@
+# Toolchain image for building openflux-bridge; the repository is mounted at /work at run time.
+# rust:1-slim-bookworm
+FROM rust:1-slim-bookworm@sha256:7c7d4eb4d05b7781187a327809466cfddf29753f6defdc3d19a0e291951b7a37
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+    gcc make musl-tools libc6-dev python3 file procps gcc-aarch64-linux-gnu libc6-dev-arm64-cross && \
+    rustup toolchain install 1.90.0 --profile minimal --component rustc,cargo,rust-std && \
+    rustup target add --toolchain 1.90.0 aarch64-unknown-linux-musl && \
+    if [ "$(uname -m)" != "aarch64" ]; then \
+      mkdir -p /usr/local/cargo && \
+      printf '[target.aarch64-unknown-linux-musl]\nlinker = "aarch64-linux-gnu-gcc"\n' >> /usr/local/cargo/config.toml; \
+    fi && \
+    rm -rf /var/lib/apt/lists/*
+ENV CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc
+WORKDIR /work

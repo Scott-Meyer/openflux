@@ -1,0 +1,14 @@
+#!/bin/sh
+ROOT="${OPENFLUX_SYSROOT:-}"
+mkdir -p "${ROOT}/tmp"
+touch "${ROOT}/tmp/openflux_updating_display"
+pkill -TERM -f "${ROOT}/usr/lib/openflux/display/openflux-display" 2>/dev/null || true
+if [ -z "$ROOT" ]; then
+    pkill -TERM -f "garfunkel -b" 2>/dev/null || true
+fi
+sleep "${OPENFLUX_STOP_SLEEP:-2}"
+pkill -KILL -f "${ROOT}/usr/lib/openflux/display/openflux-display" 2>/dev/null || true
+if [ -z "$ROOT" ]; then
+    pkill -KILL -f "garfunkel -b" 2>/dev/null || true
+fi
+exit 0

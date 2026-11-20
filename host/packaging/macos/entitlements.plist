@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Code-signing entitlements for OpenFlux Studio and its helper executables,
+  signed with the hardened runtime and notarized.
+
+  The set is intentionally empty. The app is not sandboxed, so USB access
+  through IOKit, the local daemon API and network requests need no
+  entitlement. The web view's JavaScript JIT runs in the system WebKit
+  processes, so no allow-jit exception is needed, and every executable is
+  statically linked against its non-system code, so library validation stays
+  enabled. Add an exception here only together with the reason it is required.
+-->
+<plist version="1.0">
+<dict/>
+</plist>

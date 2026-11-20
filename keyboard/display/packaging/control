@@ -1,0 +1,10 @@
+Package: openflux-display
+Version: 1.0.0
+Architecture: aarch64
+Maintainer: OpenFlux Contributors
+Conflicts: garfunkel
+Replaces: garfunkel
+Description: OpenFlux 1920x1080 Wayland display renderer for the keyboard screen
+Recommends: ffmpeg
+Section: utils
+Priority: optional

@@ -1,0 +1,771 @@
+{
+  "name": "Windows",
+  "source": "https://support.microsoft.com/en-us/windows/keyboard-shortcuts-in-windows-dcc61a57-8ff0-cffe-9796-cb9706c75eec",
+  "platforms": [
+    "windows"
+  ],
+  "shortcuts": [
+    {
+      "name": "Set focus to the first icon in the Suggested actions menu",
+      "context": "General",
+      "label": "Focus first",
+      "windows": "Alt+A"
+    },
+    {
+      "name": "Cycle through windows in the order in which they were opened",
+      "context": "General",
+      "label": "Cycle",
+      "windows": "Alt+Esc"
+    },
+    {
+      "name": "Close the active window",
+      "context": "General",
+      "label": "Close active",
+      "windows": "Alt+F4"
+    },
+    {
+      "name": "Show your password on the sign-in screen",
+      "context": "General",
+      "label": "Password",
+      "windows": "Alt+F8"
+    },
+    {
+      "name": "Go back",
+      "context": "General",
+      "windows": "Alt+Left"
+    },
+    {
+      "name": "Move down one screen",
+      "context": "General",
+      "label": "Move down",
+      "windows": "Alt+PageDown"
+    },
+    {
+      "name": "Move up one screen",
+      "context": "General",
+      "label": "Move up one",
+      "windows": "Alt+PageUp"
+    },
+    {
+      "name": "Capture a screenshot of the active window and copy it to the clipboard",
+      "context": "General",
+      "label": "Capture",
+      "windows": "Alt+PrintScreen"
+    },
+    {
+      "name": "Go forward",
+      "context": "General",
+      "windows": "Alt+Right"
+    },
+    {
+      "name": "Switch focus back to the host machine from Windows Sandbox",
+      "context": "General",
+      "label": "Switch focus",
+      "windows": "Ctrl+Alt+Insert"
+    },
+    {
+      "name": "Open the context menu for the active window",
+      "context": "General",
+      "label": "Context menu",
+      "windows": "Alt+Space"
+    },
+    {
+      "name": "Switch between open windows",
+      "context": "General",
+      "label": "Switch",
+      "windows": "Alt+Tab"
+    },
+    {
+      "name": "Select all items in a window",
+      "context": "General",
+      "label": "Items window",
+      "windows": "Ctrl+A"
+    },
+    {
+      "name": "Open the security screen",
+      "context": "General",
+      "label": "Security",
+      "windows": "Ctrl+Alt+Delete"
+    },
+    {
+      "name": "View a thumbnail of all open apps",
+      "context": "General",
+      "label": "Thumbnail",
+      "windows": "Ctrl+Alt+Tab"
+    },
+    {
+      "name": "Open the Start menu",
+      "context": "General",
+      "label": "Start menu",
+      "windows": "Ctrl+Esc"
+    },
+    {
+      "name": "Close the active document",
+      "context": "General",
+      "label": "Close active",
+      "windows": "Ctrl+F4"
+    },
+    {
+      "name": "Refresh the current window",
+      "context": "General",
+      "label": "Refresh",
+      "windows": "Ctrl+F5"
+    },
+    {
+      "name": "Open Task Manager",
+      "context": "General",
+      "label": "Task Manager",
+      "windows": "Ctrl+Shift+Esc"
+    },
+    {
+      "name": "Enable or disable the Chinese input method editor",
+      "context": "General",
+      "label": "Enable",
+      "windows": "Ctrl+Space"
+    },
+    {
+      "name": "Redo an action that was previously undone with Ctrl+Z",
+      "context": "General",
+      "label": "Redo action",
+      "windows": "Ctrl+Y"
+    },
+    {
+      "name": "Undo the previous action",
+      "context": "General",
+      "label": "Undo",
+      "windows": "Ctrl+Z"
+    },
+    {
+      "name": "Stop or leave the current task, or dismiss a dialog box",
+      "context": "General",
+      "label": "Stop leave",
+      "windows": "Esc"
+    },
+    {
+      "name": "Refresh the active window",
+      "context": "General",
+      "label": "Refresh",
+      "windows": "F5"
+    },
+    {
+      "name": "Cycle through elements in a window or on the desktop",
+      "context": "General",
+      "label": "Cycle",
+      "windows": "F6"
+    },
+    {
+      "name": "Activate the menu bar in the active window",
+      "context": "General",
+      "label": "Activate",
+      "windows": "F10"
+    },
+    {
+      "name": "Select a region of the screen to capture a screenshot to the clipboard",
+      "context": "General",
+      "label": "Region",
+      "windows": "PrintScreen"
+    },
+    {
+      "name": "Open the Windows 11 action center",
+      "context": "Windows key",
+      "label": "Windows 11",
+      "windows": "Win+A"
+    },
+    {
+      "name": "Set focus to a Windows tip when one is available",
+      "context": "Windows key",
+      "label": "Focus",
+      "windows": "Shift+Win+A"
+    },
+    {
+      "name": "Turn high dynamic range on or off",
+      "context": "Windows key",
+      "label": "Turn high",
+      "windows": "Alt+Win+B"
+    },
+    {
+      "name": "Open Microsoft Copilot or Microsoft 365 Copilot",
+      "context": "Windows key",
+      "label": "Microsoft",
+      "windows": "Win+C"
+    },
+    {
+      "name": "Display and hide the date and time on the desktop",
+      "context": "Windows key",
+      "label": "Hide date",
+      "windows": "Alt+Win+D"
+    },
+    {
+      "name": "Snap the active window to the bottom half of the screen",
+      "context": "Windows key",
+      "label": "Snap active",
+      "windows": "Alt+Win+Down"
+    },
+    {
+      "name": "When voice typing is open, set the focus to the keyboard",
+      "context": "Windows key",
+      "label": "When voice",
+      "windows": "Alt+Win+H"
+    },
+    {
+      "name": "Mute or unmute the microphone in supported apps",
+      "context": "Windows key",
+      "label": "Mute unmute",
+      "windows": "Alt+Win+K"
+    },
+    {
+      "name": "Snap the active window to the top half of the screen",
+      "context": "Windows key",
+      "label": "Snap active",
+      "windows": "Alt+Win+Up"
+    },
+    {
+      "name": "Temporarily peek at the desktop",
+      "context": "Windows key",
+      "label": "Temporarily",
+      "windows": "Win+,"
+    },
+    {
+      "name": "Turn color filters on or off",
+      "context": "Windows key",
+      "label": "Turn color",
+      "windows": "Ctrl+Win+C"
+    },
+    {
+      "name": "Open Narrator",
+      "context": "Windows key",
+      "label": "Narrator",
+      "windows": "Ctrl+Win+Enter"
+    },
+    {
+      "name": "Search for devices on a network",
+      "context": "Windows key",
+      "label": "Search",
+      "windows": "Ctrl+Win+F"
+    },
+    {
+      "name": "Open Quick Assist",
+      "context": "Windows key",
+      "label": "Quick Assist",
+      "windows": "Ctrl+Win+Q"
+    },
+    {
+      "name": "Wake up the device when the screen is blank or black",
+      "context": "Windows key",
+      "label": "Wake up",
+      "windows": "Ctrl+Shift+Win+B"
+    },
+    {
+      "name": "Change to a previously selected input option",
+      "context": "Windows key",
+      "label": "Previously",
+      "windows": "Ctrl+Win+Space"
+    },
+    {
+      "name": "Open the sound output page of quick settings",
+      "context": "Windows key",
+      "label": "Sound output",
+      "windows": "Ctrl+Win+V"
+    },
+    {
+      "name": "Display and hide the desktop",
+      "context": "Windows key",
+      "label": "Hide desktop",
+      "windows": "Win+D"
+    },
+    {
+      "name": "Minimize the active window",
+      "context": "Windows key",
+      "label": "Minimize",
+      "windows": "Win+Down"
+    },
+    {
+      "name": "Open File Explorer",
+      "context": "Windows key",
+      "label": "File",
+      "windows": "Win+E"
+    },
+    {
+      "name": "Close Magnifier",
+      "context": "Windows key",
+      "label": "Close",
+      "windows": "Win+Esc"
+    },
+    {
+      "name": "Open Feedback Hub",
+      "context": "Windows key",
+      "label": "Feedback Hub",
+      "windows": "Win+F"
+    },
+    {
+      "name": "Start input method editor reconversion",
+      "context": "Windows key",
+      "label": "Input method",
+      "windows": "Win+/"
+    },
+    {
+      "name": "Open the Game Bar",
+      "context": "Windows key",
+      "label": "Game Bar",
+      "windows": "Win+G"
+    },
+    {
+      "name": "Open voice dictation",
+      "context": "Windows key",
+      "label": "Voice",
+      "windows": "Win+H"
+    },
+    {
+      "name": "Minimize or restore all windows except the active window",
+      "context": "Windows key",
+      "label": "Minimize",
+      "windows": "Win+Home"
+    },
+    {
+      "name": "Open Settings",
+      "context": "Windows key",
+      "label": "Settings",
+      "windows": "Win+I"
+    },
+    {
+      "name": "Open Recall",
+      "context": "Windows key",
+      "windows": "Win+J"
+    },
+    {
+      "name": "Open Cast from Quick Settings to connect to a display",
+      "context": "Windows key",
+      "label": "Cast Quick",
+      "windows": "Win+K"
+    },
+    {
+      "name": "Lock the computer",
+      "context": "Windows key",
+      "label": "Lock",
+      "windows": "Win+L"
+    },
+    {
+      "name": "Snap the window to the left side of the screen",
+      "context": "Windows key",
+      "label": "Snap window",
+      "windows": "Win+Left"
+    },
+    {
+      "name": "Minimize all windows",
+      "context": "Windows key",
+      "label": "Minimize",
+      "windows": "Win+M"
+    },
+    {
+      "name": "Zoom out in Magnifier",
+      "context": "Windows key",
+      "label": "Zoom out",
+      "windows": "Win+-"
+    },
+    {
+      "name": "Open notification center and calendar",
+      "context": "Windows key",
+      "label": "Notification",
+      "windows": "Win+N"
+    },
+    {
+      "name": "Lock the device orientation",
+      "context": "Windows key",
+      "label": "Lock device",
+      "windows": "Win+O"
+    },
+    {
+      "name": "Open project settings to choose a presentation display mode",
+      "context": "Windows key",
+      "label": "Project",
+      "windows": "Win+P"
+    },
+    {
+      "name": "Open System About settings",
+      "context": "Windows key",
+      "label": "System About",
+      "windows": "Win+Pause"
+    },
+    {
+      "name": "Open the emoji panel",
+      "context": "Windows key",
+      "label": "Emoji panel",
+      "windows": "Win+."
+    },
+    {
+      "name": "Zoom in with the Magnifier",
+      "context": "Windows key",
+      "label": "Zoom",
+      "windows": "Win+="
+    },
+    {
+      "name": "Save a full screen screenshot",
+      "context": "Windows key",
+      "label": "Save full",
+      "windows": "Win+PrintScreen"
+    },
+    {
+      "name": "Open search",
+      "context": "Windows key",
+      "windows": "Win+Q"
+    },
+    {
+      "name": "Open the Run dialog box",
+      "context": "Windows key",
+      "label": "Run dialog",
+      "windows": "Win+R"
+    },
+    {
+      "name": "Snap the window to the right side of the screen",
+      "context": "Windows key",
+      "label": "Snap window",
+      "windows": "Win+Right"
+    },
+    {
+      "name": "Restore a snapped or maximized window",
+      "context": "Windows key",
+      "label": "Restore",
+      "windows": "Shift+Win+Down"
+    },
+    {
+      "name": "Make the active app full screen",
+      "context": "Windows key",
+      "label": "Active app",
+      "windows": "Shift+Win+Enter"
+    },
+    {
+      "name": "Move the active window to the monitor on the left",
+      "context": "Windows key",
+      "label": "Move active",
+      "windows": "Shift+Win+Left"
+    },
+    {
+      "name": "Restore minimized windows",
+      "context": "Windows key",
+      "label": "Restore",
+      "windows": "Shift+Win+M"
+    },
+    {
+      "name": "Select a region of the screen to record a video",
+      "context": "Windows key",
+      "label": "Region",
+      "windows": "Shift+Win+R"
+    },
+    {
+      "name": "Move the active window to the monitor on the right",
+      "context": "Windows key",
+      "label": "Move active",
+      "windows": "Shift+Win+Right"
+    },
+    {
+      "name": "Select a region of the screen to capture a screenshot to the clipboard",
+      "context": "Windows key",
+      "label": "Region",
+      "windows": "Shift+Win+S"
+    },
+    {
+      "name": "Switch backward through input languages and keyboard layouts",
+      "context": "Windows key",
+      "label": "Switch",
+      "windows": "Shift+Win+Space"
+    },
+    {
+      "name": "Stretch the desktop window to the top and bottom of the screen",
+      "context": "Windows key",
+      "label": "Stretch",
+      "windows": "Shift+Win+Up"
+    },
+    {
+      "name": "Cycle through notifications",
+      "context": "Windows key",
+      "label": "Cycle",
+      "windows": "Shift+Win+V"
+    },
+    {
+      "name": "Switch forward through input languages and keyboard layouts",
+      "context": "Windows key",
+      "label": "Switch",
+      "windows": "Win+Space"
+    },
+    {
+      "name": "Open Task View",
+      "context": "Windows key",
+      "label": "Task View",
+      "windows": "Win+Tab"
+    },
+    {
+      "name": "Open the Settings app to the Accessibility section",
+      "context": "Windows key",
+      "label": "Settings app",
+      "windows": "Win+U"
+    },
+    {
+      "name": "Maximize the active window",
+      "context": "Windows key",
+      "label": "Maximize",
+      "windows": "Win+Up"
+    },
+    {
+      "name": "Open the clipboard history",
+      "context": "Windows key",
+      "label": "Clipboard",
+      "windows": "Win+V"
+    },
+    {
+      "name": "Open Widgets",
+      "context": "Windows key",
+      "windows": "Win+W"
+    },
+    {
+      "name": "Open the Quick Link menu",
+      "context": "Windows key",
+      "label": "Quick Link",
+      "windows": "Win+X"
+    },
+    {
+      "name": "Switch input between Windows Mixed Reality and your desktop",
+      "context": "Windows key",
+      "label": "Switch input",
+      "windows": "Win+Y"
+    },
+    {
+      "name": "Open the snap layouts",
+      "context": "Windows key",
+      "label": "Snap layouts",
+      "windows": "Win+Z"
+    },
+    {
+      "name": "Open Task view",
+      "context": "Virtual desktops",
+      "label": "Task view",
+      "windows": "Win+Tab"
+    },
+    {
+      "name": "Create another desktop",
+      "context": "Virtual desktops",
+      "label": "Create",
+      "windows": "Ctrl+Win+D"
+    },
+    {
+      "name": "Switch between other desktops you've created on the right",
+      "context": "Virtual desktops",
+      "label": "Switch",
+      "windows": "Ctrl+Win+Right"
+    },
+    {
+      "name": "Switch between other desktops you've created on the left",
+      "context": "Virtual desktops",
+      "label": "Switch",
+      "windows": "Ctrl+Win+Left"
+    },
+    {
+      "name": "Close the desktop you're using",
+      "context": "Virtual desktops",
+      "label": "Close",
+      "windows": "Ctrl+Win+F4"
+    },
+    {
+      "name": "Select all text",
+      "context": "Text editing",
+      "label": "Text",
+      "windows": "Ctrl+A"
+    },
+    {
+      "name": "Apply the bold format to the selected text",
+      "context": "Text editing",
+      "label": "Apply bold",
+      "windows": "Ctrl+B"
+    },
+    {
+      "name": "Delete words to the left of the cursor",
+      "context": "Text editing",
+      "label": "Delete words",
+      "windows": "Ctrl+Backspace"
+    },
+    {
+      "name": "Copy the selected text",
+      "context": "Text editing",
+      "label": "Copy text",
+      "windows": "Ctrl+C"
+    },
+    {
+      "name": "Delete words to the right of the cursor",
+      "context": "Text editing",
+      "label": "Delete words",
+      "windows": "Ctrl+Delete"
+    },
+    {
+      "name": "Move the cursor forward to the beginning of the next paragraph",
+      "context": "Text editing",
+      "label": "Move cursor",
+      "windows": "Ctrl+Down"
+    },
+    {
+      "name": "Move the cursor forward to the end of the document",
+      "context": "Text editing",
+      "label": "Move cursor",
+      "windows": "Ctrl+End"
+    },
+    {
+      "name": "Find text",
+      "context": "Text editing",
+      "windows": "Ctrl+F"
+    },
+    {
+      "name": "Find and replace text",
+      "context": "Text editing",
+      "label": "Find replace",
+      "windows": "Ctrl+H"
+    },
+    {
+      "name": "Move the cursor backward to the beginning of the document",
+      "context": "Text editing",
+      "label": "Move cursor",
+      "windows": "Ctrl+Home"
+    },
+    {
+      "name": "Apply the italic format to the selected text",
+      "context": "Text editing",
+      "label": "Apply italic",
+      "windows": "Ctrl+I"
+    },
+    {
+      "name": "Move the cursor backward to the beginning of the previous word",
+      "context": "Text editing",
+      "label": "Move cursor",
+      "windows": "Ctrl+Left"
+    },
+    {
+      "name": "Move the cursor forward to the beginning of the next word",
+      "context": "Text editing",
+      "label": "Move cursor",
+      "windows": "Ctrl+Right"
+    },
+    {
+      "name": "Paste as plain text",
+      "context": "Text editing",
+      "label": "Paste as",
+      "windows": "Ctrl+Shift+V"
+    },
+    {
+      "name": "Apply the underline format to the selected text",
+      "context": "Text editing",
+      "label": "Apply",
+      "windows": "Ctrl+U"
+    },
+    {
+      "name": "Move the cursor backward to the beginning of the previous paragraph",
+      "context": "Text editing",
+      "label": "Move cursor",
+      "windows": "Ctrl+Up"
+    },
+    {
+      "name": "Paste the last item from the clipboard",
+      "context": "Text editing",
+      "label": "Paste last",
+      "windows": "Ctrl+V"
+    },
+    {
+      "name": "Cut the selected text",
+      "context": "Text editing",
+      "label": "Cut text",
+      "windows": "Ctrl+X"
+    },
+    {
+      "name": "Redo typing that was undone with Ctrl+Z",
+      "context": "Text editing",
+      "label": "Redo typing",
+      "windows": "Ctrl+Y"
+    },
+    {
+      "name": "Undo the last typing",
+      "context": "Text editing",
+      "label": "Undo last",
+      "windows": "Ctrl+Z"
+    },
+    {
+      "name": "Select paragraphs forward from the current cursor position",
+      "context": "Text editing",
+      "label": "Paragraphs",
+      "windows": "Ctrl+Shift+Down"
+    },
+    {
+      "name": "Select text between the current cursor position and the end of the document",
+      "context": "Text editing",
+      "label": "Text between",
+      "windows": "Ctrl+Shift+End"
+    },
+    {
+      "name": "Select text between the current cursor position and the beginning of the document",
+      "context": "Text editing",
+      "label": "Text between",
+      "windows": "Ctrl+Shift+Home"
+    },
+    {
+      "name": "Select words backward from the current cursor position",
+      "context": "Text editing",
+      "label": "Words",
+      "windows": "Ctrl+Shift+Left"
+    },
+    {
+      "name": "Select words forward from the current cursor position",
+      "context": "Text editing",
+      "label": "Words",
+      "windows": "Ctrl+Shift+Right"
+    },
+    {
+      "name": "Select paragraphs backward the current cursor position",
+      "context": "Text editing",
+      "label": "Paragraphs",
+      "windows": "Ctrl+Shift+Up"
+    },
+    {
+      "name": "Select lines forward from the current cursor position",
+      "context": "Text editing",
+      "label": "Lines",
+      "windows": "Shift+Down"
+    },
+    {
+      "name": "Select text from the current cursor position to the end of the current line",
+      "context": "Text editing",
+      "label": "Text cursor",
+      "windows": "Shift+End"
+    },
+    {
+      "name": "Select text from the current cursor position to the beginning of the current line",
+      "context": "Text editing",
+      "label": "Text cursor",
+      "windows": "Shift+Home"
+    },
+    {
+      "name": "Select characters backward from the current cursor position",
+      "context": "Text editing",
+      "label": "Characters",
+      "windows": "Shift+Left"
+    },
+    {
+      "name": "Select one page of text forward from the current cursor position",
+      "context": "Text editing",
+      "label": "One text",
+      "windows": "Shift+PageDown"
+    },
+    {
+      "name": "Select one page of text backward from the current cursor position",
+      "context": "Text editing",
+      "label": "One text",
+      "windows": "Shift+PageUp"
+    },
+    {
+      "name": "Select characters forward from the current cursor position",
+      "context": "Text editing",
+      "label": "Characters",
+      "windows": "Shift+Right"
+    },
+    {
+      "name": "Select lines backward from the current cursor position",
+      "context": "Text editing",
+      "label": "Lines",
+      "windows": "Shift+Up"
+    }
+  ]
+}

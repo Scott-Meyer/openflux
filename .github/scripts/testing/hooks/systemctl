@@ -1,0 +1,8 @@
+#!/bin/sh
+# Stand-in for systemctl: logs the call; `is-enabled` fails when
+# $FAKE_HOOKS/disabled exists.
+echo "systemctl $*" >> "${FAKE_HOOKS:?}/calls.log"
+case " $* " in
+    *" is-enabled "*) [ ! -e "${FAKE_HOOKS}/disabled" ] ;;
+    *) exit 0 ;;
+esac

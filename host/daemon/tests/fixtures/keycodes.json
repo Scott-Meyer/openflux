@@ -1,0 +1,1388 @@
+{
+  "aliases": {
+    "KC_AGIN": "KC_AGAIN",
+    "KC_ALGR": "KC_RIGHT_ALT",
+    "KC_APP": "KC_APPLICATION",
+    "KC_BRID": "KC_BRIGHTNESS_DOWN",
+    "KC_BRIU": "KC_BRIGHTNESS_UP",
+    "KC_BRK": "KC_PAUSE",
+    "KC_BRMD": "KC_SCROLL_LOCK",
+    "KC_BRMU": "KC_PAUSE",
+    "KC_BSBT": "KC_AUDIO_BASS_BOOST",
+    "KC_BSLS": "KC_BACKSLASH",
+    "KC_BSPC": "KC_BACKSPACE",
+    "KC_BSSD": "KC_AUDIO_BASS_DOWN",
+    "KC_BSSU": "KC_AUDIO_BASS_UP",
+    "KC_CALC": "KC_CALCULATOR",
+    "KC_CAPS": "KC_CAPS_LOCK",
+    "KC_CLAG": "KC_CLEAR_AGAIN",
+    "KC_CLR": "KC_CLEAR",
+    "KC_CNCL": "KC_CANCEL",
+    "KC_COMM": "KC_COMMA",
+    "KC_CRSL": "KC_CRSEL",
+    "KC_DEL": "KC_DELETE",
+    "KC_EJCT": "KC_MEDIA_EJECT",
+    "KC_ENT": "KC_ENTER",
+    "KC_EQL": "KC_EQUAL",
+    "KC_ERAS": "KC_ALTERNATE_ERASE",
+    "KC_ESC": "KC_ESCAPE",
+    "KC_EXEC": "KC_EXECUTE",
+    "KC_EXSL": "KC_EXSEL",
+    "KC_GLBE": "KC_GLOBE",
+    "KC_GRV": "KC_GRAVE",
+    "KC_INS": "KC_INSERT",
+    "KC_INT1": "KC_INTERNATIONAL_1",
+    "KC_INT2": "KC_INTERNATIONAL_2",
+    "KC_INT3": "KC_INTERNATIONAL_3",
+    "KC_INT4": "KC_INTERNATIONAL_4",
+    "KC_INT5": "KC_INTERNATIONAL_5",
+    "KC_INT6": "KC_INTERNATIONAL_6",
+    "KC_INT7": "KC_INTERNATIONAL_7",
+    "KC_INT8": "KC_INTERNATIONAL_8",
+    "KC_INT9": "KC_INTERNATIONAL_9",
+    "KC_LALT": "KC_LEFT_ALT",
+    "KC_LANG1": "KC_LANGUAGE_1",
+    "KC_LANG2": "KC_LANGUAGE_2",
+    "KC_LANG3": "KC_LANGUAGE_3",
+    "KC_LANG4": "KC_LANGUAGE_4",
+    "KC_LANG5": "KC_LANGUAGE_5",
+    "KC_LANG6": "KC_LANGUAGE_6",
+    "KC_LANG7": "KC_LANGUAGE_7",
+    "KC_LANG8": "KC_LANGUAGE_8",
+    "KC_LANG9": "KC_LANGUAGE_9",
+    "KC_LBRC": "KC_LEFT_BRACKET",
+    "KC_LCAP": "KC_LOCKING_CAPS_LOCK",
+    "KC_LCMD": "KC_LEFT_GUI",
+    "KC_LCTL": "KC_LEFT_CTRL",
+    "KC_LDNS": "KC_AUDIO_LOUDNESS",
+    "KC_LGUI": "KC_LEFT_GUI",
+    "KC_LNG1": "KC_LANGUAGE_1",
+    "KC_LNG2": "KC_LANGUAGE_2",
+    "KC_LNG3": "KC_LANGUAGE_3",
+    "KC_LNG4": "KC_LANGUAGE_4",
+    "KC_LNG5": "KC_LANGUAGE_5",
+    "KC_LNG6": "KC_LANGUAGE_6",
+    "KC_LNG7": "KC_LANGUAGE_7",
+    "KC_LNG8": "KC_LANGUAGE_8",
+    "KC_LNG9": "KC_LANGUAGE_9",
+    "KC_LNUM": "KC_LOCKING_NUM_LOCK",
+    "KC_LOPT": "KC_LEFT_ALT",
+    "KC_LPAD": "KC_LAUNCHPAD",
+    "KC_LSCR": "KC_LOCKING_SCROLL_LOCK",
+    "KC_LSFT": "KC_LEFT_SHIFT",
+    "KC_LSHIFT": "KC_LEFT_SHIFT",
+    "KC_LWIN": "KC_LEFT_GUI",
+    "KC_MCTL": "KC_MISSION_CONTROL",
+    "KC_MINS": "KC_MINUS",
+    "KC_MNXT": "KC_MEDIA_NEXT_TRACK",
+    "KC_MPLY": "KC_MEDIA_PLAY_PAUSE",
+    "KC_MPRV": "KC_MEDIA_PREV_TRACK",
+    "KC_MSEL": "KC_MEDIA_SELECT",
+    "KC_MSTP": "KC_MEDIA_STOP",
+    "KC_MUTE": "KC_AUDIO_MUTE",
+    "KC_MYCM": "KC_MY_COMPUTER",
+    "KC_NUBS": "KC_NONUS_BACKSLASH",
+    "KC_NUHS": "KC_NONUS_HASH",
+    "KC_NUM": "KC_NUM_LOCK",
+    "KC_P0": "KC_KP_0",
+    "KC_P1": "KC_KP_1",
+    "KC_P2": "KC_KP_2",
+    "KC_P3": "KC_KP_3",
+    "KC_P4": "KC_KP_4",
+    "KC_P5": "KC_KP_5",
+    "KC_P6": "KC_KP_6",
+    "KC_P7": "KC_KP_7",
+    "KC_P8": "KC_KP_8",
+    "KC_P9": "KC_KP_9",
+    "KC_PAST": "KC_KP_ASTERISK",
+    "KC_PAUS": "KC_PAUSE",
+    "KC_PCMM": "KC_KP_COMMA",
+    "KC_PDOT": "KC_KP_DOT",
+    "KC_PENT": "KC_KP_ENTER",
+    "KC_PEQL": "KC_KP_EQUAL",
+    "KC_PGDN": "KC_PAGE_DOWN",
+    "KC_PGUP": "KC_PAGE_UP",
+    "KC_PMNS": "KC_KP_MINUS",
+    "KC_PPLS": "KC_KP_PLUS",
+    "KC_PRIR": "KC_PRIOR",
+    "KC_PSCR": "KC_PRINT_SCREEN",
+    "KC_PSLS": "KC_KP_SLASH",
+    "KC_PSTE": "KC_PASTE",
+    "KC_QUOT": "KC_QUOTE",
+    "KC_RALT": "KC_RIGHT_ALT",
+    "KC_RBRC": "KC_RIGHT_BRACKET",
+    "KC_RCMD": "KC_RIGHT_GUI",
+    "KC_RCTL": "KC_RIGHT_CTRL",
+    "KC_RETN": "KC_RETURN",
+    "KC_RGHT": "KC_RIGHT",
+    "KC_RGUI": "KC_RIGHT_GUI",
+    "KC_ROPT": "KC_RIGHT_ALT",
+    "KC_RSFT": "KC_RIGHT_SHIFT",
+    "KC_RSHIFT": "KC_RIGHT_SHIFT",
+    "KC_RWIN": "KC_RIGHT_GUI",
+    "KC_SCLD": "KC_SCROLL_DOWN",
+    "KC_SCLN": "KC_SEMICOLON",
+    "KC_SCLU": "KC_SCROLL_UP",
+    "KC_SCRL": "KC_SCROLL_LOCK",
+    "KC_SEPR": "KC_SEPARATOR",
+    "KC_SLCT": "KC_SELECT",
+    "KC_SLEP": "KC_SYSTEM_SLEEP",
+    "KC_SLSH": "KC_SLASH",
+    "KC_SPC": "KC_SPACE",
+    "KC_SYRQ": "KC_SYSTEM_REQUEST",
+    "KC_TRBD": "KC_AUDIO_TREBLE_DOWN",
+    "KC_TRBU": "KC_AUDIO_TREBLE_UP",
+    "KC_TRNS": "KC_TRANSPARENT",
+    "KC_VOLD": "KC_AUDIO_VOL_DOWN",
+    "KC_VOLU": "KC_AUDIO_VOL_UP",
+    "KC_WBAK": "KC_WWW_BACK",
+    "KC_WFAV": "KC_WWW_FAVORITES",
+    "KC_WFWD": "KC_WWW_FORWARD",
+    "KC_WHOM": "KC_WWW_HOME",
+    "KC_WREF": "KC_WWW_REFRESH",
+    "KC_WSCH": "KC_WWW_SEARCH",
+    "KC_WSTP": "KC_WWW_STOP"
+  },
+  "consumer": [
+    {
+      "name": "KC_SYSTEM_SLEEP",
+      "usage": 50
+    },
+    {
+      "name": "KC_BRIGHTNESS_UP",
+      "usage": 111
+    },
+    {
+      "name": "KC_BRIGHTNESS_DOWN",
+      "usage": 112
+    },
+    {
+      "name": "KC_MEDIA_NEXT_TRACK",
+      "usage": 181
+    },
+    {
+      "name": "KC_MEDIA_PREV_TRACK",
+      "usage": 182
+    },
+    {
+      "name": "KC_MEDIA_STOP",
+      "usage": 183
+    },
+    {
+      "name": "KC_MEDIA_EJECT",
+      "usage": 184
+    },
+    {
+      "name": "KC_MEDIA_PLAY_PAUSE",
+      "usage": 205
+    },
+    {
+      "name": "KC_AUDIO_MUTE",
+      "usage": 226
+    },
+    {
+      "name": "KC_AUDIO_BASS_BOOST",
+      "usage": 229
+    },
+    {
+      "name": "KC_AUDIO_LOUDNESS",
+      "usage": 231
+    },
+    {
+      "name": "KC_AUDIO_VOL_UP",
+      "usage": 233
+    },
+    {
+      "name": "KC_AUDIO_VOL_DOWN",
+      "usage": 234
+    },
+    {
+      "name": "KC_AUDIO_BASS_UP",
+      "usage": 338
+    },
+    {
+      "name": "KC_AUDIO_BASS_DOWN",
+      "usage": 339
+    },
+    {
+      "name": "KC_AUDIO_TREBLE_UP",
+      "usage": 340
+    },
+    {
+      "name": "KC_AUDIO_TREBLE_DOWN",
+      "usage": 341
+    },
+    {
+      "name": "KC_MEDIA_SELECT",
+      "usage": 387
+    },
+    {
+      "name": "KC_MAIL",
+      "usage": 394
+    },
+    {
+      "name": "KC_CALCULATOR",
+      "usage": 402
+    },
+    {
+      "name": "KC_MY_COMPUTER",
+      "usage": 404
+    },
+    {
+      "name": "KC_AC_FIND",
+      "usage": 543
+    },
+    {
+      "name": "KC_WWW_SEARCH",
+      "usage": 545
+    },
+    {
+      "name": "KC_WWW_HOME",
+      "usage": 547
+    },
+    {
+      "name": "KC_WWW_BACK",
+      "usage": 548
+    },
+    {
+      "name": "KC_WWW_FORWARD",
+      "usage": 549
+    },
+    {
+      "name": "KC_WWW_STOP",
+      "usage": 550
+    },
+    {
+      "name": "KC_WWW_REFRESH",
+      "usage": 551
+    },
+    {
+      "name": "KC_WWW_FAVORITES",
+      "usage": 554
+    },
+    {
+      "name": "KC_SCROLL_UP",
+      "usage": 563
+    },
+    {
+      "name": "KC_SCROLL_DOWN",
+      "usage": 564
+    },
+    {
+      "name": "KC_EDIT",
+      "usage": 573
+    },
+    {
+      "name": "KC_GLOBE",
+      "usage": 669
+    },
+    {
+      "name": "KC_MISSION_CONTROL",
+      "usage": 671
+    },
+    {
+      "name": "KC_LAUNCHPAD",
+      "usage": 672
+    }
+  ],
+  "keyboard": [
+    {
+      "name": "KC_A",
+      "usage": 4
+    },
+    {
+      "name": "KC_B",
+      "usage": 5
+    },
+    {
+      "name": "KC_C",
+      "usage": 6
+    },
+    {
+      "name": "KC_D",
+      "usage": 7
+    },
+    {
+      "name": "KC_E",
+      "usage": 8
+    },
+    {
+      "name": "KC_F",
+      "usage": 9
+    },
+    {
+      "name": "KC_G",
+      "usage": 10
+    },
+    {
+      "name": "KC_H",
+      "usage": 11
+    },
+    {
+      "name": "KC_I",
+      "usage": 12
+    },
+    {
+      "name": "KC_J",
+      "usage": 13
+    },
+    {
+      "name": "KC_K",
+      "usage": 14
+    },
+    {
+      "name": "KC_L",
+      "usage": 15
+    },
+    {
+      "name": "KC_M",
+      "usage": 16
+    },
+    {
+      "name": "KC_N",
+      "usage": 17
+    },
+    {
+      "name": "KC_O",
+      "usage": 18
+    },
+    {
+      "name": "KC_P",
+      "usage": 19
+    },
+    {
+      "name": "KC_Q",
+      "usage": 20
+    },
+    {
+      "name": "KC_R",
+      "usage": 21
+    },
+    {
+      "name": "KC_S",
+      "usage": 22
+    },
+    {
+      "name": "KC_T",
+      "usage": 23
+    },
+    {
+      "name": "KC_U",
+      "usage": 24
+    },
+    {
+      "name": "KC_V",
+      "usage": 25
+    },
+    {
+      "name": "KC_W",
+      "usage": 26
+    },
+    {
+      "name": "KC_X",
+      "usage": 27
+    },
+    {
+      "name": "KC_Y",
+      "usage": 28
+    },
+    {
+      "name": "KC_Z",
+      "usage": 29
+    },
+    {
+      "name": "KC_1",
+      "usage": 30
+    },
+    {
+      "name": "KC_2",
+      "usage": 31
+    },
+    {
+      "name": "KC_3",
+      "usage": 32
+    },
+    {
+      "name": "KC_4",
+      "usage": 33
+    },
+    {
+      "name": "KC_5",
+      "usage": 34
+    },
+    {
+      "name": "KC_6",
+      "usage": 35
+    },
+    {
+      "name": "KC_7",
+      "usage": 36
+    },
+    {
+      "name": "KC_8",
+      "usage": 37
+    },
+    {
+      "name": "KC_9",
+      "usage": 38
+    },
+    {
+      "name": "KC_0",
+      "usage": 39
+    },
+    {
+      "name": "KC_ENTER",
+      "usage": 40
+    },
+    {
+      "name": "KC_ESCAPE",
+      "usage": 41
+    },
+    {
+      "name": "KC_BACKSPACE",
+      "usage": 42
+    },
+    {
+      "name": "KC_TAB",
+      "usage": 43
+    },
+    {
+      "name": "KC_SPACE",
+      "usage": 44
+    },
+    {
+      "name": "KC_MINUS",
+      "usage": 45
+    },
+    {
+      "name": "KC_EQUAL",
+      "usage": 46
+    },
+    {
+      "name": "KC_LEFT_BRACKET",
+      "usage": 47
+    },
+    {
+      "name": "KC_RIGHT_BRACKET",
+      "usage": 48
+    },
+    {
+      "name": "KC_BACKSLASH",
+      "usage": 49
+    },
+    {
+      "name": "KC_NONUS_HASH",
+      "usage": 50
+    },
+    {
+      "name": "KC_SEMICOLON",
+      "usage": 51
+    },
+    {
+      "name": "KC_QUOTE",
+      "usage": 52
+    },
+    {
+      "name": "KC_GRAVE",
+      "usage": 53
+    },
+    {
+      "name": "KC_COMMA",
+      "usage": 54
+    },
+    {
+      "name": "KC_DOT",
+      "usage": 55
+    },
+    {
+      "name": "KC_SLASH",
+      "usage": 56
+    },
+    {
+      "name": "KC_CAPS_LOCK",
+      "usage": 57
+    },
+    {
+      "name": "KC_F1",
+      "usage": 58
+    },
+    {
+      "name": "KC_F2",
+      "usage": 59
+    },
+    {
+      "name": "KC_F3",
+      "usage": 60
+    },
+    {
+      "name": "KC_F4",
+      "usage": 61
+    },
+    {
+      "name": "KC_F5",
+      "usage": 62
+    },
+    {
+      "name": "KC_F6",
+      "usage": 63
+    },
+    {
+      "name": "KC_F7",
+      "usage": 64
+    },
+    {
+      "name": "KC_F8",
+      "usage": 65
+    },
+    {
+      "name": "KC_F9",
+      "usage": 66
+    },
+    {
+      "name": "KC_F10",
+      "usage": 67
+    },
+    {
+      "name": "KC_F11",
+      "usage": 68
+    },
+    {
+      "name": "KC_F12",
+      "usage": 69
+    },
+    {
+      "name": "KC_PRINT_SCREEN",
+      "usage": 70
+    },
+    {
+      "name": "KC_SCROLL_LOCK",
+      "usage": 71
+    },
+    {
+      "name": "KC_PAUSE",
+      "usage": 72
+    },
+    {
+      "name": "KC_INSERT",
+      "usage": 73
+    },
+    {
+      "name": "KC_HOME",
+      "usage": 74
+    },
+    {
+      "name": "KC_PAGE_UP",
+      "usage": 75
+    },
+    {
+      "name": "KC_DELETE",
+      "usage": 76
+    },
+    {
+      "name": "KC_END",
+      "usage": 77
+    },
+    {
+      "name": "KC_PAGE_DOWN",
+      "usage": 78
+    },
+    {
+      "name": "KC_RIGHT",
+      "usage": 79
+    },
+    {
+      "name": "KC_LEFT",
+      "usage": 80
+    },
+    {
+      "name": "KC_DOWN",
+      "usage": 81
+    },
+    {
+      "name": "KC_UP",
+      "usage": 82
+    },
+    {
+      "name": "KC_NUM_LOCK",
+      "usage": 83
+    },
+    {
+      "name": "KC_KP_SLASH",
+      "usage": 84
+    },
+    {
+      "name": "KC_KP_ASTERISK",
+      "usage": 85
+    },
+    {
+      "name": "KC_KP_MINUS",
+      "usage": 86
+    },
+    {
+      "name": "KC_KP_PLUS",
+      "usage": 87
+    },
+    {
+      "name": "KC_KP_ENTER",
+      "usage": 88
+    },
+    {
+      "name": "KC_KP_1",
+      "usage": 89
+    },
+    {
+      "name": "KC_KP_2",
+      "usage": 90
+    },
+    {
+      "name": "KC_KP_3",
+      "usage": 91
+    },
+    {
+      "name": "KC_KP_4",
+      "usage": 92
+    },
+    {
+      "name": "KC_KP_5",
+      "usage": 93
+    },
+    {
+      "name": "KC_KP_6",
+      "usage": 94
+    },
+    {
+      "name": "KC_KP_7",
+      "usage": 95
+    },
+    {
+      "name": "KC_KP_8",
+      "usage": 96
+    },
+    {
+      "name": "KC_KP_9",
+      "usage": 97
+    },
+    {
+      "name": "KC_KP_0",
+      "usage": 98
+    },
+    {
+      "name": "KC_KP_DOT",
+      "usage": 99
+    },
+    {
+      "name": "KC_NONUS_BACKSLASH",
+      "usage": 100
+    },
+    {
+      "name": "KC_APPLICATION",
+      "usage": 101
+    },
+    {
+      "name": "KC_KB_POWER",
+      "usage": 102
+    },
+    {
+      "name": "KC_KP_EQUAL",
+      "usage": 103
+    },
+    {
+      "name": "KC_F13",
+      "usage": 104
+    },
+    {
+      "name": "KC_F14",
+      "usage": 105
+    },
+    {
+      "name": "KC_F15",
+      "usage": 106
+    },
+    {
+      "name": "KC_F16",
+      "usage": 107
+    },
+    {
+      "name": "KC_F17",
+      "usage": 108
+    },
+    {
+      "name": "KC_F18",
+      "usage": 109
+    },
+    {
+      "name": "KC_F19",
+      "usage": 110
+    },
+    {
+      "name": "KC_F20",
+      "usage": 111
+    },
+    {
+      "name": "KC_F21",
+      "usage": 112
+    },
+    {
+      "name": "KC_F22",
+      "usage": 113
+    },
+    {
+      "name": "KC_F23",
+      "usage": 114
+    },
+    {
+      "name": "KC_F24",
+      "usage": 115
+    },
+    {
+      "name": "KC_EXECUTE",
+      "usage": 116
+    },
+    {
+      "name": "KC_HELP",
+      "usage": 117
+    },
+    {
+      "name": "KC_MENU",
+      "usage": 118
+    },
+    {
+      "name": "KC_SELECT",
+      "usage": 119
+    },
+    {
+      "name": "KC_STOP",
+      "usage": 120
+    },
+    {
+      "name": "KC_AGAIN",
+      "usage": 121
+    },
+    {
+      "name": "KC_UNDO",
+      "usage": 122
+    },
+    {
+      "name": "KC_CUT",
+      "usage": 123
+    },
+    {
+      "name": "KC_COPY",
+      "usage": 124
+    },
+    {
+      "name": "KC_PASTE",
+      "usage": 125
+    },
+    {
+      "name": "KC_FIND",
+      "usage": 126
+    },
+    {
+      "name": "KC_KB_MUTE",
+      "usage": 127
+    },
+    {
+      "name": "KC_KB_VOLUME_UP",
+      "usage": 128
+    },
+    {
+      "name": "KC_KB_VOLUME_DOWN",
+      "usage": 129
+    },
+    {
+      "name": "KC_LOCKING_CAPS_LOCK",
+      "usage": 130
+    },
+    {
+      "name": "KC_LOCKING_NUM_LOCK",
+      "usage": 131
+    },
+    {
+      "name": "KC_LOCKING_SCROLL_LOCK",
+      "usage": 132
+    },
+    {
+      "name": "KC_KP_COMMA",
+      "usage": 133
+    },
+    {
+      "name": "KC_KP_EQUAL_AS400",
+      "usage": 134
+    },
+    {
+      "name": "KC_INTERNATIONAL_1",
+      "usage": 135
+    },
+    {
+      "name": "KC_INTERNATIONAL_2",
+      "usage": 136
+    },
+    {
+      "name": "KC_INTERNATIONAL_3",
+      "usage": 137
+    },
+    {
+      "name": "KC_INTERNATIONAL_4",
+      "usage": 138
+    },
+    {
+      "name": "KC_INTERNATIONAL_5",
+      "usage": 139
+    },
+    {
+      "name": "KC_INTERNATIONAL_6",
+      "usage": 140
+    },
+    {
+      "name": "KC_INTERNATIONAL_7",
+      "usage": 141
+    },
+    {
+      "name": "KC_INTERNATIONAL_8",
+      "usage": 142
+    },
+    {
+      "name": "KC_INTERNATIONAL_9",
+      "usage": 143
+    },
+    {
+      "name": "KC_LANGUAGE_1",
+      "usage": 144
+    },
+    {
+      "name": "KC_LANGUAGE_2",
+      "usage": 145
+    },
+    {
+      "name": "KC_LANGUAGE_3",
+      "usage": 146
+    },
+    {
+      "name": "KC_LANGUAGE_4",
+      "usage": 147
+    },
+    {
+      "name": "KC_LANGUAGE_5",
+      "usage": 148
+    },
+    {
+      "name": "KC_LANGUAGE_6",
+      "usage": 149
+    },
+    {
+      "name": "KC_LANGUAGE_7",
+      "usage": 150
+    },
+    {
+      "name": "KC_LANGUAGE_8",
+      "usage": 151
+    },
+    {
+      "name": "KC_LANGUAGE_9",
+      "usage": 152
+    },
+    {
+      "name": "KC_ALTERNATE_ERASE",
+      "usage": 153
+    },
+    {
+      "name": "KC_SYSTEM_REQUEST",
+      "usage": 154
+    },
+    {
+      "name": "KC_CANCEL",
+      "usage": 155
+    },
+    {
+      "name": "KC_CLEAR",
+      "usage": 156
+    },
+    {
+      "name": "KC_PRIOR",
+      "usage": 157
+    },
+    {
+      "name": "KC_RETURN",
+      "usage": 158
+    },
+    {
+      "name": "KC_SEPARATOR",
+      "usage": 159
+    },
+    {
+      "name": "KC_OUT",
+      "usage": 160
+    },
+    {
+      "name": "KC_OPER",
+      "usage": 161
+    },
+    {
+      "name": "KC_CLEAR_AGAIN",
+      "usage": 162
+    },
+    {
+      "name": "KC_CRSEL",
+      "usage": 163
+    },
+    {
+      "name": "KC_EXSEL",
+      "usage": 164
+    },
+    {
+      "name": "KC_LEFT_CTRL",
+      "usage": 224
+    },
+    {
+      "name": "KC_LEFT_SHIFT",
+      "usage": 225
+    },
+    {
+      "name": "KC_LEFT_ALT",
+      "usage": 226
+    },
+    {
+      "name": "KC_LEFT_GUI",
+      "usage": 227
+    },
+    {
+      "name": "KC_RIGHT_CTRL",
+      "usage": 228
+    },
+    {
+      "name": "KC_RIGHT_SHIFT",
+      "usage": 229
+    },
+    {
+      "name": "KC_RIGHT_ALT",
+      "usage": 230
+    },
+    {
+      "name": "KC_RIGHT_GUI",
+      "usage": 231
+    }
+  ],
+  "openflux": [
+    {
+      "name": "KC_OF_BRIGHTNESS_UP",
+      "word": 1342177282
+    },
+    {
+      "name": "KC_OF_BRIGHTNESS_DOWN",
+      "word": 1342177283
+    },
+    {
+      "name": "KC_OF_PROFILE_CYCLE_NEXT",
+      "word": 1342177284
+    },
+    {
+      "name": "KC_OF_PROFILE_CYCLE_PREV",
+      "word": 1342177285
+    },
+    {
+      "name": "KC_OF_ACTUATION_MODE_NEXT",
+      "word": 1342177286
+    },
+    {
+      "name": "KC_OF_ACTUATION_MODE_PREV",
+      "word": 1342177287
+    },
+    {
+      "name": "KC_OF_PLATFORM_LINUX",
+      "word": 1342177288
+    },
+    {
+      "name": "KC_OF_PLATFORM_MACOS",
+      "word": 1342177289
+    },
+    {
+      "name": "KC_OF_PLATFORM_WINDOWS",
+      "word": 1342177290
+    },
+    {
+      "name": "KC_OF_AUTO_PROFILE_LOCK",
+      "word": 1342177291
+    },
+    {
+      "name": "KC_OF_START_PAUSE_POMODORO",
+      "word": 1342177292
+    },
+    {
+      "name": "KC_OF_RESET_POMODORO",
+      "word": 1342177293
+    },
+    {
+      "name": "KC_OF_THEME_CYCLE_NEXT",
+      "word": 1342177294
+    },
+    {
+      "name": "KC_OF_THEME_CYCLE_PREV",
+      "word": 1342177295
+    }
+  ],
+  "words": {
+    "KC_0": 39,
+    "KC_1": 30,
+    "KC_2": 31,
+    "KC_3": 32,
+    "KC_4": 33,
+    "KC_5": 34,
+    "KC_6": 35,
+    "KC_7": 36,
+    "KC_8": 37,
+    "KC_9": 38,
+    "KC_A": 4,
+    "KC_AC_FIND": 1073742367,
+    "KC_AGAIN": 121,
+    "KC_AGIN": 121,
+    "KC_ALGR": 230,
+    "KC_ALTERNATE_ERASE": 153,
+    "KC_APP": 101,
+    "KC_APPLICATION": 101,
+    "KC_AUDIO_BASS_BOOST": 1073742053,
+    "KC_AUDIO_BASS_DOWN": 1073742163,
+    "KC_AUDIO_BASS_UP": 1073742162,
+    "KC_AUDIO_LOUDNESS": 1073742055,
+    "KC_AUDIO_MUTE": 1073742050,
+    "KC_AUDIO_TREBLE_DOWN": 1073742165,
+    "KC_AUDIO_TREBLE_UP": 1073742164,
+    "KC_AUDIO_VOL_DOWN": 1073742058,
+    "KC_AUDIO_VOL_UP": 1073742057,
+    "KC_B": 5,
+    "KC_BACKSLASH": 49,
+    "KC_BACKSPACE": 42,
+    "KC_BRID": 1073741936,
+    "KC_BRIGHTNESS_DOWN": 1073741936,
+    "KC_BRIGHTNESS_UP": 1073741935,
+    "KC_BRIU": 1073741935,
+    "KC_BRK": 72,
+    "KC_BRMD": 71,
+    "KC_BRMU": 72,
+    "KC_BSBT": 1073742053,
+    "KC_BSLS": 49,
+    "KC_BSPC": 42,
+    "KC_BSSD": 1073742163,
+    "KC_BSSU": 1073742162,
+    "KC_C": 6,
+    "KC_CALC": 1073742226,
+    "KC_CALCULATOR": 1073742226,
+    "KC_CANCEL": 155,
+    "KC_CAPS": 57,
+    "KC_CAPS_LOCK": 57,
+    "KC_CLAG": 162,
+    "KC_CLEAR": 156,
+    "KC_CLEAR_AGAIN": 162,
+    "KC_CLR": 156,
+    "KC_CNCL": 155,
+    "KC_COMM": 54,
+    "KC_COMMA": 54,
+    "KC_COPY": 124,
+    "KC_CRSEL": 163,
+    "KC_CRSL": 163,
+    "KC_CUT": 123,
+    "KC_D": 7,
+    "KC_DEL": 76,
+    "KC_DELETE": 76,
+    "KC_DOT": 55,
+    "KC_DOWN": 81,
+    "KC_E": 8,
+    "KC_EDIT": 1073742397,
+    "KC_EJCT": 1073742008,
+    "KC_END": 77,
+    "KC_ENT": 40,
+    "KC_ENTER": 40,
+    "KC_EQL": 46,
+    "KC_EQUAL": 46,
+    "KC_ERAS": 153,
+    "KC_ESC": 41,
+    "KC_ESCAPE": 41,
+    "KC_EXEC": 116,
+    "KC_EXECUTE": 116,
+    "KC_EXSEL": 164,
+    "KC_EXSL": 164,
+    "KC_F": 9,
+    "KC_F1": 58,
+    "KC_F10": 67,
+    "KC_F11": 68,
+    "KC_F12": 69,
+    "KC_F13": 104,
+    "KC_F14": 105,
+    "KC_F15": 106,
+    "KC_F16": 107,
+    "KC_F17": 108,
+    "KC_F18": 109,
+    "KC_F19": 110,
+    "KC_F2": 59,
+    "KC_F20": 111,
+    "KC_F21": 112,
+    "KC_F22": 113,
+    "KC_F23": 114,
+    "KC_F24": 115,
+    "KC_F3": 60,
+    "KC_F4": 61,
+    "KC_F5": 62,
+    "KC_F6": 63,
+    "KC_F7": 64,
+    "KC_F8": 65,
+    "KC_F9": 66,
+    "KC_FIND": 126,
+    "KC_G": 10,
+    "KC_GLBE": 1073742493,
+    "KC_GLOBE": 1073742493,
+    "KC_GRAVE": 53,
+    "KC_GRV": 53,
+    "KC_H": 11,
+    "KC_HELP": 117,
+    "KC_HOME": 74,
+    "KC_I": 12,
+    "KC_INS": 73,
+    "KC_INSERT": 73,
+    "KC_INT1": 135,
+    "KC_INT2": 136,
+    "KC_INT3": 137,
+    "KC_INT4": 138,
+    "KC_INT5": 139,
+    "KC_INT6": 140,
+    "KC_INT7": 141,
+    "KC_INT8": 142,
+    "KC_INT9": 143,
+    "KC_INTERNATIONAL_1": 135,
+    "KC_INTERNATIONAL_2": 136,
+    "KC_INTERNATIONAL_3": 137,
+    "KC_INTERNATIONAL_4": 138,
+    "KC_INTERNATIONAL_5": 139,
+    "KC_INTERNATIONAL_6": 140,
+    "KC_INTERNATIONAL_7": 141,
+    "KC_INTERNATIONAL_8": 142,
+    "KC_INTERNATIONAL_9": 143,
+    "KC_J": 13,
+    "KC_K": 14,
+    "KC_KB_MUTE": 127,
+    "KC_KB_POWER": 102,
+    "KC_KB_VOLUME_DOWN": 129,
+    "KC_KB_VOLUME_UP": 128,
+    "KC_KP_0": 98,
+    "KC_KP_1": 89,
+    "KC_KP_2": 90,
+    "KC_KP_3": 91,
+    "KC_KP_4": 92,
+    "KC_KP_5": 93,
+    "KC_KP_6": 94,
+    "KC_KP_7": 95,
+    "KC_KP_8": 96,
+    "KC_KP_9": 97,
+    "KC_KP_ASTERISK": 85,
+    "KC_KP_COMMA": 133,
+    "KC_KP_DOT": 99,
+    "KC_KP_ENTER": 88,
+    "KC_KP_EQUAL": 103,
+    "KC_KP_EQUAL_AS400": 134,
+    "KC_KP_MINUS": 86,
+    "KC_KP_PLUS": 87,
+    "KC_KP_SLASH": 84,
+    "KC_L": 15,
+    "KC_LALT": 226,
+    "KC_LANG1": 144,
+    "KC_LANG2": 145,
+    "KC_LANG3": 146,
+    "KC_LANG4": 147,
+    "KC_LANG5": 148,
+    "KC_LANG6": 149,
+    "KC_LANG7": 150,
+    "KC_LANG8": 151,
+    "KC_LANG9": 152,
+    "KC_LANGUAGE_1": 144,
+    "KC_LANGUAGE_2": 145,
+    "KC_LANGUAGE_3": 146,
+    "KC_LANGUAGE_4": 147,
+    "KC_LANGUAGE_5": 148,
+    "KC_LANGUAGE_6": 149,
+    "KC_LANGUAGE_7": 150,
+    "KC_LANGUAGE_8": 151,
+    "KC_LANGUAGE_9": 152,
+    "KC_LAUNCHPAD": 1073742496,
+    "KC_LBRC": 47,
+    "KC_LCAP": 130,
+    "KC_LCMD": 227,
+    "KC_LCTL": 224,
+    "KC_LDNS": 1073742055,
+    "KC_LEFT": 80,
+    "KC_LEFT_ALT": 226,
+    "KC_LEFT_BRACKET": 47,
+    "KC_LEFT_CTRL": 224,
+    "KC_LEFT_GUI": 227,
+    "KC_LEFT_SHIFT": 225,
+    "KC_LGUI": 227,
+    "KC_LNG1": 144,
+    "KC_LNG2": 145,
+    "KC_LNG3": 146,
+    "KC_LNG4": 147,
+    "KC_LNG5": 148,
+    "KC_LNG6": 149,
+    "KC_LNG7": 150,
+    "KC_LNG8": 151,
+    "KC_LNG9": 152,
+    "KC_LNUM": 131,
+    "KC_LOCKING_CAPS_LOCK": 130,
+    "KC_LOCKING_NUM_LOCK": 131,
+    "KC_LOCKING_SCROLL_LOCK": 132,
+    "KC_LOPT": 226,
+    "KC_LPAD": 1073742496,
+    "KC_LSCR": 132,
+    "KC_LSFT": 225,
+    "KC_LSHIFT": 225,
+    "KC_LWIN": 227,
+    "KC_M": 16,
+    "KC_MAIL": 1073742218,
+    "KC_MCTL": 1073742495,
+    "KC_MEDIA_EJECT": 1073742008,
+    "KC_MEDIA_NEXT_TRACK": 1073742005,
+    "KC_MEDIA_PLAY_PAUSE": 1073742029,
+    "KC_MEDIA_PREV_TRACK": 1073742006,
+    "KC_MEDIA_SELECT": 1073742211,
+    "KC_MEDIA_STOP": 1073742007,
+    "KC_MENU": 118,
+    "KC_MINS": 45,
+    "KC_MINUS": 45,
+    "KC_MISSION_CONTROL": 1073742495,
+    "KC_MNXT": 1073742005,
+    "KC_MPLY": 1073742029,
+    "KC_MPRV": 1073742006,
+    "KC_MSEL": 1073742211,
+    "KC_MSTP": 1073742007,
+    "KC_MUTE": 1073742050,
+    "KC_MYCM": 1073742228,
+    "KC_MY_COMPUTER": 1073742228,
+    "KC_N": 17,
+    "KC_NO": 4026531840,
+    "KC_NONUS_BACKSLASH": 100,
+    "KC_NONUS_HASH": 50,
+    "KC_NUBS": 100,
+    "KC_NUHS": 50,
+    "KC_NUM": 83,
+    "KC_NUM_LOCK": 83,
+    "KC_O": 18,
+    "KC_OF_ACTUATION_MODE_NEXT": 1342177286,
+    "KC_OF_ACTUATION_MODE_PREV": 1342177287,
+    "KC_OF_AUTO_PROFILE_LOCK": 1342177291,
+    "KC_OF_BRIGHTNESS_DOWN": 1342177283,
+    "KC_OF_BRIGHTNESS_UP": 1342177282,
+    "KC_OF_PLATFORM_LINUX": 1342177288,
+    "KC_OF_PLATFORM_MACOS": 1342177289,
+    "KC_OF_PLATFORM_WINDOWS": 1342177290,
+    "KC_OF_PROFILE_CYCLE_NEXT": 1342177284,
+    "KC_OF_PROFILE_CYCLE_PREV": 1342177285,
+    "KC_OF_RESET_POMODORO": 1342177293,
+    "KC_OF_START_PAUSE_POMODORO": 1342177292,
+    "KC_OF_THEME_CYCLE_NEXT": 1342177294,
+    "KC_OF_THEME_CYCLE_PREV": 1342177295,
+    "KC_OPER": 161,
+    "KC_OUT": 160,
+    "KC_P": 19,
+    "KC_P0": 98,
+    "KC_P1": 89,
+    "KC_P2": 90,
+    "KC_P3": 91,
+    "KC_P4": 92,
+    "KC_P5": 93,
+    "KC_P6": 94,
+    "KC_P7": 95,
+    "KC_P8": 96,
+    "KC_P9": 97,
+    "KC_PAGE_DOWN": 78,
+    "KC_PAGE_UP": 75,
+    "KC_PAST": 85,
+    "KC_PASTE": 125,
+    "KC_PAUS": 72,
+    "KC_PAUSE": 72,
+    "KC_PCMM": 133,
+    "KC_PDOT": 99,
+    "KC_PENT": 88,
+    "KC_PEQL": 103,
+    "KC_PGDN": 78,
+    "KC_PGUP": 75,
+    "KC_PMNS": 86,
+    "KC_PPLS": 87,
+    "KC_PRINT_SCREEN": 70,
+    "KC_PRIOR": 157,
+    "KC_PRIR": 157,
+    "KC_PSCR": 70,
+    "KC_PSLS": 84,
+    "KC_PSTE": 125,
+    "KC_Q": 20,
+    "KC_QUOT": 52,
+    "KC_QUOTE": 52,
+    "KC_R": 21,
+    "KC_RALT": 230,
+    "KC_RBRC": 48,
+    "KC_RCMD": 231,
+    "KC_RCTL": 228,
+    "KC_RETN": 158,
+    "KC_RETURN": 158,
+    "KC_RGHT": 79,
+    "KC_RGUI": 231,
+    "KC_RIGHT": 79,
+    "KC_RIGHT_ALT": 230,
+    "KC_RIGHT_BRACKET": 48,
+    "KC_RIGHT_CTRL": 228,
+    "KC_RIGHT_GUI": 231,
+    "KC_RIGHT_SHIFT": 229,
+    "KC_ROPT": 230,
+    "KC_RSFT": 229,
+    "KC_RSHIFT": 229,
+    "KC_RWIN": 231,
+    "KC_S": 22,
+    "KC_SCLD": 1073742388,
+    "KC_SCLN": 51,
+    "KC_SCLU": 1073742387,
+    "KC_SCRL": 71,
+    "KC_SCROLL_DOWN": 1073742388,
+    "KC_SCROLL_LOCK": 71,
+    "KC_SCROLL_UP": 1073742387,
+    "KC_SELECT": 119,
+    "KC_SEMICOLON": 51,
+    "KC_SEPARATOR": 159,
+    "KC_SEPR": 159,
+    "KC_SLASH": 56,
+    "KC_SLCT": 119,
+    "KC_SLEP": 1073741874,
+    "KC_SLSH": 56,
+    "KC_SPACE": 44,
+    "KC_SPC": 44,
+    "KC_STOP": 120,
+    "KC_SYRQ": 154,
+    "KC_SYSTEM_REQUEST": 154,
+    "KC_SYSTEM_SLEEP": 1073741874,
+    "KC_T": 23,
+    "KC_TAB": 43,
+    "KC_TRANSPARENT": 1342177280,
+    "KC_TRBD": 1073742165,
+    "KC_TRBU": 1073742164,
+    "KC_TRNS": 1342177280,
+    "KC_U": 24,
+    "KC_UNDO": 122,
+    "KC_UP": 82,
+    "KC_V": 25,
+    "KC_VOLD": 1073742058,
+    "KC_VOLU": 1073742057,
+    "KC_W": 26,
+    "KC_WBAK": 1073742372,
+    "KC_WFAV": 1073742378,
+    "KC_WFWD": 1073742373,
+    "KC_WHOM": 1073742371,
+    "KC_WREF": 1073742375,
+    "KC_WSCH": 1073742369,
+    "KC_WSTP": 1073742374,
+    "KC_WWW_BACK": 1073742372,
+    "KC_WWW_FAVORITES": 1073742378,
+    "KC_WWW_FORWARD": 1073742373,
+    "KC_WWW_HOME": 1073742371,
+    "KC_WWW_REFRESH": 1073742375,
+    "KC_WWW_SEARCH": 1073742369,
+    "KC_WWW_STOP": 1073742374,
+    "KC_X": 27,
+    "KC_Y": 28,
+    "KC_Z": 29
+  }
+}

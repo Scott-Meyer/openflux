@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# A stand-in for the GitHub CLI used by the release script tests. It keeps
+# releases as directories under $FAKE_GH_ROOT/<owner>/<repo>/releases/download/<tag>/,
+# so a local web server rooted at $FAKE_GH_ROOT serves their files at the
+# same paths GitHub uses.
+#
+# Supported, as the release scripts call them:
+#   gh release create <tag>
+#   gh release list --repo <r> [--exclude-drafts] [--limit <n>] --json tagName --jq '.[].tagName'
+#   gh release view <tag> --repo <r> [--json assets --jq '.assets[].name']
+#   gh release download <tag> --repo <r> --pattern <glob>... (--dir <d> | --output <f>)
+#   gh release upload <tag> --repo <r> [--clobber] <file>...
+# Every call is appended to $FAKE_GH_ROOT/calls.log.
+
+set -euo pipefail
+
+root="${FAKE_GH_ROOT:?FAKE_GH_ROOT is required}"
+echo "gh $*" >> "${root}/calls.log"
+[ "${1:-}" = release ] || { echo "fake gh: unsupported command: $*" >&2; exit 2; }
+cmd="${2:-}"
+shift 2
+
+repo="${GITHUB_REPOSITORY:-}" tag="" dir="" output="" clobber=false json="" patterns=() files=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --repo) repo="$2"; shift 2 ;;
+        --pattern) patterns+=("$2"); shift 2 ;;
+        --dir) dir="$2"; shift 2 ;;
+        --output) output="$2"; shift 2 ;;
+        --json) json="$2"; shift 2 ;;
+        --jq|--limit) shift 2 ;;
+        --clobber) clobber=true; shift ;;
+        --exclude-drafts) shift ;;
+        -*) echo "fake gh: unsupported option $1" >&2; exit 2 ;;
+        *) if [ -z "$tag" ] && [ "$cmd" != list ]; then tag="$1"; else files+=("$1"); fi; shift ;;
+    esac
+done
+[ -n "$repo" ] || { echo "fake gh: no repository" >&2; exit 2; }
+releases="${root}/${repo}/releases/download"
+rel="${releases}/${tag}"
+
+case "$cmd" in
+    create)
+        mkdir -p "$rel"
+        ;;
+    list)
+        [ -d "$releases" ] || exit 0
+        find "$releases" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | LC_ALL=C sort -r
+        ;;
+    view)
+        [ -d "$rel" ] || { echo "release not found" >&2; exit 1; }
+        if [ "$json" = assets ]; then
+            find "$rel" -mindepth 1 -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort
+        fi
+        ;;
+    download)
+        [ -d "$rel" ] || { echo "release not found" >&2; exit 1; }
+        matched=0
+        for f in "$rel"/*; do
+            name="$(basename "$f")"
+            for p in "${patterns[@]}"; do
+                # shellcheck disable=SC2053
+                if [[ "$name" == $p ]]; then
+                    if [ -n "$output" ]; then
+                        [ ! -e "$output" ] || { echo "fake gh: ${output} exists" >&2; exit 1; }
+                        cp "$f" "$output"
+                    else
+                        mkdir -p "$dir"
+                        [ ! -e "${dir}/${name}" ] || { echo "fake gh: ${dir}/${name} exists" >&2; exit 1; }
+                        cp "$f" "${dir}/${name}"
+                    fi
+                    matched=$((matched + 1))
+                fi
+            done
+        done
+        [ "$matched" -gt 0 ] || { echo "no assets match the file pattern" >&2; exit 1; }
+        ;;
+    upload)
+        [ -d "$rel" ] || { echo "release not found" >&2; exit 1; }
+        for f in "${files[@]}"; do
+            name="$(basename "$f")"
+            if [ -e "${rel}/${name}" ] && [ "$clobber" != true ]; then
+                echo "asset under the same name already exists: ${name}" >&2
+                exit 1
+            fi
+            cp "$f" "${rel}/${name}"
+        done
+        ;;
+    *)
+        echo "fake gh: unsupported command: release ${cmd}" >&2
+        exit 2
+        ;;
+esac

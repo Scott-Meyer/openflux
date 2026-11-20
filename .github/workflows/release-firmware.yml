@@ -1,0 +1,128 @@
+# Builds and uploads a firmware release (firmware-vX.Y.Z[-beta.N]).
+#
+# Called by release-please.yml when release-please creates the release, or
+# run by hand to rebuild an existing tag. The build environment is
+# keyboard/firmware/Dockerfile.build, which installs the toolchain, the Pico
+# SDK and LittleFS. The version comes from
+# `set(OPENFLUX_FIRMWARE_VERSION ...)` in keyboard/firmware/CMakeLists.txt
+# (release-meta.sh checks it against the tag) and is compiled into the image.
+# The image is built twice, each time into a new build directory without
+# network access, and the two .uf2 files must be identical. The release also
+# carries openflux-firmware-licenses.txt, the license texts of the littlefs,
+# Pico SDK and TinyUSB code the image links.
+
+name: Release firmware
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      publish-index:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing firmware-v* tag to rebuild
+        type: string
+        required: true
+      publish-index:
+        description: Publish the update index afterwards (needs approval)
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: meta
+        run: .github/scripts/release-meta.sh "$TAG"
+        env:
+          TAG: ${{ inputs.tag }}
+        shell: bash
+
+      - name: Host unit tests (ASan, UBSan)
+        run: |
+          make -C keyboard/firmware test \
+            CFLAGS="-O1 -g -Wall -Wextra -Werror -std=c11 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
+
+      - name: Build environment
+        run: docker build --pull=false -t openflux-firmware-build -f keyboard/firmware/Dockerfile.build keyboard/firmware
+
+      - name: Build (twice, from clean trees)
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.meta.outputs.source_date_epoch }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          for n in 1 2; do
+            rm -rf "build/firmware-$n"
+            docker run --rm --network none -e SOURCE_DATE_EPOCH -v "$PWD:/work" -w /work openflux-firmware-build \
+              sh -c "cmake -S keyboard/firmware -B build/firmware-$n -G Ninja -DCMAKE_BUILD_TYPE=Release -DOPENFLUX_VERSION=$VERSION && cmake --build build/firmware-$n"
+          done
+          uf2s=(build/firmware-1/*.uf2)
+          [ "${#uf2s[@]}" -eq 1 ] && [ -f "${uf2s[0]}" ] || { echo "expected exactly one .uf2 in build/firmware-1" >&2; exit 1; }
+          name="$(basename "${uf2s[0]}")"
+          a="$(sha256sum "build/firmware-1/$name" | cut -d' ' -f1)"
+          b="$(sha256sum "build/firmware-2/$name" | cut -d' ' -f1)"
+          [ "$a" = "$b" ] || { echo "firmware build is not reproducible: $a vs $b" >&2; exit 1; }
+          # The firmware reports its version, so the image must carry it. The flat
+          # .bin is searched because UF2 blocks can split a string.
+          grep -qaF "$VERSION" "build/firmware-1/${name%.uf2}.bin" || { echo "${name%.uf2}.bin does not contain version $VERSION" >&2; exit 1; }
+          mkdir -p dist/artifacts
+          cp "build/firmware-1/$name" "dist/artifacts/openflux-firmware-$VERSION.uf2"
+          ls -l dist/artifacts
+
+      - name: Licenses of the linked code
+        run: |
+          # The image holds the exact sources the firmware links: littlefs,
+          # the Pico SDK and its TinyUSB.
+          mkdir -p dist/extra
+          {
+            for entry in "littlefs:/opt/littlefs/LICENSE.md" \
+                "Raspberry Pi Pico SDK:/opt/pico-sdk/LICENSE.TXT" \
+                "TinyUSB:/opt/pico-sdk/lib/tinyusb/LICENSE"; do
+              printf '%s\n\n' "${entry%%:*}"
+              docker run --rm --network none openflux-firmware-build cat "${entry#*:}"
+              printf '\n\n'
+            done
+          } > dist/extra/openflux-firmware-licenses.txt
+          ls -l dist/extra
+
+      - uses: ./.github/actions/publish-release-assets
+        with:
+          tag: ${{ inputs.tag }}
+          component: firmware
+          version: ${{ steps.meta.outputs.version }}
+          channel: ${{ steps.meta.outputs.channel }}
+          release-url: ${{ steps.meta.outputs.release_url }}
+          notes-url: ${{ steps.meta.outputs.notes_url }}
+          artifacts: dist/artifacts
+          extra: dist/extra
+          github-token: ${{ github.token }}
+
+  publish-index:
+    needs: build
+    if: inputs.publish-index
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      deployments: write
+    uses: ./.github/workflows/publish-index.yml

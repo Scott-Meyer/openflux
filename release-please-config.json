@@ -1,0 +1,157 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "separate-pull-requests": true,
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "revert",
+      "section": "Reverts"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation",
+      "hidden": true
+    },
+    {
+      "type": "deps",
+      "section": "Dependencies"
+    },
+    {
+      "type": "build",
+      "section": "Build",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "section": "Continuous Integration",
+      "hidden": true
+    },
+    {
+      "type": "refactor",
+      "section": "Code Refactoring",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    },
+    {
+      "type": "style",
+      "section": "Styles",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "Miscellaneous",
+      "hidden": true
+    }
+  ],
+  "packages": {
+    "host": {
+      "component": "host",
+      "release-type": "simple",
+      "initial-version": "1.0.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "/Cargo.toml",
+          "jsonpath": "$.workspace.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value==='openfluxd' || @.name.value==='openflux-studio' || @.name.value==='openflux-update')].version"
+        },
+        {
+          "type": "toml",
+          "path": "/compat.toml",
+          "jsonpath": "$.components.host.version"
+        },
+        {
+          "type": "json",
+          "path": "studio/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "studio/package-lock.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "studio/package-lock.json",
+          "jsonpath": "$.packages[''].version"
+        }
+      ]
+    },
+    "keyboard/firmware": {
+      "component": "firmware",
+      "release-type": "simple",
+      "initial-version": "1.0.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "CMakeLists.txt"
+        },
+        {
+          "type": "toml",
+          "path": "/compat.toml",
+          "jsonpath": "$.components.firmware.version"
+        }
+      ]
+    },
+    "keyboard/bridge": {
+      "component": "bridge",
+      "release-type": "rust",
+      "initial-version": "1.0.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value==='openflux-bridge')].version"
+        },
+        {
+          "type": "toml",
+          "path": "/compat.toml",
+          "jsonpath": "$.components.bridge.version"
+        }
+      ]
+    },
+    "keyboard/display": {
+      "component": "display",
+      "release-type": "rust",
+      "initial-version": "1.0.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value==='openflux-display')].version"
+        },
+        {
+          "type": "toml",
+          "path": "/compat.toml",
+          "jsonpath": "$.components.display.version"
+        }
+      ]
+    }
+  }
+}

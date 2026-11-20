@@ -1,0 +1,88 @@
+{
+  "appearance": {
+    "selectedId": "default",
+    "defaultTheme": {
+      "id": "default",
+      "name": "Aurora",
+      "fontFamily": "Montserrat",
+      "fontWeight": 300.0,
+      "fontItalic": false,
+      "backgroundImagePath": "aurora_drift.frag",
+      "backgroundShaderParams": { "hue": 0.0, "speed": 1.0 },
+      "backgroundImageBlurAmount": 0.0,
+      "backgroundImageDimming": 20.0,
+      "moduleBackgroundDimming": 40.0,
+      "selectedKeyEffect": "glowing_rings",
+      "ringGlowColor": 4281652121,
+      "legendColor": 4294967295,
+      "lockIndicatorStyle": "dot",
+      "lockIndicatorColor": null,
+      "retintIcons": true,
+      "retintModules": true,
+      "blendingModePreset": "dropShadow",
+      "stylemaps": {}
+    },
+    "customThemes": [
+      {
+        "id": "theme_coding",
+        "name": "Cobalt",
+        "fontFamily": "Montserrat",
+        "fontWeight": 400.0,
+        "fontItalic": false,
+        "backgroundImagePath": "cobalt_waves.frag",
+        "backgroundShaderParams": { "hue": 0.0, "speed": 0.75 },
+        "backgroundImageBlurAmount": 0.0,
+        "backgroundImageDimming": 30.0,
+        "moduleBackgroundDimming": 50.0,
+        "selectedKeyEffect": "solid_highlight",
+        "ringGlowColor": 4284524026,
+        "legendColor": 4292932350,
+        "lockIndicatorStyle": "dot",
+        "lockIndicatorColor": null,
+        "retintIcons": true,
+        "retintModules": true,
+        "blendingModePreset": "dropShadow",
+        "stylemaps": {}
+      }
+    ]
+  },
+  "settings": {
+    "timeout": 900.0,
+    "parallaxActive": true,
+    "eyeHeight": 425.0,
+    "eyeDistanceFromFront": 225.0,
+    "eyeXOffset": 0.0,
+    "footStandMode": "none",
+    "displayOffsetX": 0.0,
+    "displayOffsetY": 0.0,
+    "showAlignmentGrid": false,
+    "locale": "en"
+  },
+  "mosaic": {
+    "tileTypes": [12, 8, 15, 13],
+    "tileConfigs": [
+      {},
+      {},
+      { "city": "Denver", "celcius": false },
+      { "main": "25", "shortBreak": "5", "longBreak": "15", "breakCount": "4" }
+    ]
+  },
+  "actuationModes": [
+    {
+      "id": "mode_0",
+      "name": "Typing",
+      "type": 1,
+      "actuationPointMm": 2.0,
+      "releasePointMm": 1.8,
+      "rapidTrigger": false
+    },
+    {
+      "id": "mode_1",
+      "name": "Gaming",
+      "type": 2,
+      "actuationPointMm": 1.2,
+      "rapidTrigger": true,
+      "rapidTriggerSensitivityMm": 0.3
+    }
+  ]
+}

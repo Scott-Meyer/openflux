@@ -1,0 +1,74 @@
+#!/bin/sh
+# Debian maintainer script for the OpenFlux Studio .deb (prerm).
+#
+# On removal the daemon of every logged-in user is asked to stop before its
+# files go away. It is never killed; `openfluxd --request-stop` answers:
+#   0  it was idle and has exited
+#   4  no daemon is running
+#   3  it is working on the keyboard and stops by itself once that work is
+#      done; this waits for that, up to 15 minutes
+#   anything else: the request failed
+# Only 0 and 4 let the removal continue. A timeout or a failed request stops
+# it with an explanation, which leaves the package installed so the removal
+# can be repeated.
+#
+# On upgrade nothing is stopped: the running daemon keeps its open binary
+# while the files are replaced, and postinst moves it to the new version.
+set -e
+
+wait_seconds=900
+poll_seconds=5
+
+ask_daemon() {
+    # ask_daemon <uid> <user> <restart|stop>: prints the daemon's answer, returns its status.
+    home="$(getent passwd "$2" | cut -d: -f6)"
+    runuser -u "$2" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$1" \
+        /usr/bin/openfluxd "--request-$3" 2>&1
+}
+
+stop_daemon() {
+    uid="$1" user="$2" waited=0
+    while :; do
+        status=0
+        answer="$(ask_daemon "$uid" "$user" stop)" || status=$?
+        case "$status" in
+            0|4)
+                return 0
+                ;;
+            3)
+                if [ "$waited" -eq 0 ]; then
+                    echo "OpenFlux is finishing work on the keyboard for ${user}; waiting for it to complete." >&2
+                fi
+                if [ "$waited" -ge "$wait_seconds" ]; then
+                    echo "OpenFlux is still working on the keyboard for ${user}. Leave the keyboard connected and remove the package again when it has finished." >&2
+                    return 1
+                fi
+                sleep "$poll_seconds"
+                waited=$((waited + poll_seconds))
+                ;;
+            *)
+                echo "OpenFlux: openfluxd --request-stop for ${user} failed (status ${status}): ${answer}" >&2
+                echo "OpenFlux: nothing was removed. Stop it with \"systemctl --user stop openfluxd\" as ${user}, then remove the package again." >&2
+                return 1
+                ;;
+        esac
+    done
+}
+
+case "$1" in
+    remove|deconfigure)
+        if command -v loginctl >/dev/null 2>&1; then
+            users="$(loginctl list-users --no-legend 2>/dev/null | awk '$1 ~ /^[0-9]+$/ {print $1 ":" $2}')"
+            for entry in $users; do
+                stop_daemon "${entry%%:*}" "${entry#*:}" || exit 1
+            done
+        fi
+        if command -v systemctl >/dev/null 2>&1; then
+            # Disabled here rather than in postrm because systemctl needs the
+            # unit file to resolve its [Install] section.
+            systemctl --global disable openfluxd.service >/dev/null 2>&1 || true
+        fi
+        ;;
+esac
+
+exit 0

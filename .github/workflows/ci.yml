@@ -1,0 +1,198 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Release pull requests are opened by release-please with the default
+  # token, which does not start this workflow; a maintainer can run it on
+  # such a branch by hand.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libudev-dev libwayland-dev libxdo-dev
+      - name: Toolchain
+        run: |
+          rustup show active-toolchain
+          rustup component add rustfmt clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: host/studio/package-lock.json
+      # The Studio crate embeds the built web UI, so it has to exist to compile.
+      - name: Studio web UI
+        run: |
+          npm ci --prefix host/studio
+          npm run build --prefix host/studio
+      - name: Format
+        if: runner.os == 'Linux'
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test
+        run: cargo test --workspace --locked
+
+  # The release tooling: interface registry, factory reference, the release
+  # keys, and dry runs of the release scripts.
+  release-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nsis gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+      - name: Release tool
+        run: |
+          # production-keys: fails if an embedded trust anchor is a placeholder development key.
+          cargo build --locked --release -p openflux-update --bin openflux-release --features production-keys
+          echo "TOOL=$PWD/target/release/openflux-release" >> "$GITHUB_ENV"
+      - name: compat.toml
+        run: '"$TOOL" compat --compat compat.toml'
+      - name: factory-reference.toml
+        run: '"$TOOL" factory-check factory-reference.toml'
+      - name: Active release key
+        run: |
+          # The active key is the initial key built into hosts, or one that a
+          # root-signed statement in host/packaging/keys/statements trusts.
+          active="$(sed -n 2p host/packaging/keys/active-release.pub)"
+          if [ "$active" != "$(sed -n 2p crates/openflux-update/keys/release.pub)" ]; then
+            grep -rlF "$active" host/packaging/keys/statements/ > /dev/null ||
+              { echo "host/packaging/keys/active-release.pub is neither the initial release key nor trusted by a statement" >&2; exit 1; }
+          fi
+      - name: Keyboard bundle refuses indexes without stable keyboard releases
+        run: .github/scripts/check-bundle-states.sh
+      - name: Index publication (dry run)
+        run: .github/scripts/test-publish-index.sh
+      - name: Release uploads never replace files
+        run: .github/scripts/test-upload-release-assets.sh
+      - name: Installer and service hooks
+        run: |
+          .github/scripts/test-package-hooks.sh
+          .github/scripts/test-nsis-hooks.sh
+      - name: Keyboard package checks
+        run: .github/scripts/test-check-keyboard-ipk.sh
+      - name: Tauri release configuration
+        run: .github/scripts/test-tauri-release-config.sh
+
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
+        with:
+          manifest-path: Cargo.toml
+          command: check
+          arguments: --all-features --config deny.toml
+          command-arguments: licenses advisories bans sources
+
+  studio-ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: host/studio
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: host/studio/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
+      - name: Biome
+        run: npm exec -- biome ci .
+
+  firmware:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Host unit tests (ASan, UBSan)
+        run: |
+          make -C keyboard/firmware test \
+            CFLAGS="-O1 -g -Wall -Wextra -Werror -std=c11 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
+      - name: clang-format
+        run: |
+          git ls-files -z 'keyboard/firmware/*.c' 'keyboard/firmware/*.h' \
+            | xargs -0 --no-run-if-empty clang-format-18 --dry-run --Werror
+      - name: RP2040 build
+        run: |
+          docker build -t openflux-firmware-build -f keyboard/firmware/Dockerfile.build keyboard/firmware
+          docker run --rm -v "$PWD:/work" -w /work openflux-firmware-build \
+            sh -c "cmake -S keyboard/firmware -B build/firmware -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/firmware"
+          ls -l build/firmware/*.uf2
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: |
+          shellcheck --version
+          git ls-files -z '*.sh' .github/scripts/testing/gh | xargs -0 --no-run-if-empty shellcheck
+          git ls-files -z '.github/scripts/testing/hooks/*' | xargs -0 --no-run-if-empty shellcheck -s sh
+          git ls-files -z 'host/packaging/linux/deb/*' 'keyboard/*/packaging/preinst' 'keyboard/*/packaging/postinst' \
+            'keyboard/*/packaging/prerm' 'keyboard/*/packaging/postrm' | xargs -0 --no-run-if-empty shellcheck -s sh
+      - name: actionlint
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint"
+
+  macos-helpers:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build
+        run: |
+          for arch in arm64 x86_64; do
+            make -C host/macos-helpers BUILD_DIR="$PWD/build/macos-helpers/$arch" SWIFTC="swiftc -target $arch-apple-macos13.0"
+          done
+          ls -lR build/macos-helpers

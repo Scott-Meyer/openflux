@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stand-in for loginctl list-users: one logged-in user.
+echo "loginctl $*" >> "${FAKE_HOOKS:?}/calls.log"
+echo "1000 alice"

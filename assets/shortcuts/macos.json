@@ -1,0 +1,536 @@
+{
+  "name": "macOS",
+  "source": "https://support.apple.com/en-us/102650",
+  "platforms": [
+    "mac"
+  ],
+  "shortcuts": [
+    {
+      "name": "Cut the selected item and copy it to the Clipboard",
+      "context": "Common",
+      "label": "Cut",
+      "mac": "Cmd+X"
+    },
+    {
+      "name": "Copy the selected item to the Clipboard",
+      "context": "Common",
+      "label": "Copy",
+      "mac": "Cmd+C"
+    },
+    {
+      "name": "Paste the contents of the Clipboard into the current document or app",
+      "context": "Common",
+      "label": "Paste",
+      "mac": "Cmd+V"
+    },
+    {
+      "name": "Undo the previous command",
+      "context": "Common",
+      "label": "Undo",
+      "mac": "Cmd+Z"
+    },
+    {
+      "name": "Select All items",
+      "context": "Common",
+      "label": "Select All",
+      "mac": "Cmd+A"
+    },
+    {
+      "name": "Find items in a document or open a Find window",
+      "context": "Common",
+      "label": "Find",
+      "mac": "Cmd+F"
+    },
+    {
+      "name": "Find the next occurrence of the item previously found",
+      "context": "Common",
+      "label": "Find Next",
+      "mac": "Cmd+G"
+    },
+    {
+      "name": "Hide the windows of the front app",
+      "context": "Common",
+      "label": "Hide",
+      "mac": "Cmd+H"
+    },
+    {
+      "name": "Minimize the front window to the Dock",
+      "context": "Common",
+      "label": "Minimize",
+      "mac": "Cmd+M"
+    },
+    {
+      "name": "Open the selected item",
+      "context": "Common",
+      "label": "Item",
+      "mac": "Cmd+O"
+    },
+    {
+      "name": "Open a print dialog so that you can print the current document",
+      "context": "Common",
+      "label": "Print",
+      "mac": "Cmd+P"
+    },
+    {
+      "name": "Quit the current app",
+      "context": "Common",
+      "label": "Quit",
+      "mac": "Cmd+Q"
+    },
+    {
+      "name": "Save the current document",
+      "context": "Common",
+      "label": "Save",
+      "mac": "Cmd+S"
+    },
+    {
+      "name": "Open a new tab",
+      "context": "Common",
+      "label": "New Tab",
+      "mac": "Cmd+T"
+    },
+    {
+      "name": "Close the front window",
+      "context": "Common",
+      "label": "Close",
+      "mac": "Cmd+W"
+    },
+    {
+      "name": "Force quit an app",
+      "context": "Common",
+      "label": "Force Quit",
+      "mac": "Option+Cmd+Esc"
+    },
+    {
+      "name": "Show or hide the Spotlight search field",
+      "context": "Common",
+      "label": "Spotlight",
+      "mac": "Cmd+Space"
+    },
+    {
+      "name": "Show the Character Viewer",
+      "context": "Common",
+      "label": "Character",
+      "mac": "Ctrl+Cmd+Space"
+    },
+    {
+      "name": "Use or stop using the app in full screen",
+      "context": "Common",
+      "label": "Full Screen",
+      "mac": "Ctrl+Cmd+F"
+    },
+    {
+      "name": "Use Quick Look to preview the selected item",
+      "context": "Common",
+      "label": "Quick Look",
+      "mac": "Space"
+    },
+    {
+      "name": "Switch to the next most recently used app among your open apps",
+      "context": "Common",
+      "label": "Switch App",
+      "mac": "Cmd+Tab"
+    },
+    {
+      "name": "Switch between the windows of the app you're using",
+      "context": "Common",
+      "label": "Next Window",
+      "mac": "Cmd+`"
+    },
+    {
+      "name": "Take a screenshot or make a screen recording",
+      "context": "Common",
+      "label": "Screenshot",
+      "mac": "Shift+Cmd+5"
+    },
+    {
+      "name": "Create a new empty folder in the Finder",
+      "context": "Common",
+      "label": "Create new",
+      "mac": "Shift+Cmd+N"
+    },
+    {
+      "name": "Create a new folder that contains the currently selected items",
+      "context": "Common",
+      "label": "Create new",
+      "mac": "Ctrl+Cmd+N"
+    },
+    {
+      "name": "Open settings for the front app",
+      "context": "Common",
+      "label": "Settings",
+      "mac": "Cmd+,"
+    },
+    {
+      "name": "Lock your screen",
+      "context": "System",
+      "label": "Lock",
+      "mac": "Ctrl+Cmd+Q"
+    },
+    {
+      "name": "Log out of your macOS user account",
+      "context": "System",
+      "label": "Log Out",
+      "mac": "Shift+Cmd+Q"
+    },
+    {
+      "name": "Boldface the selected text, or turn boldfacing on or off",
+      "context": "Text editing",
+      "label": "Boldface",
+      "mac": "Cmd+B"
+    },
+    {
+      "name": "Italicize the selected text, or turn italics on or off",
+      "context": "Text editing",
+      "label": "Italicize",
+      "mac": "Cmd+I"
+    },
+    {
+      "name": "Add a web link",
+      "context": "Text editing",
+      "label": "Add web link",
+      "mac": "Cmd+K"
+    },
+    {
+      "name": "Underline the selected text, or turn underlining on or off",
+      "context": "Text editing",
+      "label": "Underline",
+      "mac": "Cmd+U"
+    },
+    {
+      "name": "Show or hide the Fonts window",
+      "context": "Text editing",
+      "label": "Fonts window",
+      "mac": "Cmd+T"
+    },
+    {
+      "name": "Select the Desktop folder from within an Open dialog or Save dialog",
+      "context": "Text editing",
+      "label": "Desktop",
+      "mac": "Cmd+D"
+    },
+    {
+      "name": "Show or hide the definition of the selected word",
+      "context": "Text editing",
+      "label": "Definition",
+      "mac": "Ctrl+Cmd+D"
+    },
+    {
+      "name": "Find misspelled words in the document",
+      "context": "Text editing",
+      "label": "Find",
+      "mac": "Cmd+;"
+    },
+    {
+      "name": "Delete the word to the left of the insertion point",
+      "context": "Text editing",
+      "label": "Delete word",
+      "mac": "Option+Backspace"
+    },
+    {
+      "name": "Delete the character to the left of the insertion point",
+      "context": "Text editing",
+      "label": "Delete",
+      "mac": "Ctrl+H"
+    },
+    {
+      "name": "Delete the character to the right of the insertion point",
+      "context": "Text editing",
+      "label": "Delete",
+      "mac": "Ctrl+D"
+    },
+    {
+      "name": "Cut the selected text",
+      "context": "Text editing",
+      "label": "Cut text",
+      "mac": "Ctrl+K"
+    },
+    {
+      "name": "Move the insertion point to the beginning of the document",
+      "context": "Text editing",
+      "label": "Move",
+      "mac": "Cmd+Up"
+    },
+    {
+      "name": "Move the insertion point to the end of the document",
+      "context": "Text editing",
+      "label": "Move",
+      "mac": "Cmd+Down"
+    },
+    {
+      "name": "Move the insertion point to the beginning of the current line",
+      "context": "Text editing",
+      "label": "Move",
+      "mac": "Cmd+Left"
+    },
+    {
+      "name": "Move the insertion point to the end of the current line",
+      "context": "Text editing",
+      "label": "Move",
+      "mac": "Cmd+Right"
+    },
+    {
+      "name": "Move the insertion point to the beginning of the previous word",
+      "context": "Text editing",
+      "label": "Move",
+      "mac": "Option+Left"
+    },
+    {
+      "name": "Move the insertion point to the end of the next word",
+      "context": "Text editing",
+      "label": "Move",
+      "mac": "Option+Right"
+    },
+    {
+      "name": "Select the text between the insertion point and the beginning of the document",
+      "context": "Text editing",
+      "label": "Text between",
+      "mac": "Shift+Cmd+Up"
+    },
+    {
+      "name": "Select the text between the insertion point and the end of the document",
+      "context": "Text editing",
+      "label": "Text between",
+      "mac": "Shift+Cmd+Down"
+    },
+    {
+      "name": "Select the text between the insertion point and the beginning of the current line",
+      "context": "Text editing",
+      "label": "Text between",
+      "mac": "Shift+Cmd+Left"
+    },
+    {
+      "name": "Select the text between the insertion point and the end of the current line",
+      "context": "Text editing",
+      "label": "Text between",
+      "mac": "Shift+Cmd+Right"
+    },
+    {
+      "name": "Extend text selection to the nearest character at the same horizontal location on the line above",
+      "context": "Text editing",
+      "label": "Extend text",
+      "mac": "Shift+Up"
+    },
+    {
+      "name": "Extend text selection to the nearest character at the same horizontal location on the line below",
+      "context": "Text editing",
+      "label": "Extend text",
+      "mac": "Shift+Down"
+    },
+    {
+      "name": "Extend text selection one character to the left",
+      "context": "Text editing",
+      "label": "Extend text",
+      "mac": "Shift+Left"
+    },
+    {
+      "name": "Extend text selection one character to the right",
+      "context": "Text editing",
+      "label": "Extend text",
+      "mac": "Shift+Right"
+    },
+    {
+      "name": "Extend text selection to the beginning of the current paragraph, then to the beginning of the following paragraph if pressed again",
+      "context": "Text editing",
+      "label": "Extend text",
+      "mac": "Option+Shift+Up"
+    },
+    {
+      "name": "Extend text selection to the end of the current paragraph",
+      "context": "Text editing",
+      "label": "Extend text",
+      "mac": "Option+Shift+Down"
+    },
+    {
+      "name": "Extend text selection to the beginning of the current word",
+      "context": "Text editing",
+      "label": "Extend text",
+      "mac": "Option+Shift+Left"
+    },
+    {
+      "name": "Extend text selection to the end of the current word",
+      "context": "Text editing",
+      "label": "Extend text",
+      "mac": "Option+Shift+Right"
+    },
+    {
+      "name": "Move to the beginning of the line or paragraph",
+      "context": "Text editing",
+      "label": "Beginning",
+      "mac": "Ctrl+A"
+    },
+    {
+      "name": "Move to the end of a line or paragraph",
+      "context": "Text editing",
+      "label": "End line",
+      "mac": "Ctrl+E"
+    },
+    {
+      "name": "Move one character forward",
+      "context": "Text editing",
+      "label": "Move one",
+      "mac": "Ctrl+F"
+    },
+    {
+      "name": "Move one character backward",
+      "context": "Text editing",
+      "label": "Move one",
+      "mac": "Ctrl+B"
+    },
+    {
+      "name": "Center the cursor or selection in the visible area",
+      "context": "Text editing",
+      "label": "Center",
+      "mac": "Ctrl+L"
+    },
+    {
+      "name": "Move up one line",
+      "context": "Text editing",
+      "label": "Move up one",
+      "mac": "Ctrl+P"
+    },
+    {
+      "name": "Move down one line",
+      "context": "Text editing",
+      "label": "Move down",
+      "mac": "Ctrl+N"
+    },
+    {
+      "name": "Insert a new line after the insertion point",
+      "context": "Text editing",
+      "label": "Insert new",
+      "mac": "Ctrl+O"
+    },
+    {
+      "name": "Swap the character behind the insertion point with the character in front of the insertion point",
+      "context": "Text editing",
+      "label": "Swap",
+      "mac": "Ctrl+T"
+    },
+    {
+      "name": "Go to the search field",
+      "context": "Text editing",
+      "label": "Search field",
+      "mac": "Option+Cmd+F"
+    },
+    {
+      "name": "Show or hide a toolbar in the app",
+      "context": "Text editing",
+      "label": "Toolbar app",
+      "mac": "Option+Cmd+T"
+    },
+    {
+      "name": "Copy the formatting settings of the selected item to the Clipboard",
+      "context": "Text editing",
+      "label": "Copy",
+      "mac": "Option+Cmd+C"
+    },
+    {
+      "name": "Apply the copied style to the selected item",
+      "context": "Text editing",
+      "label": "Apply copied",
+      "mac": "Option+Cmd+V"
+    },
+    {
+      "name": "Apply the style of the surrounding content to the item pasted within that content",
+      "context": "Text editing",
+      "label": "Apply style",
+      "mac": "Option+Shift+Cmd+V"
+    },
+    {
+      "name": "Show or hide the inspector window",
+      "context": "Text editing",
+      "label": "Inspector",
+      "mac": "Option+Cmd+I"
+    },
+    {
+      "name": "Show a window for selecting document settings",
+      "context": "Text editing",
+      "label": "Window",
+      "mac": "Shift+Cmd+P"
+    },
+    {
+      "name": "Show the Save As dialog, or duplicate the current document",
+      "context": "Text editing",
+      "label": "Save As",
+      "mac": "Shift+Cmd+S"
+    },
+    {
+      "name": "Decrease the size of the selected item",
+      "context": "Text editing",
+      "label": "Decrease",
+      "mac": "Shift+Cmd+-"
+    },
+    {
+      "name": "Increase the size of the selected item",
+      "context": "Text editing",
+      "label": "Increase",
+      "mac": "Shift+Cmd+="
+    },
+    {
+      "name": "Open the Help menu",
+      "context": "Text editing",
+      "label": "Help menu",
+      "mac": "Shift+Cmd+/"
+    },
+    {
+      "name": "Redo",
+      "context": "Common",
+      "mac": "Shift+Cmd+Z"
+    },
+    {
+      "name": "Find previous",
+      "context": "Common",
+      "label": "Find",
+      "mac": "Shift+Cmd+G"
+    },
+    {
+      "name": "Hide other apps",
+      "context": "Common",
+      "label": "Hide other",
+      "mac": "Option+Cmd+H"
+    },
+    {
+      "name": "Close all windows of the app",
+      "context": "Common",
+      "label": "Close",
+      "mac": "Option+Cmd+W"
+    },
+    {
+      "name": "Screenshot of the whole screen",
+      "context": "Common",
+      "label": "Screenshot",
+      "mac": "Shift+Cmd+3"
+    },
+    {
+      "name": "Screenshot of a selected area",
+      "context": "Common",
+      "label": "Screenshot",
+      "mac": "Shift+Cmd+4"
+    },
+    {
+      "name": "Spotlight search from a Finder window",
+      "context": "Common",
+      "label": "Spotlight",
+      "mac": "Option+Cmd+Space"
+    },
+    {
+      "name": "Show or hide the Dock",
+      "context": "System",
+      "label": "Dock",
+      "mac": "Option+Cmd+D"
+    },
+    {
+      "name": "Open Mission Control",
+      "context": "System",
+      "label": "Mission",
+      "mac": "Ctrl+Up"
+    },
+    {
+      "name": "Show all windows of the front app",
+      "context": "System",
+      "label": "Windows",
+      "mac": "Ctrl+Down"
+    }
+  ]
+}

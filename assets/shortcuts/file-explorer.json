@@ -1,0 +1,194 @@
+{
+  "name": "File Explorer",
+  "source": "https://support.microsoft.com/en-us/windows/keyboard-shortcuts-in-windows-dcc61a57-8ff0-cffe-9796-cb9706c75eec",
+  "platforms": [
+    "windows"
+  ],
+  "apps": {
+    "windows": [
+      "explorer.exe"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "Select the address bar",
+      "context": "File Explorer",
+      "label": "Address bar",
+      "windows": "Alt+D"
+    },
+    {
+      "name": "Display properties for the selected item",
+      "context": "File Explorer",
+      "label": "Properties",
+      "windows": "Alt+Enter"
+    },
+    {
+      "name": "Navigate to the previous folder",
+      "context": "File Explorer",
+      "label": "Navigate",
+      "windows": "Alt+Left"
+    },
+    {
+      "name": "Show or hide the preview pane",
+      "context": "File Explorer",
+      "label": "Preview pane",
+      "windows": "Alt+P"
+    },
+    {
+      "name": "View the next folder",
+      "context": "File Explorer",
+      "label": "Next folder",
+      "windows": "Alt+Right"
+    },
+    {
+      "name": "Show or hide the details pane",
+      "context": "File Explorer",
+      "label": "Details pane",
+      "windows": "Alt+Shift+P"
+    },
+    {
+      "name": "Move up a level in the folder path",
+      "context": "File Explorer",
+      "label": "Move up",
+      "windows": "Alt+Up"
+    },
+    {
+      "name": "Delete the selected item and move it to the Recycle Bin",
+      "context": "File Explorer",
+      "label": "Delete item",
+      "windows": "Ctrl+D"
+    },
+    {
+      "name": "Select the search box",
+      "context": "File Explorer",
+      "label": "Search box",
+      "windows": "Ctrl+E"
+    },
+    {
+      "name": "Focus on the address bar",
+      "context": "File Explorer",
+      "label": "Focus",
+      "windows": "Ctrl+L"
+    },
+    {
+      "name": "Open a new window",
+      "context": "File Explorer",
+      "label": "New window",
+      "windows": "Ctrl+N"
+    },
+    {
+      "name": "Resize all columns to fit text",
+      "context": "File Explorer",
+      "label": "Resize",
+      "windows": "Ctrl+="
+    },
+    {
+      "name": "Expand all folders in the navigation pane",
+      "context": "File Explorer",
+      "label": "Expand",
+      "windows": "Ctrl+Shift+E"
+    },
+    {
+      "name": "Create a new folder",
+      "context": "File Explorer",
+      "label": "Create new",
+      "windows": "Ctrl+Shift+N"
+    },
+    {
+      "name": "Move to the previous tab",
+      "context": "File Explorer",
+      "label": "Previous tab",
+      "windows": "Ctrl+Shift+Tab"
+    },
+    {
+      "name": "Open a new tab and switch to it",
+      "context": "File Explorer",
+      "label": "New tab",
+      "windows": "Ctrl+T"
+    },
+    {
+      "name": "Close the active tab",
+      "context": "File Explorer",
+      "label": "Close active",
+      "windows": "Ctrl+W"
+    },
+    {
+      "name": "Move to the next tab",
+      "context": "File Explorer",
+      "label": "Next tab",
+      "windows": "Ctrl+Tab"
+    },
+    {
+      "name": "Scroll to the bottom of the active window",
+      "context": "File Explorer",
+      "label": "Scroll",
+      "windows": "End"
+    },
+    {
+      "name": "Rename the selected item",
+      "context": "File Explorer",
+      "label": "Rename item",
+      "windows": "F2"
+    },
+    {
+      "name": "Search for a file or folder",
+      "context": "File Explorer",
+      "label": "Search file",
+      "windows": "F3"
+    },
+    {
+      "name": "Select the address bar to change the current path",
+      "context": "File Explorer",
+      "label": "Address bar",
+      "windows": "F4"
+    },
+    {
+      "name": "Refresh the window",
+      "context": "File Explorer",
+      "label": "Refresh",
+      "windows": "F5"
+    },
+    {
+      "name": "Cycle through elements in the window",
+      "context": "File Explorer",
+      "label": "Cycle",
+      "windows": "F6"
+    },
+    {
+      "name": "Maximize or minimize the active window",
+      "context": "File Explorer",
+      "label": "Maximize",
+      "windows": "F11"
+    },
+    {
+      "name": "Scroll to the top of the active window",
+      "context": "File Explorer",
+      "label": "Scroll top",
+      "windows": "Home"
+    },
+    {
+      "name": "Collapse the current selection",
+      "context": "File Explorer",
+      "label": "Collapse",
+      "windows": "Left"
+    },
+    {
+      "name": "Display the current selection, or select the first subfolder",
+      "context": "File Explorer",
+      "label": "Selection",
+      "windows": "Right"
+    },
+    {
+      "name": "Permanently delete the selected item without moving it to the Recycle Bin",
+      "context": "File Explorer",
+      "label": "Permanently",
+      "windows": "Shift+Delete"
+    },
+    {
+      "name": "Display the context menu for the selected item",
+      "context": "File Explorer",
+      "label": "Context menu",
+      "windows": "Shift+F10"
+    }
+  ]
+}

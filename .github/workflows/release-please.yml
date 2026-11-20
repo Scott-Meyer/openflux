@@ -1,0 +1,151 @@
+# Releases are made only here. release-please keeps one release pull request
+# per component open on main; merging it tags the release and creates the
+# GitHub release, and this workflow then builds and publishes it in the same
+# run. Tags created with the default token do not trigger other workflows,
+# so the build workflows are called directly rather than through tag events.
+#
+# Order when keyboard components and the host are released together: keyboard
+# builds, then the index is published (approval), then the host builds and
+# bundles the keyboard software that was just published, then the index is
+# published again (second approval). The first release of all is cut the
+# same way: keyboard 1.0.0 first, then host 1.0.0, whose build refuses to
+# run while the index has no stable keyboard releases. See docs/releasing.md.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      releases_created: ${{ steps.rp.outputs.releases_created }}
+      prs_created: ${{ steps.rp.outputs.prs_created }}
+      prs: ${{ steps.rp.outputs.prs }}
+      host_created: ${{ steps.rp.outputs['host--release_created'] }}
+      host_tag: ${{ steps.rp.outputs['host--tag_name'] }}
+      firmware_created: ${{ steps.rp.outputs['keyboard/firmware--release_created'] }}
+      firmware_tag: ${{ steps.rp.outputs['keyboard/firmware--tag_name'] }}
+      bridge_created: ${{ steps.rp.outputs['keyboard/bridge--release_created'] }}
+      bridge_tag: ${{ steps.rp.outputs['keyboard/bridge--tag_name'] }}
+      display_created: ${{ steps.rp.outputs['keyboard/display--release_created'] }}
+      display_tag: ${{ steps.rp.outputs['keyboard/display--tag_name'] }}
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Release pull requests are opened with the default token, which does not
+  # trigger CI on them. This checks what release-please edits: the version
+  # files must keep Cargo.lock and compat.toml consistent.
+  check-release-prs:
+    needs: release-please
+    if: needs.release-please.outputs.prs_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: ${{ fromJSON(needs.release-please.outputs.prs).*.headBranchName }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.branch }}
+          persist-credentials: false
+      - name: Cargo.lock matches the versions
+        run: cargo metadata --locked --format-version 1 > /dev/null
+      - name: compat.toml is consistent
+        run: cargo run --locked --release --manifest-path crates/openflux-update/Cargo.toml --bin openflux-release -- compat --compat compat.toml
+
+  firmware:
+    needs: release-please
+    if: needs.release-please.outputs.firmware_created == 'true'
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release-firmware.yml
+    with:
+      tag: ${{ needs.release-please.outputs.firmware_tag }}
+
+  bridge:
+    needs: release-please
+    if: needs.release-please.outputs.bridge_created == 'true'
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release-keyboard.yml
+    with:
+      tag: ${{ needs.release-please.outputs.bridge_tag }}
+
+  display:
+    needs: release-please
+    if: needs.release-please.outputs.display_created == 'true'
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release-keyboard.yml
+    with:
+      tag: ${{ needs.release-please.outputs.display_tag }}
+
+  # Publishes the keyboard releases before the host build, so that the host
+  # installers bundle them. A component whose build failed has no artifacts
+  # and is left for a rebuild; the others are published.
+  publish-keyboard:
+    needs: [release-please, firmware, bridge, display]
+    if: >-
+      !cancelled() &&
+      (needs.firmware.result == 'success' || needs.bridge.result == 'success' || needs.display.result == 'success')
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      deployments: write
+    uses: ./.github/workflows/publish-index.yml
+
+  # The host build bundles keyboard software from the published index, so it
+  # waits for publish-keyboard. If a keyboard build of this run failed, the
+  # host is not built either: its installers would bundle an older keyboard
+  # release than the one this run released. Rebuild the failed component, then
+  # run Release host for the host tag.
+  host:
+    needs: [release-please, firmware, bridge, display, publish-keyboard]
+    if: >-
+      !cancelled() &&
+      needs.release-please.outputs.host_created == 'true' &&
+      needs.firmware.result != 'failure' && needs.bridge.result != 'failure' && needs.display.result != 'failure' &&
+      (needs.publish-keyboard.result == 'success' || needs.publish-keyboard.result == 'skipped')
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release-host.yml
+    with:
+      tag: ${{ needs.release-please.outputs.host_tag }}
+
+  publish-host:
+    needs: [host]
+    if: ${{ !cancelled() && needs.host.result == 'success' }}
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      deployments: write
+    uses: ./.github/workflows/publish-index.yml

@@ -1,0 +1,174 @@
+{
+  "name": "GNOME Terminal",
+  "source": "https://help.gnome.org/users/gnome-terminal/stable/adv-keyboard-shortcuts.html.en",
+  "platforms": [
+    "linux"
+  ],
+  "apps": {
+    "linux": [
+      "gnome-terminal-server",
+      "gnome-terminal"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "New tab",
+      "context": "Files & Tabs",
+      "linux": "Ctrl+Shift+T"
+    },
+    {
+      "name": "New window",
+      "context": "Files & Tabs",
+      "linux": "Ctrl+Shift+N"
+    },
+    {
+      "name": "Close tab",
+      "context": "Files & Tabs",
+      "linux": "Ctrl+Shift+W"
+    },
+    {
+      "name": "Close window",
+      "context": "Files & Tabs",
+      "linux": "Ctrl+Shift+Q"
+    },
+    {
+      "name": "Copy",
+      "context": "Edit",
+      "linux": "Ctrl+Shift+C"
+    },
+    {
+      "name": "Paste",
+      "context": "Edit",
+      "linux": "Ctrl+Shift+V"
+    },
+    {
+      "name": "Full screen",
+      "context": "View",
+      "linux": "F11"
+    },
+    {
+      "name": "Zoom in",
+      "context": "View",
+      "linux": "Ctrl+="
+    },
+    {
+      "name": "Zoom out",
+      "context": "View",
+      "linux": "Ctrl+-"
+    },
+    {
+      "name": "Normal size",
+      "context": "View",
+      "linux": "Ctrl+0"
+    },
+    {
+      "name": "Find",
+      "context": "Find",
+      "linux": "Ctrl+Shift+F"
+    },
+    {
+      "name": "Find next",
+      "context": "Find",
+      "linux": "Ctrl+Shift+G"
+    },
+    {
+      "name": "Find previous",
+      "context": "Find",
+      "label": "Find",
+      "linux": "Ctrl+Shift+H"
+    },
+    {
+      "name": "Clear highlight",
+      "context": "Find",
+      "label": "Clear",
+      "linux": "Ctrl+Shift+J"
+    },
+    {
+      "name": "Previous tab",
+      "context": "Tabs",
+      "linux": "Ctrl+PageUp"
+    },
+    {
+      "name": "Next tab",
+      "context": "Tabs",
+      "linux": "Ctrl+PageDown"
+    },
+    {
+      "name": "Move tab to the left",
+      "context": "Tabs",
+      "label": "Move tab",
+      "linux": "Ctrl+Shift+PageUp"
+    },
+    {
+      "name": "Move tab to the right",
+      "context": "Tabs",
+      "label": "Move tab",
+      "linux": "Ctrl+Shift+PageDown"
+    },
+    {
+      "name": "Switch to tab 1",
+      "context": "Tabs",
+      "label": "Tab 1",
+      "linux": "Alt+1"
+    },
+    {
+      "name": "Switch to tab 2",
+      "context": "Tabs",
+      "label": "Tab 2",
+      "linux": "Alt+2"
+    },
+    {
+      "name": "Switch to tab 3",
+      "context": "Tabs",
+      "label": "Tab 3",
+      "linux": "Alt+3"
+    },
+    {
+      "name": "Scroll up one line",
+      "context": "Scrolling",
+      "label": "Scroll up",
+      "linux": "Ctrl+Shift+Up"
+    },
+    {
+      "name": "Scroll down one line",
+      "context": "Scrolling",
+      "label": "Scroll down",
+      "linux": "Ctrl+Shift+Down"
+    },
+    {
+      "name": "Scroll up one page",
+      "context": "Scrolling",
+      "label": "Scroll up",
+      "linux": "Shift+PageUp"
+    },
+    {
+      "name": "Scroll down one page",
+      "context": "Scrolling",
+      "label": "Scroll down",
+      "linux": "Shift+PageDown"
+    },
+    {
+      "name": "Scroll to the top",
+      "context": "Scrolling",
+      "label": "Scroll top",
+      "linux": "Shift+Home"
+    },
+    {
+      "name": "Scroll to the bottom",
+      "context": "Scrolling",
+      "label": "Scroll",
+      "linux": "Shift+End"
+    },
+    {
+      "name": "Previous command",
+      "context": "Scrolling",
+      "label": "Previous",
+      "linux": "Ctrl+Shift+Left"
+    },
+    {
+      "name": "Next command",
+      "context": "Scrolling",
+      "linux": "Ctrl+Shift+Right"
+    }
+  ]
+}

@@ -1,0 +1,322 @@
+{
+  "name": "Google Chrome",
+  "source": "https://support.google.com/chrome/answer/157179",
+  "platforms": [
+    "mac",
+    "windows",
+    "linux"
+  ],
+  "apps": {
+    "macos": [
+      "com.google.Chrome"
+    ],
+    "windows": [
+      "chrome.exe"
+    ],
+    "linux": [
+      "google-chrome",
+      "chrome"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "Open a new window",
+      "context": "Tabs & Windows",
+      "label": "New window",
+      "mac": "Cmd+N",
+      "windows": "Ctrl+N"
+    },
+    {
+      "name": "Open a new Incognito window",
+      "context": "Tabs & Windows",
+      "label": "New",
+      "mac": "Cmd+Shift+N",
+      "windows": "Ctrl+Shift+N"
+    },
+    {
+      "name": "Open a new tab",
+      "context": "Tabs & Windows",
+      "label": "New Tab",
+      "mac": "Cmd+T",
+      "windows": "Ctrl+T"
+    },
+    {
+      "name": "Reopen closed tabs",
+      "context": "Tabs & Windows",
+      "label": "Reopen",
+      "mac": "Cmd+Shift+T",
+      "windows": "Ctrl+Shift+T"
+    },
+    {
+      "name": "Next tab",
+      "context": "Tabs & Windows",
+      "mac": "Cmd+Option+Right",
+      "windows": "Ctrl+Tab"
+    },
+    {
+      "name": "Previous tab",
+      "context": "Tabs & Windows",
+      "mac": "Cmd+Option+Left",
+      "windows": "Ctrl+Shift+Tab"
+    },
+    {
+      "name": "First tab",
+      "context": "Tabs & Windows",
+      "mac": "Cmd+1",
+      "windows": "Ctrl+1"
+    },
+    {
+      "name": "Last tab",
+      "context": "Tabs & Windows",
+      "mac": "Cmd+9",
+      "windows": "Ctrl+9"
+    },
+    {
+      "name": "Back",
+      "context": "Tabs & Windows",
+      "mac": "Cmd+[",
+      "windows": "Alt+Left"
+    },
+    {
+      "name": "Forward",
+      "context": "Tabs & Windows",
+      "mac": "Cmd+]",
+      "windows": "Alt+Right"
+    },
+    {
+      "name": "Close tab",
+      "context": "Tabs & Windows",
+      "mac": "Cmd+W",
+      "windows": "Ctrl+W"
+    },
+    {
+      "name": "Close window",
+      "context": "Tabs & Windows",
+      "mac": "Cmd+Shift+W",
+      "windows": "Ctrl+Shift+W"
+    },
+    {
+      "name": "Minimize window",
+      "context": "Tabs & Windows",
+      "label": "Minimize",
+      "mac": "Cmd+M"
+    },
+    {
+      "name": "Hide Chrome",
+      "context": "Tabs & Windows",
+      "mac": "Cmd+H"
+    },
+    {
+      "name": "Quit Chrome",
+      "context": "Tabs & Windows",
+      "mac": "Cmd+Q"
+    },
+    {
+      "name": "Move tab left",
+      "context": "Tabs & Windows",
+      "label": "Move tab",
+      "mac": "Ctrl+Shift+PageUp",
+      "windows": "Ctrl+Shift+PageUp"
+    },
+    {
+      "name": "Move tab right",
+      "context": "Tabs & Windows",
+      "label": "Move tab",
+      "mac": "Ctrl+Shift+PageDown",
+      "windows": "Ctrl+Shift+PageDown"
+    },
+    {
+      "name": "Full screen",
+      "context": "Tabs & Windows",
+      "windows": "F11"
+    },
+    {
+      "name": "Show or hide the Bookmarks Bar",
+      "context": "Chrome Features",
+      "label": "Bookmarks",
+      "mac": "Cmd+Shift+B",
+      "windows": "Ctrl+Shift+B"
+    },
+    {
+      "name": "Bookmark Manager",
+      "context": "Chrome Features",
+      "label": "Bookmark",
+      "mac": "Cmd+Option+B",
+      "windows": "Ctrl+Shift+O"
+    },
+    {
+      "name": "Settings",
+      "context": "Chrome Features",
+      "mac": "Cmd+,"
+    },
+    {
+      "name": "History",
+      "context": "Chrome Features",
+      "mac": "Cmd+Y",
+      "windows": "Ctrl+H"
+    },
+    {
+      "name": "Downloads",
+      "context": "Chrome Features",
+      "mac": "Cmd+Shift+J",
+      "windows": "Ctrl+J"
+    },
+    {
+      "name": "Task Manager",
+      "context": "Chrome Features",
+      "windows": "Shift+Esc"
+    },
+    {
+      "name": "Find in page",
+      "context": "Chrome Features",
+      "mac": "Cmd+F",
+      "windows": "Ctrl+F"
+    },
+    {
+      "name": "Next match",
+      "context": "Chrome Features",
+      "mac": "Cmd+G",
+      "windows": "Ctrl+G"
+    },
+    {
+      "name": "Previous match",
+      "context": "Chrome Features",
+      "label": "Previous",
+      "mac": "Cmd+Shift+G",
+      "windows": "Ctrl+Shift+G"
+    },
+    {
+      "name": "Developer Tools",
+      "context": "Chrome Features",
+      "label": "Developer",
+      "mac": "Cmd+Option+I",
+      "windows": "Ctrl+Shift+J"
+    },
+    {
+      "name": "Delete browsing data",
+      "context": "Chrome Features",
+      "label": "Delete",
+      "mac": "Cmd+Shift+Delete",
+      "windows": "Ctrl+Shift+Delete"
+    },
+    {
+      "name": "Switch profile or Guest",
+      "context": "Chrome Features",
+      "label": "Switch",
+      "mac": "Cmd+Shift+M",
+      "windows": "Ctrl+Shift+M"
+    },
+    {
+      "name": "Caret browsing",
+      "context": "Chrome Features",
+      "label": "Caret",
+      "mac": "F7",
+      "windows": "F7"
+    },
+    {
+      "name": "Help Center",
+      "context": "Chrome Features",
+      "windows": "F1"
+    },
+    {
+      "name": "Jump to the address bar",
+      "context": "Address Bar",
+      "label": "Address bar",
+      "mac": "Cmd+L",
+      "windows": "Ctrl+L"
+    },
+    {
+      "name": "Search from anywhere",
+      "context": "Address Bar",
+      "label": "Search",
+      "windows": "Ctrl+K"
+    },
+    {
+      "name": "Print",
+      "context": "Webpage",
+      "mac": "Cmd+P",
+      "windows": "Ctrl+P"
+    },
+    {
+      "name": "Save page",
+      "context": "Webpage",
+      "mac": "Cmd+S",
+      "windows": "Ctrl+S"
+    },
+    {
+      "name": "Reload",
+      "context": "Webpage",
+      "mac": "Cmd+R",
+      "windows": "Ctrl+R"
+    },
+    {
+      "name": "Hard reload",
+      "context": "Webpage",
+      "mac": "Cmd+Shift+R",
+      "windows": "Ctrl+Shift+R"
+    },
+    {
+      "name": "Stop loading",
+      "context": "Webpage",
+      "mac": "Esc",
+      "windows": "Esc"
+    },
+    {
+      "name": "View page source",
+      "context": "Webpage",
+      "label": "Source",
+      "mac": "Cmd+Option+U",
+      "windows": "Ctrl+U"
+    },
+    {
+      "name": "JavaScript Console",
+      "context": "Webpage",
+      "label": "JavaScript",
+      "mac": "Cmd+Option+J"
+    },
+    {
+      "name": "Bookmark this page",
+      "context": "Webpage",
+      "label": "Bookmark",
+      "mac": "Cmd+D",
+      "windows": "Ctrl+D"
+    },
+    {
+      "name": "Bookmark all tabs",
+      "context": "Webpage",
+      "label": "Bookmark",
+      "mac": "Cmd+Shift+D",
+      "windows": "Ctrl+Shift+D"
+    },
+    {
+      "name": "Zoom in",
+      "context": "Webpage",
+      "mac": "Cmd+=",
+      "windows": "Ctrl+="
+    },
+    {
+      "name": "Zoom out",
+      "context": "Webpage",
+      "mac": "Cmd+-",
+      "windows": "Ctrl+-"
+    },
+    {
+      "name": "Reset zoom",
+      "context": "Webpage",
+      "mac": "Cmd+0",
+      "windows": "Ctrl+0"
+    },
+    {
+      "name": "Open a file",
+      "context": "Webpage",
+      "mac": "Cmd+O",
+      "windows": "Ctrl+O"
+    },
+    {
+      "name": "Home page",
+      "context": "Webpage",
+      "mac": "Cmd+Shift+H",
+      "windows": "Alt+Home"
+    }
+  ]
+}
