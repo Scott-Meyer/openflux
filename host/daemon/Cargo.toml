@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-axum = { version = "0.7", features = ["ws", "json"] }
+axum = { version = "0.8", features = ["ws", "json"] }
 base64 = "0.22"
 bytes = "1"
 openflux-display = { path = "../../keyboard/display" }
