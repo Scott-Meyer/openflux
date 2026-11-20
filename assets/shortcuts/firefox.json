@@ -1,0 +1,218 @@
+{
+  "name": "Firefox",
+  "source": "https://support.mozilla.org/en-US/kb/keyboard-shortcuts-perform-firefox-tasks-quickly",
+  "platforms": [
+    "mac",
+    "windows",
+    "linux"
+  ],
+  "apps": {
+    "macos": [
+      "org.mozilla.firefox"
+    ],
+    "windows": [
+      "firefox.exe"
+    ],
+    "linux": [
+      "firefox"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "New tab",
+      "context": "Tabs & Windows",
+      "label": "New Tab",
+      "mac": "Cmd+T",
+      "windows": "Ctrl+T"
+    },
+    {
+      "name": "Close tab",
+      "context": "Tabs & Windows",
+      "label": "Close Tab",
+      "mac": "Cmd+W",
+      "windows": "Ctrl+W"
+    },
+    {
+      "name": "Undo close tab",
+      "context": "Tabs & Windows",
+      "label": "Reopen Tab",
+      "mac": "Cmd+Shift+T",
+      "windows": "Ctrl+Shift+T"
+    },
+    {
+      "name": "New window",
+      "context": "Tabs & Windows",
+      "label": "New Win",
+      "mac": "Cmd+N",
+      "windows": "Ctrl+N"
+    },
+    {
+      "name": "New Private Window",
+      "context": "Tabs & Windows",
+      "label": "Private",
+      "mac": "Cmd+Shift+P",
+      "windows": "Ctrl+Shift+P"
+    },
+    {
+      "name": "Next tab",
+      "context": "Tabs & Windows",
+      "label": "Next Tab",
+      "mac": "Ctrl+Tab",
+      "windows": "Ctrl+Tab"
+    },
+    {
+      "name": "Previous tab",
+      "context": "Tabs & Windows",
+      "label": "Prev Tab",
+      "mac": "Ctrl+Shift+Tab",
+      "windows": "Ctrl+Shift+Tab"
+    },
+    {
+      "name": "Mute or unmute audio",
+      "context": "Tabs & Windows",
+      "label": "Mute Tab",
+      "mac": "Ctrl+M",
+      "windows": "Ctrl+M"
+    },
+    {
+      "name": "Focus address bar",
+      "context": "Navigation",
+      "label": "Address",
+      "mac": "Cmd+L",
+      "windows": "Ctrl+L"
+    },
+    {
+      "name": "Back",
+      "context": "Navigation",
+      "label": "Back",
+      "mac": "Cmd+Left",
+      "windows": "Alt+Left"
+    },
+    {
+      "name": "Forward",
+      "context": "Navigation",
+      "label": "Forward",
+      "mac": "Cmd+Right",
+      "windows": "Alt+Right"
+    },
+    {
+      "name": "Reload",
+      "context": "Navigation",
+      "label": "Reload",
+      "mac": "Cmd+R",
+      "windows": "Ctrl+R"
+    },
+    {
+      "name": "Reload overriding cache",
+      "context": "Navigation",
+      "label": "Hard Reload",
+      "mac": "Cmd+Shift+R",
+      "windows": "Ctrl+Shift+R"
+    },
+    {
+      "name": "Find in page",
+      "context": "Search",
+      "label": "Find",
+      "mac": "Cmd+F",
+      "windows": "Ctrl+F"
+    },
+    {
+      "name": "Find again",
+      "context": "Search",
+      "label": "Find Next",
+      "mac": "Cmd+G",
+      "windows": "Ctrl+G"
+    },
+    {
+      "name": "Find previous",
+      "context": "Search",
+      "label": "Find Prev",
+      "mac": "Cmd+Shift+G",
+      "windows": "Ctrl+Shift+G"
+    },
+    {
+      "name": "Bookmark this page",
+      "context": "Bookmarks & History",
+      "label": "Bookmark",
+      "mac": "Cmd+D",
+      "windows": "Ctrl+D"
+    },
+    {
+      "name": "Bookmarks sidebar",
+      "context": "Bookmarks & History",
+      "label": "Bookmarks",
+      "mac": "Cmd+B",
+      "windows": "Ctrl+B"
+    },
+    {
+      "name": "History sidebar",
+      "context": "Bookmarks & History",
+      "label": "History",
+      "mac": "Cmd+Shift+H",
+      "windows": "Ctrl+H"
+    },
+    {
+      "name": "Downloads",
+      "context": "Bookmarks & History",
+      "label": "Downloads",
+      "mac": "Cmd+J",
+      "windows": "Ctrl+J"
+    },
+    {
+      "name": "Zoom in",
+      "context": "View",
+      "label": "Zoom In",
+      "mac": "Cmd+=",
+      "windows": "Ctrl+="
+    },
+    {
+      "name": "Zoom out",
+      "context": "View",
+      "label": "Zoom Out",
+      "mac": "Cmd+-",
+      "windows": "Ctrl+-"
+    },
+    {
+      "name": "Reset zoom",
+      "context": "View",
+      "label": "Reset Zoom",
+      "mac": "Cmd+0",
+      "windows": "Ctrl+0"
+    },
+    {
+      "name": "Toggle Reader View",
+      "context": "View",
+      "label": "Reader",
+      "mac": "Cmd+Option+R",
+      "windows": "Ctrl+Alt+R"
+    },
+    {
+      "name": "Toggle Developer Tools",
+      "context": "Developer",
+      "label": "DevTools",
+      "mac": "Cmd+Option+I",
+      "windows": "Ctrl+Shift+I"
+    },
+    {
+      "name": "Web Console",
+      "context": "Developer",
+      "label": "Console",
+      "mac": "Cmd+Option+K",
+      "windows": "Ctrl+Shift+K"
+    },
+    {
+      "name": "Page source",
+      "context": "Developer",
+      "label": "Source",
+      "mac": "Cmd+U",
+      "windows": "Ctrl+U"
+    },
+    {
+      "name": "Print page",
+      "context": "Page",
+      "label": "Print",
+      "mac": "Cmd+P",
+      "windows": "Ctrl+P"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/openflux-update",
+    "host/daemon",
+    "host/studio/src-tauri",
+    "keyboard/bridge",
+    "keyboard/display",
+]
+exclude = [
+    "tools/openflux-dev/lfs-tool",
+]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Scott-Meyer/openflux"
+rust-version = "1.90"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+codegen-units = 1
+
+# The daemon and bridge run continuously on the host and keyboard; favor small binaries.
+[profile.release.package.openfluxd]
+opt-level = "z"
+
+[profile.release.package.openflux-bridge]
+opt-level = "z"

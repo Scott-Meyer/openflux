@@ -1,0 +1,9 @@
+#!/bin/sh
+ROOT="${OPENFLUX_SYSROOT:-}"
+
+touch "${ROOT}/tmp/openflux_updating_bridge"
+pkill -TERM -f "${ROOT}/usr/lib/openflux/bridge/openflux-bridge" 2>/dev/null || true
+pkill -TERM -f "${ROOT}/usr/bin/flux-weston-autolaunch.sh" 2>/dev/null || true
+pkill -TERM -f "${ROOT}/usr/lib/openflux/display/openflux-display" 2>/dev/null || true
+
+exit 0

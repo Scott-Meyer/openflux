@@ -1,0 +1,157 @@
+#!/bin/sh
+# Verifies staged factory restore artifacts before launching detached restore-factory.sh.
+set -e
+
+ROOT="${OPENFLUX_SYSROOT:-}"
+RESTORE_DIR="${ROOT}/home/root/.openflux/factory-restore"
+RESTORE_SCRIPT="${ROOT}/usr/lib/openflux/bridge/restore-factory.sh"
+LOG_DIR="${ROOT}/home/root/openflux/logs"
+
+if [ ! -x "$RESTORE_SCRIPT" ]; then
+    echo "ERROR: ${RESTORE_SCRIPT} missing or not executable; leaving OpenFlux running" >&2
+    exit 1
+fi
+
+if ! "$RESTORE_SCRIPT" --preflight-only "$RESTORE_DIR"; then
+    echo "ERROR: staged factory restore verification failed; leaving OpenFlux running" >&2
+    exit 1
+fi
+
+is_opkg_exe_token() {
+    tok="$1"
+    [ -n "$tok" ] || return 1
+    base=$(basename "$tok" 2>/dev/null || echo "$tok")
+    case "$base" in
+        opkg|opkg-cl) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+is_shell_token() {
+    tok="$1"
+    [ -n "$tok" ] || return 1
+    base=$(basename "$tok" 2>/dev/null || echo "$tok")
+    case "$base" in
+        sh|ash|dash|bash) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+resolve_opkg_ancestor() {
+    pid="${PPID:-}"
+    hops=0
+    while [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null && [ "$hops" -lt 16 ]; do
+        comm=""
+        arg0=""
+        arg1=""
+        ppid_next=""
+        if [ -r "/proc/${pid}/stat" ]; then
+            comm=$(cat "/proc/${pid}/comm" 2>/dev/null || true)
+            # NUL-separated argv[0] and argv[1] (script path if kernel set comm from script interpreter).
+            arg0=$(tr '\0' '\n' < "/proc/${pid}/cmdline" 2>/dev/null | sed -n '1p' || true)
+            arg1=$(tr '\0' '\n' < "/proc/${pid}/cmdline" 2>/dev/null | sed -n '2p' || true)
+            ppid_next=$(awk '{
+                r = match($0, /\)[^)]*$/)
+                if (r > 0) {
+                    rest = substr($0, r + 2)
+                    split(rest, f, " ")
+                    print f[2]
+                }
+            }' "/proc/${pid}/stat" 2>/dev/null || true)
+        else
+            info=$(ps -p "$pid" -o ppid=,comm=,args= 2>/dev/null | head -n 1 || true)
+            if [ -n "$info" ]; then
+                ppid_next=$(echo "$info" | awk '{print $1}')
+                comm=$(echo "$info" | awk '{print $2}')
+                arg0=$(echo "$info" | awk '{print $3}')
+                arg1=$(echo "$info" | awk '{print $4}')
+            fi
+        fi
+
+        if is_opkg_exe_token "$comm" || is_opkg_exe_token "$arg0"; then
+            echo "$pid"
+            return 0
+        fi
+        # An opkg script run as `sh /path/to/opkg ...` shows the shell as comm and
+        # argv[0], with the script path in argv[1]. Only basenames are compared, so
+        # package script paths such as .../opkg/info/<pkg>.postinst never match.
+        if is_shell_token "$comm" || is_shell_token "$arg0"; then
+            if is_opkg_exe_token "$arg1"; then
+                echo "$pid"
+                return 0
+            fi
+        fi
+
+        [ -n "$ppid_next" ] && [ "$ppid_next" != "$pid" ] || break
+        pid="$ppid_next"
+        hops=$((hops + 1))
+    done
+    return 1
+}
+
+WAIT_PID="${OPENFLUX_WAIT_OPKG_PID:-}"
+if [ -z "$WAIT_PID" ]; then
+    WAIT_PID=$(resolve_opkg_ancestor || true)
+fi
+
+WAIT_LOCK="${OPENFLUX_OPKG_LOCK:-}"
+if [ -z "$WAIT_LOCK" ]; then
+    for cand in \
+        "${ROOT}/var/lock/opkg.lock" \
+        "${ROOT}/var/run/opkg.lock" \
+        "${ROOT}/run/opkg.lock"; do
+        if [ -e "$cand" ]; then
+            WAIT_LOCK="$cand"
+            break
+        fi
+    done
+fi
+
+if [ -z "$WAIT_PID" ] && [ -z "$WAIT_LOCK" ]; then
+    echo "ERROR: could not resolve invoking opkg process or lock; leaving OpenFlux running" >&2
+    exit 1
+fi
+
+WAIT_ITERS="${OPENFLUX_OPKG_WAIT_ITERS:-300}"
+WAIT_SLEEP="${OPENFLUX_OPKG_WAIT_SLEEP:-0.1}"
+
+mkdir -p "$LOG_DIR"
+# The detached script expands its own positional parameters, so it is quoted literally.
+# shellcheck disable=SC2016
+run_detached='
+wait_pid="$1"
+wait_lock="$2"
+wait_iters="$3"
+wait_sleep="$4"
+restore_script="$5"
+restore_dir="$6"
+
+n=0
+while [ "$n" -lt "$wait_iters" ]; do
+    busy=0
+    if [ -n "$wait_pid" ] && kill -0 "$wait_pid" 2>/dev/null; then
+        busy=1
+    fi
+    if [ -n "$wait_lock" ] && [ -e "$wait_lock" ]; then
+        busy=1
+    fi
+    [ "$busy" -eq 0 ] && break
+    sleep "$wait_sleep"
+    n=$((n + 1))
+done
+
+if { [ -n "$wait_pid" ] && kill -0 "$wait_pid" 2>/dev/null; } || { [ -n "$wait_lock" ] && [ -e "$wait_lock" ]; }; then
+    echo "ERROR: timed out waiting for outer opkg transaction to finish; leaving OpenFlux running" >&2
+    exit 1
+fi
+
+exec "$restore_script" "$restore_dir"
+'
+
+if command -v setsid >/dev/null 2>&1; then
+    setsid nohup sh -c "$run_detached" sh "$WAIT_PID" "$WAIT_LOCK" "$WAIT_ITERS" "$WAIT_SLEEP" "$RESTORE_SCRIPT" "$RESTORE_DIR" </dev/null >"${LOG_DIR}/factory_restore.log" 2>&1 &
+else
+    nohup sh -c "$run_detached" sh "$WAIT_PID" "$WAIT_LOCK" "$WAIT_ITERS" "$WAIT_SLEEP" "$RESTORE_SCRIPT" "$RESTORE_DIR" </dev/null >"${LOG_DIR}/factory_restore.log" 2>&1 &
+fi
+
+exit 0

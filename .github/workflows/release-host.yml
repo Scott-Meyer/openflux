@@ -1,0 +1,607 @@
+# Builds and uploads a host release (host-vX.Y.Z[-beta.N]): OpenFlux Studio
+# with openfluxd, its helpers and the FFmpeg tools, for macOS (universal),
+# Windows x64 (NSIS setup program) and Linux x86_64 and aarch64 (AppImage and
+# .deb).
+#
+# Called by release-please.yml after the keyboard releases of the same run
+# are published, or run by hand to rebuild an existing tag. Every installer
+# bundles the newest stable firmware, bridge and display from the published,
+# signed index; the build stops with an explanation if any of them has no
+# stable release (none published yet, or only betas).
+#
+# openflux-ffmpeg and openflux-ffprobe come from one pinned, checksummed
+# FFmpeg build per target (host/packaging/ffmpeg/build-ffmpeg.sh). That build
+# includes x264 and is therefore GPL-2.0-or-later; its complete source,
+# configure lines and license are published with the release.
+#
+# Platform signing (Developer ID and notarization on macOS, SignPath on
+# Windows) happens here and uses the release-build environment. When its
+# secrets are absent the build continues unsigned and says so. The OpenFlux
+# release key and the updater key are never available to these jobs; the
+# artifacts and the Tauri update feed are signed by publish-index.yml, after
+# the platform signing, so the updater signature covers the signed files.
+
+name: Release host
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      publish-index:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing host-v* tag to rebuild
+        type: string
+        required: true
+      publish-index:
+        description: Publish the update index afterwards (needs approval)
+        type: boolean
+        default: true
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  APPIMAGE_EXTRACT_AND_RUN: "1"
+
+jobs:
+  meta:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      channel: ${{ steps.meta.outputs.channel }}
+      source_date_epoch: ${{ steps.meta.outputs.source_date_epoch }}
+      pages_url: ${{ steps.meta.outputs.pages_url }}
+      release_url: ${{ steps.meta.outputs.release_url }}
+      notes_url: ${{ steps.meta.outputs.notes_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: meta
+        run: .github/scripts/release-meta.sh "$TAG"
+        env:
+          TAG: ${{ inputs.tag }}
+          OPENFLUX_PAGES_URL: ${{ vars.OPENFLUX_PAGES_URL }}
+        shell: bash
+      - name: Check component
+        if: steps.meta.outputs.component != 'host'
+        run: |
+          echo "release-host builds host releases only" >&2
+          exit 1
+
+  ffmpeg:
+    needs: meta
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04, source: true }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: cache
+        with:
+          path: build/ffmpeg-out/${{ matrix.target }}
+          key: openflux-ffmpeg-tools-${{ matrix.target }}-${{ matrix.os }}-${{ hashFiles('host/packaging/ffmpeg/build-ffmpeg.sh') }}
+      - name: Tools (macOS)
+        if: runner.os == 'macOS' && steps.cache.outputs.cache-hit != 'true'
+        run: brew install nasm
+      - name: Tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nasm xz-utils
+      - name: Tools (Windows)
+        if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            git make diffutils
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-pkgconf
+      - name: Build (macOS, Linux)
+        if: runner.os != 'Windows' && steps.cache.outputs.cache-hit != 'true'
+        run: host/packaging/ffmpeg/build-ffmpeg.sh --target "${{ matrix.target }}" --out "build/ffmpeg-out/${{ matrix.target }}" --work build/ffmpeg
+      - name: Build (Windows)
+        if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: host/packaging/ffmpeg/build-ffmpeg.sh --target "${{ matrix.target }}" --out "build/ffmpeg-out/${{ matrix.target }}" --work build/ffmpeg
+      - name: Corresponding source
+        if: matrix.source
+        env:
+          SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.source_date_epoch }}
+        run: host/packaging/ffmpeg/build-ffmpeg.sh --source-archive build/ffmpeg-out/source/openflux-ffmpeg-source.tar.xz --work build/ffmpeg
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: build/ffmpeg-out/${{ matrix.target }}
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: matrix.source
+        with:
+          name: ffmpeg-source
+          path: build/ffmpeg-out/source
+          if-no-files-found: error
+
+  keyboard-bundle:
+    needs: meta
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - name: Fetch and verify the stable keyboard software
+        env:
+          PAGES_URL: ${{ needs.meta.outputs.pages_url }}
+        run: |
+          cargo build --locked --release --manifest-path crates/openflux-update/Cargo.toml --bin openflux-release --features production-keys
+          tool="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/openflux-update/Cargo.toml | jq -r .target_directory)/release/openflux-release"
+          # Verified the way a host verifies it: the keys built into hosts,
+          # and the active release key. Fails with an explanation when the
+          # index has no stable release of a component (none published yet,
+          # or only betas).
+          "$tool" bundle --index "$PAGES_URL/index.json" \
+            --pubkey crates/openflux-update/keys/release.pub --pubkey host/packaging/keys/active-release.pub \
+            --channel stable --component firmware --component bridge --component display -o build/keyboard-bundle
+          ls -l build/keyboard-bundle
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: keyboard-bundle
+          path: build/keyboard-bundle
+          if-no-files-found: error
+
+  macos:
+    needs: [meta, ffmpeg, keyboard-bundle]
+    runs-on: macos-latest
+    environment: release-build
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: host/studio/package-lock.json
+      # One directory per target triple, as build-sidecars.sh expects.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ffmpeg-aarch64-apple-darwin
+          path: build/ffmpeg-out/aarch64-apple-darwin
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ffmpeg-x86_64-apple-darwin
+          path: build/ffmpeg-out/x86_64-apple-darwin
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: keyboard-bundle
+          path: build/keyboard-bundle
+      - name: Signing configuration
+        id: signing
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "sign=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Developer ID secrets are not configured; building an ad-hoc signed, unnotarized app."
+            echo "sign=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$APPLE_API_KEY_ID" ] && [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_PRIVATE_KEY" ]; then
+            key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+            printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$key"
+            {
+              echo "APPLE_API_KEY=$APPLE_API_KEY_ID"
+              echo "APPLE_API_KEY_PATH=$key"
+            } >> "$GITHUB_ENV"
+            echo "notarize=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Notarization credentials are not configured; the app is not notarized."
+            echo "notarize=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Toolchains
+        run: |
+          rustup show active-toolchain
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          npm ci --prefix host/studio
+      - name: Sidecars
+        run: host/packaging/scripts/build-sidecars.sh --target universal-apple-darwin --ffmpeg-dir build/ffmpeg-out --out build/sidecars
+      - name: Release configuration
+        env:
+          PAGES_URL: ${{ needs.meta.outputs.pages_url }}
+        run: |
+          host/packaging/scripts/tauri-release-config.sh --os macos --version "$VERSION" \
+            --sidecars build/sidecars --keyboard-bundle build/keyboard-bundle \
+            --pages-url "$PAGES_URL" -o "$RUNNER_TEMP/tauri.release.json"
+      - name: Build and sign
+        env:
+          SIGN: ${{ steps.signing.outputs.sign }}
+        run: |
+          if [ "$SIGN" != true ]; then
+            unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD
+            export APPLE_SIGNING_IDENTITY=-
+          fi
+          cd host/studio
+          npm exec -- tauri build --target universal-apple-darwin --config "$RUNNER_TEMP/tauri.release.json" --bundles app,dmg
+      - name: Notarize the disk image
+        if: steps.signing.outputs.notarize == 'true' && steps.signing.outputs.sign == 'true'
+        run: |
+          dmg="$(find target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' | head -n 1)"
+          xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --wait
+          xcrun stapler staple "$dmg"
+      - name: Collect
+        run: |
+          bundle=target/universal-apple-darwin/release/bundle
+          mkdir -p dist
+          cp "$(find "$bundle/dmg" -name '*.dmg' | head -n 1)" "dist/openflux-studio_${VERSION}_universal.dmg"
+          app="$(find "$bundle/macos" -maxdepth 1 -name '*.app' | head -n 1)"
+          # Update archive read by the Tauri updater: the .app at the top level.
+          COPYFILE_DISABLE=1 tar -czf "dist/openflux-studio_${VERSION}_universal.app.tar.gz" -C "$(dirname "$app")" "$(basename "$app")"
+          ls -l dist
+      - name: Check the installers
+        run: |
+          .github/scripts/check-host-installer.sh "dist/openflux-studio_${VERSION}_universal.dmg"
+          .github/scripts/check-host-installer.sh "dist/openflux-studio_${VERSION}_universal.app.tar.gz"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: host-macos
+          path: dist
+          if-no-files-found: error
+
+  windows:
+    needs: [meta, ffmpeg, keyboard-bundle]
+    runs-on: windows-latest
+    environment: release-build
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      TARGET: x86_64-pc-windows-msvc
+      # Static CRT, so no executable depends on the Visual C++ runtime.
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+      SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+      SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+      SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: host/studio/package-lock.json
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ffmpeg-x86_64-pc-windows-msvc
+          path: build/ffmpeg-out/x86_64-pc-windows-msvc
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: keyboard-bundle
+          path: build/keyboard-bundle
+      - name: Signing configuration
+        id: signing
+        run: |
+          if [ -n "$SIGNPATH_API_TOKEN" ] && [ -n "$SIGNPATH_ORGANIZATION_ID" ] && [ -n "$SIGNPATH_PROJECT_SLUG" ] && [ -n "$SIGNPATH_SIGNING_POLICY_SLUG" ]; then
+            echo "sign=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::SignPath is not configured; the Windows build is unsigned."
+            echo "sign=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Toolchains
+        run: |
+          rustup show active-toolchain
+          npm ci --prefix host/studio
+      - name: Sidecars
+        run: host/packaging/scripts/build-sidecars.sh --target "$TARGET" --ffmpeg-dir build/ffmpeg-out --out build/sidecars
+      - name: Release configuration
+        env:
+          PAGES_URL: ${{ needs.meta.outputs.pages_url }}
+        run: |
+          host/packaging/scripts/tauri-release-config.sh --os windows --version "$VERSION" \
+            --sidecars build/sidecars --keyboard-bundle build/keyboard-bundle \
+            --pages-url "$PAGES_URL" -o "$RUNNER_TEMP/tauri.release.json"
+
+      # Unsigned path (SignPath not configured): one step.
+      - name: Build
+        if: steps.signing.outputs.sign != 'true'
+        working-directory: host/studio
+        run: npm exec -- tauri build --target "$TARGET" --config "$RUNNER_TEMP/tauri.release.json"
+
+      # Signed path. SignPath does not sign the files inside an NSIS
+      # installer, so the executables are signed before they are bundled:
+      # build without bundling, sign openflux-studio.exe and the sidecars,
+      # bundle the signed files, then sign the setup program. The updater
+      # signature is made over that signed setup program when the index is
+      # published (publish-index.yml).
+      - name: Build executables
+        if: steps.signing.outputs.sign == 'true'
+        working-directory: host/studio
+        run: npm exec -- tauri build --target "$TARGET" --config "$RUNNER_TEMP/tauri.release.json" --no-bundle
+      - name: Stage executables for signing
+        if: steps.signing.outputs.sign == 'true'
+        run: |
+          mkdir -p build/to-sign
+          cp "target/$TARGET/release/openflux-studio.exe" build/to-sign/
+          cp build/sidecars/*.exe build/to-sign/
+          ls -l build/to-sign
+      - id: upload-exes
+        if: steps.signing.outputs.sign == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-executables-unsigned
+          path: build/to-sign
+          if-no-files-found: error
+      - name: Sign executables
+        if: steps.signing.outputs.sign == 'true'
+        uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: executables
+          github-artifact-id: ${{ steps.upload-exes.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: build/signed-exes
+      - name: Bundle the signed executables
+        if: steps.signing.outputs.sign == 'true'
+        run: |
+          for f in build/to-sign/*.exe; do
+            [ -f "build/signed-exes/$(basename "$f")" ] || { echo "SignPath returned no $(basename "$f")" >&2; exit 1; }
+          done
+          cp build/signed-exes/openflux-studio.exe "target/$TARGET/release/openflux-studio.exe"
+          for f in build/signed-exes/*.exe; do
+            name="$(basename "$f")"
+            [ "$name" = openflux-studio.exe ] && continue
+            cp "$f" "build/sidecars/$name"
+            # Tauri also keeps a copy without the target triple next to the app.
+            cp "$f" "target/$TARGET/release/${name%-"$TARGET".exe}.exe"
+          done
+          cd host/studio
+          npm exec -- tauri bundle --target "$TARGET" --config "$RUNNER_TEMP/tauri.release.json"
+      - name: Stage the setup program for signing
+        if: steps.signing.outputs.sign == 'true'
+        run: |
+          mkdir -p build/installers
+          find "target/$TARGET/release/bundle/nsis" -name '*-setup.exe' -exec cp {} build/installers/ \;
+          ls -l build/installers
+      - id: upload-installers
+        if: steps.signing.outputs.sign == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-installers-unsigned
+          path: build/installers
+          if-no-files-found: error
+      - name: Sign the setup program
+        if: steps.signing.outputs.sign == 'true'
+        uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: installers
+          github-artifact-id: ${{ steps.upload-installers.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: build/signed-installers
+      - name: Collect
+        env:
+          SIGNED: ${{ steps.signing.outputs.sign }}
+        run: |
+          mkdir -p dist
+          if [ "$SIGNED" = true ]; then src=build/signed-installers; else src="target/$TARGET/release/bundle/nsis"; fi
+          setups=("$src"/*-setup.exe)
+          [ "${#setups[@]}" -eq 1 ] && [ -f "${setups[0]}" ] || { echo "expected one setup program in $src" >&2; exit 1; }
+          cp "${setups[0]}" "dist/openflux-studio_${VERSION}_x64-setup.exe"
+          ls -l dist
+      - name: Check the setup program
+        run: .github/scripts/check-host-installer.sh "dist/openflux-studio_${VERSION}_x64-setup.exe"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: host-windows
+          path: dist
+          if-no-files-found: error
+
+  linux:
+    needs: [meta, ffmpeg, keyboard-bundle]
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Built on the oldest supported Ubuntu so the AppImage and .deb run on
+          # every distribution with that glibc or newer.
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04, appimage: x86_64, deb: amd64 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm, appimage: aarch64, deb: arm64 }
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: host/studio/package-lock.json
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: build/ffmpeg-out/${{ matrix.target }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: keyboard-bundle
+          path: build/keyboard-bundle
+      - name: Toolchains
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libudev-dev libwayland-dev libxdo-dev libssl-dev libfuse2 file patchelf
+          rustup show active-toolchain
+          npm ci --prefix host/studio
+      - name: Sidecars
+        run: host/packaging/scripts/build-sidecars.sh --target "$TARGET" --ffmpeg-dir build/ffmpeg-out --out build/sidecars
+      - name: Release configuration
+        env:
+          PAGES_URL: ${{ needs.meta.outputs.pages_url }}
+        run: |
+          host/packaging/scripts/tauri-release-config.sh --os linux --version "$VERSION" \
+            --sidecars build/sidecars --keyboard-bundle build/keyboard-bundle \
+            --pages-url "$PAGES_URL" -o "$RUNNER_TEMP/tauri.release.json"
+      - name: Build
+        working-directory: host/studio
+        run: npm exec -- tauri build --target "$TARGET" --config "$RUNNER_TEMP/tauri.release.json"
+      - name: Collect
+        run: |
+          bundle="target/$TARGET/release/bundle"
+          mkdir -p dist
+          cp "$(find "$bundle/appimage" -name '*.AppImage' | head -n 1)" "dist/openflux-studio_${VERSION}_${{ matrix.appimage }}.AppImage"
+          cp "$(find "$bundle/deb" -name '*.deb' | head -n 1)" "dist/openflux-studio_${VERSION}_${{ matrix.deb }}.deb"
+          ls -l dist
+      - name: Check the installers
+        run: |
+          .github/scripts/check-host-installer.sh "dist/openflux-studio_${VERSION}_${{ matrix.appimage }}.AppImage"
+          .github/scripts/check-host-installer.sh "dist/openflux-studio_${VERSION}_${{ matrix.deb }}.deb"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: host-linux-${{ matrix.appimage }}
+          path: dist
+          if-no-files-found: error
+
+  publish:
+    needs: [meta, macos, windows, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: host-*
+          path: dist/artifacts
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ffmpeg-*
+          path: build/ffmpeg
+      - name: FFmpeg source, build information and license
+        run: |
+          mkdir -p dist/extra
+          cp build/ffmpeg/ffmpeg-source/openflux-ffmpeg-source.tar.xz "dist/extra/openflux-ffmpeg-source-${VERSION}.tar.xz"
+          cp build/ffmpeg/ffmpeg-*/openflux-ffmpeg-*.buildinfo.txt dist/extra/
+          cp build/ffmpeg/ffmpeg-x86_64-unknown-linux-gnu/openflux-ffmpeg-COPYING.GPLv2.txt dist/extra/
+          n="$(find dist/extra -name 'openflux-ffmpeg-*.buildinfo.txt' | wc -l)"
+          [ "$n" -eq 5 ] || { echo "expected build information for 5 targets, found $n" >&2; exit 1; }
+      - name: SBOM
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libudev-dev libwayland-dev libxdo-dev
+          cargo install --locked cargo-cyclonedx@0.5.10
+          for entry in openfluxd:host/daemon openflux-studio:host/studio/src-tauri; do
+            name="${entry%%:*}" dir="${entry#*:}"
+            cargo cyclonedx --manifest-path "$dir/Cargo.toml" --format json --spec-version 1.5 --all \
+              --target all --override-filename sbom
+            mv "$dir/sbom.json" "dist/extra/$name-${VERSION}.cdx.json"
+          done
+          npx --yes @cyclonedx/cyclonedx-npm@7.0.1 --package-lock-only --omit dev \
+            --output-file "dist/extra/openflux-studio-ui-${VERSION}.cdx.json" host/studio/package.json
+          ls -l dist/extra
+      - uses: ./.github/actions/publish-release-assets
+        with:
+          tag: ${{ inputs.tag }}
+          component: host
+          version: ${{ needs.meta.outputs.version }}
+          channel: ${{ needs.meta.outputs.channel }}
+          release-url: ${{ needs.meta.outputs.release_url }}
+          notes-url: ${{ needs.meta.outputs.notes_url }}
+          artifacts: dist/artifacts
+          extra: dist/extra
+          github-token: ${{ github.token }}
+      - name: License note in the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          marker="<!-- openflux-ffmpeg-license -->"
+          gh release view "$TAG" --json body --jq .body > notes.md
+          if ! grep -qF "$marker" notes.md; then
+            cat >> notes.md <<EOF
+
+          $marker
+          ### Bundled FFmpeg (GPL)
+
+          The installers include \`openflux-ffmpeg\` and \`openflux-ffprobe\`, built from FFmpeg with libx264. These two
+          programs are licensed under the GNU General Public License, version 2 or later
+          (\`openflux-ffmpeg-COPYING.GPLv2.txt\`). Their complete corresponding source is
+          \`openflux-ffmpeg-source-${VERSION}.tar.xz\`, and the configure lines of each build are in the
+          \`openflux-ffmpeg-<target>.buildinfo.txt\` files of this release. OpenFlux itself is MIT OR Apache-2.0.
+          EOF
+            gh release edit "$TAG" --notes-file notes.md
+          fi
+
+  publish-index:
+    needs: publish
+    if: inputs.publish-index
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      deployments: write
+    uses: ./.github/workflows/publish-index.yml

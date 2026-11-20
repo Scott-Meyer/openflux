@@ -1,0 +1,234 @@
+{
+  "name": "Discord",
+  "source": "https://support.discord.com/hc/en-us/articles/225977308-Windows-Discord-Hotkeys",
+  "platforms": [
+    "mac",
+    "windows",
+    "linux"
+  ],
+  "apps": {
+    "macos": [
+      "com.hnc.Discord"
+    ],
+    "windows": [
+      "Discord.exe"
+    ],
+    "linux": [
+      "discord"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "Previous server",
+      "context": "Navigation",
+      "label": "Previous",
+      "mac": "Cmd+Option+Up",
+      "windows": "Ctrl+Alt+Up"
+    },
+    {
+      "name": "Next server",
+      "context": "Navigation",
+      "mac": "Cmd+Option+Down",
+      "windows": "Ctrl+Alt+Down"
+    },
+    {
+      "name": "Previous channel",
+      "context": "Navigation",
+      "label": "Previous",
+      "mac": "Option+Up",
+      "windows": "Alt+Up"
+    },
+    {
+      "name": "Next channel",
+      "context": "Navigation",
+      "mac": "Option+Down",
+      "windows": "Alt+Down"
+    },
+    {
+      "name": "Previous unread channel",
+      "context": "Navigation",
+      "label": "Previous",
+      "mac": "Option+Shift+Up",
+      "windows": "Alt+Shift+Up"
+    },
+    {
+      "name": "Next unread channel",
+      "context": "Navigation",
+      "label": "Next unread",
+      "mac": "Option+Shift+Down",
+      "windows": "Alt+Shift+Down"
+    },
+    {
+      "name": "Previous unread channel with mentions",
+      "context": "Navigation",
+      "label": "Previous",
+      "mac": "Cmd+Option+Shift+Up",
+      "windows": "Ctrl+Alt+Shift+Up"
+    },
+    {
+      "name": "Next unread channel with mentions",
+      "context": "Navigation",
+      "label": "Next unread",
+      "mac": "Cmd+Option+Shift+Down",
+      "windows": "Ctrl+Alt+Shift+Down"
+    },
+    {
+      "name": "Return to the previous text channel",
+      "context": "Navigation",
+      "label": "Return",
+      "mac": "Cmd+B",
+      "windows": "Ctrl+B"
+    },
+    {
+      "name": "Return to the active audio channel",
+      "context": "Navigation",
+      "label": "Return",
+      "mac": "Cmd+Option+A",
+      "windows": "Ctrl+Alt+A"
+    },
+    {
+      "name": "Find or start a direct message",
+      "context": "Navigation",
+      "label": "Find start",
+      "mac": "Cmd+K",
+      "windows": "Ctrl+K"
+    },
+    {
+      "name": "Mark channel as read",
+      "context": "Messages",
+      "label": "Mark channel",
+      "mac": "Esc",
+      "windows": "Esc"
+    },
+    {
+      "name": "Mark server as read",
+      "context": "Messages",
+      "label": "Mark server",
+      "mac": "Shift+Esc",
+      "windows": "Shift+Esc"
+    },
+    {
+      "name": "Toggle pins",
+      "context": "Messages",
+      "mac": "Cmd+P",
+      "windows": "Ctrl+P"
+    },
+    {
+      "name": "Toggle mentions",
+      "context": "Messages",
+      "label": "Mentions",
+      "mac": "Cmd+I",
+      "windows": "Ctrl+I"
+    },
+    {
+      "name": "Toggle the member list",
+      "context": "Messages",
+      "label": "Member list",
+      "mac": "Cmd+U",
+      "windows": "Ctrl+U"
+    },
+    {
+      "name": "Toggle the emoji picker",
+      "context": "Messages",
+      "label": "Emoji picker",
+      "mac": "Cmd+E",
+      "windows": "Ctrl+E"
+    },
+    {
+      "name": "Scroll chat up",
+      "context": "Messages",
+      "label": "Scroll chat",
+      "mac": "PageUp",
+      "windows": "PageUp"
+    },
+    {
+      "name": "Scroll chat down",
+      "context": "Messages",
+      "label": "Scroll chat",
+      "mac": "PageDown",
+      "windows": "PageDown"
+    },
+    {
+      "name": "Jump to the oldest unread message",
+      "context": "Messages",
+      "label": "Oldest",
+      "mac": "Shift+PageUp",
+      "windows": "Shift+PageUp"
+    },
+    {
+      "name": "Focus the text area",
+      "context": "Messages",
+      "label": "Focus text",
+      "mac": "Tab",
+      "windows": "Tab"
+    },
+    {
+      "name": "Upload a file",
+      "context": "Messages",
+      "label": "Upload file",
+      "mac": "Cmd+Shift+U",
+      "windows": "Ctrl+Shift+U"
+    },
+    {
+      "name": "Toggle hotkeys",
+      "context": "General",
+      "label": "Hotkeys",
+      "mac": "Cmd+/",
+      "windows": "Ctrl+/"
+    },
+    {
+      "name": "Create or join a server",
+      "context": "General",
+      "label": "Create join",
+      "mac": "Cmd+Shift+N",
+      "windows": "Ctrl+Shift+N"
+    },
+    {
+      "name": "Create a private group",
+      "context": "General",
+      "label": "Create",
+      "mac": "Cmd+Shift+T",
+      "windows": "Ctrl+Shift+T"
+    },
+    {
+      "name": "Get help",
+      "context": "General",
+      "mac": "Cmd+Shift+H",
+      "windows": "Ctrl+Shift+H"
+    },
+    {
+      "name": "Answer an incoming call",
+      "context": "Calls & Voice",
+      "label": "Answer",
+      "mac": "Cmd+Enter",
+      "windows": "Ctrl+Enter"
+    },
+    {
+      "name": "Decline an incoming call",
+      "context": "Calls & Voice",
+      "label": "Decline",
+      "mac": "Esc",
+      "windows": "Esc"
+    },
+    {
+      "name": "Start a call in a direct message or group",
+      "context": "Calls & Voice",
+      "label": "Call direct",
+      "mac": "Cmd+[",
+      "windows": "Ctrl+["
+    },
+    {
+      "name": "Toggle mute",
+      "context": "Calls & Voice",
+      "mac": "Cmd+Shift+M",
+      "windows": "Ctrl+Shift+M"
+    },
+    {
+      "name": "Toggle deafen",
+      "context": "Calls & Voice",
+      "label": "Deafen",
+      "mac": "Cmd+Shift+D",
+      "windows": "Ctrl+Shift+D"
+    }
+  ]
+}

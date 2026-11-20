@@ -1,0 +1,265 @@
+{
+  "name": "Windows Terminal",
+  "source": "https://learn.microsoft.com/en-us/windows/terminal/customize-settings/actions",
+  "platforms": [
+    "windows"
+  ],
+  "apps": {
+    "windows": [
+      "WindowsTerminal.exe"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "Close window",
+      "context": "Windows & Tabs",
+      "windows": "Alt+F4"
+    },
+    {
+      "name": "Find",
+      "context": "Windows & Tabs",
+      "windows": "Ctrl+Shift+F"
+    },
+    {
+      "name": "Open the dropdown",
+      "context": "Windows & Tabs",
+      "label": "Dropdown",
+      "windows": "Ctrl+Shift+Space"
+    },
+    {
+      "name": "Open settings",
+      "context": "Windows & Tabs",
+      "label": "Settings",
+      "windows": "Ctrl+,"
+    },
+    {
+      "name": "Open the settings file",
+      "context": "Windows & Tabs",
+      "label": "Settings",
+      "windows": "Ctrl+Shift+,"
+    },
+    {
+      "name": "Open the defaults file",
+      "context": "Windows & Tabs",
+      "label": "Defaults",
+      "windows": "Ctrl+Alt+,"
+    },
+    {
+      "name": "Open the system menu",
+      "context": "Windows & Tabs",
+      "label": "System menu",
+      "windows": "Alt+Space"
+    },
+    {
+      "name": "Toggle full screen",
+      "context": "View",
+      "label": "Full screen",
+      "windows": "F11"
+    },
+    {
+      "name": "Duplicate tab",
+      "context": "Windows & Tabs",
+      "label": "Duplicate",
+      "windows": "Ctrl+Shift+D"
+    },
+    {
+      "name": "New tab",
+      "context": "Windows & Tabs",
+      "windows": "Ctrl+Shift+T"
+    },
+    {
+      "name": "New tab with the first profile",
+      "context": "Windows & Tabs",
+      "label": "New tab",
+      "windows": "Ctrl+Shift+1"
+    },
+    {
+      "name": "New tab with the second profile",
+      "context": "Windows & Tabs",
+      "label": "New tab",
+      "windows": "Ctrl+Shift+2"
+    },
+    {
+      "name": "Next tab",
+      "context": "Windows & Tabs",
+      "windows": "Ctrl+Tab"
+    },
+    {
+      "name": "Previous tab",
+      "context": "Windows & Tabs",
+      "windows": "Ctrl+Shift+Tab"
+    },
+    {
+      "name": "Go to the first tab",
+      "context": "Windows & Tabs",
+      "label": "First tab",
+      "windows": "Ctrl+Alt+1"
+    },
+    {
+      "name": "Go to the second tab",
+      "context": "Windows & Tabs",
+      "label": "Second tab",
+      "windows": "Ctrl+Alt+2"
+    },
+    {
+      "name": "New window",
+      "context": "Windows & Tabs",
+      "windows": "Ctrl+Shift+N"
+    },
+    {
+      "name": "Command palette",
+      "context": "Windows & Tabs",
+      "label": "Command",
+      "windows": "Ctrl+Shift+P"
+    },
+    {
+      "name": "Split pane, duplicating the profile",
+      "context": "Panes",
+      "label": "Split pane",
+      "windows": "Alt+Shift+D"
+    },
+    {
+      "name": "Split pane horizontally",
+      "context": "Panes",
+      "label": "Split pane",
+      "windows": "Alt+Shift+-"
+    },
+    {
+      "name": "Split pane vertically",
+      "context": "Panes",
+      "label": "Split pane",
+      "windows": "Alt+Shift+="
+    },
+    {
+      "name": "Close pane",
+      "context": "Panes",
+      "windows": "Ctrl+Shift+W"
+    },
+    {
+      "name": "Focus the pane below",
+      "context": "Panes",
+      "label": "Focus pane",
+      "windows": "Alt+Down"
+    },
+    {
+      "name": "Focus the pane to the left",
+      "context": "Panes",
+      "label": "Focus pane",
+      "windows": "Alt+Left"
+    },
+    {
+      "name": "Focus the pane to the right",
+      "context": "Panes",
+      "label": "Focus pane",
+      "windows": "Alt+Right"
+    },
+    {
+      "name": "Focus the pane above",
+      "context": "Panes",
+      "label": "Focus pane",
+      "windows": "Alt+Up"
+    },
+    {
+      "name": "Focus the previous pane",
+      "context": "Panes",
+      "label": "Focus",
+      "windows": "Ctrl+Alt+Left"
+    },
+    {
+      "name": "Grow the pane down",
+      "context": "Panes",
+      "label": "Grow pane",
+      "windows": "Alt+Shift+Down"
+    },
+    {
+      "name": "Grow the pane left",
+      "context": "Panes",
+      "label": "Grow pane",
+      "windows": "Alt+Shift+Left"
+    },
+    {
+      "name": "Grow the pane right",
+      "context": "Panes",
+      "label": "Grow pane",
+      "windows": "Alt+Shift+Right"
+    },
+    {
+      "name": "Grow the pane up",
+      "context": "Panes",
+      "label": "Grow pane up",
+      "windows": "Alt+Shift+Up"
+    },
+    {
+      "name": "Copy",
+      "context": "Clipboard",
+      "windows": "Ctrl+Shift+C"
+    },
+    {
+      "name": "Paste",
+      "context": "Clipboard",
+      "windows": "Ctrl+Shift+V"
+    },
+    {
+      "name": "Select all",
+      "context": "Clipboard",
+      "windows": "Ctrl+Shift+A"
+    },
+    {
+      "name": "Mark mode",
+      "context": "Clipboard",
+      "windows": "Ctrl+Shift+M"
+    },
+    {
+      "name": "Scroll up",
+      "context": "Scrolling",
+      "windows": "Ctrl+Shift+Up"
+    },
+    {
+      "name": "Scroll down",
+      "context": "Scrolling",
+      "windows": "Ctrl+Shift+Down"
+    },
+    {
+      "name": "Scroll up a page",
+      "context": "Scrolling",
+      "label": "Scroll up",
+      "windows": "Ctrl+Shift+PageUp"
+    },
+    {
+      "name": "Scroll down a page",
+      "context": "Scrolling",
+      "label": "Scroll down",
+      "windows": "Ctrl+Shift+PageDown"
+    },
+    {
+      "name": "Scroll to the top of the history",
+      "context": "Scrolling",
+      "label": "Scroll top",
+      "windows": "Ctrl+Shift+Home"
+    },
+    {
+      "name": "Scroll to the bottom of the history",
+      "context": "Scrolling",
+      "label": "Scroll",
+      "windows": "Ctrl+Shift+End"
+    },
+    {
+      "name": "Increase font size",
+      "context": "View",
+      "label": "Increase",
+      "windows": "Ctrl+="
+    },
+    {
+      "name": "Decrease font size",
+      "context": "View",
+      "label": "Decrease",
+      "windows": "Ctrl+-"
+    },
+    {
+      "name": "Reset font size",
+      "context": "View",
+      "label": "Reset font",
+      "windows": "Ctrl+0"
+    }
+  ]
+}

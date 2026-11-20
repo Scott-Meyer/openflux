@@ -1,0 +1,637 @@
+{
+  "name": "Slack",
+  "source": "https://slack.com/help/articles/201374536-Slack-keyboard-shortcuts",
+  "platforms": [
+    "mac",
+    "windows",
+    "linux"
+  ],
+  "apps": {
+    "macos": [
+      "com.tinyspeck.slackmacgap"
+    ],
+    "windows": [
+      "slack.exe"
+    ],
+    "linux": [
+      "slack"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "Compose a new message",
+      "context": "General",
+      "label": "Compose new",
+      "mac": "Cmd+N",
+      "windows": "Ctrl+N"
+    },
+    {
+      "name": "Unsend a message",
+      "context": "General",
+      "label": "Unsend",
+      "mac": "Cmd+Z",
+      "windows": "Ctrl+Z"
+    },
+    {
+      "name": "Set your status",
+      "context": "General",
+      "label": "Status",
+      "mac": "Shift+Cmd+Y",
+      "windows": "Ctrl+Shift+Y"
+    },
+    {
+      "name": "Open your preferences",
+      "context": "General",
+      "label": "Preferences",
+      "mac": "Cmd+,",
+      "windows": "Ctrl+,"
+    },
+    {
+      "name": "Hide the right sidebar",
+      "context": "General",
+      "label": "Hide right",
+      "mac": "Cmd+.",
+      "windows": "Ctrl+."
+    },
+    {
+      "name": "Create a new canvas",
+      "context": "General",
+      "label": "Create new",
+      "mac": "Shift+Cmd+N",
+      "windows": "Ctrl+Shift+N"
+    },
+    {
+      "name": "Upload a file",
+      "context": "General",
+      "label": "Upload file",
+      "mac": "Cmd+O",
+      "windows": "Ctrl+O"
+    },
+    {
+      "name": "View all downloaded files",
+      "context": "General",
+      "label": "Downloaded",
+      "mac": "Shift+Cmd+J",
+      "windows": "Ctrl+Shift+J"
+    },
+    {
+      "name": "Create a new snippet",
+      "context": "General",
+      "label": "Create new",
+      "mac": "Shift+Cmd+Enter",
+      "windows": "Ctrl+Shift+Enter"
+    },
+    {
+      "name": "Add an emoji reaction to a message",
+      "context": "General",
+      "label": "Add emoji",
+      "mac": "Shift+Cmd+`",
+      "windows": "Ctrl+Shift+`"
+    },
+    {
+      "name": "Start a search",
+      "context": "General",
+      "label": "Search",
+      "mac": "Cmd+G",
+      "windows": "Ctrl+G"
+    },
+    {
+      "name": "Search in the current conversation",
+      "context": "General",
+      "label": "Search",
+      "mac": "Cmd+F",
+      "windows": "Ctrl+F"
+    },
+    {
+      "name": "Start, join, leave, or end a huddle",
+      "context": "General",
+      "label": "Start join",
+      "mac": "Shift+Cmd+H",
+      "windows": "Ctrl+Shift+H"
+    },
+    {
+      "name": "Toggle mute on a huddle",
+      "context": "General",
+      "label": "Mute huddle",
+      "mac": "Shift+Cmd+Space",
+      "windows": "Ctrl+Shift+Space"
+    },
+    {
+      "name": "Open Help",
+      "context": "General",
+      "mac": "F1"
+    },
+    {
+      "name": "Toggle full screen view",
+      "context": "General",
+      "label": "Full screen",
+      "mac": "Ctrl+Cmd+F",
+      "windows": "F11"
+    },
+    {
+      "name": "Close window",
+      "context": "General",
+      "mac": "Cmd+W",
+      "windows": "Ctrl+W"
+    },
+    {
+      "name": "Reopen last closed window",
+      "context": "General",
+      "label": "Reopen last",
+      "mac": "Shift+Cmd+W",
+      "windows": "Ctrl+Shift+W"
+    },
+    {
+      "name": "Open the People view",
+      "context": "General",
+      "label": "People view",
+      "mac": "Shift+Cmd+E",
+      "windows": "Ctrl+Shift+E"
+    },
+    {
+      "name": "Quit Slack",
+      "context": "General",
+      "mac": "Cmd+Q",
+      "windows": "Ctrl+Q"
+    },
+    {
+      "name": "Jump to the most recent unread message in a conversation",
+      "context": "Navigation",
+      "label": "Most recent",
+      "mac": "Cmd+J",
+      "windows": "Ctrl+J"
+    },
+    {
+      "name": "Jump to previous unread channel or direct message (DM)",
+      "context": "Navigation",
+      "label": "Previous",
+      "mac": "Option+Shift+Up",
+      "windows": "Alt+Shift+Up"
+    },
+    {
+      "name": "Jump to next unread channel or DM",
+      "context": "Navigation",
+      "label": "Next unread",
+      "mac": "Option+Shift+Down",
+      "windows": "Alt+Shift+Down"
+    },
+    {
+      "name": "Jump to previous channel or DM in the sidebar",
+      "context": "Navigation",
+      "label": "Previous",
+      "mac": "Option+Up",
+      "windows": "Alt+Up"
+    },
+    {
+      "name": "Jump to next channel or DM in the sidebar",
+      "context": "Navigation",
+      "label": "Next channel",
+      "mac": "Option+Down",
+      "windows": "Alt+Down"
+    },
+    {
+      "name": "Go back in history",
+      "context": "Navigation",
+      "label": "Go back",
+      "mac": "Cmd+[",
+      "windows": "Alt+Left"
+    },
+    {
+      "name": "Go forward in history",
+      "context": "Navigation",
+      "label": "Go forward",
+      "mac": "Cmd+]",
+      "windows": "Alt+Right"
+    },
+    {
+      "name": "Open the Home view",
+      "context": "Navigation",
+      "label": "Home view",
+      "mac": "Ctrl+1",
+      "windows": "Ctrl+Shift+1"
+    },
+    {
+      "name": "Browse DMs",
+      "context": "Navigation",
+      "mac": "Shift+Cmd+K",
+      "windows": "Ctrl+Shift+2"
+    },
+    {
+      "name": "Open the Activity view",
+      "context": "Navigation",
+      "label": "Activity",
+      "mac": "Shift+Cmd+M",
+      "windows": "Ctrl+Shift+M"
+    },
+    {
+      "name": "Open the More View",
+      "context": "Navigation",
+      "label": "More View",
+      "mac": "Ctrl+0",
+      "windows": "Ctrl+Shift+0"
+    },
+    {
+      "name": "Open the Threads view",
+      "context": "Navigation",
+      "label": "Threads view",
+      "mac": "Shift+Cmd+T",
+      "windows": "Ctrl+Shift+T"
+    },
+    {
+      "name": "Browse channels",
+      "context": "Navigation",
+      "label": "Browse",
+      "mac": "Shift+Cmd+L",
+      "windows": "Ctrl+Shift+L"
+    },
+    {
+      "name": "Open conversation details",
+      "context": "Navigation",
+      "label": "Conversation",
+      "mac": "Shift+Cmd+I",
+      "windows": "Ctrl+Shift+I"
+    },
+    {
+      "name": "Move focus to the next section",
+      "context": "Navigation",
+      "label": "Next section",
+      "mac": "F6",
+      "windows": "F6"
+    },
+    {
+      "name": "Move focus to the previous section",
+      "context": "Navigation",
+      "label": "Previous",
+      "mac": "Shift+F6",
+      "windows": "Shift+F6"
+    },
+    {
+      "name": "Jump to a conversation",
+      "context": "Navigation",
+      "label": "Conversation",
+      "windows": "Ctrl+K"
+    },
+    {
+      "name": "Mark all messages in current conversation as read",
+      "context": "Read state",
+      "label": "Mark",
+      "mac": "Esc",
+      "windows": "Esc"
+    },
+    {
+      "name": "Mark all messages as read",
+      "context": "Read state",
+      "label": "Mark",
+      "mac": "Shift+Esc",
+      "windows": "Shift+Esc"
+    },
+    {
+      "name": "Open the All unreads view",
+      "context": "All unreads",
+      "label": "Unreads view",
+      "mac": "Shift+Cmd+A",
+      "windows": "Ctrl+Shift+A"
+    },
+    {
+      "name": "Mark a group of messages as read",
+      "context": "All unreads",
+      "label": "Mark group",
+      "mac": "Esc",
+      "windows": "Esc"
+    },
+    {
+      "name": "Expand or collapse the workspace switcher",
+      "context": "Workspaces",
+      "label": "Expand",
+      "mac": "Shift+Cmd+S",
+      "windows": "Ctrl+Shift+S"
+    },
+    {
+      "name": "Switch to previous workspace",
+      "context": "Workspaces",
+      "label": "Previous",
+      "mac": "Ctrl+Shift+Tab",
+      "windows": "Ctrl+Shift+Tab"
+    },
+    {
+      "name": "Switch to next workspace",
+      "context": "Workspaces",
+      "label": "Next",
+      "mac": "Ctrl+Tab",
+      "windows": "Ctrl+Tab"
+    },
+    {
+      "name": "Switch to the previous tab",
+      "context": "Tabs",
+      "label": "Previous tab",
+      "mac": "Ctrl+PageUp",
+      "windows": "Ctrl+PageUp"
+    },
+    {
+      "name": "Switch to the next tab",
+      "context": "Tabs",
+      "label": "Next tab",
+      "mac": "Ctrl+PageDown",
+      "windows": "Ctrl+PageDown"
+    },
+    {
+      "name": "Select text to beginning of current line",
+      "context": "Formatting",
+      "label": "Text",
+      "mac": "Shift+Up",
+      "windows": "Shift+Up"
+    },
+    {
+      "name": "Select text to end of current line",
+      "context": "Formatting",
+      "label": "Text end",
+      "mac": "Shift+Down",
+      "windows": "Shift+Down"
+    },
+    {
+      "name": "Create a new line",
+      "context": "Formatting",
+      "label": "Create new",
+      "mac": "Shift+Enter",
+      "windows": "Shift+Enter"
+    },
+    {
+      "name": "Bold selected text",
+      "context": "Formatting",
+      "label": "Bold text",
+      "mac": "Cmd+B",
+      "windows": "Ctrl+B"
+    },
+    {
+      "name": "Italicize selected text",
+      "context": "Formatting",
+      "label": "Italicize",
+      "mac": "Cmd+I",
+      "windows": "Ctrl+I"
+    },
+    {
+      "name": "Underline selected text",
+      "context": "Formatting",
+      "label": "Underline",
+      "mac": "Cmd+U"
+    },
+    {
+      "name": "Strikethrough selected text",
+      "context": "Formatting",
+      "label": "Strikethroug",
+      "mac": "Shift+Cmd+X",
+      "windows": "Ctrl+Shift+X"
+    },
+    {
+      "name": "Hyperlink selected text",
+      "context": "Formatting",
+      "label": "Hyperlink",
+      "mac": "Shift+Cmd+U",
+      "windows": "Ctrl+Shift+U"
+    },
+    {
+      "name": "Quote selected text",
+      "context": "Formatting",
+      "label": "Quote text",
+      "mac": "Shift+Cmd+9",
+      "windows": "Ctrl+Shift+9"
+    },
+    {
+      "name": "Code selected text",
+      "context": "Formatting",
+      "label": "Code text",
+      "mac": "Shift+Cmd+C",
+      "windows": "Ctrl+Shift+C"
+    },
+    {
+      "name": "Codeblock selected text",
+      "context": "Formatting",
+      "label": "Codeblock",
+      "mac": "Option+Shift+Cmd+C",
+      "windows": "Ctrl+Alt+Shift+C"
+    },
+    {
+      "name": "Format selected text as a bulleted list",
+      "context": "Formatting",
+      "label": "Format text",
+      "mac": "Shift+Cmd+8",
+      "windows": "Ctrl+Shift+8"
+    },
+    {
+      "name": "Format selected text as a numbered list",
+      "context": "Formatting",
+      "label": "Format text",
+      "mac": "Shift+Cmd+7",
+      "windows": "Ctrl+Shift+7"
+    },
+    {
+      "name": "Apply markdown formatting",
+      "context": "Formatting",
+      "label": "Apply",
+      "mac": "Shift+Cmd+F",
+      "windows": "Ctrl+Shift+F"
+    },
+    {
+      "name": "Undo formatting",
+      "context": "Formatting",
+      "label": "Undo",
+      "mac": "Cmd+Z",
+      "windows": "Ctrl+Z"
+    },
+    {
+      "name": "Format selected text as paragraph",
+      "context": "Canvas formatting",
+      "label": "Format text",
+      "mac": "Option+Cmd+0",
+      "windows": "Ctrl+Alt+0"
+    },
+    {
+      "name": "Format selected text as big heading",
+      "context": "Canvas formatting",
+      "label": "Format text",
+      "mac": "Option+Cmd+1",
+      "windows": "Ctrl+Alt+1"
+    },
+    {
+      "name": "Format selected text as medium heading",
+      "context": "Canvas formatting",
+      "label": "Format text",
+      "mac": "Option+Cmd+2",
+      "windows": "Ctrl+Alt+2"
+    },
+    {
+      "name": "Format selected text as small heading",
+      "context": "Canvas formatting",
+      "label": "Format text",
+      "mac": "Option+Cmd+3",
+      "windows": "Ctrl+Alt+3"
+    },
+    {
+      "name": "Format selected text as checklist",
+      "context": "Canvas formatting",
+      "label": "Format text",
+      "mac": "Shift+Cmd+0",
+      "windows": "Ctrl+Shift+0"
+    },
+    {
+      "name": "Format selected text as bulleted list",
+      "context": "Canvas formatting",
+      "label": "Format text",
+      "mac": "Shift+Cmd+8",
+      "windows": "Ctrl+Shift+8"
+    },
+    {
+      "name": "Format selected text as numbered list",
+      "context": "Canvas formatting",
+      "label": "Format text",
+      "mac": "Shift+Cmd+7",
+      "windows": "Ctrl+Shift+7"
+    },
+    {
+      "name": "Toggle heading and list styles",
+      "context": "Canvas formatting",
+      "label": "Heading list",
+      "mac": "Ctrl+`",
+      "windows": "Ctrl+`"
+    },
+    {
+      "name": "View comment thread",
+      "context": "Canvases",
+      "label": "Comment",
+      "mac": "Option+Cmd+T",
+      "windows": "Ctrl+Alt+T"
+    },
+    {
+      "name": "Show reader or edit view",
+      "context": "Canvases",
+      "label": "Reader edit",
+      "mac": "Option+Cmd+R",
+      "windows": "Ctrl+Alt+R"
+    },
+    {
+      "name": "Open context menu",
+      "context": "Canvases",
+      "label": "Context menu",
+      "mac": "Shift+Cmd+/",
+      "windows": "Shift+F10"
+    },
+    {
+      "name": "Find text in the canvas",
+      "context": "Canvases",
+      "label": "Find text",
+      "mac": "Cmd+F",
+      "windows": "Ctrl+F"
+    },
+    {
+      "name": "Find next",
+      "context": "Canvases",
+      "mac": "Cmd+G",
+      "windows": "Ctrl+G"
+    },
+    {
+      "name": "Find previous",
+      "context": "Canvases",
+      "label": "Find",
+      "mac": "Shift+Cmd+G",
+      "windows": "Ctrl+Shift+G"
+    },
+    {
+      "name": "Find and replace",
+      "context": "Canvases",
+      "label": "Find replace",
+      "mac": "Shift+Cmd+H",
+      "windows": "Ctrl+Shift+H"
+    },
+    {
+      "name": "Copy anchor link to section",
+      "context": "Canvases",
+      "label": "Copy anchor",
+      "mac": "Ctrl+Option+Q",
+      "windows": "Ctrl+Alt+Q"
+    },
+    {
+      "name": "Undo last action",
+      "context": "Canvases",
+      "label": "Undo last",
+      "mac": "Cmd+Z",
+      "windows": "Ctrl+Z"
+    },
+    {
+      "name": "Redo last action",
+      "context": "Canvases",
+      "label": "Redo last",
+      "mac": "Shift+Cmd+Z",
+      "windows": "Ctrl+Shift+Z"
+    },
+    {
+      "name": "Move item in a formatted list up",
+      "context": "Canvases",
+      "label": "Move item",
+      "mac": "Option+Cmd+Up",
+      "windows": "Ctrl+Alt+Up"
+    },
+    {
+      "name": "Move item in a formatted list down",
+      "context": "Canvases",
+      "label": "Move item",
+      "mac": "Option+Cmd+Down",
+      "windows": "Ctrl+Alt+Down"
+    },
+    {
+      "name": "Edit a message you sent",
+      "context": "Messages",
+      "label": "Edit message",
+      "mac": "E",
+      "windows": "E"
+    },
+    {
+      "name": "Delete a message you sent",
+      "context": "Messages",
+      "label": "Delete",
+      "mac": "Delete",
+      "windows": "Delete"
+    },
+    {
+      "name": "Forward a message",
+      "context": "Messages",
+      "label": "Forward",
+      "mac": "F",
+      "windows": "F"
+    },
+    {
+      "name": "Pin or unpin a message",
+      "context": "Messages",
+      "label": "Pin unpin",
+      "mac": "P",
+      "windows": "P"
+    },
+    {
+      "name": "Save a message (or remove a message from Saved )",
+      "context": "Messages",
+      "label": "Save message",
+      "mac": "A",
+      "windows": "A"
+    },
+    {
+      "name": "Mark all messages above the one in focus as unread",
+      "context": "Messages",
+      "label": "Mark",
+      "mac": "U",
+      "windows": "U"
+    },
+    {
+      "name": "Create a reminder about a message",
+      "context": "Messages",
+      "label": "Create",
+      "mac": "M",
+      "windows": "M"
+    },
+    {
+      "name": "Add an emoji reaction to a message",
+      "context": "Messages",
+      "label": "Add emoji",
+      "mac": "R",
+      "windows": "R"
+    }
+  ]
+}

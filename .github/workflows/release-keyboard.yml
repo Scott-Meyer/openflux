@@ -1,0 +1,156 @@
+# Builds and uploads a keyboard package release: bridge-vX.Y.Z or
+# display-vX.Y.Z (optionally -beta.N).
+#
+# Built natively on GitHub's arm64 runners in keyboard/<component>/
+# Dockerfile.build. Inside it, the component's Makefile builds the packages
+# into OUT_DIR, honoring SOURCE_DATE_EPOCH:
+#   bridge:  `make ipk` (openflux-bridge_<v>_aarch64.ipk) and
+#            `make factory-restore-ipk` (openflux-factory-restore_<v>_aarch64.ipk,
+#            the package that starts a reset to the factory software)
+#   display: `make ipk` (openflux-display_<v>_aarch64.ipk, with the bundled
+#            openflux-ffmpeg), plus openflux-ffmpeg-source-*.tar.xz and
+#            openflux-ffmpeg-build.txt, the LGPL source and build
+#            configuration of that FFmpeg
+# Everything the Makefile writes is published. The .ipk files are the
+# artifacts the update index lists; the other files are release files.
+#
+# Reproducibility: .github/scripts/build-keyboard-packages.sh builds the
+# packages twice, each round in its own freshly created build and Cargo
+# target directories (mounted at the same path inside the container, so
+# paths compiled into the binaries match). Both rounds must compile the
+# component, and the two sets of files must be identical. The packages are
+# then checked for architecture, linkage and required files before upload.
+
+name: Release keyboard package
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      publish-index:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing bridge-v* or display-v* tag to rebuild
+        type: string
+        required: true
+      publish-index:
+        description: Publish the update index afterwards (needs approval)
+        type: boolean
+        default: true
+
+permissions: {}
+
+env:
+  # Newest glibc symbol version the keyboard OS provides (display only; the
+  # bridge and the display's openflux-ffmpeg are fully static).
+  KEYBOARD_GLIBC_MAX: "2.36"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: meta
+        run: .github/scripts/release-meta.sh "$TAG"
+        env:
+          TAG: ${{ inputs.tag }}
+        shell: bash
+
+      - name: Check component
+        env:
+          COMPONENT: ${{ steps.meta.outputs.component }}
+        run: |
+          case "$COMPONENT" in
+            bridge|display) ;;
+            *) echo "release-keyboard builds bridge and display, not $COMPONENT" >&2; exit 1 ;;
+          esac
+
+      - name: Build environment
+        env:
+          COMPONENT: ${{ steps.meta.outputs.component }}
+        run: docker build -t "openflux-$COMPONENT-build" -f "keyboard/$COMPONENT/Dockerfile.build" "keyboard/$COMPONENT"
+
+      - name: Build (twice, from clean directories)
+        env:
+          COMPONENT: ${{ steps.meta.outputs.component }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          SOURCE_DATE_EPOCH: ${{ steps.meta.outputs.source_date_epoch }}
+        run: .github/scripts/build-keyboard-packages.sh "$COMPONENT" "$VERSION" dist
+
+      - name: Check packages
+        env:
+          COMPONENT: ${{ steps.meta.outputs.component }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          check=.github/scripts/check-keyboard-ipk.sh
+          case "$COMPONENT" in
+            bridge)
+              "$check" "dist/artifacts/openflux-bridge_${VERSION}_aarch64.ipk" openflux-bridge "$VERSION" static \
+                --require /usr/lib/openflux/bridge/openflux-bridge \
+                --require /usr/lib/openflux/bridge/restore-factory.sh
+              "$check" "dist/artifacts/openflux-factory-restore_${VERSION}_aarch64.ipk" openflux-factory-restore "$VERSION" static --no-executables
+              ;;
+            display)
+              "$check" "dist/artifacts/openflux-display_${VERSION}_aarch64.ipk" openflux-display "$VERSION" glibc \
+                --require /usr/lib/openflux/display/openflux-display \
+                --require /usr/lib/openflux/display/openflux-ffmpeg \
+                --require /usr/lib/openflux/display/licenses/FFMPEG-LGPL-2.1.txt \
+                --require /usr/lib/openflux/display/licenses/FFMPEG-NOTICE.txt
+              compgen -G "dist/extra/openflux-ffmpeg-source-*.tar.xz" > /dev/null ||
+                { echo "the display build did not write the FFmpeg source archive" >&2; exit 1; }
+              [ -f dist/extra/openflux-ffmpeg-build.txt ] ||
+                { echo "the display build did not write openflux-ffmpeg-build.txt" >&2; exit 1; }
+              ;;
+          esac
+          extra="$(find dist/artifacts -type f ! -name 'openflux-*_aarch64.ipk')"
+          [ -z "$extra" ] || { echo "unexpected files among the artifacts: $extra" >&2; exit 1; }
+
+      - name: SBOM
+        env:
+          COMPONENT: ${{ steps.meta.outputs.component }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          mkdir -p dist/extra
+          cargo install --locked cargo-cyclonedx@0.5.10
+          cargo cyclonedx --manifest-path "keyboard/$COMPONENT/Cargo.toml" --format json --spec-version 1.5 \
+            --all --target aarch64-unknown-linux-gnu --override-filename "openflux-$COMPONENT-$VERSION.cdx"
+          mv "keyboard/$COMPONENT/openflux-$COMPONENT-$VERSION.cdx.json" dist/extra/
+
+      - uses: ./.github/actions/publish-release-assets
+        with:
+          tag: ${{ inputs.tag }}
+          component: ${{ steps.meta.outputs.component }}
+          version: ${{ steps.meta.outputs.version }}
+          channel: ${{ steps.meta.outputs.channel }}
+          release-url: ${{ steps.meta.outputs.release_url }}
+          notes-url: ${{ steps.meta.outputs.notes_url }}
+          artifacts: dist/artifacts
+          extra: dist/extra
+          github-token: ${{ github.token }}
+
+  publish-index:
+    needs: build
+    if: inputs.publish-index
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      deployments: write
+    uses: ./.github/workflows/publish-index.yml

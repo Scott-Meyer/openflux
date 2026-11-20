@@ -1,0 +1,15 @@
+#!/bin/sh
+# Debian maintainer script for the OpenFlux Studio .deb (postrm).
+set -e
+
+case "$1" in
+    remove|purge)
+        if command -v udevadm >/dev/null 2>&1; then
+            udevadm control --reload-rules || true
+        fi
+        ;;
+esac
+
+# User data under ~/.local/share/openflux belongs to each user and is never
+# removed by the package, including on purge.
+exit 0

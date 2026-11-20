@@ -1,0 +1,19 @@
+[package]
+name = "lfs-tool"
+version = "0.1.0"
+edition = "2021"
+description = "Rust CLI for extracting and building 1 MiB RP2040 LittleFS v2 images"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+littlefs2 = "0.6"
+
+[[bin]]
+name = "lfs_tool"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1

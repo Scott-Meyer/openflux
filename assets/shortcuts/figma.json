@@ -1,0 +1,270 @@
+{
+  "name": "Figma",
+  "source": "https://help.figma.com/hc/en-us/articles/360040328653-Use-shortcuts-and-quick-actions",
+  "platforms": [
+    "mac",
+    "windows"
+  ],
+  "apps": {
+    "macos": [
+      "com.figma.Desktop"
+    ],
+    "windows": [
+      "Figma.exe"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "Move tool",
+      "context": "Tools",
+      "label": "Move",
+      "mac": "V",
+      "windows": "V"
+    },
+    {
+      "name": "Scale tool",
+      "context": "Tools",
+      "label": "Scale",
+      "mac": "K",
+      "windows": "K"
+    },
+    {
+      "name": "Frame tool",
+      "context": "Tools",
+      "label": "Frame",
+      "mac": "F",
+      "windows": "F"
+    },
+    {
+      "name": "Rectangle tool",
+      "context": "Tools",
+      "label": "Rect",
+      "mac": "R",
+      "windows": "R"
+    },
+    {
+      "name": "Ellipse tool",
+      "context": "Tools",
+      "label": "Ellipse",
+      "mac": "O",
+      "windows": "O"
+    },
+    {
+      "name": "Line tool",
+      "context": "Tools",
+      "label": "Line",
+      "mac": "L",
+      "windows": "L"
+    },
+    {
+      "name": "Pen tool",
+      "context": "Tools",
+      "label": "Pen",
+      "mac": "P",
+      "windows": "P"
+    },
+    {
+      "name": "Text tool",
+      "context": "Tools",
+      "label": "Text",
+      "mac": "T",
+      "windows": "T"
+    },
+    {
+      "name": "Comment tool",
+      "context": "Tools",
+      "label": "Comment",
+      "mac": "C",
+      "windows": "C"
+    },
+    {
+      "name": "Eyedropper",
+      "context": "Tools",
+      "label": "Picker",
+      "mac": "I",
+      "windows": "I"
+    },
+    {
+      "name": "Quick actions",
+      "context": "General",
+      "label": "Actions",
+      "mac": "Cmd+K",
+      "windows": "Ctrl+K"
+    },
+    {
+      "name": "Toggle UI",
+      "context": "View",
+      "label": "Toggle UI",
+      "mac": "Cmd+\\",
+      "windows": "Ctrl+\\"
+    },
+    {
+      "name": "Zoom to 100%",
+      "context": "View",
+      "label": "Zoom 100%",
+      "mac": "Shift+0",
+      "windows": "Shift+0"
+    },
+    {
+      "name": "Zoom to fit",
+      "context": "View",
+      "label": "Zoom Fit",
+      "mac": "Shift+1",
+      "windows": "Shift+1"
+    },
+    {
+      "name": "Zoom to selection",
+      "context": "View",
+      "label": "Zoom Sel",
+      "mac": "Shift+2",
+      "windows": "Shift+2"
+    },
+    {
+      "name": "Toggle rulers",
+      "context": "View",
+      "label": "Rulers",
+      "mac": "Shift+R",
+      "windows": "Shift+R"
+    },
+    {
+      "name": "Toggle outlines",
+      "context": "View",
+      "label": "Outlines",
+      "mac": "Shift+O",
+      "windows": "Shift+O"
+    },
+    {
+      "name": "Group selection",
+      "context": "Layers",
+      "label": "Group",
+      "mac": "Cmd+G",
+      "windows": "Ctrl+G"
+    },
+    {
+      "name": "Ungroup selection",
+      "context": "Layers",
+      "label": "Ungroup",
+      "mac": "Cmd+Shift+G",
+      "windows": "Ctrl+Shift+G"
+    },
+    {
+      "name": "Frame selection",
+      "context": "Layers",
+      "label": "Frame Sel",
+      "mac": "Cmd+Option+G",
+      "windows": "Ctrl+Alt+G"
+    },
+    {
+      "name": "Add Auto Layout",
+      "context": "Layout",
+      "label": "Auto Lay",
+      "mac": "Shift+A",
+      "windows": "Shift+A"
+    },
+    {
+      "name": "Create component",
+      "context": "Components",
+      "label": "Component",
+      "mac": "Cmd+Option+K",
+      "windows": "Ctrl+Alt+K"
+    },
+    {
+      "name": "Detach instance",
+      "context": "Components",
+      "label": "Detach",
+      "mac": "Cmd+Option+B",
+      "windows": "Ctrl+Alt+B"
+    },
+    {
+      "name": "Duplicate",
+      "context": "Edit",
+      "label": "Duplicate",
+      "mac": "Cmd+D",
+      "windows": "Ctrl+D"
+    },
+    {
+      "name": "Copy properties",
+      "context": "Edit",
+      "label": "Copy Prop",
+      "mac": "Cmd+Option+C",
+      "windows": "Ctrl+Alt+C"
+    },
+    {
+      "name": "Paste properties",
+      "context": "Edit",
+      "label": "Paste Prop",
+      "mac": "Cmd+Option+V",
+      "windows": "Ctrl+Alt+V"
+    },
+    {
+      "name": "Bring forward",
+      "context": "Arrange",
+      "label": "Forward",
+      "mac": "Cmd+]",
+      "windows": "Ctrl+]"
+    },
+    {
+      "name": "Send backward",
+      "context": "Arrange",
+      "label": "Backward",
+      "mac": "Cmd+[",
+      "windows": "Ctrl+["
+    },
+    {
+      "name": "Bring to front",
+      "context": "Arrange",
+      "label": "To Front",
+      "mac": "]",
+      "windows": "]"
+    },
+    {
+      "name": "Send to back",
+      "context": "Arrange",
+      "label": "To Back",
+      "mac": "[",
+      "windows": "["
+    },
+    {
+      "name": "Show or hide selection",
+      "context": "Layers",
+      "label": "Hide",
+      "mac": "Cmd+Shift+H",
+      "windows": "Ctrl+Shift+H"
+    },
+    {
+      "name": "Lock or unlock selection",
+      "context": "Layers",
+      "label": "Lock",
+      "mac": "Cmd+Shift+L",
+      "windows": "Ctrl+Shift+L"
+    },
+    {
+      "name": "Flip horizontal",
+      "context": "Transform",
+      "label": "Flip H",
+      "mac": "Shift+H",
+      "windows": "Shift+H"
+    },
+    {
+      "name": "Flip vertical",
+      "context": "Transform",
+      "label": "Flip V",
+      "mac": "Shift+V",
+      "windows": "Shift+V"
+    },
+    {
+      "name": "Rename selection",
+      "context": "Layers",
+      "label": "Rename",
+      "mac": "Cmd+R",
+      "windows": "Ctrl+R"
+    },
+    {
+      "name": "Export",
+      "context": "File",
+      "label": "Export",
+      "mac": "Cmd+Shift+E",
+      "windows": "Ctrl+Shift+E"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+schema = 1
+
+[interfaces.bridge-usb]
+version = "1.0"
+kind = "protocol"
+summary = "host to bridge"
+
+[interfaces.firmware-usb]
+version = "1.0"
+kind = "protocol"
+summary = "host to firmware"
+
+[interfaces.uart]
+version = "1.0"
+kind = "protocol"
+summary = "bridge to firmware"
+
+[interfaces.display-ipc]
+version = "1.0"
+kind = "protocol"
+summary = "bridge to display"
+
+[interfaces.keymap]
+version = "1.0"
+kind = "data"
+summary = "keymap"
+
+[interfaces.config]
+version = "1.0"
+kind = "data"
+summary = "display config"
+
+[components.host]
+version = "1.0.0"
+requires = { bridge-usb = ">=1.0, <2.0", firmware-usb = ">=1.0, <2.0", keymap = ">=1.0, <2.0", config = ">=1.0, <2.0" }
+
+[components.firmware]
+version = "1.0.0"
+provides = ["firmware-usb", "uart", "keymap"]
+update-transport = ["firmware-usb"]
+
+[components.bridge]
+version = "1.0.0"
+provides = ["bridge-usb", "display-ipc"]
+requires = { uart = ">=1.0, <2.0" }
+update-transport = ["bridge-usb"]
+
+[components.display]
+version = "1.0.0"
+provides = ["config"]
+requires = { display-ipc = ">=1.0, <2.0" }
+update-transport = ["bridge-usb"]

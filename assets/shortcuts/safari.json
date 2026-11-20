@@ -1,0 +1,192 @@
+{
+  "name": "Safari",
+  "source": "https://support.apple.com/guide/safari/keyboard-and-other-shortcuts-cpsh003/mac",
+  "platforms": [
+    "mac"
+  ],
+  "apps": {
+    "macos": [
+      "com.apple.Safari"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "Search the current webpage",
+      "context": "Webpage",
+      "label": "Search",
+      "mac": "Cmd+F"
+    },
+    {
+      "name": "Restore the page address in the Smart Search field",
+      "context": "Webpage",
+      "label": "Restore",
+      "mac": "Esc"
+    },
+    {
+      "name": "Select the Smart Search field",
+      "context": "Webpage",
+      "label": "Smart Search",
+      "mac": "Cmd+L"
+    },
+    {
+      "name": "Print the current webpage",
+      "context": "Webpage",
+      "label": "Print",
+      "mac": "Cmd+P"
+    },
+    {
+      "name": "Show tab overview",
+      "context": "Tabs",
+      "label": "Tab overview",
+      "mac": "Shift+Cmd+\\"
+    },
+    {
+      "name": "Go to the next tab",
+      "context": "Tabs",
+      "label": "Next tab",
+      "mac": "Ctrl+Tab"
+    },
+    {
+      "name": "Go to the previous tab",
+      "context": "Tabs",
+      "label": "Previous tab",
+      "mac": "Ctrl+Shift+Tab"
+    },
+    {
+      "name": "Select one of your first eight tabs",
+      "context": "Tabs",
+      "label": "One first",
+      "mac": "Cmd+1"
+    },
+    {
+      "name": "Select your last tab",
+      "context": "Tabs",
+      "label": "Last tab",
+      "mac": "Cmd+9"
+    },
+    {
+      "name": "Close the active tab",
+      "context": "Tabs",
+      "label": "Close active",
+      "mac": "Cmd+W"
+    },
+    {
+      "name": "Reopen the last tab you closed",
+      "context": "Tabs",
+      "label": "Reopen last",
+      "mac": "Shift+Cmd+T"
+    },
+    {
+      "name": "Go to your homepage",
+      "context": "General",
+      "label": "Homepage",
+      "mac": "Shift+Cmd+H"
+    },
+    {
+      "name": "Change Safari settings",
+      "context": "General",
+      "label": "Safari",
+      "mac": "Cmd+,"
+    },
+    {
+      "name": "Go back to the previous webpage",
+      "context": "Navigation",
+      "label": "Go back",
+      "mac": "Cmd+["
+    },
+    {
+      "name": "Go forward to the next webpage",
+      "context": "Navigation",
+      "label": "Go forward",
+      "mac": "Cmd+]"
+    },
+    {
+      "name": "Exit full-screen view",
+      "context": "View",
+      "label": "Exit",
+      "mac": "Esc"
+    },
+    {
+      "name": "Reopen the last window you closed",
+      "context": "Windows",
+      "label": "Reopen last",
+      "mac": "Shift+Cmd+T"
+    },
+    {
+      "name": "Show or Hide the Reading List sidebar",
+      "context": "Reading List",
+      "label": "Reading List",
+      "mac": "Ctrl+Cmd+2"
+    },
+    {
+      "name": "Add the current webpage",
+      "context": "Reading List",
+      "label": "Add",
+      "mac": "Shift+Cmd+D"
+    },
+    {
+      "name": "Open Reader",
+      "context": "Reading List",
+      "mac": "Shift+Cmd+R"
+    },
+    {
+      "name": "Show or Hide the Bookmarks sidebar",
+      "context": "Bookmarks",
+      "label": "Bookmarks",
+      "mac": "Ctrl+Cmd+1"
+    },
+    {
+      "name": "Select the next bookmark or folder",
+      "context": "Bookmarks",
+      "label": "Next",
+      "mac": "Up"
+    },
+    {
+      "name": "Zoom in",
+      "context": "View",
+      "mac": "Cmd+="
+    },
+    {
+      "name": "Zoom out",
+      "context": "View",
+      "mac": "Cmd+-"
+    },
+    {
+      "name": "Actual size",
+      "context": "View",
+      "mac": "Cmd+0"
+    },
+    {
+      "name": "Reload the page",
+      "context": "Webpage",
+      "label": "Reload",
+      "mac": "Cmd+R"
+    },
+    {
+      "name": "New tab",
+      "context": "Tabs",
+      "mac": "Cmd+T"
+    },
+    {
+      "name": "New window",
+      "context": "Windows",
+      "mac": "Cmd+N"
+    },
+    {
+      "name": "New private window",
+      "context": "Windows",
+      "label": "New private",
+      "mac": "Shift+Cmd+N"
+    },
+    {
+      "name": "Add bookmark",
+      "context": "Bookmarks",
+      "mac": "Cmd+D"
+    },
+    {
+      "name": "Show history",
+      "context": "General",
+      "mac": "Cmd+Y"
+    }
+  ]
+}

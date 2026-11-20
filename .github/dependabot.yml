@@ -1,0 +1,37 @@
+# Dependency update pull requests. Commit messages follow Conventional
+# Commits: Rust and npm updates use the "deps" type, which release-please
+# lists under Dependencies. An npm update (host/studio) releases the host as a
+# patch; an update that changes only Cargo.lock ships with each component's
+# next release. Workflow updates use "ci", which does not cause a release.
+
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    groups:
+      rust-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /host/studio
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    groups:
+      npm-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]

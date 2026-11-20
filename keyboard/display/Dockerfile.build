@@ -1,0 +1,46 @@
+# Container for cross-building openflux-display and openflux-ffmpeg (`keyboard/display` build context).
+# rust:1-slim-bookworm
+FROM rust:1-slim-bookworm@sha256:7c7d4eb4d05b7781187a327809466cfddf29753f6defdc3d19a0e291951b7a37
+ARG FFMPEG_VERSION=6.1.2
+ARG FFMPEG_SHA256=3b624649725ecdc565c903ca6643d41f33bd49239922e45c9b1442c63dca4e38
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+    gcc g++ make musl-tools libc6-dev gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross \
+    libwayland-dev wayland-protocols libjpeg62-turbo-dev libegl-dev libgles-dev \
+    weston ffmpeg qemu-user-static python3 file curl ca-certificates xz-utils bzip2 pkg-config && \
+    rustup toolchain install 1.90.0 --profile minimal --component rustc,cargo,rust-std && \
+    rustup default 1.90.0 && \
+    rustup target add --toolchain 1.90.0 aarch64-unknown-linux-musl aarch64-unknown-linux-gnu && \
+    if [ "$(uname -m)" != "aarch64" ]; then \
+      mkdir -p /usr/local/cargo && \
+      printf '[target.aarch64-unknown-linux-gnu]\nlinker = "aarch64-linux-gnu-gcc"\n[target.aarch64-unknown-linux-musl]\nlinker = "aarch64-linux-gnu-gcc"\n' >> /usr/local/cargo/config.toml; \
+    fi && \
+    mkdir -p /tmp/ff /opt/openflux-ffmpeg && \
+    curl -fsSL "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" -o "/opt/openflux-ffmpeg/openflux-ffmpeg-source-${FFMPEG_VERSION}.tar.xz" && \
+    echo "${FFMPEG_SHA256}  /opt/openflux-ffmpeg/openflux-ffmpeg-source-${FFMPEG_VERSION}.tar.xz" | sha256sum -c - && \
+    tar -xJf "/opt/openflux-ffmpeg/openflux-ffmpeg-source-${FFMPEG_VERSION}.tar.xz" -C /tmp/ff && \
+    cd "/tmp/ff/ffmpeg-${FFMPEG_VERSION}" && \
+    cp COPYING.LGPLv2.1 /opt/openflux-ffmpeg/FFMPEG-LGPL-2.1.txt && \
+    CROSS_FLAGS=""; \
+    CC_NAME="gcc"; \
+    if [ "$(uname -m)" != "aarch64" ]; then \
+      CROSS_FLAGS="--enable-cross-compile --arch=aarch64 --target-os=linux --cross-prefix=aarch64-linux-gnu-"; \
+      CC_NAME="aarch64-linux-gnu-gcc"; \
+    fi && \
+    CONFIGURE_FLAGS="$CROSS_FLAGS --enable-static --disable-shared --disable-doc --disable-htmlpages --disable-manpages --disable-podpages --disable-txtpages --disable-debug --disable-ffplay --disable-ffprobe --disable-everything --enable-ffmpeg --enable-decoder=h264,hevc,vp8,vp9,mpeg4,mjpeg,gif,rawvideo --enable-encoder=rawvideo --enable-demuxer=mov,matroska,avi,gif,image2 --enable-muxer=rawvideo,hevc,h264 --enable-bsf=hevc_mp4toannexb,h264_mp4toannexb --enable-parser=h264,hevc,vp8,vp9,mpeg4video,mjpeg --enable-protocol=file,pipe --enable-filter=scale,fps,format --enable-swscale --enable-small --extra-ldflags=-static" && \
+    ./configure --prefix=/opt/openflux-ffmpeg $CONFIGURE_FLAGS && \
+    make -j"$(nproc)" && \
+    cp ffmpeg /opt/openflux-ffmpeg/openflux-ffmpeg && \
+    if [ "$(uname -m)" != "aarch64" ]; then aarch64-linux-gnu-strip /opt/openflux-ffmpeg/openflux-ffmpeg; else strip /opt/openflux-ffmpeg/openflux-ffmpeg; fi && \
+    { \
+      echo "component=openflux-ffmpeg"; \
+      echo "ffmpeg_version=${FFMPEG_VERSION}"; \
+      echo "source_tarball=openflux-ffmpeg-source-${FFMPEG_VERSION}.tar.xz"; \
+      echo "source_sha256=${FFMPEG_SHA256}"; \
+      echo "license=LGPL-2.1-or-later (COPYING.LGPLv2.1)"; \
+      echo "toolchain=$($CC_NAME --version | head -n 1)"; \
+      echo "configure_flags=$CONFIGURE_FLAGS"; \
+      echo "linking_note=Statically linked against Debian Bookworm glibc (-static) to remain independent of host target libc symbol versions; LGPL-2.1 corresponding source tarball and build configuration are published with each release."; \
+    } > /opt/openflux-ffmpeg/openflux-ffmpeg-build.txt && \
+    rm -rf /tmp/ff && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /work

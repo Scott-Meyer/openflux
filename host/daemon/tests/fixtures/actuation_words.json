@@ -1,0 +1,223 @@
+{
+  "defaultKeymapModes": [
+    {
+      "actuationPointMm": 1.2,
+      "id": "mode_0",
+      "mixedPerKey": false,
+      "name": "Typing",
+      "perKeyOverrides": {},
+      "rapidTrigger": false,
+      "releasePointMm": 0.4,
+      "touched": false,
+      "type": 1
+    },
+    {
+      "actuationPointMm": 1.0,
+      "id": "mode_1",
+      "mixedPerKey": false,
+      "name": "Gaming",
+      "perKeyOverrides": {},
+      "rapidTrigger": false,
+      "releasePointMm": 0.3,
+      "touched": false,
+      "type": 1
+    }
+  ],
+  "encodes": [
+    {
+      "actuationType": 1,
+      "actuationUm": 1200,
+      "secondUm": 400,
+      "word": 1075139155
+    },
+    {
+      "actuationType": 1,
+      "actuationUm": 1000,
+      "secondUm": 300,
+      "word": 1074917885
+    },
+    {
+      "actuationType": 1,
+      "actuationUm": 1200,
+      "secondUm": 1500,
+      "word": 1073742419
+    },
+    {
+      "actuationType": 1,
+      "actuationUm": 2000,
+      "secondUm": 1800,
+      "word": 1074271234
+    },
+    {
+      "actuationType": 1,
+      "actuationUm": 2800,
+      "secondUm": 0,
+      "word": 1080112659
+    },
+    {
+      "actuationType": 2,
+      "actuationUm": 600,
+      "secondUm": 400,
+      "word": 2148524368
+    },
+    {
+      "actuationType": 2,
+      "actuationUm": 100,
+      "secondUm": 2800,
+      "word": 2153853099
+    }
+  ],
+  "words": [
+    {
+      "actuationDensity": 595,
+      "actuationType": 1,
+      "actuationUm": 1200,
+      "entry": {
+        "actuationPointMm": 1.2,
+        "rapidTrigger": false,
+        "releasePointMm": 0.4,
+        "touched": false
+      },
+      "exact": true,
+      "firmwareDefault": false,
+      "secondDensity": 341,
+      "secondUm": 400,
+      "word": 1075139155
+    },
+    {
+      "actuationDensity": 509,
+      "actuationType": 1,
+      "actuationUm": 1000,
+      "entry": {
+        "actuationPointMm": 1.0,
+        "rapidTrigger": false,
+        "releasePointMm": 0.3,
+        "touched": false
+      },
+      "exact": true,
+      "firmwareDefault": false,
+      "secondDensity": 287,
+      "secondUm": 300,
+      "word": 1074917885
+    },
+    {
+      "actuationDensity": 336,
+      "actuationType": 2,
+      "actuationUm": 600,
+      "entry": {
+        "actuationPointMm": 0.6,
+        "rapidTrigger": true,
+        "rapidTriggerSensitivityMm": 0.4,
+        "touched": false
+      },
+      "exact": true,
+      "firmwareDefault": false,
+      "secondDensity": 254,
+      "secondUm": 400,
+      "word": 2148524368
+    },
+    {
+      "actuationDensity": 600,
+      "actuationType": 1,
+      "actuationUm": 1200,
+      "entry": {
+        "actuationPointMm": 1.2,
+        "firmwareWord": 1074152024,
+        "rapidTrigger": false,
+        "releasePointMm": 1.0,
+        "touched": false
+      },
+      "exact": false,
+      "firmwareDefault": false,
+      "secondDensity": 100,
+      "secondUm": 1000,
+      "word": 1074152024
+    },
+    {
+      "actuationDensity": 595,
+      "actuationType": 1,
+      "actuationUm": 1200,
+      "entry": {
+        "actuationPointMm": 1.2,
+        "rapidTrigger": false,
+        "releasePointMm": 1.2,
+        "touched": false
+      },
+      "exact": true,
+      "firmwareDefault": false,
+      "secondDensity": 0,
+      "secondUm": 1200,
+      "word": 1073742419
+    },
+    {
+      "actuationDensity": 256,
+      "actuationType": 1,
+      "actuationUm": 400,
+      "entry": {
+        "actuationPointMm": 0.4,
+        "firmwareWord": 1076887808,
+        "rapidTrigger": false,
+        "releasePointMm": 0.0,
+        "touched": false
+      },
+      "exact": false,
+      "firmwareDefault": false,
+      "secondDensity": 768,
+      "secondUm": 0,
+      "word": 1076887808
+    },
+    {
+      "actuationDensity": 336,
+      "actuationType": 2,
+      "actuationUm": 600,
+      "entry": {
+        "actuationPointMm": 0.6,
+        "firmwareWord": 2148303184,
+        "rapidTrigger": true,
+        "rapidTriggerSensitivityMm": 0.2,
+        "touched": false
+      },
+      "exact": false,
+      "firmwareDefault": false,
+      "secondDensity": 200,
+      "secondUm": 200,
+      "word": 2148303184
+    },
+    {
+      "actuationDensity": 650,
+      "actuationType": 1,
+      "actuationUm": 1300,
+      "entry": {
+        "actuationPointMm": 1.3,
+        "firmwareDefault": true,
+        "firmwareWord": 0,
+        "rapidTrigger": false,
+        "releasePointMm": 0.8,
+        "touched": false
+      },
+      "exact": false,
+      "firmwareDefault": true,
+      "secondDensity": 216,
+      "secondUm": 800,
+      "word": 0
+    },
+    {
+      "actuationDensity": 650,
+      "actuationType": 1,
+      "actuationUm": 1300,
+      "entry": {
+        "actuationPointMm": 1.3,
+        "firmwareDefault": true,
+        "firmwareWord": 3222418518,
+        "rapidTrigger": false,
+        "releasePointMm": 0.8,
+        "touched": false
+      },
+      "exact": false,
+      "firmwareDefault": true,
+      "secondDensity": 216,
+      "secondUm": 800,
+      "word": 3222418518
+    }
+  ]
+}

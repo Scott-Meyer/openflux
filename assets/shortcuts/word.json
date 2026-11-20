@@ -1,0 +1,383 @@
+{
+  "name": "Microsoft Word",
+  "source": "https://support.microsoft.com/en-us/office/keyboard-shortcuts-in-word-95ef89dd-7142-4b50-afb2-f762f663ceb2",
+  "platforms": [
+    "mac",
+    "windows"
+  ],
+  "apps": {
+    "macos": [
+      "com.microsoft.Word"
+    ],
+    "windows": [
+      "WINWORD.EXE"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "New document",
+      "context": "General",
+      "mac": "Cmd+N",
+      "windows": "Ctrl+N"
+    },
+    {
+      "name": "Open a document",
+      "context": "General",
+      "label": "Document",
+      "mac": "Cmd+O",
+      "windows": "Ctrl+O"
+    },
+    {
+      "name": "Save",
+      "context": "General",
+      "mac": "Cmd+S",
+      "windows": "Ctrl+S"
+    },
+    {
+      "name": "Save As",
+      "context": "General",
+      "mac": "Shift+Cmd+S",
+      "windows": "F12"
+    },
+    {
+      "name": "Close the document",
+      "context": "General",
+      "label": "Close",
+      "mac": "Cmd+W",
+      "windows": "Ctrl+W"
+    },
+    {
+      "name": "Print",
+      "context": "General",
+      "mac": "Cmd+P",
+      "windows": "Ctrl+P"
+    },
+    {
+      "name": "Undo",
+      "context": "General",
+      "mac": "Cmd+Z",
+      "windows": "Ctrl+Z"
+    },
+    {
+      "name": "Redo",
+      "context": "General",
+      "mac": "Cmd+Y",
+      "windows": "Ctrl+Y"
+    },
+    {
+      "name": "Find",
+      "context": "General",
+      "mac": "Cmd+F",
+      "windows": "Ctrl+F"
+    },
+    {
+      "name": "Replace",
+      "context": "General",
+      "mac": "Ctrl+H",
+      "windows": "Ctrl+H"
+    },
+    {
+      "name": "Go To",
+      "context": "General",
+      "mac": "Option+Cmd+G",
+      "windows": "Ctrl+G"
+    },
+    {
+      "name": "Spelling and Grammar",
+      "context": "General",
+      "label": "Spelling",
+      "mac": "Option+Cmd+L",
+      "windows": "F7"
+    },
+    {
+      "name": "Expand or minimize the ribbon",
+      "context": "General",
+      "label": "Expand",
+      "mac": "Option+Cmd+R",
+      "windows": "Ctrl+F1"
+    },
+    {
+      "name": "Zoom in",
+      "context": "General",
+      "mac": "Cmd+=",
+      "windows": "Ctrl+="
+    },
+    {
+      "name": "Zoom out",
+      "context": "General",
+      "mac": "Cmd+-",
+      "windows": "Ctrl+-"
+    },
+    {
+      "name": "Zoom to 100%",
+      "context": "General",
+      "mac": "Cmd+0",
+      "windows": "Ctrl+0"
+    },
+    {
+      "name": "Next window",
+      "context": "General",
+      "mac": "Cmd+`"
+    },
+    {
+      "name": "Split the window",
+      "context": "General",
+      "label": "Split window",
+      "windows": "Ctrl+Alt+S"
+    },
+    {
+      "name": "Cut",
+      "context": "Editing",
+      "mac": "Cmd+X",
+      "windows": "Ctrl+X"
+    },
+    {
+      "name": "Copy",
+      "context": "Editing",
+      "mac": "Cmd+C",
+      "windows": "Ctrl+C"
+    },
+    {
+      "name": "Paste",
+      "context": "Editing",
+      "mac": "Cmd+V",
+      "windows": "Ctrl+V"
+    },
+    {
+      "name": "Paste text only",
+      "context": "Editing",
+      "label": "Paste text",
+      "mac": "Shift+Cmd+V",
+      "windows": "Ctrl+Shift+V"
+    },
+    {
+      "name": "Paste Special",
+      "context": "Editing",
+      "label": "Paste",
+      "mac": "Ctrl+Cmd+V",
+      "windows": "Ctrl+Alt+V"
+    },
+    {
+      "name": "Select all",
+      "context": "Editing",
+      "mac": "Cmd+A",
+      "windows": "Ctrl+A"
+    },
+    {
+      "name": "Copy formatting",
+      "context": "Editing",
+      "label": "Copy",
+      "mac": "Option+Cmd+C",
+      "windows": "Ctrl+Alt+C"
+    },
+    {
+      "name": "Paste formatting",
+      "context": "Editing",
+      "label": "Paste",
+      "mac": "Option+Cmd+V",
+      "windows": "Ctrl+Alt+V"
+    },
+    {
+      "name": "Delete the word to the left",
+      "context": "Editing",
+      "label": "Delete word",
+      "mac": "Option+Backspace",
+      "windows": "Ctrl+Backspace"
+    },
+    {
+      "name": "Insert a hyperlink",
+      "context": "Editing",
+      "label": "Insert",
+      "mac": "Cmd+K",
+      "windows": "Ctrl+K"
+    },
+    {
+      "name": "Insert a footnote",
+      "context": "Editing",
+      "label": "Insert",
+      "mac": "Option+Cmd+F",
+      "windows": "Ctrl+Alt+F"
+    },
+    {
+      "name": "Insert an endnote",
+      "context": "Editing",
+      "label": "Insert",
+      "mac": "Option+Cmd+E",
+      "windows": "Ctrl+Alt+D"
+    },
+    {
+      "name": "Bold",
+      "context": "Formatting",
+      "mac": "Cmd+B",
+      "windows": "Ctrl+B"
+    },
+    {
+      "name": "Italic",
+      "context": "Formatting",
+      "mac": "Cmd+I",
+      "windows": "Ctrl+I"
+    },
+    {
+      "name": "Underline",
+      "context": "Formatting",
+      "mac": "Cmd+U",
+      "windows": "Ctrl+U"
+    },
+    {
+      "name": "Double underline",
+      "context": "Formatting",
+      "label": "Double",
+      "mac": "Shift+Cmd+D",
+      "windows": "Ctrl+Shift+D"
+    },
+    {
+      "name": "Strikethrough",
+      "context": "Formatting",
+      "label": "Strikethroug",
+      "mac": "Shift+Cmd+X"
+    },
+    {
+      "name": "Small caps",
+      "context": "Formatting",
+      "mac": "Shift+Cmd+K",
+      "windows": "Ctrl+Shift+K"
+    },
+    {
+      "name": "All caps",
+      "context": "Formatting",
+      "mac": "Shift+Cmd+A",
+      "windows": "Ctrl+Shift+A"
+    },
+    {
+      "name": "Change case",
+      "context": "Formatting",
+      "mac": "Shift+F3",
+      "windows": "Shift+F3"
+    },
+    {
+      "name": "Subscript",
+      "context": "Formatting",
+      "mac": "Cmd+=",
+      "windows": "Ctrl+="
+    },
+    {
+      "name": "Superscript",
+      "context": "Formatting",
+      "mac": "Shift+Cmd+=",
+      "windows": "Ctrl+Shift+="
+    },
+    {
+      "name": "Increase font size",
+      "context": "Formatting",
+      "label": "Increase",
+      "mac": "Shift+Cmd+.",
+      "windows": "Ctrl+Shift+."
+    },
+    {
+      "name": "Decrease font size",
+      "context": "Formatting",
+      "label": "Decrease",
+      "mac": "Shift+Cmd+,",
+      "windows": "Ctrl+Shift+,"
+    },
+    {
+      "name": "Increase font size by 1 point",
+      "context": "Formatting",
+      "label": "Increase",
+      "mac": "Cmd+]",
+      "windows": "Ctrl+]"
+    },
+    {
+      "name": "Decrease font size by 1 point",
+      "context": "Formatting",
+      "label": "Decrease",
+      "mac": "Cmd+[",
+      "windows": "Ctrl+["
+    },
+    {
+      "name": "Font dialog",
+      "context": "Formatting",
+      "mac": "Cmd+D",
+      "windows": "Ctrl+D"
+    },
+    {
+      "name": "Bulleted list",
+      "context": "Formatting",
+      "label": "Bulleted",
+      "mac": "Shift+Cmd+L",
+      "windows": "Ctrl+Shift+L"
+    },
+    {
+      "name": "Clear character formatting",
+      "context": "Formatting",
+      "label": "Clear",
+      "mac": "Ctrl+Space",
+      "windows": "Ctrl+Space"
+    },
+    {
+      "name": "Center",
+      "context": "Formatting",
+      "mac": "Cmd+E",
+      "windows": "Ctrl+E"
+    },
+    {
+      "name": "Align left",
+      "context": "Formatting",
+      "mac": "Cmd+L",
+      "windows": "Ctrl+L"
+    },
+    {
+      "name": "Align right",
+      "context": "Formatting",
+      "mac": "Cmd+R",
+      "windows": "Ctrl+R"
+    },
+    {
+      "name": "Justify",
+      "context": "Formatting",
+      "mac": "Cmd+J",
+      "windows": "Ctrl+J"
+    },
+    {
+      "name": "Show nonprinting characters",
+      "context": "Formatting",
+      "label": "Nonprinting",
+      "mac": "Cmd+8",
+      "windows": "Ctrl+Shift+8"
+    },
+    {
+      "name": "Beginning of the document",
+      "context": "Navigation",
+      "label": "Beginning",
+      "mac": "Cmd+Home",
+      "windows": "Ctrl+Home"
+    },
+    {
+      "name": "End of the document",
+      "context": "Navigation",
+      "label": "End document",
+      "mac": "Cmd+End",
+      "windows": "Ctrl+End"
+    },
+    {
+      "name": "Next page",
+      "context": "Navigation",
+      "mac": "Cmd+PageDown",
+      "windows": "Ctrl+PageDown"
+    },
+    {
+      "name": "Previous page",
+      "context": "Navigation",
+      "label": "Previous",
+      "mac": "Cmd+PageUp",
+      "windows": "Ctrl+PageUp"
+    },
+    {
+      "name": "Previous edit",
+      "context": "Navigation",
+      "label": "Previous",
+      "mac": "Shift+F5",
+      "windows": "Shift+F5"
+    }
+  ]
+}

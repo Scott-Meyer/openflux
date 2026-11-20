@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stand-in for sleep: returns at once and counts the seconds.
+echo "$1" >> "${FAKE_HOOKS:?}/slept.log"

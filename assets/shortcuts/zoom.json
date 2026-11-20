@@ -1,0 +1,148 @@
+{
+  "name": "Zoom",
+  "source": "https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0061221",
+  "platforms": [
+    "mac",
+    "windows",
+    "linux"
+  ],
+  "apps": {
+    "macos": [
+      "us.zoom.xos"
+    ],
+    "windows": [
+      "Zoom.exe"
+    ],
+    "linux": [
+      "zoom"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "Mute or unmute audio",
+      "context": "Audio & Video",
+      "label": "Mute",
+      "mac": "Cmd+Shift+A",
+      "windows": "Alt+A"
+    },
+    {
+      "name": "Start or stop video",
+      "context": "Audio & Video",
+      "label": "Video",
+      "mac": "Cmd+Shift+V",
+      "windows": "Alt+V"
+    },
+    {
+      "name": "Switch camera",
+      "context": "Audio & Video",
+      "label": "Camera",
+      "mac": "Cmd+Shift+N",
+      "windows": "Alt+N"
+    },
+    {
+      "name": "Mute audio for everyone except host",
+      "context": "Audio & Video",
+      "label": "Mute All",
+      "mac": "Cmd+Ctrl+M",
+      "windows": "Alt+M"
+    },
+    {
+      "name": "Start or stop screen share",
+      "context": "Sharing",
+      "label": "Share",
+      "mac": "Cmd+Shift+S",
+      "windows": "Alt+S"
+    },
+    {
+      "name": "Pause or resume screen share",
+      "context": "Sharing",
+      "label": "Pause Shr",
+      "mac": "Cmd+Shift+T",
+      "windows": "Alt+T"
+    },
+    {
+      "name": "Start or stop local recording",
+      "context": "Recording",
+      "label": "Record",
+      "mac": "Cmd+Shift+R",
+      "windows": "Alt+R"
+    },
+    {
+      "name": "Start or stop cloud recording",
+      "context": "Recording",
+      "label": "Cloud Rec",
+      "mac": "Cmd+Shift+C",
+      "windows": "Alt+C"
+    },
+    {
+      "name": "Pause or resume recording",
+      "context": "Recording",
+      "label": "Pause Rec",
+      "mac": "Cmd+Shift+P",
+      "windows": "Alt+P"
+    },
+    {
+      "name": "Show or hide in-meeting chat",
+      "context": "Meeting",
+      "label": "Chat",
+      "mac": "Cmd+Shift+H",
+      "windows": "Alt+H"
+    },
+    {
+      "name": "Show or hide Participants panel",
+      "context": "Meeting",
+      "label": "People",
+      "mac": "Cmd+U",
+      "windows": "Alt+U"
+    },
+    {
+      "name": "Raise or lower hand",
+      "context": "Meeting",
+      "label": "Hand",
+      "mac": "Option+Y",
+      "windows": "Alt+Y"
+    },
+    {
+      "name": "Open Invite window",
+      "context": "Meeting",
+      "label": "Invite",
+      "mac": "Cmd+I",
+      "windows": "Alt+I"
+    },
+    {
+      "name": "Enter or exit full screen",
+      "context": "View",
+      "label": "Full Scr",
+      "mac": "Cmd+Shift+F",
+      "windows": "Alt+F"
+    },
+    {
+      "name": "Switch to Speaker View",
+      "context": "View",
+      "label": "Speaker",
+      "mac": "Cmd+Shift+W",
+      "windows": "Alt+F1"
+    },
+    {
+      "name": "Switch to Gallery View",
+      "context": "View",
+      "label": "Gallery",
+      "mac": "Cmd+Shift+W",
+      "windows": "Alt+F2"
+    },
+    {
+      "name": "Toggle always show meeting controls",
+      "context": "View",
+      "label": "Controls",
+      "mac": "Ctrl+\\",
+      "windows": "Alt+L"
+    },
+    {
+      "name": "Leave or end meeting",
+      "context": "Meeting",
+      "label": "Leave",
+      "mac": "Cmd+W",
+      "windows": "Alt+Q"
+    }
+  ]
+}

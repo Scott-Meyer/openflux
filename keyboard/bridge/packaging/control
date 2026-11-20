@@ -1,0 +1,9 @@
+Package: openflux-bridge
+Version: 1.0.0
+Architecture: aarch64
+Maintainer: OpenFlux Contributors
+Conflicts: garfield
+Replaces: garfield
+Description: OpenFlux keyboard USB gadget, UART bridge, and display IPC daemon
+Section: utils
+Priority: optional

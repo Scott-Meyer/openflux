@@ -1,0 +1,14 @@
+#!/bin/sh
+ROOT="${OPENFLUX_SYSROOT:-}"
+DISPLAY_DIR="${ROOT}/usr/lib/openflux/display"
+VERSION_DIR="${ROOT}/home/root/.openflux/versions"
+VERSION_FILE="${VERSION_DIR}/display"
+
+chmod +x "${DISPLAY_DIR}/openflux-display" 2>/dev/null || true
+if [ -f "${DISPLAY_DIR}/openflux-ffmpeg" ]; then
+    chmod +x "${DISPLAY_DIR}/openflux-ffmpeg" 2>/dev/null || true
+fi
+mkdir -p "$VERSION_DIR" "${ROOT}/home/root/openflux/logs"
+echo "openflux-display @OPENFLUX_VERSION@" > "$VERSION_FILE"
+rm -f "${ROOT}/tmp/openflux_updating_display" "${ROOT}/tmp/updating_garfunkel"
+exit 0

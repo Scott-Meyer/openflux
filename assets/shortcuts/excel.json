@@ -1,0 +1,421 @@
+{
+  "name": "Microsoft Excel",
+  "source": "https://support.microsoft.com/en-us/office/keyboard-shortcuts-in-excel-1798d9d5-842a-42b8-9c99-9b7213f0040f",
+  "platforms": [
+    "mac",
+    "windows"
+  ],
+  "apps": {
+    "macos": [
+      "com.microsoft.Excel"
+    ],
+    "windows": [
+      "EXCEL.EXE"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "New workbook",
+      "context": "General",
+      "mac": "Cmd+N",
+      "windows": "Ctrl+N"
+    },
+    {
+      "name": "Open a workbook",
+      "context": "General",
+      "label": "Workbook",
+      "mac": "Cmd+O",
+      "windows": "Ctrl+O"
+    },
+    {
+      "name": "Save the workbook",
+      "context": "General",
+      "label": "Save",
+      "mac": "Cmd+S",
+      "windows": "Ctrl+S"
+    },
+    {
+      "name": "Save As",
+      "context": "General",
+      "mac": "Shift+Cmd+S",
+      "windows": "F12"
+    },
+    {
+      "name": "Close the workbook",
+      "context": "General",
+      "label": "Close",
+      "mac": "Cmd+W",
+      "windows": "Ctrl+W"
+    },
+    {
+      "name": "Print",
+      "context": "General",
+      "mac": "Cmd+P",
+      "windows": "Ctrl+P"
+    },
+    {
+      "name": "Undo",
+      "context": "General",
+      "mac": "Cmd+Z",
+      "windows": "Ctrl+Z"
+    },
+    {
+      "name": "Redo",
+      "context": "General",
+      "mac": "Cmd+Y",
+      "windows": "Ctrl+Y"
+    },
+    {
+      "name": "Copy",
+      "context": "General",
+      "mac": "Cmd+C",
+      "windows": "Ctrl+C"
+    },
+    {
+      "name": "Cut",
+      "context": "General",
+      "mac": "Cmd+X",
+      "windows": "Ctrl+X"
+    },
+    {
+      "name": "Paste",
+      "context": "General",
+      "mac": "Cmd+V",
+      "windows": "Ctrl+V"
+    },
+    {
+      "name": "Paste Special",
+      "context": "General",
+      "label": "Paste",
+      "mac": "Ctrl+Cmd+V",
+      "windows": "Ctrl+Alt+V"
+    },
+    {
+      "name": "Select all",
+      "context": "General",
+      "mac": "Cmd+A",
+      "windows": "Ctrl+A"
+    },
+    {
+      "name": "Find",
+      "context": "General",
+      "mac": "Cmd+F",
+      "windows": "Ctrl+F"
+    },
+    {
+      "name": "Replace",
+      "context": "General",
+      "mac": "Shift+Cmd+H",
+      "windows": "Ctrl+H"
+    },
+    {
+      "name": "Go To",
+      "context": "General",
+      "mac": "Ctrl+G",
+      "windows": "Ctrl+G"
+    },
+    {
+      "name": "Check spelling",
+      "context": "General",
+      "label": "Check",
+      "mac": "F7",
+      "windows": "F7"
+    },
+    {
+      "name": "Help",
+      "context": "General",
+      "mac": "F1",
+      "windows": "F1"
+    },
+    {
+      "name": "Quit Excel",
+      "context": "General",
+      "mac": "Cmd+Q"
+    },
+    {
+      "name": "Expand or minimize the ribbon",
+      "context": "General",
+      "label": "Expand",
+      "mac": "Option+Cmd+R",
+      "windows": "Ctrl+F1"
+    },
+    {
+      "name": "Insert a new sheet",
+      "context": "General",
+      "label": "Insert new",
+      "mac": "Shift+F11",
+      "windows": "Shift+F11"
+    },
+    {
+      "name": "Next sheet",
+      "context": "Navigation",
+      "mac": "Ctrl+PageDown",
+      "windows": "Ctrl+PageDown"
+    },
+    {
+      "name": "Previous sheet",
+      "context": "Navigation",
+      "label": "Previous",
+      "mac": "Ctrl+PageUp",
+      "windows": "Ctrl+PageUp"
+    },
+    {
+      "name": "Beginning of the sheet",
+      "context": "Navigation",
+      "label": "Beginning",
+      "mac": "Ctrl+Home",
+      "windows": "Ctrl+Home"
+    },
+    {
+      "name": "Last used cell",
+      "context": "Navigation",
+      "label": "Last used",
+      "mac": "Ctrl+End",
+      "windows": "Ctrl+End"
+    },
+    {
+      "name": "Zoom in",
+      "context": "Navigation",
+      "windows": "Ctrl+Alt+="
+    },
+    {
+      "name": "Zoom out",
+      "context": "Navigation",
+      "windows": "Ctrl+Alt+-"
+    },
+    {
+      "name": "Format Cells",
+      "context": "Formatting",
+      "mac": "Cmd+1",
+      "windows": "Ctrl+1"
+    },
+    {
+      "name": "Bold",
+      "context": "Formatting",
+      "mac": "Cmd+B",
+      "windows": "Ctrl+B"
+    },
+    {
+      "name": "Italic",
+      "context": "Formatting",
+      "mac": "Cmd+I",
+      "windows": "Ctrl+I"
+    },
+    {
+      "name": "Underline",
+      "context": "Formatting",
+      "mac": "Cmd+U",
+      "windows": "Ctrl+U"
+    },
+    {
+      "name": "Strikethrough",
+      "context": "Formatting",
+      "label": "Strikethroug",
+      "mac": "Shift+Cmd+X",
+      "windows": "Ctrl+5"
+    },
+    {
+      "name": "General number format",
+      "context": "Formatting",
+      "label": "General",
+      "mac": "Ctrl+Shift+`",
+      "windows": "Ctrl+Shift+`"
+    },
+    {
+      "name": "Currency format",
+      "context": "Formatting",
+      "label": "Currency",
+      "mac": "Ctrl+Shift+4",
+      "windows": "Ctrl+Shift+4"
+    },
+    {
+      "name": "Percentage format",
+      "context": "Formatting",
+      "label": "Percentage",
+      "mac": "Ctrl+Shift+5",
+      "windows": "Ctrl+Shift+5"
+    },
+    {
+      "name": "Date format",
+      "context": "Formatting",
+      "mac": "Ctrl+Shift+3",
+      "windows": "Ctrl+Shift+3"
+    },
+    {
+      "name": "Time format",
+      "context": "Formatting",
+      "mac": "Ctrl+Shift+2",
+      "windows": "Ctrl+Shift+2"
+    },
+    {
+      "name": "Number format",
+      "context": "Formatting",
+      "label": "Number",
+      "mac": "Ctrl+Shift+1",
+      "windows": "Ctrl+Shift+1"
+    },
+    {
+      "name": "Outline border",
+      "context": "Formatting",
+      "label": "Outline",
+      "mac": "Option+Cmd+0",
+      "windows": "Ctrl+Shift+7"
+    },
+    {
+      "name": "Insert a hyperlink",
+      "context": "Formatting",
+      "label": "Insert",
+      "mac": "Cmd+K",
+      "windows": "Ctrl+K"
+    },
+    {
+      "name": "Create a table",
+      "context": "Formatting",
+      "label": "Create table",
+      "mac": "Cmd+T",
+      "windows": "Ctrl+T"
+    },
+    {
+      "name": "Hide rows",
+      "context": "Formatting",
+      "windows": "Ctrl+9"
+    },
+    {
+      "name": "Hide columns",
+      "context": "Formatting",
+      "windows": "Ctrl+0"
+    },
+    {
+      "name": "Edit the active cell",
+      "context": "Editing",
+      "label": "Edit active",
+      "mac": "F2",
+      "windows": "F2"
+    },
+    {
+      "name": "Fill down",
+      "context": "Editing",
+      "mac": "Cmd+D",
+      "windows": "Ctrl+D"
+    },
+    {
+      "name": "Fill right",
+      "context": "Editing",
+      "mac": "Cmd+R",
+      "windows": "Ctrl+R"
+    },
+    {
+      "name": "Insert cells",
+      "context": "Editing",
+      "mac": "Ctrl+Shift+=",
+      "windows": "Ctrl+Shift+="
+    },
+    {
+      "name": "Delete cells",
+      "context": "Editing",
+      "mac": "Cmd+-",
+      "windows": "Ctrl+-"
+    },
+    {
+      "name": "Enter the current date",
+      "context": "Editing",
+      "label": "Date",
+      "mac": "Ctrl+;",
+      "windows": "Ctrl+;"
+    },
+    {
+      "name": "Enter the current time",
+      "context": "Editing",
+      "label": "Time",
+      "mac": "Cmd+;",
+      "windows": "Ctrl+Shift+;"
+    },
+    {
+      "name": "Fill the selection with the entry",
+      "context": "Editing",
+      "label": "Fill",
+      "mac": "Ctrl+Enter",
+      "windows": "Ctrl+Enter"
+    },
+    {
+      "name": "Insert or reply to a comment",
+      "context": "Editing",
+      "label": "Insert reply",
+      "mac": "Cmd+Enter",
+      "windows": "Ctrl+Shift+F2"
+    },
+    {
+      "name": "Show formulas",
+      "context": "Data & Formulas",
+      "label": "Formulas",
+      "mac": "Ctrl+`",
+      "windows": "Ctrl+`"
+    },
+    {
+      "name": "Toggle absolute and relative references",
+      "context": "Data & Formulas",
+      "label": "Absolute",
+      "mac": "Cmd+T",
+      "windows": "F4"
+    },
+    {
+      "name": "AutoSum",
+      "context": "Data & Formulas",
+      "mac": "Shift+Cmd+T",
+      "windows": "Alt+="
+    },
+    {
+      "name": "Calculate all workbooks",
+      "context": "Data & Formulas",
+      "label": "Calculate",
+      "mac": "F9",
+      "windows": "F9"
+    },
+    {
+      "name": "Calculate the active sheet",
+      "context": "Data & Formulas",
+      "label": "Calculate",
+      "mac": "Shift+F9",
+      "windows": "Shift+F9"
+    },
+    {
+      "name": "Insert a function",
+      "context": "Data & Formulas",
+      "label": "Insert",
+      "mac": "Shift+F3",
+      "windows": "Shift+F3"
+    },
+    {
+      "name": "Add or remove a filter",
+      "context": "Data & Formulas",
+      "label": "Add remove",
+      "mac": "Shift+Cmd+F",
+      "windows": "Ctrl+Shift+L"
+    },
+    {
+      "name": "Flash Fill",
+      "context": "Data & Formulas",
+      "windows": "Ctrl+E"
+    },
+    {
+      "name": "Quick Analysis",
+      "context": "Data & Formulas",
+      "label": "Quick",
+      "windows": "Ctrl+Q"
+    },
+    {
+      "name": "Insert a chart in a new sheet",
+      "context": "Data & Formulas",
+      "label": "Insert chart",
+      "mac": "F11",
+      "windows": "F11"
+    },
+    {
+      "name": "Visual Basic Editor",
+      "context": "Data & Formulas",
+      "label": "Visual Basic",
+      "mac": "Option+F11",
+      "windows": "Alt+F11"
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+[package]
+name = "openfluxd"
+version.workspace = true
+edition.workspace = true
+description = "OpenFlux background service: keyboard USB transport, local API, and system integrations"
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+axum = { version = "0.7", features = ["ws", "json"] }
+base64 = "0.22"
+bytes = "1"
+openflux-display = { path = "../../keyboard/display" }
+openflux-update = { path = "../../crates/openflux-update", default-features = false }
+getrandom = "0.2"
+http-body = "1"
+iana-time-zone = "0.1"
+hyper = { version = "1.4", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "service"] }
+flate2 = "1"
+# Scales album art for the keyboard's now-playing tile.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp"] }
+# Reads the keyboard's vendor-page function-key reports. Shared access on macOS: hidapi otherwise
+# seizes the device, which would stop the keyboard typing. The native Linux and Windows backends
+# need no system libraries.
+hidapi = { version = "2.6", default-features = false, features = ["macos-shared-device", "linux-native-basic-udev", "windows-native"] }
+libc = "0.2"
+libusb1-sys = { version = "0.7", features = ["vendored"] }
+rcgen = "0.13"
+rusb = "0.9"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pemfile = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+semver = "1"
+sha2 = "0.10"
+tar = { version = "0.4", default-features = false }
+time = { version = "0.3", features = ["formatting", "parsing"] }
+tokio = { version = "1", features = ["rt", "net", "sync", "time", "macros"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+tower = "0.5"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# HTTPS for weather and Aerial downloads uses the system TLS stack on macOS and Windows, so the
+# system's trust settings apply; Linux uses rustls with the system roots.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "default-tls"] }
+
+[target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls-native-roots"] }
+
+# Now playing from the session bus's media players (MPRIS).
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+
+# Now playing (system media session), GPU counters and adapters, network and processor counters.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Media_Control",
+    "Storage_Streams",
+    "Win32_Foundation",
+    "Win32_Graphics_Dxgi",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Performance",
+    "Win32_System_Threading",
+    "Win32_System_WinRT",
+] }
+windows-future = "0.3"
+
+[dev-dependencies]
+openflux-update = { path = "../../crates/openflux-update", default-features = false, features = ["signing"] }
+futures-util = "0.3"
+tokio-tungstenite = "0.20"

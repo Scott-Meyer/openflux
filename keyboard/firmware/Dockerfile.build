@@ -1,0 +1,19 @@
+# Builds openflux-firmware (.uf2/.elf) using Pico SDK and LittleFS.
+# debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
+ARG PICO_SDK_TAG=2.1.1
+ARG PICO_SDK_SHA=bddd20f928ce76142793bef434d4f75f4af6e433
+ARG LITTLEFS_TAG=v2.9.3
+ARG LITTLEFS_SHA=d01280e64934a09ba16cac60cf9d3a37e228bb66
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+    gcc g++ make gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
+    cmake ninja-build git ca-certificates python3 file && \
+    rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 --branch "${PICO_SDK_TAG}" https://github.com/raspberrypi/pico-sdk.git /opt/pico-sdk && \
+    test "$(git -C /opt/pico-sdk rev-parse HEAD^{commit})" = "${PICO_SDK_SHA}" && \
+    git -C /opt/pico-sdk submodule update --init --depth 1 lib/tinyusb && \
+    git clone --depth 1 --branch "${LITTLEFS_TAG}" https://github.com/littlefs-project/littlefs.git /opt/littlefs && \
+    test "$(git -C /opt/littlefs rev-parse HEAD^{commit})" = "${LITTLEFS_SHA}"
+ENV PICO_SDK_PATH=/opt/pico-sdk
+ENV LITTLEFS_PATH=/opt/littlefs
+WORKDIR /work

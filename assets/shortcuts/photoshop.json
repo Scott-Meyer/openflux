@@ -1,0 +1,263 @@
+{
+  "name": "Adobe Photoshop",
+  "source": "https://helpx.adobe.com/photoshop/using/default-keyboard-shortcuts.html",
+  "platforms": [
+    "mac",
+    "windows"
+  ],
+  "apps": {
+    "macos": [
+      "com.adobe.Photoshop"
+    ],
+    "windows": [
+      "Photoshop.exe"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "Move tool",
+      "context": "Tools",
+      "label": "Move",
+      "mac": "V",
+      "windows": "V"
+    },
+    {
+      "name": "Marquee tool",
+      "context": "Tools",
+      "label": "Marquee",
+      "mac": "M",
+      "windows": "M"
+    },
+    {
+      "name": "Lasso tool",
+      "context": "Tools",
+      "label": "Lasso",
+      "mac": "L",
+      "windows": "L"
+    },
+    {
+      "name": "Quick Selection / Magic Wand",
+      "context": "Tools",
+      "label": "Select",
+      "mac": "W",
+      "windows": "W"
+    },
+    {
+      "name": "Crop tool",
+      "context": "Tools",
+      "label": "Crop",
+      "mac": "C",
+      "windows": "C"
+    },
+    {
+      "name": "Eyedropper tool",
+      "context": "Tools",
+      "label": "Picker",
+      "mac": "I",
+      "windows": "I"
+    },
+    {
+      "name": "Spot Healing Brush",
+      "context": "Tools",
+      "label": "Heal",
+      "mac": "J",
+      "windows": "J"
+    },
+    {
+      "name": "Brush tool",
+      "context": "Tools",
+      "label": "Brush",
+      "mac": "B",
+      "windows": "B"
+    },
+    {
+      "name": "Clone Stamp tool",
+      "context": "Tools",
+      "label": "Stamp",
+      "mac": "S",
+      "windows": "S"
+    },
+    {
+      "name": "Eraser tool",
+      "context": "Tools",
+      "label": "Eraser",
+      "mac": "E",
+      "windows": "E"
+    },
+    {
+      "name": "Gradient / Paint Bucket",
+      "context": "Tools",
+      "label": "Gradient",
+      "mac": "G",
+      "windows": "G"
+    },
+    {
+      "name": "Pen tool",
+      "context": "Tools",
+      "label": "Pen",
+      "mac": "P",
+      "windows": "P"
+    },
+    {
+      "name": "Type tool",
+      "context": "Tools",
+      "label": "Type",
+      "mac": "T",
+      "windows": "T"
+    },
+    {
+      "name": "Hand tool",
+      "context": "Tools",
+      "label": "Hand",
+      "mac": "H",
+      "windows": "H"
+    },
+    {
+      "name": "Zoom tool",
+      "context": "Tools",
+      "label": "Zoom",
+      "mac": "Z",
+      "windows": "Z"
+    },
+    {
+      "name": "Default foreground and background colors",
+      "context": "Color",
+      "label": "Default",
+      "mac": "D",
+      "windows": "D"
+    },
+    {
+      "name": "Swap foreground and background colors",
+      "context": "Color",
+      "label": "Swap",
+      "mac": "X",
+      "windows": "X"
+    },
+    {
+      "name": "Decrease brush size",
+      "context": "Brush",
+      "label": "Smaller",
+      "mac": "[",
+      "windows": "["
+    },
+    {
+      "name": "Increase brush size",
+      "context": "Brush",
+      "label": "Larger",
+      "mac": "]",
+      "windows": "]"
+    },
+    {
+      "name": "Free Transform",
+      "context": "Edit",
+      "label": "Transform",
+      "mac": "Cmd+T",
+      "windows": "Ctrl+T"
+    },
+    {
+      "name": "Deselect",
+      "context": "Selection",
+      "label": "Deselect",
+      "mac": "Cmd+D",
+      "windows": "Ctrl+D"
+    },
+    {
+      "name": "Inverse selection",
+      "context": "Selection",
+      "label": "Inverse",
+      "mac": "Cmd+Shift+I",
+      "windows": "Ctrl+Shift+I"
+    },
+    {
+      "name": "New layer",
+      "context": "Layers",
+      "label": "New Layer",
+      "mac": "Cmd+Shift+N",
+      "windows": "Ctrl+Shift+N"
+    },
+    {
+      "name": "Layer via copy",
+      "context": "Layers",
+      "label": "Dup Layer",
+      "mac": "Cmd+J",
+      "windows": "Ctrl+J"
+    },
+    {
+      "name": "Group layers",
+      "context": "Layers",
+      "label": "Group",
+      "mac": "Cmd+G",
+      "windows": "Ctrl+G"
+    },
+    {
+      "name": "Merge layers",
+      "context": "Layers",
+      "label": "Merge",
+      "mac": "Cmd+E",
+      "windows": "Ctrl+E"
+    },
+    {
+      "name": "Levels adjustment",
+      "context": "Image",
+      "label": "Levels",
+      "mac": "Cmd+L",
+      "windows": "Ctrl+L"
+    },
+    {
+      "name": "Curves adjustment",
+      "context": "Image",
+      "label": "Curves",
+      "mac": "Cmd+M",
+      "windows": "Ctrl+M"
+    },
+    {
+      "name": "Hue/Saturation adjustment",
+      "context": "Image",
+      "label": "Hue/Sat",
+      "mac": "Cmd+U",
+      "windows": "Ctrl+U"
+    },
+    {
+      "name": "Fit on screen",
+      "context": "View",
+      "label": "Fit View",
+      "mac": "Cmd+0",
+      "windows": "Ctrl+0"
+    },
+    {
+      "name": "Zoom to 100%",
+      "context": "View",
+      "label": "100%",
+      "mac": "Cmd+1",
+      "windows": "Ctrl+1"
+    },
+    {
+      "name": "Toggle rulers",
+      "context": "View",
+      "label": "Rulers",
+      "mac": "Cmd+R",
+      "windows": "Ctrl+R"
+    },
+    {
+      "name": "Undo",
+      "context": "Edit",
+      "label": "Undo",
+      "mac": "Cmd+Z",
+      "windows": "Ctrl+Z"
+    },
+    {
+      "name": "Redo",
+      "context": "Edit",
+      "label": "Redo",
+      "mac": "Cmd+Shift+Z",
+      "windows": "Ctrl+Shift+Z"
+    },
+    {
+      "name": "Save",
+      "context": "File",
+      "label": "Save",
+      "mac": "Cmd+S",
+      "windows": "Ctrl+S"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+# The keyboard's factory software, used by "Reset to factory software".
+#
+# OpenFlux does not host these files. The daemon downloads each file from the factory software's official
+# Windows package (a ZIP container) with HTTP range requests and accepts it only if its size and SHA-256
+# match the values below. This file is embedded in the signed update index.
+
+[factory]
+label = "Factory software 1.4.5.7"
+container_url = "https://fluxkeyboard.com/updates/polymath/windows/versions/1.4.5.7/polymath.msix"
+container_size = 167178909
+
+[[factory.files]]
+component = "firmware"
+member = "data/flutter_assets/assets/firmware/oates_1.4.12.D.uf2"
+version = "1.4.12.D"
+size = 238080
+sha256 = "8d68f6ee95ec50604c6c60a457e0d8a8589879d60835e55e0e31b2d13e359ce6"
+
+[[factory.files]]
+component = "bridge"
+member = "data/flutter_assets/assets/firmware/garfield_1.4.11_aarch64.ipk"
+version = "1.4.11"
+size = 403944
+sha256 = "8058ac6e17df92e64d6240271b24d925f6a233e8378d77f4dbd1a5354224b3ff"
+
+[[factory.files]]
+component = "display"
+member = "data/flutter_assets/assets/firmware/garfunkel_1.4.28_aarch64.ipk"
+version = "1.4.28"
+size = 69240700
+sha256 = "9fcbbf1e00b1d4f4ad364464c3bf2d628561d8aadb00ba1082581a800825da3a"
+
+# The press-refinement source: where the user's own OpenFlux finds the keyboard maker's
+# press-refinement coefficients. OpenFlux never hosts or ships them. The daemon reads the member
+# below out of one of the `sources` (the maker's published Windows package, with HTTP range
+# requests, or a copy the user already has), places its UF2 blocks at their RP2040 addresses (one
+# contiguous image from image_base), and takes the payload from the image's ranges, in order. The
+# member, the image and the payload must each match their size and SHA-256, and a container
+# downloaded whole must match its own, or nothing is installed. The release workflow records this
+# table in the signed index next to the factory reference, so the sources can change without a new
+# OpenFlux release.
+
+[press_refinement_source]
+description = "Factory software 1.5.0.5"
+sources = [
+    { kind = "container", url = "https://fluxkeyboard.com/updates-dev/polymath/windows/versions/1.5.0.5/polymath.msix", size = 168502476, sha256 = "14933b5622670754a5ee21033ab53e10999fec1197ab07dcd45c08fd05444ff4" },
+]
+member = "data/flutter_assets/assets/firmware/oates_1.5.5.D.uf2"
+member_size = 308736
+member_sha256 = "03f220630c24620790f57e3144f9238fe1082d1aa0e4bb3fc6cda7e83224e703"
+image_base = 0x10000000
+image_size = 154368
+image_sha256 = "b4162aecdfc2105001fab9eb263789ff385e7871446308c8fc727447aaa15515"
+payload_ranges = [
+    { offset = 0x1c6ec, length = 1452 },
+    { offset = 0x264c, length = 4 },
+]
+payload_length = 1456
+payload_sha256 = "f50e57405732f7b20393d29374c9767f90936521e135b6452c24edabfc625018"

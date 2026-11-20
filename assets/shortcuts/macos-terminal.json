@@ -1,0 +1,483 @@
+{
+  "name": "Terminal (macOS)",
+  "source": "https://support.apple.com/guide/terminal/keyboard-shortcuts-trmlshtcts/mac",
+  "platforms": [
+    "mac"
+  ],
+  "apps": {
+    "macos": [
+      "com.apple.Terminal"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "New window",
+      "context": "Windows & Tabs",
+      "mac": "Cmd+N"
+    },
+    {
+      "name": "New window with same command",
+      "context": "Windows & Tabs",
+      "label": "New window",
+      "mac": "Ctrl+Cmd+N"
+    },
+    {
+      "name": "New tab",
+      "context": "Windows & Tabs",
+      "mac": "Cmd+T"
+    },
+    {
+      "name": "New tab with same command",
+      "context": "Windows & Tabs",
+      "label": "New tab same",
+      "mac": "Ctrl+Cmd+T"
+    },
+    {
+      "name": "Show or hide tab bar",
+      "context": "Windows & Tabs",
+      "label": "Tab bar",
+      "mac": "Shift+Cmd+T"
+    },
+    {
+      "name": "Show all tabs or exit tab overview",
+      "context": "Windows & Tabs",
+      "label": "Tabs exit",
+      "mac": "Shift+Cmd+\\"
+    },
+    {
+      "name": "New command",
+      "context": "Windows & Tabs",
+      "mac": "Shift+Cmd+N"
+    },
+    {
+      "name": "New remote connection",
+      "context": "Windows & Tabs",
+      "label": "New remote",
+      "mac": "Shift+Cmd+K"
+    },
+    {
+      "name": "Show or hide Inspector",
+      "context": "Windows & Tabs",
+      "label": "Inspector",
+      "mac": "Cmd+I"
+    },
+    {
+      "name": "Edit title",
+      "context": "Windows & Tabs",
+      "mac": "Shift+Cmd+I"
+    },
+    {
+      "name": "Edit background color",
+      "context": "Windows & Tabs",
+      "label": "Edit",
+      "mac": "Option+Cmd+I"
+    },
+    {
+      "name": "Make fonts bigger",
+      "context": "Windows & Tabs",
+      "label": "Fonts bigger",
+      "mac": "Cmd+="
+    },
+    {
+      "name": "Make fonts smaller",
+      "context": "Windows & Tabs",
+      "label": "Fonts",
+      "mac": "Cmd+-"
+    },
+    {
+      "name": "Next window",
+      "context": "Windows & Tabs",
+      "mac": "Cmd+`"
+    },
+    {
+      "name": "Previous window",
+      "context": "Windows & Tabs",
+      "label": "Previous",
+      "mac": "Shift+Cmd+`"
+    },
+    {
+      "name": "Next Tab",
+      "context": "Windows & Tabs",
+      "mac": "Ctrl+Tab"
+    },
+    {
+      "name": "Previous Tab",
+      "context": "Windows & Tabs",
+      "mac": "Ctrl+Shift+Tab"
+    },
+    {
+      "name": "Split window into two panes",
+      "context": "Windows & Tabs",
+      "label": "Split window",
+      "mac": "Cmd+D"
+    },
+    {
+      "name": "Close split pane",
+      "context": "Windows & Tabs",
+      "label": "Close split",
+      "mac": "Shift+Cmd+D"
+    },
+    {
+      "name": "Close tab",
+      "context": "Windows & Tabs",
+      "mac": "Cmd+W"
+    },
+    {
+      "name": "Close window",
+      "context": "Windows & Tabs",
+      "mac": "Shift+Cmd+W"
+    },
+    {
+      "name": "Close other tabs",
+      "context": "Windows & Tabs",
+      "label": "Close other",
+      "mac": "Option+Cmd+W"
+    },
+    {
+      "name": "Close all",
+      "context": "Windows & Tabs",
+      "mac": "Option+Shift+Cmd+W"
+    },
+    {
+      "name": "Scroll to top",
+      "context": "Windows & Tabs",
+      "label": "Scroll top",
+      "mac": "Cmd+Home"
+    },
+    {
+      "name": "Scroll to bottom",
+      "context": "Windows & Tabs",
+      "label": "Scroll",
+      "mac": "Cmd+End"
+    },
+    {
+      "name": "Page up",
+      "context": "Windows & Tabs",
+      "mac": "Cmd+PageUp"
+    },
+    {
+      "name": "Page down",
+      "context": "Windows & Tabs",
+      "mac": "Cmd+PageDown"
+    },
+    {
+      "name": "Line up",
+      "context": "Windows & Tabs",
+      "mac": "Option+Cmd+PageUp"
+    },
+    {
+      "name": "Line down",
+      "context": "Windows & Tabs",
+      "mac": "Option+Cmd+PageDown"
+    },
+    {
+      "name": "Move the insertion point to the beginning of the line",
+      "context": "Command Line",
+      "label": "Move",
+      "mac": "Ctrl+A"
+    },
+    {
+      "name": "Move the insertion point to the end of the line",
+      "context": "Command Line",
+      "label": "Move",
+      "mac": "Ctrl+E"
+    },
+    {
+      "name": "Move the insertion point forward one word",
+      "context": "Command Line",
+      "label": "Move",
+      "mac": "Option+Right"
+    },
+    {
+      "name": "Move the insertion point backward one word",
+      "context": "Command Line",
+      "label": "Move",
+      "mac": "Option+Left"
+    },
+    {
+      "name": "Delete the line",
+      "context": "Command Line",
+      "label": "Delete line",
+      "mac": "Ctrl+U"
+    },
+    {
+      "name": "Delete to the end of the line",
+      "context": "Command Line",
+      "label": "Delete end",
+      "mac": "Ctrl+K"
+    },
+    {
+      "name": "Delete backward to the beginning of the word",
+      "context": "Command Line",
+      "label": "Delete",
+      "mac": "Ctrl+W"
+    },
+    {
+      "name": "Transpose two characters",
+      "context": "Command Line",
+      "label": "Transpose",
+      "mac": "Ctrl+T"
+    },
+    {
+      "name": "Cut",
+      "context": "Selection & Find",
+      "mac": "Cmd+X"
+    },
+    {
+      "name": "Copy",
+      "context": "Selection & Find",
+      "mac": "Cmd+C"
+    },
+    {
+      "name": "Copy without background color",
+      "context": "Selection & Find",
+      "label": "Copy without",
+      "mac": "Ctrl+Shift+Cmd+C"
+    },
+    {
+      "name": "Copy plain text",
+      "context": "Selection & Find",
+      "label": "Copy plain",
+      "mac": "Option+Shift+Cmd+C"
+    },
+    {
+      "name": "Paste",
+      "context": "Selection & Find",
+      "mac": "Cmd+V"
+    },
+    {
+      "name": "Paste the selection",
+      "context": "Selection & Find",
+      "label": "Paste",
+      "mac": "Shift+Cmd+V"
+    },
+    {
+      "name": "Paste escaped text",
+      "context": "Selection & Find",
+      "label": "Paste",
+      "mac": "Ctrl+Cmd+V"
+    },
+    {
+      "name": "Paste escaped selection",
+      "context": "Selection & Find",
+      "label": "Paste",
+      "mac": "Ctrl+Shift+Cmd+V"
+    },
+    {
+      "name": "Find",
+      "context": "Selection & Find",
+      "mac": "Cmd+F"
+    },
+    {
+      "name": "Find next",
+      "context": "Selection & Find",
+      "mac": "Cmd+G"
+    },
+    {
+      "name": "Find previous",
+      "context": "Selection & Find",
+      "label": "Find",
+      "mac": "Shift+Cmd+G"
+    },
+    {
+      "name": "Find using the selected text",
+      "context": "Selection & Find",
+      "label": "Find using",
+      "mac": "Cmd+E"
+    },
+    {
+      "name": "Jump to the selected text",
+      "context": "Selection & Find",
+      "label": "Text",
+      "mac": "Cmd+J"
+    },
+    {
+      "name": "Select all",
+      "context": "Selection & Find",
+      "mac": "Cmd+A"
+    },
+    {
+      "name": "Open the character viewer",
+      "context": "Selection & Find",
+      "label": "Character",
+      "mac": "Ctrl+Cmd+Space"
+    },
+    {
+      "name": "Mark",
+      "context": "Marks",
+      "mac": "Cmd+U"
+    },
+    {
+      "name": "Mark as bookmark",
+      "context": "Marks",
+      "label": "Mark as",
+      "mac": "Option+Cmd+U"
+    },
+    {
+      "name": "Unmark",
+      "context": "Marks",
+      "mac": "Shift+Cmd+U"
+    },
+    {
+      "name": "Mark line and send return",
+      "context": "Marks",
+      "label": "Mark line",
+      "mac": "Cmd+Enter"
+    },
+    {
+      "name": "Send return without marking",
+      "context": "Marks",
+      "label": "Send return",
+      "mac": "Shift+Cmd+Enter"
+    },
+    {
+      "name": "Insert bookmark",
+      "context": "Marks",
+      "label": "Insert",
+      "mac": "Shift+Cmd+M"
+    },
+    {
+      "name": "Insert bookmark with name",
+      "context": "Marks",
+      "label": "Insert",
+      "mac": "Option+Shift+Cmd+M"
+    },
+    {
+      "name": "Jump to previous mark",
+      "context": "Marks",
+      "label": "Previous",
+      "mac": "Cmd+Up"
+    },
+    {
+      "name": "Jump to next mark",
+      "context": "Marks",
+      "label": "Next mark",
+      "mac": "Cmd+Down"
+    },
+    {
+      "name": "Jump to previous bookmark",
+      "context": "Marks",
+      "label": "Previous",
+      "mac": "Option+Cmd+Up"
+    },
+    {
+      "name": "Jump to next bookmark",
+      "context": "Marks",
+      "label": "Next",
+      "mac": "Option+Cmd+Down"
+    },
+    {
+      "name": "Clear to previous mark",
+      "context": "Marks",
+      "label": "Clear",
+      "mac": "Cmd+L"
+    },
+    {
+      "name": "Clear to previous bookmark",
+      "context": "Marks",
+      "label": "Clear",
+      "mac": "Option+Cmd+L"
+    },
+    {
+      "name": "Clear to start",
+      "context": "Marks",
+      "label": "Clear start",
+      "mac": "Cmd+K"
+    },
+    {
+      "name": "Select between marks",
+      "context": "Marks",
+      "label": "Between",
+      "mac": "Shift+Cmd+A"
+    },
+    {
+      "name": "Enter or exit full screen",
+      "context": "Other",
+      "label": "Full screen",
+      "mac": "Ctrl+Cmd+F"
+    },
+    {
+      "name": "Show or hide colors",
+      "context": "Other",
+      "label": "Colors",
+      "mac": "Shift+Cmd+C"
+    },
+    {
+      "name": "Open Terminal settings",
+      "context": "Other",
+      "label": "Terminal",
+      "mac": "Cmd+,"
+    },
+    {
+      "name": "Print",
+      "context": "Other",
+      "mac": "Cmd+P"
+    },
+    {
+      "name": "Soft reset terminal emulator state",
+      "context": "Other",
+      "label": "Soft reset",
+      "mac": "Option+Cmd+R"
+    },
+    {
+      "name": "Hard reset terminal emulator state",
+      "context": "Other",
+      "label": "Hard reset",
+      "mac": "Ctrl+Option+Cmd+R"
+    },
+    {
+      "name": "Export text as",
+      "context": "Other",
+      "label": "Export text",
+      "mac": "Cmd+S"
+    },
+    {
+      "name": "Export selected text as",
+      "context": "Other",
+      "label": "Export text",
+      "mac": "Shift+Cmd+S"
+    },
+    {
+      "name": "Reverse search command history",
+      "context": "Other",
+      "label": "Reverse",
+      "mac": "Ctrl+R"
+    },
+    {
+      "name": "Toggle “Allow Mouse Reporting” option",
+      "context": "Other",
+      "label": "“Allow Mouse",
+      "mac": "Cmd+R"
+    },
+    {
+      "name": "Toggle “Use Option as Meta Key” option",
+      "context": "Other",
+      "label": "“Use Option",
+      "mac": "Option+Cmd+O"
+    },
+    {
+      "name": "Show alternate screen",
+      "context": "Other",
+      "label": "Alternate",
+      "mac": "Shift+Cmd+Down"
+    },
+    {
+      "name": "Hide alternate screen",
+      "context": "Other",
+      "label": "Hide",
+      "mac": "Shift+Cmd+Up"
+    },
+    {
+      "name": "Open man page for selection",
+      "context": "Other",
+      "label": "Man",
+      "mac": "Ctrl+Shift+Cmd+/"
+    },
+    {
+      "name": "Search man page index for selection",
+      "context": "Other",
+      "label": "Search man",
+      "mac": "Ctrl+Option+Cmd+/"
+    }
+  ]
+}

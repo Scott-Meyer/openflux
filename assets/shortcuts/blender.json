@@ -1,0 +1,302 @@
+{
+  "name": "Blender",
+  "source": "https://docs.blender.org/manual/en/latest/interface/keymap/blender_default.html",
+  "platforms": [
+    "mac",
+    "windows",
+    "linux"
+  ],
+  "apps": {
+    "macos": [
+      "org.blenderfoundation.blender"
+    ],
+    "windows": [
+      "blender.exe"
+    ],
+    "linux": [
+      "blender"
+    ]
+  },
+  "shortcuts": [
+    {
+      "name": "Move (Grab)",
+      "context": "Transform",
+      "label": "Move",
+      "mac": "G",
+      "windows": "G"
+    },
+    {
+      "name": "Rotate",
+      "context": "Transform",
+      "label": "Rotate",
+      "mac": "R",
+      "windows": "R"
+    },
+    {
+      "name": "Scale",
+      "context": "Transform",
+      "label": "Scale",
+      "mac": "S",
+      "windows": "S"
+    },
+    {
+      "name": "Clear location",
+      "context": "Transform",
+      "label": "Clear Loc",
+      "mac": "Option+G",
+      "windows": "Alt+G"
+    },
+    {
+      "name": "Clear rotation",
+      "context": "Transform",
+      "label": "Clear Rot",
+      "mac": "Option+R",
+      "windows": "Alt+R"
+    },
+    {
+      "name": "Clear scale",
+      "context": "Transform",
+      "label": "Clear Scale",
+      "mac": "Option+S",
+      "windows": "Alt+S"
+    },
+    {
+      "name": "Apply transform",
+      "context": "Transform",
+      "label": "Apply",
+      "mac": "Cmd+A",
+      "windows": "Ctrl+A"
+    },
+    {
+      "name": "Select all",
+      "context": "Selection",
+      "label": "Select All",
+      "mac": "A",
+      "windows": "A"
+    },
+    {
+      "name": "Deselect all",
+      "context": "Selection",
+      "label": "Deselect",
+      "mac": "Option+A",
+      "windows": "Alt+A"
+    },
+    {
+      "name": "Invert selection",
+      "context": "Selection",
+      "label": "Invert",
+      "mac": "Cmd+I",
+      "windows": "Ctrl+I"
+    },
+    {
+      "name": "Box select",
+      "context": "Selection",
+      "label": "Box Select",
+      "mac": "B",
+      "windows": "B"
+    },
+    {
+      "name": "Circle select",
+      "context": "Selection",
+      "label": "Circle",
+      "mac": "C",
+      "windows": "C"
+    },
+    {
+      "name": "Toggle Edit Mode",
+      "context": "Modeling",
+      "label": "Edit Mode",
+      "mac": "Tab",
+      "windows": "Tab"
+    },
+    {
+      "name": "Extrude",
+      "context": "Modeling",
+      "label": "Extrude",
+      "mac": "E",
+      "windows": "E"
+    },
+    {
+      "name": "Inset faces",
+      "context": "Modeling",
+      "label": "Inset",
+      "mac": "I",
+      "windows": "I"
+    },
+    {
+      "name": "Bevel",
+      "context": "Modeling",
+      "label": "Bevel",
+      "mac": "Cmd+B",
+      "windows": "Ctrl+B"
+    },
+    {
+      "name": "Loop cut and slide",
+      "context": "Modeling",
+      "label": "Loop Cut",
+      "mac": "Cmd+R",
+      "windows": "Ctrl+R"
+    },
+    {
+      "name": "Knife tool",
+      "context": "Modeling",
+      "label": "Knife",
+      "mac": "K",
+      "windows": "K"
+    },
+    {
+      "name": "Make edge or face",
+      "context": "Modeling",
+      "label": "Fill Face",
+      "mac": "F",
+      "windows": "F"
+    },
+    {
+      "name": "Duplicate",
+      "context": "Object",
+      "label": "Duplicate",
+      "mac": "Shift+D",
+      "windows": "Shift+D"
+    },
+    {
+      "name": "Duplicate linked",
+      "context": "Object",
+      "label": "Dup Linked",
+      "mac": "Option+D",
+      "windows": "Alt+D"
+    },
+    {
+      "name": "Add menu",
+      "context": "Object",
+      "label": "Add",
+      "mac": "Shift+A",
+      "windows": "Shift+A"
+    },
+    {
+      "name": "Delete",
+      "context": "Object",
+      "label": "Delete",
+      "mac": "X",
+      "windows": "X"
+    },
+    {
+      "name": "Join selected objects",
+      "context": "Object",
+      "label": "Join",
+      "mac": "Cmd+J",
+      "windows": "Ctrl+J"
+    },
+    {
+      "name": "Hide selected",
+      "context": "Viewport",
+      "label": "Hide",
+      "mac": "H",
+      "windows": "H"
+    },
+    {
+      "name": "Reveal hidden",
+      "context": "Viewport",
+      "label": "Unhide",
+      "mac": "Option+H",
+      "windows": "Alt+H"
+    },
+    {
+      "name": "Toggle X-Ray",
+      "context": "Viewport",
+      "label": "X-Ray",
+      "mac": "Option+Z",
+      "windows": "Alt+Z"
+    },
+    {
+      "name": "Shading pie menu",
+      "context": "Viewport",
+      "label": "Shading",
+      "mac": "Z",
+      "windows": "Z"
+    },
+    {
+      "name": "Toggle Toolbar",
+      "context": "Viewport",
+      "label": "Toolbar",
+      "mac": "T",
+      "windows": "T"
+    },
+    {
+      "name": "Toggle Sidebar",
+      "context": "Viewport",
+      "label": "Sidebar",
+      "mac": "N",
+      "windows": "N"
+    },
+    {
+      "name": "Camera view",
+      "context": "Viewport",
+      "label": "Camera",
+      "mac": "Numpad0",
+      "windows": "Numpad0"
+    },
+    {
+      "name": "Front orthographic view",
+      "context": "Viewport",
+      "label": "Front",
+      "mac": "Numpad1",
+      "windows": "Numpad1"
+    },
+    {
+      "name": "Right orthographic view",
+      "context": "Viewport",
+      "label": "Right",
+      "mac": "Numpad3",
+      "windows": "Numpad3"
+    },
+    {
+      "name": "Top orthographic view",
+      "context": "Viewport",
+      "label": "Top",
+      "mac": "Numpad7",
+      "windows": "Numpad7"
+    },
+    {
+      "name": "Render image",
+      "context": "Render",
+      "label": "Render",
+      "mac": "F12",
+      "windows": "F12"
+    },
+    {
+      "name": "Play or pause animation",
+      "context": "Animation",
+      "label": "Play",
+      "mac": "Space",
+      "windows": "Space"
+    },
+    {
+      "name": "Search menu",
+      "context": "General",
+      "label": "Search",
+      "mac": "F3",
+      "windows": "F3"
+    },
+    {
+      "name": "Save file",
+      "context": "General",
+      "label": "Save",
+      "mac": "Cmd+S",
+      "windows": "Ctrl+S"
+    },
+    {
+      "name": "Undo",
+      "context": "General",
+      "label": "Undo",
+      "mac": "Cmd+Z",
+      "windows": "Ctrl+Z"
+    },
+    {
+      "name": "Redo",
+      "context": "General",
+      "label": "Redo",
+      "mac": "Cmd+Shift+Z",
+      "windows": "Ctrl+Shift+Z"
+    }
+  ]
+}

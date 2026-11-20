@@ -1,0 +1,22 @@
+# Build outputs
+target/
+build/
+dist/
+out/
+node_modules/
+host/studio/src-tauri/gen/
+__pycache__/
+*.py[cod]
+
+# Release artifacts are produced by CI only
+*.ipk
+*.uf2
+*.img
+*.dmg
+*.tar.gz
+*.bin
+!host/daemon/tests/fixtures/*.bin
+
+# OS and editor files
+.DS_Store
+*.swp
