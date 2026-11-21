@@ -290,8 +290,10 @@ impl LinuxGpuSampler {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     struct Tree(PathBuf);
 
+    #[cfg(unix)]
     impl Tree {
         fn new(name: &str) -> Self {
             let dir = std::env::temp_dir().join(format!(
@@ -310,7 +312,6 @@ mod tests {
             std::fs::write(p, contents).unwrap();
         }
 
-        #[cfg(unix)]
         fn card(&self, n: u32, driver: &str) {
             let drivers = self.0.join("drivers").join(driver);
             std::fs::create_dir_all(&drivers).unwrap();
@@ -320,6 +321,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     impl Drop for Tree {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
