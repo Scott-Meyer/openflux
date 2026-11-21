@@ -821,7 +821,7 @@ async fn device_status(State(state): State<Arc<ApiState>>) -> impl IntoResponse 
         .iter()
         .any(|k| g.cached_versions.get(*k).and_then(|v| v.as_str()).is_some());
     let usb_unreadable =
-        (g.cached_connected.0 || g.cached_connected.1) && g.versions_loaded && !any_version;
+        (g.cached_connected.0 || g.cached_connected.1) && g.versions_attempted && !any_version;
     (
         StatusCode::OK,
         Json(serde_json::json!({

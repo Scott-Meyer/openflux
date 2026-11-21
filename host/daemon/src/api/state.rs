@@ -327,6 +327,7 @@ pub struct InnerState {
     /// read from or written to the keyboard: a save writes the cached `selectedId` over the
     /// keyboard's, even when the pick ended on the base's value.
     pub theme_picked: bool,
+    pub versions_attempted: bool,
     pub versions_loaded: bool,
     pub cached_connected: (bool, bool),
     pub cached_versions: serde_json::Value,
@@ -691,6 +692,7 @@ impl ApiState {
                 theme_rev_for: None,
                 keyboard_documents: BTreeMap::new(),
                 theme_picked: false,
+                versions_attempted: false,
                 versions_loaded: false,
                 cached_connected,
                 cached_versions: empty_versions(),

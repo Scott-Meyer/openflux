@@ -49,20 +49,20 @@ pub struct LocalScan {
 }
 
 /// Subdirectories checked relative to the chosen folder (bounded, shallow scan).
-const SEARCH_SUBDIRS: &[&str] = &[
-    "",
-    "build",
-    "build/firmware",
-    "build/bridge",
-    "build/display",
-    "keyboard/firmware/build",
-    "keyboard/bridge/build",
-    "keyboard/display/build",
-    "target/release/bundle/nsis",
-    "target/release/bundle/dmg",
-    "target/release/bundle/macos",
-    "target/release/bundle/deb",
-    "target/release/bundle/appimage",
+const SEARCH_SUBDIRS: &[&[&str]] = &[
+    &[],
+    &["build"],
+    &["build", "firmware"],
+    &["build", "bridge"],
+    &["build", "display"],
+    &["keyboard", "firmware", "build"],
+    &["keyboard", "bridge", "build"],
+    &["keyboard", "display", "build"],
+    &["target", "release", "bundle", "nsis"],
+    &["target", "release", "bundle", "dmg"],
+    &["target", "release", "bundle", "macos"],
+    &["target", "release", "bundle", "deb"],
+    &["target", "release", "bundle", "appimage"],
 ];
 
 /// Scans `dir` (and common repo build subdirectories) for the newest local artifact of each
@@ -87,11 +87,10 @@ pub fn scan_dir(dir: &Path) -> LocalScan {
     let mut host: Option<LocalHostInstaller> = None;
 
     for rel in SEARCH_SUBDIRS {
-        let sub = if rel.is_empty() {
-            dir.to_path_buf()
-        } else {
-            dir.join(rel)
-        };
+        let mut sub = dir.to_path_buf();
+        for seg in *rel {
+            sub.push(seg);
+        }
         let Ok(entries) = std::fs::read_dir(&sub) else {
             continue;
         };

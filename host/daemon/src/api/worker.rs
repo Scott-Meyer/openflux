@@ -105,6 +105,7 @@ pub struct WorkerLoopState {
     pub last_live_sent: Option<serde_json::Value>,
     pub last_live_sent_at: Option<Instant>,
     pub last_idle_sample_at: Option<Instant>,
+    pub next_versions_retry_at: Option<Instant>,
     pub pull_backoff_secs: u64,
     pub cached_pack_name: Option<String>,
     pub cached_pack_overlays: Vec<serde_json::Value>,
@@ -1230,6 +1231,7 @@ pub fn reconcile_tick_with_state(
     }
     if std::mem::take(&mut wstate.keyboard_was_reserved) {
         let mut g = state.inner.lock().unwrap();
+        g.versions_attempted = false;
         g.versions_loaded = false;
         g.appearance_hydrated = false;
         g.settings_hydrated = false;
@@ -1244,6 +1246,7 @@ pub fn reconcile_tick_with_state(
         drop(g);
         wstate.last_live_sent = None;
         wstate.pull_backoff_secs = 0;
+        wstate.next_versions_retry_at = None;
     }
 
     let (has_bridge, has_firmware) = device.is_connected();
@@ -1296,15 +1299,16 @@ pub fn reconcile_tick_with_state(
     {
         let mut g = state.inner.lock().unwrap();
         let prev_connected = g.cached_connected;
-        if (has_bridge || has_firmware)
-            && (!g.versions_loaded
-                || has_bridge != prev_connected.0
-                || has_firmware != prev_connected.1)
-        {
+        let conn_changed = has_bridge != prev_connected.0 || has_firmware != prev_connected.1;
+        let retry_due = wstate
+            .next_versions_retry_at
+            .is_none_or(|t| Instant::now() >= t);
+        if (has_bridge || has_firmware) && (conn_changed || (!g.versions_loaded && retry_due)) {
             need_versions = true;
         }
         g.cached_connected = (has_bridge, has_firmware);
         if !has_bridge && !has_firmware {
+            g.versions_attempted = false;
             g.versions_loaded = false;
             g.cached_versions = crate::api::state::empty_versions();
             g.appearance_hydrated = false;
@@ -1313,6 +1317,7 @@ pub fn reconcile_tick_with_state(
             g.forget_keymap();
             g.committed_profile_ids = None;
             wstate.pull_backoff_secs = 0;
+            wstate.next_versions_retry_at = None;
             if prev_connected.0 || prev_connected.1 {
                 disconnected_now = true;
             }
@@ -1346,10 +1351,21 @@ pub fn reconcile_tick_with_state(
         if let Some(u) = state.updates() {
             u.observe_keyboard((has_bridge, has_firmware), &v);
         }
+        let bridge_complete = !has_bridge
+            || (v.get("bridge").and_then(|x| x.as_str()).is_some()
+                && v.get("display").and_then(|x| x.as_str()).is_some());
+        let fw_complete = !has_firmware || v.get("firmware").and_then(|x| x.as_str()).is_some();
+        let all_complete = bridge_complete && fw_complete;
         let mut g = state.inner.lock().unwrap();
         let changed = g.cached_versions != v;
         g.cached_versions = v;
-        g.versions_loaded = true;
+        g.versions_attempted = true;
+        g.versions_loaded = all_complete;
+        wstate.next_versions_retry_at = if all_complete {
+            None
+        } else {
+            Some(Instant::now() + Duration::from_secs(3))
+        };
         if changed {
             g.appearance_hydrated = false;
             g.settings_hydrated = false;

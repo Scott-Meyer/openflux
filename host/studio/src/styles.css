@@ -1189,6 +1189,7 @@ input[type="text"],
   border-radius: 999px;
   background: rgba(45, 212, 191, 0.14);
   color: var(--accent);
+  white-space: nowrap;
 }
 
 .muted {
