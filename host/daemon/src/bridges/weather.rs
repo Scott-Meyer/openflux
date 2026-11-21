@@ -404,7 +404,10 @@ mod tests {
 
         // Changing city immediately attempts once for the new city
         assert!(!wb.poll_nonblocking("Denver", false).ready);
-        thread::sleep(Duration::from_millis(20));
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while calls.load(Ordering::SeqCst) < 2 && std::time::Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(5));
+        }
         assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 
