@@ -338,13 +338,19 @@ fn resolve_bundled_dir(cli_dir: Option<&PathBuf>) -> PathBuf {
     if let Some(d) = cli_dir {
         return d.clone();
     }
-    let candidates = [
-        PathBuf::from("modules"),
-        std::env::current_exe()
-            .ok()
-            .and_then(|e| e.parent().map(|p| p.join("modules")))
-            .unwrap_or_default(),
-    ];
+    let mut candidates = vec![PathBuf::from("modules")];
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(p) = exe.parent() {
+            candidates.push(p.join("modules"));
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        candidates.push(
+            PathBuf::from(&home)
+                .join("Applications/OpenFlux Studio.app/Contents/Resources/modules"),
+        );
+        candidates.push(PathBuf::from(&home).join("git/flux/modules"));
+    }
     for c in candidates {
         if c.is_dir() {
             return c;
@@ -354,14 +360,20 @@ fn resolve_bundled_dir(cli_dir: Option<&PathBuf>) -> PathBuf {
 }
 
 fn load_bundled_font() -> Option<Vec<u8>> {
-    let candidates = [
-        "assets/bundled_fonts/Montserrat-VariableFont_wght.ttf",
-        "dist/assets/fonts/Montserrat-VariableFont_wght.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    let mut candidates = vec![
+        PathBuf::from("assets/bundled_fonts/Montserrat-VariableFont_wght.ttf"),
+        PathBuf::from("dist/assets/fonts/Montserrat-VariableFont_wght.ttf"),
     ];
+    if let Ok(home) = std::env::var("HOME") {
+        candidates.push(
+            PathBuf::from(&home)
+                .join("Applications/OpenFlux Studio.app/Contents/Resources/assets/bundled_fonts/Montserrat-VariableFont_wght.ttf"),
+        );
+    }
+    candidates.push(PathBuf::from("/System/Library/Fonts/Helvetica.ttc"));
+    candidates.push(PathBuf::from("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"));
     for p in candidates {
-        if let Ok(bytes) = std::fs::read(p) {
+        if let Ok(bytes) = std::fs::read(&p) {
             return Some(bytes);
         }
     }

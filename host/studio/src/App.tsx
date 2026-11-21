@@ -71,7 +71,7 @@ export const App: React.FC<AppProps> = ({
         startDaemon: (mode) => services.daemonService.start(mode),
       }),
   );
-  const [tab, setTab] = useState<StudioTab>(initialTab ?? "named_profiles");
+  const [tab, setTab] = useState<StudioTab>(initialTab ?? "v2");
   const [updatesStatus, setUpdatesStatus] = useState<UpdatesStatus | null>(null);
   const [updatesBadge, setUpdatesBadge] = useState(false);
   const [pendingApps, setPendingApps] = useState(0);
