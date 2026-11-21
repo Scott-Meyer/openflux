@@ -4,6 +4,8 @@ import {
   type CuratedListSubscription,
   type InstallPreview,
   type ModuleCategory,
+  type ModuleLogEntry,
+  type PreviewFrameTimings,
   type V2ModuleRecord,
   v2Client,
 } from "../api/v2Client";
@@ -24,11 +26,14 @@ export const V2ModulesHub: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Live GPU preview state
+  // Live GPU preview + reactive sync state
   const [previewPng, setPreviewPng] = useState<string | null>(null);
   const [gpuAdapter, setGpuAdapter] = useState<string>("");
+  const [timings, setTimings] = useState<PreviewFrameTimings | null>(null);
   const [previewRunning, setPreviewRunning] = useState<boolean>(true);
+  const [selectedLogs, setSelectedLogs] = useState<ModuleLogEntry[]>([]);
   const inflightRef = useRef(false);
+  const modulesRevRef = useRef<number>(0);
 
   // Disclosure install modal state
   const [installPath, setInstallPath] = useState("");
@@ -43,6 +48,9 @@ export const V2ModulesHub: React.FC = () => {
       const [mRes, lRes] = await Promise.all([v2Client.listModules(), v2Client.listCuratedLists()]);
       setModules(mRes.modules);
       setLists(lRes.lists);
+      if (typeof mRes.modules_rev === "number") {
+        modulesRevRef.current = mRes.modules_rev;
+      }
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -53,7 +61,38 @@ export const V2ModulesHub: React.FC = () => {
     void refresh();
   }, [refresh]);
 
-  // Live GPU compositor preview loop (~12 fps for snappy interactive ripples without burning CPU)
+  // Live reactive bus subscription (`system/modules/#`): whenever an AI agent or CLI modifies
+  // modules, configs, or files on disk, Studio updates immediately—even when preview is paused!
+  useEffect(() => {
+    let alive = true;
+    let sinceSeq = 0;
+    const runLoop = async () => {
+      try {
+        const st = await v2Client.getStatus();
+        sinceSeq = st.latest_bus_seq;
+      } catch {
+        // Retry in loop if daemon is booting.
+      }
+      while (alive) {
+        try {
+          const res = await v2Client.pollBusEvents("system/modules/#", sinceSeq, 2500);
+          if (!alive) break;
+          sinceSeq = res.latest_seq;
+          if (res.events.length > 0) {
+            await refresh();
+          }
+        } catch {
+          await new Promise((r) => window.setTimeout(r, 1000));
+        }
+      }
+    };
+    void runLoop();
+    return () => {
+      alive = false;
+    };
+  }, [refresh]);
+
+  // Live GPU compositor preview loop (~12 fps) + instant rev sync + perf timings
   useEffect(() => {
     if (!previewRunning) return;
     let alive = true;
@@ -65,6 +104,11 @@ export const V2ModulesHub: React.FC = () => {
         if (alive) {
           setPreviewPng(`data:image/png;base64,${res.png_base64}`);
           setGpuAdapter(res.gpu_adapter);
+          if (res.timings) setTimings(res.timings);
+          if (typeof res.modules_rev === "number" && res.modules_rev !== modulesRevRef.current) {
+            modulesRevRef.current = res.modules_rev;
+            void refresh();
+          }
         }
       } catch {
         // Daemon may be offline in unit tests; stay quiet.
@@ -78,7 +122,31 @@ export const V2ModulesHub: React.FC = () => {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [previewRunning]);
+  }, [previewRunning, refresh]);
+
+  // Live logs refresh for the selected module (updates when AI edits or module logs)
+  useEffect(() => {
+    const targetId = selectedId ?? modules.find((m) => m.manifest.category === category)?.id;
+    if (!targetId) {
+      setSelectedLogs([]);
+      return;
+    }
+    let alive = true;
+    const pull = async () => {
+      try {
+        const res = await v2Client.getModuleLogs(targetId);
+        if (alive) setSelectedLogs(res.logs);
+      } catch {
+        // ignore
+      }
+    };
+    void pull();
+    const timer = window.setInterval(() => void pull(), 1200);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [selectedId, category, modules]);
 
   const handleToggle = async (mod: V2ModuleRecord) => {
     try {
@@ -197,14 +265,22 @@ export const V2ModulesHub: React.FC = () => {
           padding: 14,
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
           <div>
             <strong>OpenFlux v2 Live GPU Compositor Preview</strong>
             {gpuAdapter && (
               <span style={{ marginLeft: 10, fontSize: 12, opacity: 0.72 }}>GPU: {gpuAdapter}</span>
             )}
+            {timings && (
+              <span style={{ marginLeft: 12, fontSize: 12, color: "#7ce8ff" }}>
+                {timings.total_frame_ms.toFixed(1)} ms/frame (Lua {timings.lua_ms.toFixed(2)} · Phys {timings.physics_ms.toFixed(2)} · GPU {timings.gpu_submit_ms.toFixed(2)}) · {timings.particle_count} particles · Water {timings.wave_enabled ? "ON" : "OFF"}
+              </span>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => void v2Client.simulateBurst()}>
+              Physics + Water Burst
+            </button>
             <button type="button" onClick={() => void v2Client.simulateKey(49, 2500, 16500, false)}>
               Press Down (D)
             </button>
@@ -438,6 +514,35 @@ export const V2ModulesHub: React.FC = () => {
                 </div>
                 <div>
                   <strong>Publishes:</strong> {selected.manifest.channels.publishes.join(", ") || "none"}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <strong style={{ fontSize: 12 }}>Live Module Logs ({selectedLogs.length})</strong>
+                <div
+                  style={{
+                    maxHeight: 120,
+                    overflowY: "auto",
+                    background: "rgba(6, 8, 14, 0.85)",
+                    borderRadius: 6,
+                    padding: 8,
+                    fontFamily: "monospace",
+                    fontSize: 11,
+                    color: "#c8d6e5",
+                  }}
+                >
+                  {selectedLogs.length === 0 ? (
+                    <span style={{ opacity: 0.55 }}>No logs or errors yet. Use module.log(&quot;info&quot;, &quot;...&quot;) in Lua or stdout in host scripts.</span>
+                  ) : (
+                    selectedLogs.slice(-20).map((entry, idx) => (
+                      <div
+                        key={`${entry.timestamp_ms}-${idx}`}
+                        style={{ color: entry.level === "error" || entry.level === "stderr" ? "#ff8c96" : "#c8d6e5" }}
+                      >
+                        [{entry.level}] {entry.message}
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </>

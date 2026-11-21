@@ -25,13 +25,17 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 pub struct V2State {
     pub broker: Broker,
     pub registry: ModuleRegistry,
     pub runtime: Mutex<ModuleRuntime>,
     pub host_procs: Mutex<HostProcessManager>,
+    pub modules_rev: AtomicU64,
+    last_disk_sig: Mutex<String>,
     compositor: Mutex<Option<Compositor>>,
     geometry: KeyboardGeometry,
 }
@@ -157,17 +161,114 @@ impl V2State {
             }
         }
 
-        Arc::new(Self {
+        let initial_sig = Self::compute_disk_sig(&registry);
+        let state = Arc::new(Self {
             broker,
             registry,
             runtime: Mutex::new(runtime),
             host_procs: Mutex::new(host_procs),
+            modules_rev: AtomicU64::new(1),
+            last_disk_sig: Mutex::new(initial_sig),
             compositor: Mutex::new(None),
             geometry,
-        })
+        });
+
+        // Background watcher: detects direct edits to script.lua / module.toml / new local
+        // folders / modules_state.json written by an AI agent or external editor and pushes
+        // live `system/modules/changed` events so OpenFlux Studio updates immediately.
+        let weak = Arc::downgrade(&state);
+        std::thread::Builder::new()
+            .name("openflux-v2-watch".into())
+            .spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_millis(350));
+                let Some(st) = weak.upgrade() else {
+                    break;
+                };
+                st.poll_disk_and_hot_reload();
+            })
+            .ok();
+
+        state
+    }
+
+    fn compute_disk_sig(registry: &ModuleRegistry) -> String {
+        let mut parts = Vec::new();
+        let mtime_ms = |p: &std::path::Path| -> u128 {
+            std::fs::metadata(p)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        };
+        parts.push(format!("state:{}", mtime_ms(&registry.state_path)));
+        for dir in [&registry.installed_dir, &registry.local_dir] {
+            if let Ok(rd) = std::fs::read_dir(dir) {
+                let mut names: Vec<String> = rd
+                    .flatten()
+                    .filter_map(|e| {
+                        let p = e.path();
+                        if p.is_dir() && p.join("module.toml").is_file() {
+                            Some(format!(
+                                "{}:{}",
+                                p.display(),
+                                mtime_ms(&p.join("module.toml"))
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                names.sort();
+                parts.extend(names);
+            }
+        }
+        parts.join("|")
+    }
+
+    pub fn notify_modules_changed(&self, reason: &str, module_id: Option<&str>) {
+        let rev = self.modules_rev.fetch_add(1, Ordering::SeqCst) + 1;
+        *self.last_disk_sig.lock().unwrap() = Self::compute_disk_sig(&self.registry);
+        let _ = self.broker.publish(
+            "system/modules/changed",
+            json!({
+                "rev": rev,
+                "reason": reason,
+                "module_id": module_id,
+                "timestamp_ms": openflux_bus::now_unix_ms(),
+            }),
+            PublishOptions::retained(),
+        );
+    }
+
+    pub fn poll_disk_and_hot_reload(&self) {
+        let cur_sig = Self::compute_disk_sig(&self.registry);
+        let disk_changed = {
+            let mut prev = self.last_disk_sig.lock().unwrap();
+            if *prev != cur_sig {
+                *prev = cur_sig;
+                true
+            } else {
+                false
+            }
+        };
+        if disk_changed {
+            self.sync_all_with_reason("disk_changed", None);
+            return;
+        }
+        let reloaded = self.runtime.lock().unwrap().check_hot_reload();
+        if !reloaded.is_empty() {
+            for id in &reloaded {
+                self.notify_modules_changed("hot_reload", Some(id));
+            }
+        }
     }
 
     pub fn sync_all(&self) {
+        self.sync_all_with_reason("api_update", None);
+    }
+
+    pub fn sync_all_with_reason(&self, reason: &str, module_id: Option<&str>) {
         let discovered = self.registry.discover();
         let state = self.registry.load_state();
         self.runtime
@@ -185,6 +286,8 @@ impl V2State {
                 hp.stop_module(id);
             }
         }
+        drop(hp);
+        self.notify_modules_changed(reason, module_id);
     }
 }
 
@@ -334,7 +437,13 @@ async fn list_modules(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
         })
         .collect();
 
-    (StatusCode::OK, Json(json!({ "modules": items })))
+    (
+        StatusCode::OK,
+        Json(json!({
+            "modules": items,
+            "modules_rev": state.v2.modules_rev.load(Ordering::SeqCst),
+        })),
+    )
 }
 
 async fn get_module_detail(
@@ -383,15 +492,22 @@ async fn update_module_state(
         return err_resp(StatusCode::NOT_FOUND, format!("module {id:?} not found"));
     }
     let mut saved = state.v2.registry.load_state();
-    let entry = saved.modules.entry(id.clone()).or_default();
-    if let Some(en) = body.enabled {
-        entry.enabled = en;
-    }
     if let Some(slot_opt) = body.slot {
         if slot_opt.is_some_and(|s| s > 3) {
             return err_resp(StatusCode::BAD_REQUEST, "slot must be 0..=3");
         }
-        entry.slot = slot_opt;
+        if let Some(target_slot) = slot_opt {
+            for (other_id, other) in saved.modules.iter_mut() {
+                if other_id != &id && other.slot == Some(target_slot) {
+                    other.slot = None;
+                }
+            }
+        }
+        saved.modules.entry(id.clone()).or_default().slot = slot_opt;
+    }
+    let entry = saved.modules.entry(id.clone()).or_default();
+    if let Some(en) = body.enabled {
+        entry.enabled = en;
     }
     if let Some(cfg) = body.config {
         for (k, v) in cfg {
@@ -430,6 +546,13 @@ async fn create_module(
         Ok(dm) => {
             if body.enable || body.slot.is_some() {
                 let mut saved = state.v2.registry.load_state();
+                if let Some(s) = body.slot {
+                    for (other_id, other) in saved.modules.iter_mut() {
+                        if other_id != &body.id && other.slot == Some(s) {
+                            other.slot = None;
+                        }
+                    }
+                }
                 let e = saved.modules.entry(body.id.clone()).or_default();
                 e.enabled = body.enable || e.enabled;
                 if let Some(s) = body.slot {
@@ -531,9 +654,112 @@ async fn reload_module_api(
 ) -> impl IntoResponse {
     let ok = state.v2.runtime.lock().unwrap().reload_module(&id);
     if !ok {
-        state.v2.sync_all();
+        state.v2.sync_all_with_reason("reload", Some(&id));
+    } else {
+        state.v2.notify_modules_changed("reload", Some(&id));
     }
     (StatusCode::OK, Json(json!({ "reloaded": id })))
+}
+
+async fn get_module_logs_api(
+    State(state): State<Arc<ApiState>>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let mut logs = state.v2.runtime.lock().unwrap().module_logs(&id);
+    logs.extend(state.v2.host_procs.lock().unwrap().logs(&id));
+    logs.sort_by_key(|l| l.timestamp_ms);
+    (StatusCode::OK, Json(json!({ "id": id, "logs": logs })))
+}
+
+async fn get_all_logs_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let statuses = state.v2.runtime.lock().unwrap().statuses();
+    let mut entries = Vec::new();
+    for s in statuses {
+        let rt_logs = state.v2.runtime.lock().unwrap().module_logs(&s.id);
+        for l in rt_logs {
+            entries.push(json!({
+                "module_id": s.id,
+                "timestamp_ms": l.timestamp_ms,
+                "level": l.level,
+                "message": l.message,
+            }));
+        }
+        let host_logs = state.v2.host_procs.lock().unwrap().logs(&s.id);
+        for l in host_logs {
+            entries.push(json!({
+                "module_id": s.id,
+                "timestamp_ms": l.timestamp_ms,
+                "level": l.level,
+                "message": l.message,
+            }));
+        }
+    }
+    entries.sort_by_key(|v| v.get("timestamp_ms").and_then(|t| t.as_u64()).unwrap_or(0));
+    (StatusCode::OK, Json(json!({ "logs": entries })))
+}
+
+async fn v2_status_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let discovered = state.v2.registry.discover();
+    let saved = state.v2.registry.load_state();
+    let enabled_count = saved.modules.values().filter(|m| m.enabled).count();
+    let statuses = state.v2.runtime.lock().unwrap().statuses();
+    let adapter = state
+        .v2
+        .compositor
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|c| c.adapter_summary())
+        .unwrap_or_else(|| "lazy-init".into());
+    (
+        StatusCode::OK,
+        Json(json!({
+            "pid": std::process::id(),
+            "modules_rev": state.v2.modules_rev.load(Ordering::SeqCst),
+            "latest_bus_seq": state.v2.broker.latest_seq(),
+            "bundled_dir": state.v2.registry.bundled_dir,
+            "installed_dir": state.v2.registry.installed_dir,
+            "local_dir": state.v2.registry.local_dir,
+            "state_path": state.v2.registry.state_path,
+            "discovered_modules": discovered.len(),
+            "enabled_modules": enabled_count,
+            "gpu_adapter": adapter,
+            "runtime_modules": statuses,
+        })),
+    )
+}
+
+#[derive(Deserialize)]
+struct BusEventsQuery {
+    #[serde(default = "default_wildcard")]
+    pattern: String,
+    #[serde(default)]
+    since_seq: u64,
+    #[serde(default = "default_wait_ms")]
+    wait_ms: u64,
+}
+fn default_wait_ms() -> u64 {
+    2000
+}
+
+async fn bus_events_poll(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<BusEventsQuery>,
+) -> impl IntoResponse {
+    let broker = state.v2.broker.clone();
+    let pattern = q.pattern;
+    let since_seq = q.since_seq;
+    let wait = std::time::Duration::from_millis(q.wait_ms.min(10_000));
+    let res = tokio::task::spawn_blocking(move || broker.poll_events_since(&pattern, since_seq, wait))
+        .await;
+    match res {
+        Ok(Ok((events, latest_seq))) => (
+            StatusCode::OK,
+            Json(json!({ "events": events, "latest_seq": latest_seq })),
+        ),
+        Ok(Err(e)) => err_resp(StatusCode::BAD_REQUEST, e.to_string()),
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
 }
 
 async fn list_curated_lists(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
@@ -551,6 +777,7 @@ async fn add_curated_list(
     if let Err(e) = state.v2.registry.save_state(&saved) {
         return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e);
     }
+    state.v2.notify_modules_changed("lists_updated", None);
     (StatusCode::OK, Json(json!({ "lists": saved.curated_lists })))
 }
 
@@ -563,6 +790,7 @@ async fn remove_curated_list(
     if let Err(e) = state.v2.registry.save_state(&saved) {
         return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e);
     }
+    state.v2.notify_modules_changed("lists_updated", None);
     (StatusCode::OK, Json(json!({ "lists": saved.curated_lists })))
 }
 
@@ -696,6 +924,60 @@ async fn simulate_impulse(
     (StatusCode::OK, Json(json!({ "ok": true, "impulse": imp })))
 }
 
+/// Fires a dramatic multi-key ripple + particle + analog burst across the keyboard to showcase
+/// 3D water refraction, particle-to-particle collisions, keycap wall bounces, and lens refraction!
+async fn simulate_physics_burst(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let now_ms = openflux_bus::now_unix_ms();
+    let burst_keys: [u16; 6] = [34, 37, 49, 52, 55, 67];
+    let mut samples = Vec::new();
+    for (i, &key_index) in burst_keys.iter().enumerate() {
+        if let Some(k) = state.v2.geometry.key(key_index) {
+            let depth = 2200 + ((i as u16) * 90) % 550;
+            let vel = if i % 2 == 0 { 16500 } else { -11500 };
+            let ev = KeyEvent {
+                key_index,
+                kind: KeyEventKind::Press,
+                timestamp_ms: now_ms,
+                x_px: k.center_x,
+                y_px: k.center_y,
+                w_px: k.rect.w,
+                h_px: k.rect.h,
+                uv_x: k.uv_x,
+                uv_y: k.uv_y,
+                row: k.row,
+                col: k.col,
+                depth_um: depth,
+                velocity_um_s: vel,
+                color: None,
+            };
+            let _ = state.v2.broker.publish_typed(
+                topics::INPUT_KEYS_EVENT,
+                &ev,
+                PublishOptions::default(),
+            );
+            samples.push(AnalogKeySample::from_raw(
+                key_index,
+                depth,
+                vel,
+                k.center_x,
+                k.center_y,
+            ));
+        }
+    }
+    let _ = state.v2.broker.publish_typed(
+        topics::INPUT_KEYS_ANALOG,
+        &AnalogKeyFrame {
+            timestamp_ms: now_ms,
+            samples,
+        },
+        PublishOptions::default(),
+    );
+    (
+        StatusCode::OK,
+        Json(json!({ "ok": true, "keys_triggered": burst_keys.len() })),
+    )
+}
+
 #[derive(Deserialize)]
 struct PreviewFrameBody {
     #[serde(default = "default_step_ms")]
@@ -746,9 +1028,13 @@ async fn render_preview_frame(
     let steps = body.steps.clamp(1, 30);
     let dt_sec = (body.step_ms / 1000.0).clamp(0.001, 0.1);
     let now_ms = openflux_bus::now_unix_ms();
+    let mut lua_ms = 0.0_f32;
+    let mut last_timings = openflux_compositor::FrameTimings::default();
     for s in 0..steps {
+        let t_lua = std::time::Instant::now();
         let scene = rt.step_frame(dt_sec, now_ms + (s as f32 * body.step_ms) as u64);
-        comp.render_scene(&scene);
+        lua_ms = t_lua.elapsed().as_secs_f32() * 1000.0;
+        last_timings = comp.render_scene(&scene);
     }
     let rgba = match comp.readback_rgba() {
         Ok(b) => b,
@@ -772,8 +1058,19 @@ async fn render_preview_frame(
             "width": w,
             "height": h,
             "gpu_adapter": adapter,
+            "modules_rev": state.v2.modules_rev.load(Ordering::SeqCst),
             "png_base64": b64,
             "modules": statuses,
+            "timings": {
+                "lua_ms": lua_ms,
+                "physics_ms": last_timings.physics_ms,
+                "canvas2d_ms": last_timings.canvas2d_ms,
+                "gpu_submit_ms": last_timings.gpu_submit_ms,
+                "total_frame_ms": lua_ms + last_timings.total_ms,
+                "particle_count": last_timings.particle_count,
+                "glow_count": last_timings.glow_count,
+                "wave_enabled": last_timings.wave_enabled,
+            }
         })),
     )
 }
@@ -781,8 +1078,11 @@ async fn render_preview_frame(
 /// Mounts all OpenFlux v2 routes (open localhost bus, module management, disclosure, lists, presets, GPU preview).
 pub fn router(state: Arc<ApiState>) -> Router {
     Router::new()
+        .route("/v2/status", get(v2_status_api))
+        .route("/v2/logs", get(get_all_logs_api))
         .route("/v2/bus/pub", post(bus_pub))
         .route("/v2/bus/retained", get(bus_retained))
+        .route("/v2/bus/events", get(bus_events_poll))
         .route("/v2/bus/ws", get(bus_ws))
         .route("/v2/modules", get(list_modules))
         .route("/v2/modules/create", post(create_module))
@@ -792,6 +1092,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/modules/:id", get(get_module_detail))
         .route("/v2/modules/:id/state", put(update_module_state))
         .route("/v2/modules/:id/reload", post(reload_module_api))
+        .route("/v2/modules/:id/logs", get(get_module_logs_api))
         .route("/v2/lists", get(list_curated_lists).post(add_curated_list))
         .route("/v2/lists/browse", get(browse_curated_list))
         .route("/v2/lists/:id", delete(remove_curated_list))
@@ -799,6 +1100,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/preset/import", post(import_preset_api))
         .route("/v2/simulate/key", post(simulate_key))
         .route("/v2/simulate/impulse", post(simulate_impulse))
+        .route("/v2/simulate/burst", post(simulate_physics_burst))
         .route("/v2/preview/frame", post(render_preview_frame))
         .with_state(state)
 }

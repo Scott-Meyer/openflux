@@ -213,6 +213,73 @@ impl ParticleSystem {
             p.current_scale += (target_scale - p.current_scale) * (dt_sec * 18.0).min(1.0);
         }
 
+        // Fast spatial-grid particle-to-particle elastic collisions (cell size 32px -> 60x34 grid).
+        const CELL: f32 = 32.0;
+        const GW: usize = 60;
+        const GH: usize = 34;
+        let mut grid: Vec<Vec<usize>> = vec![Vec::new(); GW * GH];
+        for (i, p) in self.particles.iter().enumerate() {
+            if p.age_ms >= p.life_ms {
+                continue;
+            }
+            let cx = ((p.x / CELL) as isize).clamp(0, (GW - 1) as isize) as usize;
+            let cy = ((p.y / CELL) as isize).clamp(0, (GH - 1) as isize) as usize;
+            grid[cy * GW + cx].push(i);
+        }
+
+        for cy in 0..GH {
+            for cx in 0..GW {
+                let cell_idx = cy * GW + cx;
+                if grid[cell_idx].is_empty() {
+                    continue;
+                }
+                let nx_end = (cx + 2).min(GW);
+                let ny_end = (cy + 2).min(GH);
+                for ny in cy..ny_end {
+                    let nx_start = if ny == cy { cx } else { cx.saturating_sub(1) };
+                    for nx in nx_start..nx_end {
+                        let nb_idx = ny * GW + nx;
+                        let same = nb_idx == cell_idx;
+                        let len_a = grid[cell_idx].len();
+                        let len_b = grid[nb_idx].len();
+                        for ai in 0..len_a {
+                            let i = grid[cell_idx][ai];
+                            let b_start = if same { ai + 1 } else { 0 };
+                            for bi in b_start..len_b {
+                                let j = grid[nb_idx][bi];
+                                let dx = self.particles[j].x - self.particles[i].x;
+                                let dy = self.particles[j].y - self.particles[i].y;
+                                let min_d =
+                                    (self.particles[i].radius_px + self.particles[j].radius_px) * 1.15;
+                                let dist2 = dx * dx + dy * dy;
+                                if dist2 > 1e-4 && dist2 < min_d * min_d {
+                                    let dist = dist2.sqrt();
+                                    let nx_v = dx / dist;
+                                    let ny_v = dy / dist;
+                                    let overlap = (min_d - dist) * 0.5;
+                                    self.particles[i].x -= nx_v * overlap;
+                                    self.particles[i].y -= ny_v * overlap;
+                                    self.particles[j].x += nx_v * overlap;
+                                    self.particles[j].y += ny_v * overlap;
+
+                                    let rvx = self.particles[j].vx - self.particles[i].vx;
+                                    let rvy = self.particles[j].vy - self.particles[i].vy;
+                                    let sep_vel = rvx * nx_v + rvy * ny_v;
+                                    if sep_vel < 0.0 {
+                                        let impulse = -0.92 * sep_vel;
+                                        self.particles[i].vx -= impulse * nx_v;
+                                        self.particles[i].vy -= impulse * ny_v;
+                                        self.particles[j].vx += impulse * nx_v;
+                                        self.particles[j].vy += impulse * ny_v;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         self.particles.retain(|p| p.age_ms < p.life_ms);
     }
 }

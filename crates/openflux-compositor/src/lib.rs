@@ -6,5 +6,5 @@ pub mod particles;
 pub mod shaders;
 
 pub use canvas2d::{Canvas2D, DEFAULT_ANSI_LABELS};
-pub use compositor::{Compositor, CompositorOptions};
+pub use compositor::{Compositor, CompositorOptions, FrameTimings};
 pub use particles::{KeySdfGrid, LiveParticle, ParticleSystem, SdfCell};

@@ -21,7 +21,18 @@ use openflux_bus::{KeyboardGeometry, DISPLAY_HEIGHT_PX, DISPLAY_WIDTH_PX};
 use openflux_modules::{FrameScene, KeyGlowShape};
 use std::collections::HashMap;
 use std::path::Path;
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FrameTimings {
+    pub physics_ms: f32,
+    pub canvas2d_ms: f32,
+    pub gpu_submit_ms: f32,
+    pub total_ms: f32,
+    pub particle_count: usize,
+    pub glow_count: usize,
+    pub wave_enabled: bool,
+}
 
 const WAVE_W: u32 = 480;
 const WAVE_H: u32 = 270;
@@ -808,12 +819,16 @@ impl Compositor {
     }
 
     /// Executes the complete 7-stage GPU pipeline for `scene` and updates `output_tex`.
-    pub fn render_scene(&mut self, scene: &FrameScene) {
-        // Spawn & step SDF-aware particles.
+    pub fn render_scene(&mut self, scene: &FrameScene) -> FrameTimings {
+        let t_start = Instant::now();
+
+        // Spawn & step SDF-aware + particle-colliding physics.
+        let t_phys = Instant::now();
         for sp in &scene.particle_spawns {
             self.particles.spawn(sp, &self.sdf_grid);
         }
         self.particles.step(scene.dt_sec.max(0.001), &self.sdf_grid, &self.geometry);
+        let physics_ms = t_phys.elapsed().as_secs_f32() * 1000.0;
 
         // Prepare background media if requested.
         if let Some(ref bg_path) = scene.background_media {
@@ -926,15 +941,24 @@ impl Compositor {
             );
         }
 
-        // Rasterize 2D overlay stages (under_key_draws -> key legends -> tiles -> world_overlay)
+        // Rasterize 2D overlay stages (under_key_draws -> cached key legends -> tiles -> world_overlay)
+        let t_c2d = Instant::now();
         self.canvas.clear();
-        self.canvas.execute(&scene.under_key_draws);
+        if !scene.under_key_draws.is_empty() {
+            self.canvas.execute(&scene.under_key_draws);
+        }
         if self.draw_default_legends {
             self.canvas
-                .draw_default_key_legends(&self.geometry, DEFAULT_ANSI_LABELS);
+                .blit_cached_default_key_legends(&self.geometry, DEFAULT_ANSI_LABELS);
         }
-        self.canvas.execute(&scene.tile_draws);
-        self.canvas.execute(&scene.world_overlay_draws);
+        if !scene.tile_draws.is_empty() {
+            self.canvas.execute(&scene.tile_draws);
+        }
+        if !scene.world_overlay_draws.is_empty() {
+            self.canvas.execute(&scene.world_overlay_draws);
+        }
+        let canvas2d_ms = t_c2d.elapsed().as_secs_f32() * 1000.0;
+        let t_gpu = Instant::now();
 
         self.queue.write_texture(
             wgpu::ImageCopyTexture {
@@ -1148,6 +1172,16 @@ impl Compositor {
         }
 
         self.queue.submit(Some(encoder.finish()));
+        let gpu_submit_ms = t_gpu.elapsed().as_secs_f32() * 1000.0;
+        FrameTimings {
+            physics_ms,
+            canvas2d_ms,
+            gpu_submit_ms,
+            total_ms: t_start.elapsed().as_secs_f32() * 1000.0,
+            particle_count: self.particles.particles.len(),
+            glow_count: scene.key_glows.len(),
+            wave_enabled: scene.distortion_enabled,
+        }
     }
 
     /// Reads back the last rendered frame as tightly-packed RGBA8 (`width * height * 4`).

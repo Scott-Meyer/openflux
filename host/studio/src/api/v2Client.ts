@@ -107,12 +107,32 @@ export interface CuratedListSubscription {
   official: boolean;
 }
 
+export interface PreviewFrameTimings {
+  lua_ms: number;
+  physics_ms: number;
+  canvas2d_ms: number;
+  gpu_submit_ms: number;
+  total_frame_ms: number;
+  particle_count: number;
+  glow_count: number;
+  wave_enabled: boolean;
+}
+
 export interface PreviewFrameResponse {
   width: number;
   height: number;
   gpu_adapter: string;
+  modules_rev: number;
   png_base64: string;
   modules: Array<{ id: string; healthy: boolean; last_error?: string | null }>;
+  timings?: PreviewFrameTimings;
+}
+
+export interface ModuleLogEntry {
+  timestamp_ms: number;
+  level: string;
+  message: string;
+  module_id?: string;
 }
 
 async function v2Call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -133,14 +153,28 @@ async function v2Call<T>(method: string, path: string, body?: unknown): Promise<
 }
 
 export const v2Client = {
-  listModules: () => v2Call<{ modules: V2ModuleRecord[] }>("GET", "/v2/modules"),
+  getStatus: () =>
+    v2Call<{
+      pid: number;
+      modules_rev: number;
+      latest_bus_seq: number;
+      gpu_adapter: string;
+    }>("GET", "/v2/status"),
+  listModules: () => v2Call<{ modules: V2ModuleRecord[]; modules_rev: number }>("GET", "/v2/modules"),
   getModuleDetail: (id: string) =>
     v2Call<{
       id: string;
       manifest: ModuleManifest;
       disclosure?: DisclosureReport;
-      logs: Array<{ timestamp_ms: number; level: string; message: string }>;
+      logs: ModuleLogEntry[];
     }>("GET", `/v2/modules/${encodeURIComponent(id)}`),
+  getModuleLogs: (id: string) =>
+    v2Call<{ id: string; logs: ModuleLogEntry[] }>("GET", `/v2/modules/${encodeURIComponent(id)}/logs`),
+  pollBusEvents: (pattern: string, sinceSeq: number, waitMs = 2000) =>
+    v2Call<{ events: Array<{ seq: number; topic: string; payload: unknown }>; latest_seq: number }>(
+      "GET",
+      `/v2/bus/events?pattern=${encodeURIComponent(pattern)}&since_seq=${sinceSeq}&wait_ms=${waitMs}`,
+    ),
   updateModuleState: (
     id: string,
     patch: { enabled?: boolean; slot?: number | null; config?: Record<string, unknown> },
@@ -165,6 +199,7 @@ export const v2Client = {
     v2Call("POST", "/v2/simulate/key", { key_index, depth_um, velocity_um_s, release }),
   simulateImpulse: (x: number, y: number, radius = 64, force = 1.15) =>
     v2Call("POST", "/v2/simulate/impulse", { x, y, radius, force, kind: "ripple", source: "studio" }),
+  simulateBurst: () => v2Call("POST", "/v2/simulate/burst", {}),
   renderPreviewFrame: (steps = 2, step_ms = 16.667, width = 960, height = 540) =>
     v2Call<PreviewFrameResponse>("POST", "/v2/preview/frame", { steps, step_ms, width, height }),
 };

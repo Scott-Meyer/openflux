@@ -12,6 +12,7 @@ name = "fluxctl"
 path = "src/main.rs"
 
 [dependencies]
+base64 = "0.22"
 clap = { version = "4", features = ["derive", "env"] }
 openflux-bus = { path = "../openflux-bus" }
 openflux-compositor = { path = "../openflux-compositor" }

@@ -155,14 +155,18 @@ impl Drop for Subscription {
 struct BrokerInner {
     node_id: String,
     retained: BTreeMap<String, BusMessage>,
+    history: VecDeque<BusMessage>,
     subscribers: Vec<Arc<SubQueue>>,
     next_sub_id: u64,
 }
+
+const MAX_BROKER_HISTORY: usize = 512;
 
 /// Thread-safe, cheaply cloneable handle to an OpenFlux hierarchical pub/sub broker.
 #[derive(Clone)]
 pub struct Broker {
     inner: Arc<Mutex<BrokerInner>>,
+    history_cv: Arc<Condvar>,
     seq: Arc<AtomicU64>,
 }
 
@@ -178,11 +182,17 @@ impl Broker {
             inner: Arc::new(Mutex::new(BrokerInner {
                 node_id: node_id.into(),
                 retained: BTreeMap::new(),
+                history: VecDeque::with_capacity(MAX_BROKER_HISTORY),
                 subscribers: Vec::new(),
                 next_sub_id: 1,
             })),
+            history_cv: Arc::new(Condvar::new()),
             seq: Arc::new(AtomicU64::new(1)),
         }
+    }
+
+    pub fn latest_seq(&self) -> u64 {
+        self.seq.load(Ordering::Relaxed).saturating_sub(1)
     }
 
     pub fn node_id(&self) -> String {
@@ -222,6 +232,10 @@ impl Broker {
                     g.retained.insert(topic.clone(), msg.clone());
                 }
             }
+            if g.history.len() >= MAX_BROKER_HISTORY {
+                g.history.pop_front();
+            }
+            g.history.push_back(msg.clone());
             let matching: Vec<Arc<SubQueue>> = g
                 .subscribers
                 .iter()
@@ -237,6 +251,7 @@ impl Broker {
                 .collect();
             (msg, matching)
         };
+        self.history_cv.notify_all();
         for s in matching {
             s.push(msg.clone());
         }
@@ -338,6 +353,37 @@ impl Broker {
             .filter(|(t, _)| pat.matches(t))
             .map(|(_, m)| m.clone())
             .collect())
+    }
+
+    /// Returns matching messages with `seq > since_seq`, waiting up to `wait` if none are available yet.
+    pub fn poll_events_since(
+        &self,
+        pattern: &str,
+        since_seq: u64,
+        wait: std::time::Duration,
+    ) -> Result<(Vec<BusMessage>, u64), TopicError> {
+        let pat = TopicPattern::parse(pattern)?;
+        let deadline = std::time::Instant::now() + wait;
+        let mut g = self.inner.lock().unwrap();
+        loop {
+            let matched: Vec<BusMessage> = g
+                .history
+                .iter()
+                .filter(|m| m.seq > since_seq && pat.matches(&m.topic))
+                .cloned()
+                .collect();
+            let cur_seq = self.latest_seq();
+            if !matched.is_empty() || wait.is_zero() {
+                return Ok((matched, cur_seq));
+            }
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                return Ok((Vec::new(), cur_seq));
+            }
+            let rem = deadline.saturating_duration_since(now);
+            let (ng, _) = self.history_cv.wait_timeout(g, rem).unwrap();
+            g = ng;
+        }
     }
 
     /// Exports all unexpired retained messages (e.g. for disk persistence or initial bridge sync).

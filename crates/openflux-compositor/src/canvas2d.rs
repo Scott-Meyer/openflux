@@ -13,8 +13,11 @@ pub struct Canvas2D {
     pub height: u32,
     /// Straight-alpha RGBA8 pixels (`width * height * 4`).
     pub rgba: Vec<u8>,
+    is_clean: bool,
+    cached_legends: Option<Vec<u8>>,
     clip: Option<(i32, i32, i32, i32)>,
     font: Option<Font>,
+    glyph_cache: HashMap<(char, u16), (fontdue::Metrics, Vec<u8>)>,
     image_cache: HashMap<String, RgbaImage>,
 }
 
@@ -25,15 +28,65 @@ impl Canvas2D {
             width,
             height,
             rgba: vec![0u8; (width as usize) * (height as usize) * 4],
+            is_clean: true,
+            cached_legends: None,
             clip: None,
             font,
+            glyph_cache: HashMap::new(),
             image_cache: HashMap::new(),
         }
     }
 
     pub fn clear(&mut self) {
-        self.rgba.fill(0);
+        if !self.is_clean {
+            self.rgba.fill(0);
+            self.is_clean = true;
+        }
         self.clip = None;
+    }
+
+    /// Blits the cached keycap rims + legends layer (building it once on first call).
+    pub fn blit_cached_default_key_legends(&mut self, geom: &KeyboardGeometry, labels: &[&str]) {
+        if self.cached_legends.is_none() {
+            let saved = std::mem::replace(
+                &mut self.rgba,
+                vec![0u8; (self.width as usize) * (self.height as usize) * 4],
+            );
+            let prev_clean = self.is_clean;
+            self.is_clean = true;
+            self.draw_default_key_legends(geom, labels);
+            let baked = std::mem::replace(&mut self.rgba, saved);
+            self.is_clean = prev_clean;
+            self.cached_legends = Some(baked);
+        }
+        if let Some(ref baked) = self.cached_legends {
+            if self.is_clean {
+                self.rgba.copy_from_slice(baked);
+            } else {
+                for (dst, src) in self.rgba.chunks_exact_mut(4).zip(baked.chunks_exact(4)) {
+                    let sa = src[3] as u32;
+                    if sa == 0 {
+                        continue;
+                    }
+                    if sa == 255 || dst[3] == 0 {
+                        dst.copy_from_slice(src);
+                        continue;
+                    }
+                    let inv = 255 - sa;
+                    let da = dst[3] as u32;
+                    let out_a = sa + ((da * inv + 127) / 255);
+                    if out_a == 0 {
+                        continue;
+                    }
+                    for c in 0..3 {
+                        let num = src[c] as u32 * sa + ((dst[c] as u32 * da * inv + 127) / 255);
+                        dst[c] = (num / out_a).min(255) as u8;
+                    }
+                    dst[3] = out_a.min(255) as u8;
+                }
+            }
+            self.is_clean = false;
+        }
     }
 
     pub fn execute(&mut self, commands: &[DrawCommand]) {
@@ -205,8 +258,17 @@ impl Canvas2D {
         if a <= 0.001 {
             return;
         }
+        self.is_clean = false;
         let idx = ((y as usize) * (self.width as usize) + (x as usize)) * 4;
-        let dst_a = self.rgba[idx + 3] as f32 / 255.0;
+        let dst_a_u8 = self.rgba[idx + 3];
+        if dst_a_u8 == 0 {
+            self.rgba[idx] = (color[0].clamp(0.0, 1.0) * 255.0) as u8;
+            self.rgba[idx + 1] = (color[1].clamp(0.0, 1.0) * 255.0) as u8;
+            self.rgba[idx + 2] = (color[2].clamp(0.0, 1.0) * 255.0) as u8;
+            self.rgba[idx + 3] = (a * 255.0) as u8;
+            return;
+        }
+        let dst_a = dst_a_u8 as f32 / 255.0;
         let out_a = a + dst_a * (1.0 - a);
         if out_a <= 1e-5 {
             return;
@@ -254,11 +316,43 @@ impl Canvas2D {
         let hy = h * 0.5 - r;
         let do_fill = color[3] > 0.001;
         let do_stroke = stroke_width > 0.1 && stroke_color[3] > 0.001;
+        let half_sw = stroke_width * 0.5;
+
+        // Fast interior span bounds where pixels are strictly inside the rounded rect (cov=1, no stroke).
+        let inset = r.max(half_sw + 2.0) + 1.0;
+        let inner_x0 = ((x + inset).ceil() as i32).max(x0);
+        let inner_x1 = ((x + w - inset).floor() as i32).min(x1);
+        let inner_y0 = ((y + inset).ceil() as i32).max(y0);
+        let inner_y1 = ((y + h - inset).floor() as i32).min(y1);
+
+        let fill_px = [
+            (color[0].clamp(0.0, 1.0) * 255.0) as u8,
+            (color[1].clamp(0.0, 1.0) * 255.0) as u8,
+            (color[2].clamp(0.0, 1.0) * 255.0) as u8,
+            (color[3].clamp(0.0, 1.0) * 255.0) as u8,
+        ];
 
         for py in y0..y1 {
             let fy = py as f32 + 0.5;
             let dy = (fy - cy).abs() - hy;
-            for px in x0..x1 {
+            let in_inner_y = do_fill && py >= inner_y0 && py < inner_y1 && inner_x0 < inner_x1;
+            let mut px = x0;
+            while px < x1 {
+                if in_inner_y && px == inner_x0 {
+                    // Tight fast scanline across the flat interior (no sqrt, no stroke).
+                    self.is_clean = false;
+                    let row_off = (py as usize) * (self.width as usize);
+                    for ix in inner_x0..inner_x1 {
+                        let idx = (row_off + ix as usize) * 4;
+                        if self.rgba[idx + 3] == 0 {
+                            self.rgba[idx..idx + 4].copy_from_slice(&fill_px);
+                        } else {
+                            self.blend_px(ix, py, color, 1.0);
+                        }
+                    }
+                    px = inner_x1;
+                    continue;
+                }
                 let fx = px as f32 + 0.5;
                 let dx = (fx - cx).abs() - hx;
                 let d = (dx.max(0.0).powi(2) + dy.max(0.0).powi(2)).sqrt() + dx.max(dy).min(0.0) - r;
@@ -269,13 +363,13 @@ impl Canvas2D {
                     }
                 }
                 if do_stroke {
-                    let half = stroke_width * 0.5;
-                    let sd = (d.abs() - half).max(0.0);
+                    let sd = (d.abs() - half_sw).max(0.0);
                     let scov = (1.0 - sd).clamp(0.0, 1.0);
                     if scov > 0.0 {
                         self.blend_px(px, py, stroke_color, scov);
                     }
                 }
+                px += 1;
             }
         }
     }
@@ -404,17 +498,24 @@ impl Canvas2D {
         color: [f32; 4],
         align: TextAlign,
     ) {
-        let Some(font) = self.font.as_ref() else {
-            return;
-        };
-        if text.is_empty() || size <= 1.0 || color[3] <= 0.001 {
+        if self.font.is_none() || text.is_empty() || size <= 1.0 || color[3] <= 0.001 {
             return;
         }
-        let glyphs: Vec<(fontdue::Metrics, Vec<u8>)> = text
+        let size_key = (size * 2.0).round().clamp(2.0, 400.0) as u16;
+        let raster_size = size_key as f32 * 0.5;
+        for ch in text.chars() {
+            let key = (ch, size_key);
+            if !self.glyph_cache.contains_key(&key) {
+                if let Some(ref font) = self.font {
+                    let entry = font.rasterize(ch, raster_size);
+                    self.glyph_cache.insert(key, entry);
+                }
+            }
+        }
+        let total_w: f32 = text
             .chars()
-            .map(|ch| font.rasterize(ch, size))
-            .collect();
-        let total_w: f32 = glyphs.iter().map(|(m, _)| m.advance_width).sum();
+            .filter_map(|ch| self.glyph_cache.get(&(ch, size_key)).map(|(m, _)| m.advance_width))
+            .sum();
         let start_x = match align {
             TextAlign::Left => x,
             TextAlign::Center => x - total_w * 0.5,
@@ -423,7 +524,10 @@ impl Canvas2D {
         let baseline_y = y + size * 0.82;
         let mut pen_x = start_x;
 
-        for (m, bitmap) in glyphs {
+        for ch in text.chars() {
+            let Some((m, bitmap)) = self.glyph_cache.get(&(ch, size_key)).cloned() else {
+                continue;
+            };
             let gx = (pen_x + m.xmin as f32).round() as i32;
             let gy = (baseline_y - m.height as f32 - m.ymin as f32).round() as i32;
             for row in 0..m.height {
