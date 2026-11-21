@@ -54,7 +54,7 @@ fn repository_registry_is_consistent() {
 }
 
 fn edit(from: &str, to: &str) -> String {
-    let base = common::REGISTRY;
+    let base = common::REGISTRY.replace("\r\n", "\n");
     assert!(base.contains(from), "fixture lacks {from:?}");
     base.replacen(from, to, 1)
 }
