@@ -62,7 +62,8 @@ The installers carry the keyboard software that matches them, so converting
 works without an internet connection.
 
 As its last step, the conversion fetches the keyboard maker's
-press-refinement data and stores it on the keyboard. If that can't finish,
+press-refinement data and stores it on the keyboard, where the firmware uses
+it to refine key detection. If that can't finish,
 for example offline, the conversion still succeeds, and you can install the
 data later from Studio's **Device** page.
 

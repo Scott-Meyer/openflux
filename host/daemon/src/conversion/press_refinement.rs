@@ -1,6 +1,6 @@
 //! Press-refinement data: the keyboard maker's press-refinement coefficients. The OpenFlux
-//! firmware stores them; only builds with press refinement enabled use them to refine Hall
-//! readings.
+//! firmware uses them to refine Hall readings; a build without press refinement only stores
+//! them.
 //!
 //! The coefficients belong to the keyboard maker, so OpenFlux never hosts or ships them. The
 //! user's own daemon reads them out of the maker's software, following the press-refinement source
@@ -729,7 +729,7 @@ pub(crate) mod tests {
         assert!(!done.already_installed);
         assert!(
             !done.active,
-            "the normal firmware build stores the data without applying it"
+            "a firmware build without press refinement stores the data without applying it"
         );
         assert_eq!(done.crc32, record::crc32(&payload));
         assert_eq!(

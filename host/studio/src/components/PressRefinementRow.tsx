@@ -7,7 +7,7 @@ import { useMountedRef } from "../hooks/useMountedRef";
 
 /** What a keyboard without press-refinement data detects, and what the data is. */
 export const PRESS_REFINEMENT_NOT_INSTALLED =
-  "Your keyboard's key detection matches the keyboard maker's original 1.4 software. The press-refinement data is the detection refinement of the maker's 1.5 software. OpenFlux can store it on the keyboard; once it's installed, this row shows whether the firmware uses it.";
+  "Your keyboard's key detection matches the keyboard maker's original 1.4 software. Installing the press-refinement data, downloaded from the maker's published software, makes it match the maker's 1.5 software.";
 
 /** Installed data that this firmware stores without applying. */
 export const PRESS_REFINEMENT_INACTIVE = "Installed, but this firmware doesn't use it.";

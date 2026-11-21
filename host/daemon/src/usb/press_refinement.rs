@@ -215,7 +215,7 @@ pub struct FirmwareStore {
     /// The storage can't be used: every command reports [`State::StorageUnavailable`] or NAKs.
     pub storage_unavailable: bool,
     /// The firmware applies a valid record ([`State::Installed`]); otherwise a valid record is
-    /// reported as [`State::InstalledInactive`], as the normal firmware build does.
+    /// reported as [`State::InstalledInactive`], as a firmware build without press refinement does.
     pub applies: bool,
 }
 

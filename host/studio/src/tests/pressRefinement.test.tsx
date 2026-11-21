@@ -64,7 +64,7 @@ describe("Press refinement", () => {
     await screen.findByText("Not installed");
     expect(screen.getByText(PRESS_REFINEMENT_NOT_INSTALLED)).toBeTruthy();
     expect(PRESS_REFINEMENT_NOT_INSTALLED).toMatch(
-      /original 1\.4 software.*1\.5 software.*whether the firmware uses it/,
+      /original 1\.4 software.*makes it match the maker.s 1\.5 software/,
     );
     fireEvent.click(installButton() as HTMLElement);
     await screen.findByText("Installed and verified.");
