@@ -184,7 +184,8 @@ jobs:
             sh -c "cmake -S keyboard/firmware -B build/firmware -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/firmware"
           ls -l build/firmware/*.uf2
       - name: Firmware licenses
-        run: .github/scripts/firmware-licenses.sh openflux-firmware-build build/firmware/openflux-firmware-licenses.txt
+        # build/firmware belongs to the container's root user.
+        run: .github/scripts/firmware-licenses.sh openflux-firmware-build "$RUNNER_TEMP/openflux-firmware-licenses.txt"
 
   shell:
     runs-on: ubuntu-latest
