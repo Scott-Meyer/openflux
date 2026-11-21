@@ -198,7 +198,7 @@ impl DesktopState {
         self.drop_conn().await;
         let dir = self.data_dir.clone();
         let presence = tokio::task::spawn_blocking(move || {
-            crate::daemon_presence::probe(&dir, Duration::from_secs(2))
+            crate::daemon_presence::probe(&dir, crate::daemon_presence::DEFAULT_PROBE_TIMEOUT)
         })
         .await
         .unwrap_or_else(|e| crate::daemon_presence::Presence::Unknown {

@@ -74,12 +74,13 @@ async fn connect_to_daemon_in(data_dir: &std::path::Path) -> Result<DaemonConn, 
         Err(e) => String::from(e),
     };
     let dir = data_dir.to_path_buf();
-    let presence =
-        tokio::task::spawn_blocking(move || daemon_presence::probe(&dir, Duration::from_secs(2)))
-            .await
-            .unwrap_or_else(|e| daemon_presence::Presence::Unknown {
-                reason: e.to_string(),
-            });
+    let presence = tokio::task::spawn_blocking(move || {
+        daemon_presence::probe(&dir, daemon_presence::DEFAULT_PROBE_TIMEOUT)
+    })
+    .await
+    .unwrap_or_else(|e| daemon_presence::Presence::Unknown {
+        reason: e.to_string(),
+    });
     Err(match presence {
         daemon_presence::Presence::Exited { evidence } => {
             ConnectError::NotRunning(format!("{msg} ({evidence})"))

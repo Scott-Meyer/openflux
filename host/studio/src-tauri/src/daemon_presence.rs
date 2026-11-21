@@ -93,6 +93,11 @@ fn recorded_addr(data_dir: &Path) -> Result<Option<SocketAddr>, String> {
     Ok(Some(SocketAddr::new(host, port)))
 }
 
+/// Default TCP connect timeout when probing whether a recorded loopback port still listens.
+/// Windows retries loopback SYNs for ~2s before reporting `ConnectionRefused`, so a 2s timeout
+/// can report `TimedOut` instead of `ConnectionRefused` on a stopped daemon.
+pub const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_secs(4);
+
 /// Establishes whether the daemon for `data_dir` has exited. Blocks for at most `timeout` on
 /// the connection attempt.
 pub fn probe(data_dir: &Path, timeout: Duration) -> Presence {
@@ -152,7 +157,7 @@ pub(crate) mod tests {
         .unwrap();
     }
 
-    const T: Duration = Duration::from_secs(2);
+    const T: Duration = DEFAULT_PROBE_TIMEOUT;
 
     #[test]
     fn a_missing_discovery_file_with_a_held_lock_is_not_proof_of_exit() {
