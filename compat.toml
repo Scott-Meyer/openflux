@@ -69,7 +69,7 @@ provides = ["firmware-usb", "uart", "keymap", "profile-settings", "calibration-l
 update-transport = ["firmware-usb"]
 
 [components.bridge]
-version = "1.0.1"
+version = "1.0.2"
 provides = ["bridge-usb", "display-ipc"]
 requires = { uart = ">=1.0, <2.0" }
 update-transport = ["bridge-usb"]

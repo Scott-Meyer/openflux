@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/Scott-Meyer/openflux/compare/bridge-v1.0.1...bridge-v1.0.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **bridge:** add WinUSB DeviceInterfaceGUID and use FunctionFS bcdVersion 1 ([2e7d636](https://github.com/Scott-Meyer/openflux/commit/2e7d636d21cef32b4d9f26734192988d3ca256f7))
+
 ## [1.0.1](https://github.com/Scott-Meyer/openflux/compare/bridge-v1.0.0...bridge-v1.0.1) (2026-11-21)
 
 
