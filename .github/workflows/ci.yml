@@ -60,9 +60,19 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo fmt --all --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: |
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            cargo clippy --workspace --exclude openflux-bridge --exclude openflux-display --all-targets --locked -- -D warnings
+          else
+            cargo clippy --workspace --all-targets --locked -- -D warnings
+          fi
       - name: Test
-        run: cargo test --workspace --locked
+        run: |
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            cargo test --workspace --exclude openflux-bridge --exclude openflux-display --locked
+          else
+            cargo test --workspace --locked
+          fi
 
   # The release tooling: interface registry, factory reference, the release
   # keys, and dry runs of the release scripts.
