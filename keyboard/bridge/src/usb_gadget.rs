@@ -69,6 +69,22 @@ struct UsbExtCompatDesc {
     reserved2: [u8; 6],
 }
 
+/// FunctionFS MS OS 1.0 Extended Property descriptor registering `DeviceInterfaceGUID` so
+/// Windows `libusb` (WinUSB backend) can discover and open the bulk interface without an INF.
+/// Linux `f_fs.c` expects UTF-8 NUL-terminated strings here and doubles their lengths when
+/// converting to UTF-16LE for the host.
+#[cfg(any(target_os = "linux", test))]
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
+struct UsbExtPropGuidDesc {
+    dw_size: u32,
+    dw_property_data_type: u32,
+    w_property_name_length: u16,
+    b_property_name: [u8; 20], // "DeviceInterfaceGUID\0"
+    dw_property_data_length: u32,
+    b_property_data: [u8; 39], // "{9F4C2E18-7B3A-4D51-A60E-8C2F1D4B7A93}\0"
+}
+
 #[cfg(any(target_os = "linux", test))]
 #[repr(C, packed)]
 struct BridgeFfsDescs {
@@ -80,8 +96,37 @@ struct BridgeFfsDescs {
     os_count: u32,
     fs_descs: FsHsGroup,
     hs_descs: FsHsGroup,
-    os_header: UsbOsDescHeader,
+    os_compat_header: UsbOsDescHeader,
     os_compat: UsbExtCompatDesc,
+    os_prop_header: UsbOsDescHeader,
+    os_prop: UsbExtPropGuidDesc,
+}
+
+#[cfg(target_os = "linux")]
+#[repr(C, packed)]
+struct BridgeFfsDescsCompatOnly {
+    magic: u32,
+    length: u32,
+    flags: u32,
+    fs_count: u32,
+    hs_count: u32,
+    os_count: u32,
+    fs_descs: FsHsGroup,
+    hs_descs: FsHsGroup,
+    os_compat_header: UsbOsDescHeader,
+    os_compat: UsbExtCompatDesc,
+}
+
+#[cfg(target_os = "linux")]
+#[repr(C, packed)]
+struct BridgeFfsDescsLegacy {
+    magic: u32,
+    length: u32,
+    flags: u32,
+    fs_count: u32,
+    hs_count: u32,
+    fs_descs: FsHsGroup,
+    hs_descs: FsHsGroup,
 }
 
 #[cfg(any(target_os = "linux", test))]
@@ -119,21 +164,24 @@ fn build_bridge_ffs_descs() -> BridgeFfsDescs {
     hs_descs.sink.w_max_packet_size = 512u16.to_le();
     hs_descs.source.w_max_packet_size = 512u16.to_le();
 
-    let os_len =
+    let compat_len =
         (std::mem::size_of::<UsbOsDescHeader>() + std::mem::size_of::<UsbExtCompatDesc>()) as u32;
+    let prop_size = std::mem::size_of::<UsbExtPropGuidDesc>() as u32;
+    let prop_len = (std::mem::size_of::<UsbOsDescHeader>() + prop_size as usize) as u32;
     BridgeFfsDescs {
         magic: 3u32.to_le(), // FUNCTIONFS_DESCRIPTORS_MAGIC_V2
         length: (std::mem::size_of::<BridgeFfsDescs>() as u32).to_le(),
         flags: (1u32 | 2u32 | 8u32).to_le(), // HAS_FS_DESC | HAS_HS_DESC | HAS_MS_OS_DESC
         fs_count: 3u32.to_le(),
         hs_count: 3u32.to_le(),
-        os_count: 1u32.to_le(),
+        os_count: 2u32.to_le(),
         fs_descs,
         hs_descs,
-        os_header: UsbOsDescHeader {
+        os_compat_header: UsbOsDescHeader {
             interface: 0,
-            dw_length: os_len.to_le(),
-            bcd_version: 0x0100u16.to_le(),
+            dw_length: compat_len.to_le(),
+            // Linux FunctionFS (5.x and 6.x) accepts bcdVersion = 1 (5.x rejects 0x0100 with EINVAL).
+            bcd_version: 1u16.to_le(),
             w_index: 0x0004u16.to_le(), // Extended Compat ID
             b_count: 1,
             reserved: 0,
@@ -144,6 +192,22 @@ fn build_bridge_ffs_descs() -> BridgeFfsDescs {
             compatible_id: *b"WINUSB\0\0",
             sub_compatible_id: [0; 8],
             reserved2: [0; 6],
+        },
+        os_prop_header: UsbOsDescHeader {
+            interface: 0,
+            dw_length: prop_len.to_le(),
+            bcd_version: 1u16.to_le(),
+            w_index: 0x0005u16.to_le(), // Extended Properties
+            b_count: 1,                 // wCount = 1 (LE: [1, 0])
+            reserved: 0,
+        },
+        os_prop: UsbExtPropGuidDesc {
+            dw_size: prop_size.to_le(),
+            dw_property_data_type: 1u32.to_le(), // USB_EXT_PROP_UNICODE (REG_SZ)
+            w_property_name_length: 20u16.to_le(),
+            b_property_name: *b"DeviceInterfaceGUID\0",
+            dw_property_data_length: 39u32.to_le(),
+            b_property_data: *b"{9F4C2E18-7B3A-4D51-A60E-8C2F1D4B7A93}\0",
         },
     }
 }
@@ -222,7 +286,7 @@ pub fn bridge_setup_gadget(mount_point: &str) -> Result<(), String> {
     for (attr, val) in [
         ("idVendor", USB_VENDOR_ID_STR),
         ("idProduct", USB_PRODUCT_ID_STR),
-        ("bcdDevice", "0x0101"),
+        ("bcdDevice", "0x0102"),
         ("bcdUSB", "0x0200"),
     ] {
         write_attr(&format!("{GADGET_PATH}/{attr}"), val);
@@ -298,9 +362,67 @@ pub fn bridge_open_ffs(mount_point: &str) -> Result<(RawFd, RawFd, RawFd), Strin
             std::mem::size_of::<BridgeFfsDescs>(),
         )
     };
-    if unsafe { libc::write(ep0, d_bytes.as_ptr() as *const libc::c_void, d_bytes.len()) }
-        != d_bytes.len() as isize
-    {
+    let mut ep0_ok =
+        unsafe { libc::write(ep0, d_bytes.as_ptr() as *const libc::c_void, d_bytes.len()) }
+            == d_bytes.len() as isize;
+    if !ep0_ok {
+        let e1 = std::io::Error::last_os_error();
+        eprintln!(
+            "usb gadget: write ep0 full MS OS descs ({} B) failed: {e1}",
+            d_bytes.len()
+        );
+        let compat_only = BridgeFfsDescsCompatOnly {
+            magic: descs.magic,
+            length: (std::mem::size_of::<BridgeFfsDescsCompatOnly>() as u32).to_le(),
+            flags: descs.flags,
+            fs_count: descs.fs_count,
+            hs_count: descs.hs_count,
+            os_count: 1u32.to_le(),
+            fs_descs: descs.fs_descs,
+            hs_descs: descs.hs_descs,
+            os_compat_header: descs.os_compat_header,
+            os_compat: descs.os_compat,
+        };
+        let c_bytes = unsafe {
+            std::slice::from_raw_parts(
+                &compat_only as *const BridgeFfsDescsCompatOnly as *const u8,
+                std::mem::size_of::<BridgeFfsDescsCompatOnly>(),
+            )
+        };
+        ep0_ok =
+            unsafe { libc::write(ep0, c_bytes.as_ptr() as *const libc::c_void, c_bytes.len()) }
+                == c_bytes.len() as isize;
+        if !ep0_ok {
+            let e2 = std::io::Error::last_os_error();
+            eprintln!(
+                "usb gadget: write ep0 compat-only MS OS desc ({} B) failed: {e2}",
+                c_bytes.len()
+            );
+            let legacy = BridgeFfsDescsLegacy {
+                magic: descs.magic,
+                length: (std::mem::size_of::<BridgeFfsDescsLegacy>() as u32).to_le(),
+                flags: (1u32 | 2u32).to_le(),
+                fs_count: descs.fs_count,
+                hs_count: descs.hs_count,
+                fs_descs: descs.fs_descs,
+                hs_descs: descs.hs_descs,
+            };
+            let l_bytes = unsafe {
+                std::slice::from_raw_parts(
+                    &legacy as *const BridgeFfsDescsLegacy as *const u8,
+                    std::mem::size_of::<BridgeFfsDescsLegacy>(),
+                )
+            };
+            ep0_ok =
+                unsafe { libc::write(ep0, l_bytes.as_ptr() as *const libc::c_void, l_bytes.len()) }
+                    == l_bytes.len() as isize;
+            if !ep0_ok {
+                let e3 = std::io::Error::last_os_error();
+                eprintln!("usb gadget: write ep0 legacy descs failed: {e3}");
+            }
+        }
+    }
+    if !ep0_ok {
         unsafe { libc::close(ep0) };
         return Err("write ep0 descriptors failed".into());
     }
@@ -367,18 +489,28 @@ mod tests {
         let d = build_bridge_ffs_descs();
         assert_eq!(std::mem::size_of::<UsbOsDescHeader>(), 11);
         assert_eq!(std::mem::size_of::<UsbExtCompatDesc>(), 24);
+        assert_eq!(std::mem::size_of::<UsbExtPropGuidDesc>(), 14 + 20 + 39);
         assert_eq!(u32::from_le(d.magic), 3);
         assert_eq!(u32::from_le(d.flags), 1 | 2 | 8);
-        assert_eq!(u32::from_le(d.os_count), 1);
+        assert_eq!(u32::from_le(d.os_count), 2);
         assert_eq!(
             u32::from_le(d.length) as usize,
             std::mem::size_of::<BridgeFfsDescs>()
         );
-        assert_eq!(u32::from_le(d.os_header.dw_length), 35);
-        assert_eq!(u16::from_le(d.os_header.bcd_version), 0x0100);
-        assert_eq!(u16::from_le(d.os_header.w_index), 4);
-        assert_eq!(d.os_header.b_count, 1);
+        assert_eq!(u32::from_le(d.os_compat_header.dw_length), 35);
+        assert_eq!(u16::from_le(d.os_compat_header.bcd_version), 1);
+        assert_eq!(u16::from_le(d.os_compat_header.w_index), 4);
+        assert_eq!(d.os_compat_header.b_count, 1);
         assert_eq!(d.os_compat.reserved1, 1);
         assert_eq!(d.os_compat.compatible_id, *b"WINUSB\0\0");
+        assert_eq!(u32::from_le(d.os_prop_header.dw_length), 11 + 73);
+        assert_eq!(u16::from_le(d.os_prop_header.bcd_version), 1);
+        assert_eq!(u16::from_le(d.os_prop_header.w_index), 5);
+        assert_eq!(d.os_prop_header.b_count, 1);
+        assert_eq!(u32::from_le(d.os_prop.dw_size), 73);
+        assert_eq!(u32::from_le(d.os_prop.dw_property_data_type), 1);
+        assert_eq!(u16::from_le(d.os_prop.w_property_name_length), 20);
+        assert_eq!(u32::from_le(d.os_prop.dw_property_data_length), 39);
+        assert_eq!(d.os_prop.b_property_name, *b"DeviceInterfaceGUID\0");
     }
 }
