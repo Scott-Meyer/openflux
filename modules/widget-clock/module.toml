@@ -1,0 +1,23 @@
+id = "widget-clock"
+name = "Clock Widget"
+version = "2.0.0"
+description = "Keyboard-standalone digital clock with subtle seconds arc"
+author = "OpenFlux"
+category = "widget"
+stages = ["tile"]
+host_requirement = "none"
+slot_capable = true
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = []
+publishes = []
+
+[[settings]]
+key = "accent"
+label = "Accent Color"
+kind = "color"
+default = "#4de1ff"

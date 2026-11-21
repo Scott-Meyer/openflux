@@ -1,0 +1,1298 @@
+//! Unified cross-platform `wgpu` layered GPU compositor.
+//!
+//! Renders the complete 7-stage OpenFlux v2 pipeline identically on macOS (Metal),
+//! Windows (DX12/Vulkan), Linux desktop (Vulkan/GLES), and RK3566 Mali-G52 (Vulkan/GLES):
+//! 0. Background (`NV12` hardware video, `RGBA` image, or custom WGSL/GLSL shader module)
+//! 1. Distortion Simulation (2D wave heightfield ping-pong in `Rgba16Float`)
+//! 2. 3D Refraction & Specular Composite (bends live background video/shader via wave gradients)
+//! 3. Under-Key GPU Effects (instanced Analog Depth/Velocity glows, classic rings/ripples, SDF bouncing/refracting particles)
+//! 4. Key Legends & Keycap Rim Layer
+//! 5. Top-Bar Module Tiles (4 slots)
+//! 6. World Overlay (roaming companions like the Idle Pet)
+
+use crate::canvas2d::{Canvas2D, DEFAULT_ANSI_LABELS};
+use crate::particles::{KeySdfGrid, ParticleSystem};
+use crate::shaders::{
+    BLIT_RGBA_WGSL, DEFAULT_BG_WGSL, FS_TRIANGLE_VERT, KEY_GLOW_WGSL, NV12_TO_RGBA_WGSL,
+    REFRACT_COMPOSITE_WGSL, WAVE_SIM_WGSL,
+};
+use bytemuck::{Pod, Zeroable};
+use openflux_bus::{KeyboardGeometry, DISPLAY_HEIGHT_PX, DISPLAY_WIDTH_PX};
+use openflux_modules::{FrameScene, KeyGlowShape};
+use std::collections::HashMap;
+use std::path::Path;
+use std::time::SystemTime;
+
+const WAVE_W: u32 = 480;
+const WAVE_H: u32 = 270;
+const MAX_GLOW_INSTANCES: usize = 2048;
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct CustomShaderUniforms {
+    resolution: [f32; 2],
+    time: f32,
+    _pad: f32,
+    params: [[f32; 4]; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct WaveImpulseGpu {
+    pos_rad_force: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct WaveSimUniforms {
+    texel: [f32; 2],
+    damping: f32,
+    speed: f32,
+    aspect: f32,
+    impulse_count: u32,
+    _pad0: u32,
+    _pad1: u32,
+    impulses: [WaveImpulseGpu; 32],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct RefractUniforms {
+    texel: [f32; 2],
+    refraction_px: f32,
+    specular_strength: f32,
+    resolution: [f32; 2],
+    enabled: f32,
+    _pad: f32,
+    tint: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct ScreenUniform {
+    resolution: [f32; 2],
+    _pad: [f32; 2],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct GlowInstanceGpu {
+    rect: [f32; 4],
+    params: [f32; 4],
+    color: [f32; 4],
+}
+
+struct CachedCustomPipeline {
+    mtime: Option<SystemTime>,
+    pipeline: wgpu::RenderPipeline,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompositorOptions {
+    pub width: u32,
+    pub height: u32,
+    pub draw_default_legends: bool,
+}
+
+impl Default for CompositorOptions {
+    fn default() -> Self {
+        Self {
+            width: DISPLAY_WIDTH_PX,
+            height: DISPLAY_HEIGHT_PX,
+            draw_default_legends: true,
+        }
+    }
+}
+
+pub struct Compositor {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    adapter_info: wgpu::AdapterInfo,
+    width: u32,
+    height: u32,
+    draw_default_legends: bool,
+
+    geometry: KeyboardGeometry,
+    sdf_grid: KeySdfGrid,
+    particles: ParticleSystem,
+
+    linear_sampler: wgpu::Sampler,
+
+    // Offscreen render targets
+    _scene_bg_tex: wgpu::Texture,
+    scene_bg_view: wgpu::TextureView,
+    output_tex: wgpu::Texture,
+    output_view: wgpu::TextureView,
+
+    // Wave simulation ping-pong textures
+    _wave_tex: [wgpu::Texture; 2],
+    wave_view: [wgpu::TextureView; 2],
+    wave_index: usize,
+
+    // Background image / NV12 textures
+    bg_rgba_tex: Option<(String, wgpu::Texture, wgpu::TextureView)>,
+    nv12_y_tex: Option<(u32, u32, wgpu::Texture, wgpu::TextureView)>,
+    nv12_uv_tex: Option<(u32, u32, wgpu::Texture, wgpu::TextureView)>,
+
+    // Overlay 2D RGBA texture (under-key 2D, legends, tiles, world overlay)
+    overlay_tex: wgpu::Texture,
+    overlay_view: wgpu::TextureView,
+    canvas: Canvas2D,
+
+    // Uniforms & instance storage
+    custom_uniform_buf: wgpu::Buffer,
+    custom_bgl: wgpu::BindGroupLayout,
+    custom_bg: wgpu::BindGroup,
+    custom_pipelines: HashMap<String, CachedCustomPipeline>,
+
+    default_bg_pipeline: wgpu::RenderPipeline,
+    blit_bgl: wgpu::BindGroupLayout,
+    blit_pipeline: wgpu::RenderPipeline,
+    alpha_blit_pipeline: wgpu::RenderPipeline,
+    nv12_bgl: wgpu::BindGroupLayout,
+    nv12_pipeline: wgpu::RenderPipeline,
+
+    wave_sim_uniform_buf: wgpu::Buffer,
+    wave_sim_bgl: wgpu::BindGroupLayout,
+    wave_sim_pipeline: wgpu::RenderPipeline,
+
+    refract_uniform_buf: wgpu::Buffer,
+    refract_bgl: wgpu::BindGroupLayout,
+    refract_pipeline: wgpu::RenderPipeline,
+
+    glow_screen_buf: wgpu::Buffer,
+    glow_instance_buf: wgpu::Buffer,
+    glow_bg: wgpu::BindGroup,
+    glow_pipeline: wgpu::RenderPipeline,
+
+    // Staging readback buffer for headless PNG/RGBA capture
+    readback_buf: wgpu::Buffer,
+    padded_bytes_per_row: u32,
+}
+
+impl Compositor {
+    pub fn new_headless(
+        geometry: KeyboardGeometry,
+        font_bytes: Option<&[u8]>,
+        opts: CompositorOptions,
+    ) -> Result<Self, String> {
+        let instance = wgpu::Instance::default();
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }))
+        .or_else(|| {
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::LowPower,
+                compatible_surface: None,
+                force_fallback_adapter: true,
+            }))
+        })
+        .ok_or_else(|| "no suitable wgpu GPU adapter found".to_string())?;
+
+        let adapter_info = adapter.get_info();
+        let (device, queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("openflux-compositor"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::downlevel_defaults()
+                    .using_resolution(adapter.limits()),
+                memory_hints: wgpu::MemoryHints::Performance,
+            },
+            None,
+        ))
+        .map_err(|e| format!("wgpu request_device failed: {e}"))?;
+
+        Self::init_with_device(device, queue, adapter_info, geometry, font_bytes, opts)
+    }
+
+    pub fn adapter_summary(&self) -> String {
+        format!(
+            "{} ({:?}, {:?})",
+            self.adapter_info.name, self.adapter_info.backend, self.adapter_info.device_type
+        )
+    }
+
+    fn init_with_device(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        adapter_info: wgpu::AdapterInfo,
+        geometry: KeyboardGeometry,
+        font_bytes: Option<&[u8]>,
+        opts: CompositorOptions,
+    ) -> Result<Self, String> {
+        let width = opts.width.max(64);
+        let height = opts.height.max(64);
+        let sdf_grid = KeySdfGrid::build(&geometry);
+        let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("linear-sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            ..Default::default()
+        });
+
+        let make_rt = |label: &str, w: u32, h: u32, format: wgpu::TextureFormat, copy_src: bool| {
+            let mut usage = wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST;
+            if copy_src {
+                usage |= wgpu::TextureUsages::COPY_SRC;
+            }
+            let tex = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d {
+                    width: w,
+                    height: h,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage,
+                view_formats: &[],
+            });
+            let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+            (tex, view)
+        };
+
+        let (scene_bg_tex, scene_bg_view) = make_rt(
+            "scene-bg",
+            width,
+            height,
+            wgpu::TextureFormat::Rgba8Unorm,
+            false,
+        );
+        let (output_tex, output_view) = make_rt(
+            "output",
+            width,
+            height,
+            wgpu::TextureFormat::Rgba8Unorm,
+            true,
+        );
+        let (wave_t0, wave_v0) = make_rt(
+            "wave-0",
+            WAVE_W,
+            WAVE_H,
+            wgpu::TextureFormat::Rgba16Float,
+            false,
+        );
+        let (wave_t1, wave_v1) = make_rt(
+            "wave-1",
+            WAVE_W,
+            WAVE_H,
+            wgpu::TextureFormat::Rgba16Float,
+            false,
+        );
+        let (overlay_tex, overlay_view) = make_rt(
+            "overlay-2d",
+            DISPLAY_WIDTH_PX,
+            DISPLAY_HEIGHT_PX,
+            wgpu::TextureFormat::Rgba8Unorm,
+            false,
+        );
+
+        let fs_vert_mod = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("fs-vert"),
+            source: wgpu::ShaderSource::Wgsl(FS_TRIANGLE_VERT.into()),
+        });
+
+        // Custom / Default background shader pipeline
+        let custom_uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("custom-uniforms"),
+            size: std::mem::size_of::<CustomShaderUniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let custom_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("custom-bgl"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let custom_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("custom-bg"),
+            layout: &custom_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: custom_uniform_buf.as_entire_binding(),
+            }],
+        });
+        let default_bg_pipeline = build_fs_pipeline(
+            &device,
+            "default-bg",
+            &fs_vert_mod,
+            DEFAULT_BG_WGSL,
+            &[&custom_bgl],
+            wgpu::TextureFormat::Rgba8Unorm,
+            None,
+        );
+
+        // Blit pipelines (opaque & alpha-blended)
+        let blit_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("blit-bgl"),
+            entries: &[
+                tex_entry(0, true),
+                sampler_entry(1),
+            ],
+        });
+        let blit_pipeline = build_fs_pipeline(
+            &device,
+            "blit-opaque",
+            &fs_vert_mod,
+            BLIT_RGBA_WGSL,
+            &[&blit_bgl],
+            wgpu::TextureFormat::Rgba8Unorm,
+            None,
+        );
+        let alpha_blit_pipeline = build_fs_pipeline(
+            &device,
+            "blit-alpha",
+            &fs_vert_mod,
+            BLIT_RGBA_WGSL,
+            &[&blit_bgl],
+            wgpu::TextureFormat::Rgba8Unorm,
+            Some(wgpu::BlendState::ALPHA_BLENDING),
+        );
+
+        // NV12 hardware video pipeline
+        let nv12_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("nv12-bgl"),
+            entries: &[
+                tex_entry(0, true),
+                tex_entry(1, true),
+                sampler_entry(2),
+            ],
+        });
+        let nv12_pipeline = build_fs_pipeline(
+            &device,
+            "nv12-bg",
+            &fs_vert_mod,
+            NV12_TO_RGBA_WGSL,
+            &[&nv12_bgl],
+            wgpu::TextureFormat::Rgba8Unorm,
+            None,
+        );
+
+        // Wave simulation pipeline
+        let wave_sim_uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("wave-sim-uniforms"),
+            size: std::mem::size_of::<WaveSimUniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let wave_sim_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("wave-sim-bgl"),
+            entries: &[
+                tex_entry(0, true),
+                sampler_entry(1),
+                uniform_entry(2),
+            ],
+        });
+        let wave_sim_pipeline = build_fs_pipeline(
+            &device,
+            "wave-sim",
+            &fs_vert_mod,
+            WAVE_SIM_WGSL,
+            &[&wave_sim_bgl],
+            wgpu::TextureFormat::Rgba16Float,
+            None,
+        );
+
+        // Refraction composite pipeline
+        let refract_uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("refract-uniforms"),
+            size: std::mem::size_of::<RefractUniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let refract_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("refract-bgl"),
+            entries: &[
+                tex_entry(0, true),
+                tex_entry(1, true),
+                sampler_entry(2),
+                uniform_entry(3),
+            ],
+        });
+        let refract_pipeline = build_fs_pipeline(
+            &device,
+            "refract-composite",
+            &fs_vert_mod,
+            REFRACT_COMPOSITE_WGSL,
+            &[&refract_bgl],
+            wgpu::TextureFormat::Rgba8Unorm,
+            None,
+        );
+
+        // Instanced Key Glow + Particle pipeline
+        let glow_screen_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("glow-screen"),
+            size: std::mem::size_of::<ScreenUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let glow_instance_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("glow-instances"),
+            size: (std::mem::size_of::<GlowInstanceGpu>() * MAX_GLOW_INSTANCES) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let glow_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("glow-bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let glow_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("glow-bg"),
+            layout: &glow_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: glow_screen_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: glow_instance_buf.as_entire_binding(),
+                },
+            ],
+        });
+        let glow_mod = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("key-glow"),
+            source: wgpu::ShaderSource::Wgsl(KEY_GLOW_WGSL.into()),
+        });
+        let glow_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("glow-layout"),
+            bind_group_layouts: &[&glow_bgl],
+            push_constant_ranges: &[],
+        });
+        let glow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("glow-pipeline"),
+            layout: Some(&glow_layout),
+            vertex: wgpu::VertexState {
+                module: &glow_mod,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &glow_mod,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::SrcAlpha,
+                            dst_factor: wgpu::BlendFactor::One,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent::OVER,
+                    }),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        // Readback buffer aligned to 256-byte row pitch
+        let unpadded = width * 4;
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padded_bytes_per_row = unpadded.div_ceil(align) * align;
+        let readback_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("readback"),
+            size: (padded_bytes_per_row as u64) * (height as u64),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        Ok(Self {
+            device,
+            queue,
+            adapter_info,
+            width,
+            height,
+            draw_default_legends: opts.draw_default_legends,
+            geometry,
+            sdf_grid,
+            particles: ParticleSystem::default(),
+            linear_sampler,
+            _scene_bg_tex: scene_bg_tex,
+            scene_bg_view,
+            output_tex,
+            output_view,
+            _wave_tex: [wave_t0, wave_t1],
+            wave_view: [wave_v0, wave_v1],
+            wave_index: 0,
+            bg_rgba_tex: None,
+            nv12_y_tex: None,
+            nv12_uv_tex: None,
+            overlay_tex,
+            overlay_view,
+            canvas: Canvas2D::new(DISPLAY_WIDTH_PX, DISPLAY_HEIGHT_PX, font_bytes),
+            custom_uniform_buf,
+            custom_bgl,
+            custom_bg,
+            custom_pipelines: HashMap::new(),
+            default_bg_pipeline,
+            blit_bgl,
+            blit_pipeline,
+            alpha_blit_pipeline,
+            nv12_bgl,
+            nv12_pipeline,
+            wave_sim_uniform_buf,
+            wave_sim_bgl,
+            wave_sim_pipeline,
+            refract_uniform_buf,
+            refract_bgl,
+            refract_pipeline,
+            glow_screen_buf,
+            glow_instance_buf,
+            glow_bg,
+            glow_pipeline,
+            readback_buf,
+            padded_bytes_per_row,
+        })
+    }
+
+    /// Uploads a hardware-decoded NV12 video frame (`Y` plane + interleaved `UV` plane) directly
+    /// into GPU textures so all downstream distortion/refraction modules bend the live video!
+    pub fn upload_nv12_background(
+        &mut self,
+        video_w: u32,
+        video_h: u32,
+        y_plane: &[u8],
+        uv_plane: &[u8],
+    ) {
+        let recreate_y = self
+            .nv12_y_tex
+            .as_ref()
+            .is_none_or(|(w, h, _, _)| *w != video_w || *h != video_h);
+        if recreate_y {
+            let y_tex = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("nv12-y"),
+                size: wgpu::Extent3d {
+                    width: video_w,
+                    height: video_h,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            let y_view = y_tex.create_view(&Default::default());
+            self.nv12_y_tex = Some((video_w, video_h, y_tex, y_view));
+
+            let uv_w = (video_w / 2).max(1);
+            let uv_h = (video_h / 2).max(1);
+            let uv_tex = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("nv12-uv"),
+                size: wgpu::Extent3d {
+                    width: uv_w,
+                    height: uv_h,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rg8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            let uv_view = uv_tex.create_view(&Default::default());
+            self.nv12_uv_tex = Some((uv_w, uv_h, uv_tex, uv_view));
+        }
+
+        if let Some((_, _, ref y_tex, _)) = self.nv12_y_tex {
+            self.queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: y_tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                y_plane,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(video_w),
+                    rows_per_image: Some(video_h),
+                },
+                wgpu::Extent3d {
+                    width: video_w,
+                    height: video_h,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        if let Some((uv_w, uv_h, ref uv_tex, _)) = self.nv12_uv_tex {
+            self.queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: uv_tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                uv_plane,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(uv_w * 2),
+                    rows_per_image: Some(uv_h),
+                },
+                wgpu::Extent3d {
+                    width: uv_w,
+                    height: uv_h,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+    }
+
+    fn ensure_bg_image(&mut self, path: &str) {
+        if self
+            .bg_rgba_tex
+            .as_ref()
+            .is_some_and(|(cached, _, _)| cached == path)
+        {
+            return;
+        }
+        let Ok(img) = image::open(Path::new(path)) else {
+            return;
+        };
+        let rgba = img.to_rgba8();
+        let (w, h) = rgba.dimensions();
+        let tex = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("bg-image"),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(w * 4),
+                rows_per_image: Some(h),
+            },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+        );
+        let view = tex.create_view(&Default::default());
+        self.bg_rgba_tex = Some((path.to_string(), tex, view));
+    }
+
+    fn get_or_compile_custom_shader(&mut self, shader_path: &str) -> Option<&wgpu::RenderPipeline> {
+        let mtime = std::fs::metadata(shader_path).ok().and_then(|m| m.modified().ok());
+        let needs_build = match self.custom_pipelines.get(shader_path) {
+            None => true,
+            Some(c) => c.mtime != mtime,
+        };
+        if needs_build {
+            let source = std::fs::read_to_string(shader_path).ok()?;
+            let lower = shader_path.to_ascii_lowercase();
+            let fs_vert = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("custom-vs"),
+                source: wgpu::ShaderSource::Wgsl(FS_TRIANGLE_VERT.into()),
+            });
+            let fs_mod = if lower.ends_with(".glsl") || lower.ends_with(".frag") {
+                self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some(shader_path),
+                    source: wgpu::ShaderSource::Glsl {
+                        shader: source.into(),
+                        stage: wgpu::naga::ShaderStage::Fragment,
+                        defines: Default::default(),
+                    },
+                })
+            } else {
+                self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some(shader_path),
+                    source: wgpu::ShaderSource::Wgsl(source.into()),
+                })
+            };
+            let entry = if lower.ends_with(".glsl") || lower.ends_with(".frag") {
+                "main"
+            } else {
+                "fs_main"
+            };
+            let layout = self
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("custom-layout"),
+                    bind_group_layouts: &[&self.custom_bgl],
+                    push_constant_ranges: &[],
+                });
+            let pipeline = self
+                .device
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some(shader_path),
+                    layout: Some(&layout),
+                    vertex: wgpu::VertexState {
+                        module: &fs_vert,
+                        entry_point: Some("vs_main"),
+                        buffers: &[],
+                        compilation_options: Default::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &fs_mod,
+                        entry_point: Some(entry),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: wgpu::TextureFormat::Rgba8Unorm,
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                        compilation_options: Default::default(),
+                    }),
+                    primitive: wgpu::PrimitiveState::default(),
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview: None,
+                    cache: None,
+                });
+            self.custom_pipelines
+                .insert(shader_path.to_string(), CachedCustomPipeline { mtime, pipeline });
+        }
+        self.custom_pipelines.get(shader_path).map(|c| &c.pipeline)
+    }
+
+    /// Executes the complete 7-stage GPU pipeline for `scene` and updates `output_tex`.
+    pub fn render_scene(&mut self, scene: &FrameScene) {
+        // Spawn & step SDF-aware particles.
+        for sp in &scene.particle_spawns {
+            self.particles.spawn(sp, &self.sdf_grid);
+        }
+        self.particles.step(scene.dt_sec.max(0.001), &self.sdf_grid, &self.geometry);
+
+        // Prepare background media if requested.
+        if let Some(ref bg_path) = scene.background_media {
+            self.ensure_bg_image(bg_path);
+        }
+
+        // Precompile custom background shader if requested.
+        let custom_bg_path = scene
+            .background_shaders
+            .last()
+            .map(|s| (s.shader_path.clone(), s.params));
+        if let Some((ref path, _)) = custom_bg_path {
+            let _ = self.get_or_compile_custom_shader(path);
+        }
+
+        // Prepare uniforms
+        let bg_uniforms = CustomShaderUniforms {
+            resolution: [self.width as f32, self.height as f32],
+            time: scene.time_sec,
+            _pad: 0.0,
+            params: custom_bg_path.as_ref().map(|(_, p)| *p).unwrap_or([[0.0; 4]; 4]),
+        };
+        self.queue
+            .write_buffer(&self.custom_uniform_buf, 0, bytemuck::bytes_of(&bg_uniforms));
+
+        // Prepare wave simulation uniforms
+        let mut gpu_impulses = [WaveImpulseGpu {
+            pos_rad_force: [0.0; 4],
+        }; 32];
+        let imp_count = scene.wave_impulses.len().min(32);
+        for (i, imp) in scene.wave_impulses.iter().take(32).enumerate() {
+            gpu_impulses[i] = WaveImpulseGpu {
+                pos_rad_force: [
+                    imp.x / DISPLAY_WIDTH_PX as f32,
+                    imp.y / DISPLAY_HEIGHT_PX as f32,
+                    imp.radius / DISPLAY_HEIGHT_PX as f32,
+                    imp.force,
+                ],
+            };
+        }
+        let wave_u = WaveSimUniforms {
+            texel: [1.0 / WAVE_W as f32, 1.0 / WAVE_H as f32],
+            damping: scene.wave_params.damping,
+            speed: scene.wave_params.speed,
+            aspect: DISPLAY_WIDTH_PX as f32 / DISPLAY_HEIGHT_PX as f32,
+            impulse_count: imp_count as u32,
+            _pad0: 0,
+            _pad1: 0,
+            impulses: gpu_impulses,
+        };
+        self.queue
+            .write_buffer(&self.wave_sim_uniform_buf, 0, bytemuck::bytes_of(&wave_u));
+
+        let refract_u = RefractUniforms {
+            texel: [1.0 / WAVE_W as f32, 1.0 / WAVE_H as f32],
+            refraction_px: scene.wave_params.refraction_strength,
+            specular_strength: scene.wave_params.specular_strength,
+            resolution: [DISPLAY_WIDTH_PX as f32, DISPLAY_HEIGHT_PX as f32],
+            enabled: if scene.distortion_enabled { 1.0 } else { 0.0 },
+            _pad: 0.0,
+            tint: scene.wave_params.tint,
+        };
+        self.queue
+            .write_buffer(&self.refract_uniform_buf, 0, bytemuck::bytes_of(&refract_u));
+
+        // Build instanced GPU glows + SDF particles
+        let mut instances = Vec::with_capacity(
+            (scene.key_glows.len() + self.particles.particles.len()).min(MAX_GLOW_INSTANCES),
+        );
+        for g in &scene.key_glows {
+            if instances.len() >= MAX_GLOW_INSTANCES {
+                break;
+            }
+            let shape_id = match g.shape {
+                KeyGlowShape::Glow => 0.0,
+                KeyGlowShape::Ring => 1.0,
+                KeyGlowShape::Ripple => 2.0,
+                KeyGlowShape::Solid => 3.0,
+            };
+            instances.push(GlowInstanceGpu {
+                rect: [g.cx, g.cy, g.w, g.h],
+                params: [shape_id, g.radius_px, g.thickness_px, g.intensity],
+                color: g.color,
+            });
+        }
+        for p in &self.particles.particles {
+            if instances.len() >= MAX_GLOW_INSTANCES {
+                break;
+            }
+            let life_t = (p.age_ms / p.life_ms).clamp(0.0, 1.0);
+            let fade = (1.0 - life_t).powf(1.2);
+            let lens_boost = if p.inside_key { 1.35 } else { 1.0 };
+            instances.push(GlowInstanceGpu {
+                rect: [p.x, p.y, 2.0, 2.0],
+                params: [4.0, p.radius_px * p.current_scale, 2.0, fade * lens_boost],
+                color: p.color,
+            });
+        }
+        let screen_u = ScreenUniform {
+            resolution: [DISPLAY_WIDTH_PX as f32, DISPLAY_HEIGHT_PX as f32],
+            _pad: [0.0; 2],
+        };
+        self.queue
+            .write_buffer(&self.glow_screen_buf, 0, bytemuck::bytes_of(&screen_u));
+        if !instances.is_empty() {
+            self.queue.write_buffer(
+                &self.glow_instance_buf,
+                0,
+                bytemuck::cast_slice(&instances),
+            );
+        }
+
+        // Rasterize 2D overlay stages (under_key_draws -> key legends -> tiles -> world_overlay)
+        self.canvas.clear();
+        self.canvas.execute(&scene.under_key_draws);
+        if self.draw_default_legends {
+            self.canvas
+                .draw_default_key_legends(&self.geometry, DEFAULT_ANSI_LABELS);
+        }
+        self.canvas.execute(&scene.tile_draws);
+        self.canvas.execute(&scene.world_overlay_draws);
+
+        self.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &self.overlay_tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &self.canvas.rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(DISPLAY_WIDTH_PX * 4),
+                rows_per_image: Some(DISPLAY_HEIGHT_PX),
+            },
+            wgpu::Extent3d {
+                width: DISPLAY_WIDTH_PX,
+                height: DISPLAY_HEIGHT_PX,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        // Encode GPU passes
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("openflux-frame"),
+            });
+
+        // Stage 0: Background -> scene_bg_view
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("stage-0-bg"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.scene_bg_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+
+            if let (Some((_, _, _, ref yv)), Some((_, _, _, ref uvv))) =
+                (&self.nv12_y_tex, &self.nv12_uv_tex)
+            {
+                let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("nv12-bg"),
+                    layout: &self.nv12_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(yv),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(uvv),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                        },
+                    ],
+                });
+                pass.set_pipeline(&self.nv12_pipeline);
+                pass.set_bind_group(0, &bg, &[]);
+                pass.draw(0..3, 0..1);
+            } else if let Some((_, _, ref view)) = self.bg_rgba_tex {
+                let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("bg-img"),
+                    layout: &self.blit_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                        },
+                    ],
+                });
+                pass.set_pipeline(&self.blit_pipeline);
+                pass.set_bind_group(0, &bg, &[]);
+                pass.draw(0..3, 0..1);
+            } else if let Some((ref path, _)) = custom_bg_path {
+                if let Some(cached) = self.custom_pipelines.get(path) {
+                    pass.set_pipeline(&cached.pipeline);
+                    pass.set_bind_group(0, &self.custom_bg, &[]);
+                    pass.draw(0..3, 0..1);
+                } else {
+                    pass.set_pipeline(&self.default_bg_pipeline);
+                    pass.set_bind_group(0, &self.custom_bg, &[]);
+                    pass.draw(0..3, 0..1);
+                }
+            } else {
+                pass.set_pipeline(&self.default_bg_pipeline);
+                pass.set_bind_group(0, &self.custom_bg, &[]);
+                pass.draw(0..3, 0..1);
+            }
+        }
+
+        // Stage 1: Wave Heightfield Ping-Pong Simulation
+        let src_wave = self.wave_index;
+        let dst_wave = 1 - self.wave_index;
+        if scene.distortion_enabled {
+            let wave_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("wave-sim-bg"),
+                layout: &self.wave_sim_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&self.wave_view[src_wave]),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: self.wave_sim_uniform_buf.as_entire_binding(),
+                    },
+                ],
+            });
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("stage-1-wave-sim"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.wave_view[dst_wave],
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            pass.set_pipeline(&self.wave_sim_pipeline);
+            pass.set_bind_group(0, &wave_bg, &[]);
+            pass.draw(0..3, 0..1);
+            self.wave_index = dst_wave;
+        }
+
+        // Stage 2 + 3 + 4..6: Refracted Background -> Under-Key Glows & Particles -> 2D Overlay
+        let refract_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("refract-bg"),
+            layout: &self.refract_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&self.scene_bg_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&self.wave_view[self.wave_index]),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: self.refract_uniform_buf.as_entire_binding(),
+                },
+            ],
+        });
+        let overlay_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("overlay-bg"),
+            layout: &self.blit_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&self.overlay_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
+                },
+            ],
+        });
+
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("stage-2-to-6-final"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.output_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+
+            // Stage 2: Refracted & specular-lit background
+            pass.set_pipeline(&self.refract_pipeline);
+            pass.set_bind_group(0, &refract_bg, &[]);
+            pass.draw(0..3, 0..1);
+
+            // Stage 3: Instanced Key Glows + SDF Bouncing/Refracting Particles
+            if !instances.is_empty() {
+                pass.set_pipeline(&self.glow_pipeline);
+                pass.set_bind_group(0, &self.glow_bg, &[]);
+                pass.draw(0..6, 0..(instances.len() as u32));
+            }
+
+            // Stages 4..6: Key Legends, Top-Bar Tiles, World Overlay (Idle Pet)
+            pass.set_pipeline(&self.alpha_blit_pipeline);
+            pass.set_bind_group(0, &overlay_bg, &[]);
+            pass.draw(0..3, 0..1);
+        }
+
+        self.queue.submit(Some(encoder.finish()));
+    }
+
+    /// Reads back the last rendered frame as tightly-packed RGBA8 (`width * height * 4`).
+    pub fn readback_rgba(&self) -> Result<Vec<u8>, String> {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("readback-copy"),
+            });
+        encoder.copy_texture_to_buffer(
+            wgpu::ImageCopyTexture {
+                texture: &self.output_tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::ImageCopyBuffer {
+                buffer: &self.readback_buf,
+                layout: wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(self.padded_bytes_per_row),
+                    rows_per_image: Some(self.height),
+                },
+            },
+            wgpu::Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.queue.submit(Some(encoder.finish()));
+
+        let slice = self.readback_buf.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |res| {
+            let _ = tx.send(res);
+        });
+        self.device.poll(wgpu::Maintain::Wait);
+        rx.recv()
+            .map_err(|e| format!("readback channel error: {e}"))?
+            .map_err(|e| format!("readback map failed: {e:?}"))?;
+
+        let mapped = slice.get_mapped_range();
+        let row_bytes = (self.width * 4) as usize;
+        let stride = self.padded_bytes_per_row as usize;
+        let mut out = vec![0u8; row_bytes * self.height as usize];
+        for y in 0..self.height as usize {
+            let src = &mapped[y * stride..y * stride + row_bytes];
+            let dst = &mut out[y * row_bytes..(y + 1) * row_bytes];
+            dst.copy_from_slice(src);
+        }
+        drop(mapped);
+        self.readback_buf.unmap();
+        Ok(out)
+    }
+
+    pub fn save_png(&self, path: &Path) -> Result<(), String> {
+        let rgba = self.readback_rgba()?;
+        let img = image::RgbaImage::from_raw(self.width, self.height, rgba)
+            .ok_or_else(|| "invalid RGBA buffer dimensions".to_string())?;
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+        }
+        img.save(path).map_err(|e| format!("save png {}: {e}", path.display()))
+    }
+}
+
+fn tex_entry(binding: u32, filterable: bool) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+        count: None,
+    }
+}
+
+fn uniform_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    }
+}
+
+fn build_fs_pipeline(
+    device: &wgpu::Device,
+    label: &str,
+    vert_mod: &wgpu::ShaderModule,
+    frag_wgsl: &str,
+    bgls: &[&wgpu::BindGroupLayout],
+    format: wgpu::TextureFormat,
+    blend: Option<wgpu::BlendState>,
+) -> wgpu::RenderPipeline {
+    let frag_mod = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some(label),
+        source: wgpu::ShaderSource::Wgsl(frag_wgsl.into()),
+    });
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some(label),
+        bind_group_layouts: bgls,
+        push_constant_ranges: &[],
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(label),
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: vert_mod,
+            entry_point: Some("vs_main"),
+            buffers: &[],
+            compilation_options: Default::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &frag_mod,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: Default::default(),
+        }),
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview: None,
+        cache: None,
+    })
+}

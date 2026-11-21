@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/openflux-bus",
+    "crates/openflux-modules",
+    "crates/openflux-compositor",
+    "crates/fluxctl",
     "crates/openflux-update",
     "host/daemon",
     "host/studio/src-tauri",

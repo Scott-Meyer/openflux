@@ -1,0 +1,86 @@
+{
+  "name": "OpenFlux Official Curated List",
+  "description": "Curated v2 default modules — every background, key press effect, widget, and roaming companion built on the public OpenFlux module API.",
+  "entries": [
+    {
+      "id": "bg-aurora-shader",
+      "name": "Aurora Velvet Shader",
+      "version": "2.0.0",
+      "category": "background",
+      "description": "Animated bioluminescent aurora background shader designed for 3D water refraction",
+      "source": "modules/bg-aurora-shader"
+    },
+    {
+      "id": "fx-water-ripple-3d",
+      "name": "3D Water Ripple",
+      "version": "2.0.0",
+      "category": "effect",
+      "description": "Real-time 2D wave simulation refracting whatever video or shader is playing underneath",
+      "source": "modules/fx-water-ripple-3d"
+    },
+    {
+      "id": "fx-analog-depth-glow",
+      "name": "Analog Depth & Velocity Glow",
+      "version": "2.0.0",
+      "category": "effect",
+      "description": "Spreads wide beneath neighboring keys on the way down and contracts gently on the way up",
+      "source": "modules/fx-analog-depth-glow"
+    },
+    {
+      "id": "fx-key-particles",
+      "name": "Key-Bouncing & Refracting Particles",
+      "version": "2.0.0",
+      "category": "effect",
+      "description": "Particles bounce down 2mm keycap trenches or pass under clear keycaps with optical magnification",
+      "source": "modules/fx-key-particles"
+    },
+    {
+      "id": "companion-idle-pet",
+      "name": "Idle Pet Companion",
+      "version": "2.0.0",
+      "category": "companion",
+      "description": "Hangs out in a top-bar slot, swipes at typing, startles at ripples, and roams across physical keycaps sending surface impulses",
+      "source": "modules/companion-idle-pet"
+    },
+    {
+      "id": "widget-clock",
+      "name": "Clock Widget",
+      "version": "2.0.0",
+      "category": "widget",
+      "description": "Keyboard-standalone digital clock with seconds arc",
+      "source": "modules/widget-clock"
+    },
+    {
+      "id": "widget-system-load",
+      "name": "System Load Widget",
+      "version": "2.0.0",
+      "category": "widget",
+      "description": "Hybrid CPU/RAM/GPU telemetry bar with graceful standalone fallback",
+      "source": "modules/widget-system-load"
+    },
+    {
+      "id": "widget-media",
+      "name": "Now Playing Widget",
+      "version": "2.0.0",
+      "category": "widget",
+      "description": "Live media playback title, artist, equalizer, and progress",
+      "source": "modules/widget-media"
+    },
+    {
+      "id": "widget-weather",
+      "name": "Weather Widget",
+      "version": "2.0.0",
+      "category": "widget",
+      "description": "Hybrid weather tile with secret-stripped optional API key setting",
+      "source": "modules/widget-weather"
+    },
+    {
+      "id": "widget-pomodoro",
+      "name": "Pomodoro Timer",
+      "version": "2.0.0",
+      "category": "widget",
+      "description": "Standalone Pomodoro timer that emits a celebratory surface impulse on completion",
+      "source": "modules/widget-pomodoro"
+    }
+  ]
+}

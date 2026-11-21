@@ -1,0 +1,23 @@
+id = "fx-classic-glow"
+name = "Classic Key Glow"
+version = "2.0.0"
+description = "Classic v1 solid highlight and warm glow around pressed keys (now stackable)"
+author = "OpenFlux"
+category = "effect"
+stages = ["under_key"]
+host_requirement = "none"
+slot_capable = false
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["input/keys/event"]
+publishes = []
+
+[[settings]]
+key = "color"
+label = "Glow Color"
+kind = "color"
+default = "#ff8c42"

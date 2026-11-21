@@ -1,0 +1,23 @@
+id = "bg-media"
+name = "Media Background"
+version = "2.0.0"
+description = "Displays a local image or video texture as the compositor background layer"
+author = "OpenFlux"
+category = "background"
+stages = ["background"]
+host_requirement = "none"
+slot_capable = false
+stackable = false
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = []
+publishes = []
+
+[[settings]]
+key = "media_path"
+label = "Image Path"
+kind = "string"
+default = "assets/default_backgrounds/aurora_velvet.png"

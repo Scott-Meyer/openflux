@@ -1,0 +1,53 @@
+id = "fx-key-particles"
+name = "Key-Bouncing & Refracting Particles"
+version = "2.0.0"
+description = "Particles burst from keys, ricochet down 2mm keycap trenches, or pass beneath clear keycaps with lens refraction"
+author = "OpenFlux"
+category = "effect"
+stages = ["under_key"]
+host_requirement = "none"
+slot_capable = false
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["input/keys/event", "fx/surface/impulse"]
+publishes = []
+
+[[settings]]
+key = "count"
+label = "Particles Per Press"
+kind = "number"
+default = 14
+min = 4
+max = 40
+
+[[settings]]
+key = "bounce_chance"
+label = "Key Wall Bounce Probability"
+kind = "number"
+default = 0.55
+min = 0.0
+max = 1.0
+
+[[settings]]
+key = "lens_refract"
+label = "Keycap Lens Magnification"
+kind = "number"
+default = 1.55
+min = 1.0
+max = 2.2
+
+[[settings]]
+key = "color_a"
+label = "Primary Spark Color"
+kind = "color"
+default = "#ffd166"
+
+[[settings]]
+key = "color_b"
+label = "Secondary Spark Color"
+kind = "color"
+default = "#4df0ff"

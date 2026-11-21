@@ -1,0 +1,34 @@
+id = "bg-aurora-shader"
+name = "Aurora Velvet Shader"
+version = "2.0.0"
+description = "Animated bioluminescent aurora background shader designed to showcase 3D water refraction"
+author = "OpenFlux"
+category = "background"
+stages = ["background"]
+host_requirement = "none"
+slot_capable = false
+stackable = false
+
+[entrypoints]
+script = "script.lua"
+shader = "shaders/aurora.wgsl"
+
+[channels]
+subscribes = []
+publishes = []
+
+[[settings]]
+key = "speed"
+label = "Flow Speed"
+kind = "number"
+default = 1.0
+min = 0.1
+max = 3.0
+
+[[settings]]
+key = "intensity"
+label = "Brightness"
+kind = "number"
+default = 1.0
+min = 0.3
+max = 1.6

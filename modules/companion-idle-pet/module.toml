@@ -1,0 +1,37 @@
+id = "companion-idle-pet"
+name = "Idle Pet Companion"
+version = "2.0.0"
+description = "Lives in a top-bar slot, swipes at upper-row typing, gets startled by ripples, and climbs onto keys when idle—sending surface impulses on every paw landing"
+author = "OpenFlux"
+category = "companion"
+stages = ["tile", "world_overlay"]
+host_requirement = "none"
+slot_capable = true
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["input/keys/event", "fx/surface/impulse", "keyboard/state", "modules/companion-idle-pet/command"]
+publishes = ["fx/surface/impulse", "modules/companion-idle-pet/state"]
+
+[[settings]]
+key = "pet_name"
+label = "Pet Name"
+kind = "string"
+default = "Mochi"
+
+[[settings]]
+key = "fur_color"
+label = "Fur Color"
+kind = "color"
+default = "#ffb86c"
+
+[[settings]]
+key = "idle_seconds"
+label = "Seconds Before Roaming"
+kind = "number"
+default = 15.0
+min = 2.0
+max = 120.0

@@ -1,0 +1,23 @@
+id = "fx-classic-ripple"
+name = "Classic 2D Ripple"
+version = "2.0.0"
+description = "Classic v1 expanding 2D line ripple across the keyboard (now stackable)"
+author = "OpenFlux"
+category = "effect"
+stages = ["under_key"]
+host_requirement = "none"
+slot_capable = false
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["input/keys/event", "fx/surface/impulse"]
+publishes = []
+
+[[settings]]
+key = "color"
+label = "Ripple Color"
+kind = "color"
+default = "#68ffbe"

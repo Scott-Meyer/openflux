@@ -1,0 +1,17 @@
+[package]
+name = "openflux-compositor"
+version = "2.0.0-alpha.1"
+edition.workspace = true
+description = "OpenFlux v2 unified cross-platform wgpu layered GPU compositor (Metal, Vulkan, DX12, GLES)"
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bytemuck = { version = "1", features = ["derive"] }
+fontdue = "0.9"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+openflux-bus = { path = "../openflux-bus" }
+openflux-modules = { path = "../openflux-modules" }
+pollster = "0.4"
+wgpu = { version = "23", features = ["glsl"] }

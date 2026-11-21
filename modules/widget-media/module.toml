@@ -1,0 +1,23 @@
+id = "widget-media"
+name = "Now Playing Widget"
+version = "2.0.0"
+description = "Displays live host media track, artist, animated equalizer, and playback progress"
+author = "OpenFlux"
+category = "widget"
+stages = ["tile"]
+host_requirement = "optional"
+slot_capable = true
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["host/media/now_playing", "host/connection"]
+publishes = []
+
+[[settings]]
+key = "accent"
+label = "Accent Color"
+kind = "color"
+default = "#ff64b4"

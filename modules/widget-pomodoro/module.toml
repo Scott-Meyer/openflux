@@ -1,0 +1,25 @@
+id = "widget-pomodoro"
+name = "Pomodoro Timer"
+version = "2.0.0"
+description = "Keyboard-standalone Pomodoro focus timer that emits a celebratory surface impulse when a session completes"
+author = "OpenFlux"
+category = "widget"
+stages = ["tile"]
+host_requirement = "none"
+slot_capable = true
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["modules/widget-pomodoro/command"]
+publishes = ["modules/widget-pomodoro/state", "fx/surface/impulse"]
+
+[[settings]]
+key = "work_minutes"
+label = "Focus Duration (min)"
+kind = "number"
+default = 25
+min = 1
+max = 90

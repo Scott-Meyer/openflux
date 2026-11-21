@@ -1,0 +1,55 @@
+id = "fx-water-ripple-3d"
+name = "3D Water Ripple"
+version = "2.0.0"
+description = "Refracts the playing video or background with a real-time 2D wave simulation and specular highlights"
+author = "OpenFlux"
+category = "effect"
+stages = ["distortion"]
+host_requirement = "none"
+slot_capable = false
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["input/keys/event", "fx/surface/impulse"]
+publishes = []
+
+[[settings]]
+key = "refraction"
+label = "Refraction Strength"
+kind = "number"
+default = 46.0
+min = 5.0
+max = 120.0
+
+[[settings]]
+key = "specular"
+label = "3D Highlight"
+kind = "number"
+default = 0.72
+min = 0.0
+max = 1.5
+
+[[settings]]
+key = "damping"
+label = "Wave Persistence"
+kind = "number"
+default = 0.986
+min = 0.92
+max = 0.996
+
+[[settings]]
+key = "speed"
+label = "Wave Speed"
+kind = "number"
+default = 0.44
+min = 0.15
+max = 0.75
+
+[[settings]]
+key = "tint"
+label = "Specular Tint"
+kind = "color"
+default = "#9ce8ff"

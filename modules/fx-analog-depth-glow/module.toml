@@ -1,0 +1,37 @@
+id = "fx-analog-depth-glow"
+name = "Analog Depth & Velocity Glow"
+version = "2.0.0"
+description = "Spreads wider and brighter beneath neighboring keys on the way down, and contracts gently on the way up"
+author = "OpenFlux"
+category = "effect"
+stages = ["under_key"]
+host_requirement = "none"
+slot_capable = false
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["input/keys/analog", "input/keys/event"]
+publishes = []
+
+[[settings]]
+key = "down_color"
+label = "Press-Down Color"
+kind = "color"
+default = "#29e3ff"
+
+[[settings]]
+key = "up_color"
+label = "Release-Up Color"
+kind = "color"
+default = "#8a6bff"
+
+[[settings]]
+key = "max_spread_px"
+label = "Max Neighbor Spread (px)"
+kind = "number"
+default = 145.0
+min = 40.0
+max = 260.0

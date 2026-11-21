@@ -1,0 +1,24 @@
+id = "widget-weather"
+name = "Weather Widget"
+version = "2.0.0"
+description = "Hybrid weather tile reading cached/live host weather over the bus"
+author = "OpenFlux"
+category = "widget"
+stages = ["tile"]
+host_requirement = "optional"
+slot_capable = true
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["host/weather/current"]
+publishes = []
+
+[[settings]]
+key = "api_key"
+label = "Optional Custom API Key"
+kind = "string"
+default = ""
+secret = true

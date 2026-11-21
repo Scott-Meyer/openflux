@@ -1,0 +1,23 @@
+id = "widget-system-load"
+name = "System Load Widget"
+version = "2.0.0"
+description = "Hybrid CPU, RAM, and GPU telemetry bar that gracefully shows standalone status when host disconnects"
+author = "OpenFlux"
+category = "widget"
+stages = ["tile"]
+host_requirement = "optional"
+slot_capable = true
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["host/system/metrics", "host/connection"]
+publishes = []
+
+[[settings]]
+key = "accent"
+label = "Bar Color"
+kind = "color"
+default = "#58f29c"
