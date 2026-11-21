@@ -5,7 +5,9 @@
 use openfluxd::api::build_router;
 use openfluxd::api::state::{ApiState, NoopDeviceSink};
 use openfluxd::preview::DisplayPreview;
+#[cfg(unix)]
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
