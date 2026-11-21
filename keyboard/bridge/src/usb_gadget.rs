@@ -10,7 +10,7 @@ use std::os::unix::io::RawFd;
 #[cfg(target_os = "linux")]
 const GADGET_PATH: &str = "/sys/kernel/config/usb_gadget/g1";
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 struct UsbIntfDesc {
@@ -25,7 +25,7 @@ struct UsbIntfDesc {
     i_interface: u8,
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 struct UsbEpDescNoAudio {
@@ -37,7 +37,7 @@ struct UsbEpDescNoAudio {
     b_interval: u8,
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 struct FsHsGroup {
@@ -46,7 +46,30 @@ struct FsHsGroup {
     source: UsbEpDescNoAudio,
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
+struct UsbOsDescHeader {
+    interface: u8,
+    dw_length: u32,
+    bcd_version: u16,
+    w_index: u16,
+    b_count: u8,
+    reserved: u8,
+}
+
+#[cfg(any(target_os = "linux", test))]
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
+struct UsbExtCompatDesc {
+    b_first_interface_number: u8,
+    reserved1: u8,
+    compatible_id: [u8; 8],
+    sub_compatible_id: [u8; 8],
+    reserved2: [u8; 6],
+}
+
+#[cfg(any(target_os = "linux", test))]
 #[repr(C, packed)]
 struct BridgeFfsDescs {
     magic: u32,
@@ -54,8 +77,75 @@ struct BridgeFfsDescs {
     flags: u32,
     fs_count: u32,
     hs_count: u32,
+    os_count: u32,
     fs_descs: FsHsGroup,
     hs_descs: FsHsGroup,
+    os_header: UsbOsDescHeader,
+    os_compat: UsbExtCompatDesc,
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn build_bridge_ffs_descs() -> BridgeFfsDescs {
+    let fs_descs = FsHsGroup {
+        intf: UsbIntfDesc {
+            b_length: 9,
+            b_descriptor_type: 0x04,
+            b_interface_number: 0,
+            b_alternate_setting: 0,
+            b_num_endpoints: 2,
+            b_interface_class: 0xFF,
+            b_interface_sub_class: 0,
+            b_interface_protocol: 0,
+            i_interface: 1,
+        },
+        sink: UsbEpDescNoAudio {
+            b_length: 7,
+            b_descriptor_type: 0x05,
+            b_endpoint_address: 1 | 0x80,
+            bm_attributes: 2,
+            w_max_packet_size: 64u16.to_le(),
+            b_interval: 0,
+        },
+        source: UsbEpDescNoAudio {
+            b_length: 7,
+            b_descriptor_type: 0x05,
+            b_endpoint_address: 1,
+            bm_attributes: 2,
+            w_max_packet_size: 64u16.to_le(),
+            b_interval: 0,
+        },
+    };
+    let mut hs_descs = fs_descs;
+    hs_descs.sink.w_max_packet_size = 512u16.to_le();
+    hs_descs.source.w_max_packet_size = 512u16.to_le();
+
+    let os_len =
+        (std::mem::size_of::<UsbOsDescHeader>() + std::mem::size_of::<UsbExtCompatDesc>()) as u32;
+    BridgeFfsDescs {
+        magic: 3u32.to_le(), // FUNCTIONFS_DESCRIPTORS_MAGIC_V2
+        length: (std::mem::size_of::<BridgeFfsDescs>() as u32).to_le(),
+        flags: (1u32 | 2u32 | 8u32).to_le(), // HAS_FS_DESC | HAS_HS_DESC | HAS_MS_OS_DESC
+        fs_count: 3u32.to_le(),
+        hs_count: 3u32.to_le(),
+        os_count: 1u32.to_le(),
+        fs_descs,
+        hs_descs,
+        os_header: UsbOsDescHeader {
+            interface: 0,
+            dw_length: os_len.to_le(),
+            bcd_version: 0x0100u16.to_le(),
+            w_index: 0x0004u16.to_le(), // Extended Compat ID
+            b_count: 1,
+            reserved: 0,
+        },
+        os_compat: UsbExtCompatDesc {
+            b_first_interface_number: 0,
+            reserved1: 1,
+            compatible_id: *b"WINUSB\0\0",
+            sub_compatible_id: [0; 8],
+            reserved2: [0; 6],
+        },
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -132,7 +222,7 @@ pub fn bridge_setup_gadget(mount_point: &str) -> Result<(), String> {
     for (attr, val) in [
         ("idVendor", USB_VENDOR_ID_STR),
         ("idProduct", USB_PRODUCT_ID_STR),
-        ("bcdDevice", "0x0100"),
+        ("bcdDevice", "0x0101"),
         ("bcdUSB", "0x0200"),
     ] {
         write_attr(&format!("{GADGET_PATH}/{attr}"), val);
@@ -201,48 +291,7 @@ pub fn bridge_open_ffs(mount_point: &str) -> Result<(RawFd, RawFd, RawFd), Strin
         return Err(format!("open ep0: {}", std::io::Error::last_os_error()));
     }
 
-    let fs_descs = FsHsGroup {
-        intf: UsbIntfDesc {
-            b_length: 9,
-            b_descriptor_type: 0x04,
-            b_interface_number: 0,
-            b_alternate_setting: 0,
-            b_num_endpoints: 2,
-            b_interface_class: 0xFF,
-            b_interface_sub_class: 0,
-            b_interface_protocol: 0,
-            i_interface: 1,
-        },
-        sink: UsbEpDescNoAudio {
-            b_length: 7,
-            b_descriptor_type: 0x05,
-            b_endpoint_address: 1 | 0x80,
-            bm_attributes: 2,
-            w_max_packet_size: 64u16.to_le(),
-            b_interval: 0,
-        },
-        source: UsbEpDescNoAudio {
-            b_length: 7,
-            b_descriptor_type: 0x05,
-            b_endpoint_address: 1,
-            bm_attributes: 2,
-            w_max_packet_size: 64u16.to_le(),
-            b_interval: 0,
-        },
-    };
-    let mut hs_descs = fs_descs;
-    hs_descs.sink.w_max_packet_size = 512u16.to_le();
-    hs_descs.source.w_max_packet_size = 512u16.to_le();
-
-    let descs = BridgeFfsDescs {
-        magic: 3u32.to_le(), // FUNCTIONFS_DESCRIPTORS_MAGIC_V2
-        length: (std::mem::size_of::<BridgeFfsDescs>() as u32).to_le(),
-        flags: (1u32 | 2u32).to_le(), // HAS_FS_DESC | HAS_HS_DESC
-        fs_count: 3u32.to_le(),
-        hs_count: 3u32.to_le(),
-        fs_descs,
-        hs_descs,
-    };
+    let descs = build_bridge_ffs_descs();
     let d_bytes = unsafe {
         std::slice::from_raw_parts(
             &descs as *const BridgeFfsDescs as *const u8,
@@ -307,4 +356,29 @@ pub fn bridge_setup_gadget(_mount_point: &str) -> Result<(), String> {
 #[cfg(not(target_os = "linux"))]
 pub fn bridge_open_ffs(_mount_point: &str) -> Result<(RawFd, RawFd, RawFd), String> {
     Err("USB FunctionFS gadget only supported on Linux".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ffs_descriptors_advertise_winusb_ms_os_desc() {
+        let d = build_bridge_ffs_descs();
+        assert_eq!(std::mem::size_of::<UsbOsDescHeader>(), 11);
+        assert_eq!(std::mem::size_of::<UsbExtCompatDesc>(), 24);
+        assert_eq!(u32::from_le(d.magic), 3);
+        assert_eq!(u32::from_le(d.flags), 1 | 2 | 8);
+        assert_eq!(u32::from_le(d.os_count), 1);
+        assert_eq!(
+            u32::from_le(d.length) as usize,
+            std::mem::size_of::<BridgeFfsDescs>()
+        );
+        assert_eq!(u32::from_le(d.os_header.dw_length), 35);
+        assert_eq!(u16::from_le(d.os_header.bcd_version), 0x0100);
+        assert_eq!(u16::from_le(d.os_header.w_index), 4);
+        assert_eq!(d.os_header.b_count, 1);
+        assert_eq!(d.os_compat.reserved1, 1);
+        assert_eq!(d.os_compat.compatible_id, *b"WINUSB\0\0");
+    }
 }
