@@ -437,6 +437,7 @@ fn main() {
     {
         use openflux_display::config::ConfigReloader;
         use openflux_display::ipc::BridgeIpcClient;
+        use openflux_display::rkmpp::StreamEnded;
         use std::sync::atomic::{AtomicBool, Ordering};
         use std::time::Instant;
 
@@ -462,8 +463,8 @@ fn main() {
         let _marker_guard = MarkerGuard(marker);
 
         enum ActivePresenter {
-            Gpu(openflux_display::wayland_egl::WaylandGpuPresenter),
-            Shm(openflux_display::wayland::WaylandPresenter),
+            Gpu(Box<openflux_display::wayland_egl::WaylandGpuPresenter>),
+            Shm(Box<openflux_display::wayland::WaylandPresenter>),
         }
         impl ActivePresenter {
             fn dispatch(&mut self) -> Result<bool, String> {
@@ -493,7 +494,7 @@ fn main() {
                 height,
                 "openflux-display",
             ) {
-                Ok(g) => ActivePresenter::Gpu(g),
+                Ok(g) => ActivePresenter::Gpu(Box::new(g)),
                 Err(ge) => {
                     eprintln!("Wayland EGL GPU unavailable ({ge}), falling back to Wayland SHM");
                     match openflux_display::wayland::WaylandPresenter::open(
@@ -501,7 +502,7 @@ fn main() {
                         height,
                         "openflux-display",
                     ) {
-                        Ok(s) => ActivePresenter::Shm(s),
+                        Ok(s) => ActivePresenter::Shm(Box::new(s)),
                         Err(se) => {
                             eprintln!("Wayland unavailable: {se}");
                             drop(_marker_guard);
@@ -516,7 +517,7 @@ fn main() {
                 height,
                 "openflux-display",
             ) {
-                Ok(s) => ActivePresenter::Shm(s),
+                Ok(s) => ActivePresenter::Shm(Box::new(s)),
                 Err(se) => {
                     eprintln!("Wayland unavailable: {se}");
                     drop(_marker_guard);
@@ -938,7 +939,7 @@ fn main() {
                             match st_mpp.try_read_frame() {
                                 Ok(Some(f)) => rkmpp_pending = Some(f),
                                 Ok(None) => {}
-                                Err(()) => {
+                                Err(StreamEnded) => {
                                     rkmpp_stream = None;
                                     rkmpp_failed_path = rkmpp_path.clone();
                                     rkmpp_path.clear();
@@ -960,17 +961,12 @@ fn main() {
                                 let elapsed = mono_ms.saturating_sub(rkmpp_epoch_ms);
                                 if pend.pts_ms <= elapsed.saturating_add(VSYNC_LEAD_MS) {
                                     let mut best = rkmpp_pending.take().unwrap();
-                                    loop {
-                                        match st_mpp.try_read_frame() {
-                                            Ok(Some(nxt)) => {
-                                                if nxt.pts_ms <= elapsed {
-                                                    best = nxt;
-                                                } else {
-                                                    rkmpp_pending = Some(nxt);
-                                                    break;
-                                                }
-                                            }
-                                            Ok(None) | Err(()) => break,
+                                    while let Ok(Some(nxt)) = st_mpp.try_read_frame() {
+                                        if nxt.pts_ms <= elapsed {
+                                            best = nxt;
+                                        } else {
+                                            rkmpp_pending = Some(nxt);
+                                            break;
                                         }
                                     }
                                     if rkmpp_pending.is_none()

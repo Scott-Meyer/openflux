@@ -6,6 +6,7 @@ description = "OpenFlux background service: keyboard USB transport, local API, a
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+publish = false
 
 [dependencies]
 axum = { version = "0.7", features = ["ws", "json"] }
@@ -30,7 +31,6 @@ libusb1-sys = { version = "0.7", features = ["vendored"] }
 rcgen = "0.13"
 rusb = "0.9"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-rustls-pemfile = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = "1"
@@ -40,7 +40,7 @@ time = { version = "0.3", features = ["formatting", "parsing"] }
 tokio = { version = "1", features = ["rt", "net", "sync", "time", "macros"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 tower = "0.5"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 # HTTPS for weather and Aerial downloads uses the system TLS stack on macOS and Windows, so the
 # system's trust settings apply; Linux uses rustls with the system roots.

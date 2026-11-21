@@ -109,6 +109,7 @@ const KeyboardUpdates: React.FC<{
   const selectedKey = [...selected].sort().join(",");
 
   // Preview the exact plan for a partial selection so the user sees (and confirms) what will run.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyboard.plan plans the selection again when the daemon's full plan changes.
   useEffect(() => {
     if (allSelected || selected.size === 0 || !updates.planUpdates) {
       setSubsetPlan(null);

@@ -263,8 +263,7 @@ export class MockDaemon {
           throw refusal("conversionRequired", "The keyboard needs conversion first");
         }
         if (!this.status.keyboard.plan) throw refusal("noPlan", "There is nothing to install");
-        const first =
-          (expectedSteps && expectedSteps[0]) || this.status.keyboard.plan.steps[0];
+        const first = expectedSteps?.[0] || this.status.keyboard.plan.steps[0];
         this.events.push(`apply:${components ? components.join(",") : "plan"}`);
         const j = this.startJob("update", `Installing ${first.component} ${first.to}`);
         return { jobId: j.id };

@@ -725,7 +725,7 @@ void FW_SCAN_CODE(fw_runtime_process_scan)(fw_runtime_t *rt, const uint16_t raw_
         return;
     const fw_layout_view_t *lv = rt->layouts[lid].valid ? &rt->layouts[lid] : NULL;
     const uint8_t *row_lens = FW_ROW_LEN[lid];
-    const uint8_t (*smap)[FW_MATRIX_MAX_COLS] = FW_SENSOR_MAP[lid];
+    const uint8_t(*smap)[FW_MATRIX_MAX_COLS] = FW_SENSOR_MAP[lid];
 #ifdef HOST_TEST
     if (rt->test_row_len)
         row_lens = rt->test_row_len;
@@ -905,7 +905,7 @@ void FW_SCAN_CODE(fw_runtime_process_scan)(fw_runtime_t *rt, const uint16_t raw_
                     if (is_down) {
                         rt->macro_nkro_bitmap[usage >> 3] |= (uint8_t)(1U << (usage & 7U));
                     } else {
-                        rt->macro_nkro_bitmap[usage >> 3] &= (uint8_t)~(1U << (usage & 7U));
+                        rt->macro_nkro_bitmap[usage >> 3] &= (uint8_t)(~(1U << (usage & 7U)));
                     }
                 }
                 rt->macro_step_idx++;

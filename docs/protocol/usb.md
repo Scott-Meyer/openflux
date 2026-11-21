@@ -259,11 +259,10 @@ partial data. If the final ACK was lost, check the status or read the record bac
 | 12 | Installed payload CRC (zero unless state 1 or 4) |
 
 A successful install means the validated data is stored. Firmware built
-with press refinement (`FW_ENABLE_PRESS_REFINEMENT`) uses it from then on and
-reports state 1. Firmware built without it, as release firmware is, reports
-state 4 and scans keys without the data. `GET_PRESS_REFINEMENT` (114) reads
-back the full validated record in either installed state, and answers NAK
-otherwise.
+with press refinement (`FW_ENABLE_PRESS_REFINEMENT`, on by default) uses it
+from then on and reports state 1. Firmware built without it reports state 4
+and scans keys without the data. `GET_PRESS_REFINEMENT` (114) reads back the
+full validated record in either installed state, and answers NAK otherwise.
 
 The host never trusts a `PUT_PRESS_REFINEMENT` ACK alone. After every put it
 reads `PRESS_REFINEMENT_STATUS`, which must report state 1 or 4 with the

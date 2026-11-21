@@ -61,7 +61,7 @@ if(DEFINED OPENFLUX_VERSION AND NOT "${OPENFLUX_VERSION}" STREQUAL "")
     set(FW_VERSION "${OPENFLUX_VERSION}")
 endif()
 
-option(FW_ENABLE_PRESS_REFINEMENT "Run installed press-refinement data in the scan loop" OFF)
+option(FW_ENABLE_PRESS_REFINEMENT "Run installed press-refinement data in the scan loop" ON)
 target_compile_definitions(openflux_firmware PRIVATE
     FW_PROJECT_VERSION="${FW_VERSION}"
     # Reserve all of core 0's SCRATCH_Y bank. The MPU protects the low 32 bytes.

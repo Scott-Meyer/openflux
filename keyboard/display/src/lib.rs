@@ -1,6 +1,8 @@
 pub mod assets;
 pub mod config;
 pub mod device_paths;
+#[cfg(target_os = "linux")]
+mod dl;
 pub mod ipc;
 pub mod layout;
 pub mod media_bg;

@@ -2,8 +2,6 @@
 //! fed by an Annex-B elementary stream from `openflux-ffmpeg` (packet copy, no software decode: `-c:v copy -bsf:v *_mp4toannexb`).
 //! Outputs tight linear `NV12` (`Y` WxH + `UV` Wx(H/2)) frames at the clip's native frame rate.
 
-#![cfg(target_os = "linux")]
-
 use std::ffi::{c_char, c_void, CString};
 use std::io::Read;
 use std::path::Path;
@@ -97,36 +95,30 @@ impl MppLib {
                         libc::dlclose(h);
                         return None;
                     }
-                    std::mem::transmute(p)
+                    crate::dl::fn_ptr(p)
                 }};
             }
             let ptr_fn = {
-                let p = libc::dlsym(
-                    h,
-                    b"mpp_buffer_get_ptr_with_caller\0".as_ptr() as *const c_char,
-                );
+                let p = libc::dlsym(h, c"mpp_buffer_get_ptr_with_caller".as_ptr());
                 if p.is_null() {
                     libc::dlclose(h);
                     return None;
                 }
-                std::mem::transmute(p)
+                crate::dl::fn_ptr(p)
             };
             let size_fn = {
-                let p = libc::dlsym(
-                    h,
-                    b"mpp_buffer_get_size_with_caller\0".as_ptr() as *const c_char,
-                );
+                let p = libc::dlsym(h, c"mpp_buffer_get_size_with_caller".as_ptr());
                 if p.is_null() {
                     libc::dlclose(h);
                     return None;
                 }
-                std::mem::transmute(p)
+                crate::dl::fn_ptr(p)
             };
-            let eos_p = libc::dlsym(h, b"mpp_packet_set_eos\0".as_ptr() as *const c_char);
+            let eos_p = libc::dlsym(h, c"mpp_packet_set_eos".as_ptr());
             let mpp_packet_set_eos = if eos_p.is_null() {
                 None
             } else {
-                Some(std::mem::transmute(eos_p))
+                Some(crate::dl::fn_ptr(eos_p))
             };
             Some(Self {
                 _handle: h,
@@ -157,6 +149,10 @@ pub enum RkmppCodec {
     H264,
     Hevc,
 }
+
+/// The decoder has stopped producing frames: the clip ended, or decoding failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StreamEnded;
 
 pub struct Nv12Frame {
     pub pts_ms: u64,
@@ -249,9 +245,11 @@ impl RkmppVideoStream {
         self.queued.load(Ordering::SeqCst)
     }
 
-    pub fn try_read_frame(&mut self) -> Result<Option<Nv12Frame>, ()> {
+    /// The next decoded frame, `Ok(None)` while none is ready yet, or [`StreamEnded`] once the
+    /// decoder has stopped producing frames.
+    pub fn try_read_frame(&mut self) -> Result<Option<Nv12Frame>, StreamEnded> {
         let Some(ref rx) = self.rx else {
-            return Err(());
+            return Err(StreamEnded);
         };
         match rx.try_recv() {
             Ok(f) => {
@@ -260,12 +258,12 @@ impl RkmppVideoStream {
             }
             Err(TryRecvError::Empty) => {
                 if self.disconnected.load(Ordering::SeqCst) {
-                    Err(())
+                    Err(StreamEnded)
                 } else {
                     Ok(None)
                 }
             }
-            Err(TryRecvError::Disconnected) => Err(()),
+            Err(TryRecvError::Disconnected) => Err(StreamEnded),
         }
     }
 }

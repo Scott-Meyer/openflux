@@ -14,7 +14,6 @@ use crate::usb::protocol::{
     KEYBOARD_VID,
 };
 use rusb::{Context, DeviceHandle, UsbContext};
-use std::fs::OpenOptions;
 use std::time::Duration;
 
 struct RusbEndpoint<'a, C: UsbContext> {
@@ -57,6 +56,7 @@ impl UsbLockGuard {
     fn acquire(pid: u16) -> Result<Self, UsbError> {
         use std::os::unix::io::AsRawFd;
         let path = format!("/tmp/openflux_usb_{pid:04x}.lock");
+        use std::fs::OpenOptions;
         use std::os::unix::fs::OpenOptionsExt;
         // The lock is a fixed name shared with other tools; a link planted there isn't followed.
         let file = OpenOptions::new()

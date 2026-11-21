@@ -3,8 +3,6 @@
 //! [`WaylandGpuPresenter::open`] returns an error when GPU EGL is unavailable (for example on a
 //! headless machine), so the caller can fall back to `WaylandPresenter` (SHM).
 
-#![cfg(target_os = "linux")]
-
 use std::ffi::{c_char, c_int, c_void, CString};
 use std::os::unix::io::{AsFd, AsRawFd};
 use wayland_client::protocol::{wl_callback, wl_compositor, wl_registry, wl_surface};
@@ -160,17 +158,11 @@ impl EglGlesLib {
     fn load() -> Result<Self, String> {
         unsafe {
             let wegl = DlHandle(libc::dlopen(
-                b"libwayland-egl.so.1\0".as_ptr() as *const c_char,
+                c"libwayland-egl.so.1".as_ptr(),
                 libc::RTLD_NOW,
             ));
-            let egl = DlHandle(libc::dlopen(
-                b"libEGL.so.1\0".as_ptr() as *const c_char,
-                libc::RTLD_NOW,
-            ));
-            let gles = DlHandle(libc::dlopen(
-                b"libGLESv2.so.2\0".as_ptr() as *const c_char,
-                libc::RTLD_NOW,
-            ));
+            let egl = DlHandle(libc::dlopen(c"libEGL.so.1".as_ptr(), libc::RTLD_NOW));
+            let gles = DlHandle(libc::dlopen(c"libGLESv2.so.2".as_ptr(), libc::RTLD_NOW));
             if wegl.0.is_null() || egl.0.is_null() || gles.0.is_null() {
                 return Err("Wayland EGL/GLESv2 shared libraries unavailable".into());
             }
@@ -180,15 +172,15 @@ impl EglGlesLib {
                     if p.is_null() {
                         return Err(format!("missing symbol {}", $name));
                     }
-                    std::mem::transmute(p)
+                    crate::dl::fn_ptr(p)
                 }};
             }
             let swap_iv = {
-                let p = libc::dlsym(egl.0, b"eglSwapInterval\0".as_ptr() as *const c_char);
+                let p = libc::dlsym(egl.0, c"eglSwapInterval".as_ptr());
                 if p.is_null() {
                     None
                 } else {
-                    Some(std::mem::transmute(p))
+                    Some(crate::dl::fn_ptr(p))
                 }
             };
             Ok(Self {
@@ -1265,7 +1257,7 @@ impl WaylandGpuPresenter {
 
     unsafe fn draw_fullscreen_quad(&self, prog: u32) {
         static VERTS: [f32; 8] = [-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
-        let loc = (self.gl.gl_get_attrib_location)(prog, b"a_pos\0".as_ptr() as *const c_char);
+        let loc = (self.gl.gl_get_attrib_location)(prog, c"a_pos".as_ptr());
         if loc >= 0 {
             (self.gl.gl_enable_vertex_attrib_array)(loc as u32);
             (self.gl.gl_vertex_attrib_pointer)(
@@ -1287,7 +1279,7 @@ impl WaylandGpuPresenter {
         let ny0 = 1.0 - (y1 / self.height as f32).clamp(0.0, 1.0) * 2.0;
         let ny1 = 1.0 - (y0 / self.height as f32).clamp(0.0, 1.0) * 2.0;
         let verts: [f32; 8] = [nx0, ny0, nx1, ny0, nx0, ny1, nx1, ny1];
-        let loc = (self.gl.gl_get_attrib_location)(prog, b"a_pos\0".as_ptr() as *const c_char);
+        let loc = (self.gl.gl_get_attrib_location)(prog, c"a_pos".as_ptr());
         if loc >= 0 {
             (self.gl.gl_enable_vertex_attrib_array)(loc as u32);
             (self.gl.gl_vertex_attrib_pointer)(
@@ -1521,38 +1513,23 @@ impl WaylandGpuPresenter {
         if let Some((kind, time_s, hue_rad)) = self.shader_bg {
             (self.gl.gl_use_program)(self.prog_shader);
             (self.gl.gl_uniform1i)(
-                (self.gl.gl_get_uniform_location)(
-                    self.prog_shader,
-                    b"u_kind\0".as_ptr() as *const c_char,
-                ),
+                (self.gl.gl_get_uniform_location)(self.prog_shader, c"u_kind".as_ptr()),
                 kind,
             );
             (self.gl.gl_uniform1f)(
-                (self.gl.gl_get_uniform_location)(
-                    self.prog_shader,
-                    b"u_time\0".as_ptr() as *const c_char,
-                ),
+                (self.gl.gl_get_uniform_location)(self.prog_shader, c"u_time".as_ptr()),
                 time_s,
             );
             (self.gl.gl_uniform1f)(
-                (self.gl.gl_get_uniform_location)(
-                    self.prog_shader,
-                    b"u_hue\0".as_ptr() as *const c_char,
-                ),
+                (self.gl.gl_get_uniform_location)(self.prog_shader, c"u_hue".as_ptr()),
                 hue_rad,
             );
             (self.gl.gl_uniform1f)(
-                (self.gl.gl_get_uniform_location)(
-                    self.prog_shader,
-                    b"u_dim\0".as_ptr() as *const c_char,
-                ),
+                (self.gl.gl_get_uniform_location)(self.prog_shader, c"u_dim".as_ptr()),
                 dim_factor,
             );
             (self.gl.gl_uniform2f)(
-                (self.gl.gl_get_uniform_location)(
-                    self.prog_shader,
-                    b"u_screen\0".as_ptr() as *const c_char,
-                ),
+                (self.gl.gl_get_uniform_location)(self.prog_shader, c"u_screen".as_ptr()),
                 self.width as f32,
                 self.height as f32,
             );

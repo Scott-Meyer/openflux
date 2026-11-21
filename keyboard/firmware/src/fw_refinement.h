@@ -8,7 +8,7 @@
 /* Press refinement runs in the scan loop only when FW_ENABLE_PRESS_REFINEMENT is 1 and valid data is installed.
  * Otherwise the scanner uses the model-free tracker and a valid record is only stored. */
 #ifndef FW_ENABLE_PRESS_REFINEMENT
-#define FW_ENABLE_PRESS_REFINEMENT 0
+#define FW_ENABLE_PRESS_REFINEMENT 1
 #endif
 
 /* Serialized storage/USB envelope; payload bytes belong to the press-refinement engine. */

@@ -5,9 +5,10 @@ use axum::Router;
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
 use hyper_util::server::conn::auto::Builder as HttpServerBuilder;
+use rustls::pki_types::pem::{self, PemObject};
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::ServerConfig;
 use sha2::{Digest, Sha256};
-use std::io::Write;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -44,6 +45,7 @@ pub fn write_owner_only_file(path: &Path, content: &[u8], secret: bool) -> Resul
 
     #[cfg(unix)]
     {
+        use std::io::Write;
         use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
         let mode = if secret { 0o600 } else { 0o644 };
         let mut f = std::fs::OpenOptions::new()
@@ -68,6 +70,7 @@ pub fn write_owner_only_file(path: &Path, content: &[u8], secret: bool) -> Resul
     }
     #[cfg(not(any(unix, windows)))]
     {
+        use std::io::Write;
         let mut f = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -313,8 +316,7 @@ pub fn ensure_tls_bundle(tls_dir: &Path) -> Result<TlsCertBundle, String> {
         (cpem, kpem)
     };
 
-    let mut cert_reader = std::io::BufReader::new(cert_pem.as_bytes());
-    let certs: Vec<_> = rustls_pemfile::certs(&mut cert_reader)
+    let certs: Vec<_> = CertificateDer::pem_slice_iter(cert_pem.as_bytes())
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("parse cert.pem: {e}"))?;
 
@@ -326,10 +328,10 @@ pub fn ensure_tls_bundle(tls_dir: &Path) -> Result<TlsCertBundle, String> {
     }
     let cert_sha256 = format!("{:x}", hasher.finalize());
 
-    let mut key_reader = std::io::BufReader::new(key_pem.as_bytes());
-    let key = rustls_pemfile::private_key(&mut key_reader)
-        .map_err(|e| format!("parse key.pem: {e}"))?
-        .ok_or_else(|| "No private key found in key.pem".to_string())?;
+    let key = PrivateKeyDer::from_pem_slice(key_pem.as_bytes()).map_err(|e| match e {
+        pem::Error::NoItemsFound => "No private key found in key.pem".to_string(),
+        e => format!("parse key.pem: {e}"),
+    })?;
 
     let _ = rustls::crypto::ring::default_provider().install_default();
     let cfg = ServerConfig::builder()

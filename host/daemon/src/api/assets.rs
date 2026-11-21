@@ -901,69 +901,75 @@ pub async fn get_asset_file(
     }
 }
 
-pub async fn get_installed_apps() -> impl IntoResponse {
-    let res = tokio::task::spawn_blocking(|| {
-        let mut apps: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-        #[cfg(target_os = "macos")]
-        {
-            let mut search_dirs = vec![
-                PathBuf::from("/Applications"),
-                PathBuf::from("/System/Applications"),
-            ];
-            if let Some(home) = std::env::var_os("HOME") {
-                search_dirs.push(PathBuf::from(home).join("Applications"));
+/// Applications installed in the standard macOS application folders, one per bundle ID.
+#[cfg(target_os = "macos")]
+fn installed_apps() -> Vec<serde_json::Value> {
+    let mut apps: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+    let mut search_dirs = vec![
+        PathBuf::from("/Applications"),
+        PathBuf::from("/System/Applications"),
+    ];
+    if let Some(home) = std::env::var_os("HOME") {
+        search_dirs.push(PathBuf::from(home).join("Applications"));
+    }
+    for dir in search_dirs {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for ent in entries.flatten() {
+            let p = ent.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("app") {
+                continue;
             }
-            for dir in search_dirs {
-                let Ok(entries) = std::fs::read_dir(&dir) else {
-                    continue;
-                };
-                for ent in entries.flatten() {
-                    let p = ent.path();
-                    if p.extension().and_then(|s| s.to_str()) != Some("app") {
-                        continue;
-                    }
-                    let plist = p.join("Contents/Info.plist");
-                    if !plist.is_file() {
-                        continue;
-                    }
-                    let Ok(out) = Command::new("plutil")
-                        .args(["-convert", "json", "-o", "-"])
-                        .arg(&plist)
-                        .output()
-                    else {
-                        continue;
-                    };
-                    if !out.status.success() {
-                        continue;
-                    }
-                    let Ok(v) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
-                        continue;
-                    };
-                    let Some(bid) = v
-                        .get("CFBundleIdentifier")
-                        .and_then(|x| x.as_str())
-                        .filter(|s| !s.is_empty())
-                    else {
-                        continue;
-                    };
-                    let name = v
-                        .get("CFBundleDisplayName")
-                        .or_else(|| v.get("CFBundleName"))
-                        .and_then(|x| x.as_str())
-                        .unwrap_or_else(|| p.file_stem().and_then(|s| s.to_str()).unwrap_or(bid));
-                    apps.entry(bid.to_string()).or_insert_with(|| {
-                        serde_json::json!({
-                            "bundleId": bid,
-                            "name": name,
-                            "path": p.to_string_lossy(),
-                        })
-                    });
-                }
+            let plist = p.join("Contents/Info.plist");
+            if !plist.is_file() {
+                continue;
             }
+            let Ok(out) = Command::new("plutil")
+                .args(["-convert", "json", "-o", "-"])
+                .arg(&plist)
+                .output()
+            else {
+                continue;
+            };
+            if !out.status.success() {
+                continue;
+            }
+            let Ok(v) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
+                continue;
+            };
+            let Some(bid) = v
+                .get("CFBundleIdentifier")
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.is_empty())
+            else {
+                continue;
+            };
+            let name = v
+                .get("CFBundleDisplayName")
+                .or_else(|| v.get("CFBundleName"))
+                .and_then(|x| x.as_str())
+                .unwrap_or_else(|| p.file_stem().and_then(|s| s.to_str()).unwrap_or(bid));
+            apps.entry(bid.to_string()).or_insert_with(|| {
+                serde_json::json!({
+                    "bundleId": bid,
+                    "name": name,
+                    "path": p.to_string_lossy(),
+                })
+            });
         }
-        apps.into_values().collect::<Vec<_>>()
-    })
-    .await;
+    }
+    apps.into_values().collect()
+}
+
+/// Installed applications are listed on macOS only.
+#[cfg(not(target_os = "macos"))]
+fn installed_apps() -> Vec<serde_json::Value> {
+    Vec::new()
+}
+
+pub async fn get_installed_apps() -> impl IntoResponse {
+    let res = tokio::task::spawn_blocking(installed_apps).await;
 
     match res {
         Ok(apps) => {

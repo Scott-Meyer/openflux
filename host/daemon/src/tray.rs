@@ -1,7 +1,9 @@
 //! The daemon's system tray icon, provided by small native helpers rather than a WebView.
 
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::process::Stdio;
+use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

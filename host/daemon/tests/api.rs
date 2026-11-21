@@ -9,6 +9,8 @@ use openfluxd::api::tls::{
 };
 use openfluxd::api::worker::{reconcile_tick, UsbWorkerHandle};
 use openfluxd::bridges::{ActiveWindowInfo, HardwareMetrics, MediaSnapshot, OsSensorBridge};
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::CertificateDer;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -453,8 +455,7 @@ async fn tls_accepts_a_client_using_the_discovered_certificate_and_reaps_stalled
     // A client trusting only the certificate named by keys.json.
     let mut root_store = rustls::RootCertStore::empty();
     let cert_bytes = std::fs::read(&cert_file).unwrap();
-    let mut reader = std::io::BufReader::new(cert_bytes.as_slice());
-    for cert in rustls_pemfile::certs(&mut reader) {
+    for cert in CertificateDer::pem_slice_iter(&cert_bytes) {
         root_store.add(cert.unwrap()).unwrap();
     }
     let tls_cfg = rustls::ClientConfig::builder()
@@ -1422,8 +1423,7 @@ async fn binary_enrollment_persistence_and_tls_restart() {
 
     let mut root_store = rustls::RootCertStore::empty();
     let cert_bytes = std::fs::read(&cert_file).unwrap();
-    let mut reader = std::io::BufReader::new(cert_bytes.as_slice());
-    for cert in rustls_pemfile::certs(&mut reader) {
+    for cert in CertificateDer::pem_slice_iter(&cert_bytes) {
         root_store.add(cert.unwrap()).unwrap();
     }
     let tls_cfg = rustls::ClientConfig::builder()

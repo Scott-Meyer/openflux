@@ -9,6 +9,8 @@
 //! the recorded port refuses connections. Anything else that goes wrong is an error.
 
 use crate::lifecycle::ExitKind;
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::CertificateDer;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
@@ -131,7 +133,7 @@ impl std::fmt::Display for RequestError {
 fn tls_config(cert_pem: &str) -> Result<Arc<rustls::ClientConfig>, String> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let mut roots = rustls::RootCertStore::empty();
-    for cert in rustls_pemfile::certs(&mut std::io::BufReader::new(cert_pem.as_bytes())) {
+    for cert in CertificateDer::pem_slice_iter(cert_pem.as_bytes()) {
         let cert = cert.map_err(|e| format!("parse certificate: {e}"))?;
         roots
             .add(cert)

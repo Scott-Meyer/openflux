@@ -255,6 +255,9 @@ impl PreviewWorkerProcess {
             let rem = deadline
                 .checked_duration_since(Instant::now())
                 .ok_or_else(|| "preview worker RPC read timeout".to_string())?;
+            // Without poll, the deadline is checked between reads only.
+            #[cfg(not(unix))]
+            let _ = rem;
             #[cfg(unix)]
             {
                 let mut pfd = libc::pollfd {
@@ -299,6 +302,9 @@ impl PreviewWorkerProcess {
             let rem = deadline
                 .checked_duration_since(Instant::now())
                 .ok_or_else(|| "preview worker RPC write timeout".to_string())?;
+            // Without poll, the deadline is checked between writes only.
+            #[cfg(not(unix))]
+            let _ = rem;
             #[cfg(unix)]
             {
                 let mut pfd = libc::pollfd {
