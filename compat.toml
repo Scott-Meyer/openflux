@@ -64,7 +64,7 @@ provides = []
 requires = { bridge-usb = ">=1.0, <2.0", firmware-usb = ">=1.0, <2.0", keymap = ">=1.0, <2.0", profile-settings = ">=1.0, <2.0", calibration-lfs = ">=1.0, <2.0", config = ">=1.0, <2.0" }
 
 [components.firmware]
-version = "1.0.0"
+version = "1.0.1"
 provides = ["firmware-usb", "uart", "keymap", "profile-settings", "calibration-lfs"]
 update-transport = ["firmware-usb"]
 
