@@ -130,6 +130,7 @@ jobs:
     if: inputs.publish-index
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
       deployments: write

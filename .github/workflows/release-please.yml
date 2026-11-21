@@ -110,6 +110,7 @@ jobs:
     if: needs.release-please.outputs.firmware_created == 'true'
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
       deployments: write
@@ -123,6 +124,7 @@ jobs:
     if: needs.release-please.outputs.bridge_created == 'true'
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
       deployments: write
@@ -136,6 +138,7 @@ jobs:
     if: needs.release-please.outputs.display_created == 'true'
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
       deployments: write
@@ -153,6 +156,7 @@ jobs:
       (needs.firmware.result == 'success' || needs.bridge.result == 'success' || needs.display.result == 'success')
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
       deployments: write
@@ -188,6 +192,7 @@ jobs:
     if: ${{ !cancelled() && needs.host.result == 'success' }}
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
       deployments: write
