@@ -54,6 +54,7 @@ const JOB_TITLES: Record<Job["kind"], string> = {
   update: "Installing keyboard updates",
   convert: "Converting the keyboard to OpenFlux",
   restore: "Restoring the factory software",
+  localInstall: "Installing local keyboard builds",
 };
 
 /**

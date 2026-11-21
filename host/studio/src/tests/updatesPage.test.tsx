@@ -310,7 +310,7 @@ describe("Conversion", () => {
         const localDir = patch.localDir ?? "/tmp/openflux-dev";
         return {
           ...next,
-          channel: "local",
+          channel: "local" as const,
           localDir,
           localBuilds: {
             dir: localDir,
@@ -318,7 +318,7 @@ describe("Conversion", () => {
             error: null,
             firmware: null,
             bridge: {
-              component: "bridge",
+              component: "bridge" as const,
               name: "openflux-bridge_1.0.3-dev_aarch64.ipk",
               path: "/tmp/openflux-dev/openflux-bridge_1.0.3-dev_aarch64.ipk",
               version: "1.0.3-dev",
