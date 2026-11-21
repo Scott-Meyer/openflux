@@ -1,6 +1,6 @@
 [package]
 name = "openflux-display"
-version = "1.0.0"
+version = "1.0.1"
 edition.workspace = true
 description = "OpenFlux keyboard display: 1920x1080 Wayland renderer, also used for desktop previews"
 license.workspace = true

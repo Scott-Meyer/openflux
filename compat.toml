@@ -75,7 +75,7 @@ requires = { uart = ">=1.0, <2.0" }
 update-transport = ["bridge-usb"]
 
 [components.display]
-version = "1.0.0"
+version = "1.0.1"
 provides = ["config"]
 requires = { display-ipc = ">=1.0, <2.0" }
 update-transport = ["bridge-usb"]
