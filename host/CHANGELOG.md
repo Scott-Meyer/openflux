@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/Scott-Meyer/openflux/compare/host-v1.1.0...host-v1.1.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **host:** retry incomplete keyboard version reads and polish local builds UI ([ec974e5](https://github.com/Scott-Meyer/openflux/commit/ec974e5b665d07dd8251f303114323e423e5c1c5))
+
 ## [1.1.0](https://github.com/Scott-Meyer/openflux/compare/host-v1.0.1...host-v1.1.0) (2026-11-21)
 
 
