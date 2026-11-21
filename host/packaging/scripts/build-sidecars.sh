@@ -142,6 +142,14 @@ case "$target" in
             done
             lipo -create -output "${out}/${name}-${target}" "${inputs[@]}"
             chmod 0755 "${out}/${name}-${target}"
+            if [ "$target" = universal-apple-darwin ]; then
+                # A universal Tauri build compiles each architecture on its own, and each
+                # pass looks for the sidecars under its own triple.
+                for i in "${!arches[@]}"; do
+                    cp "${inputs[$i]}" "${out}/${name}-${arches[$i]}-apple-darwin"
+                    chmod 0755 "${out}/${name}-${arches[$i]}-apple-darwin"
+                done
+            fi
         done
         rm -f "${out}"/.openflux-ff*
         copy_media_licenses "${arches[0]}-apple-darwin"
