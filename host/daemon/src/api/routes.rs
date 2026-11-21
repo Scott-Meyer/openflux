@@ -817,10 +817,16 @@ async fn device_status(State(state): State<Arc<ApiState>>) -> impl IntoResponse 
     state.prune_expired_overrides();
     let compatibility = state.updates().map(|u| u.compatibility());
     let g = state.inner.lock().unwrap();
+    let any_version = ["firmware", "bridge", "display", "os"]
+        .iter()
+        .any(|k| g.cached_versions.get(*k).and_then(|v| v.as_str()).is_some());
+    let usb_unreadable =
+        (g.cached_connected.0 || g.cached_connected.1) && g.versions_loaded && !any_version;
     (
         StatusCode::OK,
         Json(serde_json::json!({
             "connected": { "bridge": g.cached_connected.0, "firmware": g.cached_connected.1 },
+            "usbUnreadable": usb_unreadable,
             "keymapSync": g.keymap_sync(),
             "versions": g.cached_versions,
             "conversion": crate::conversion::classify_versions(&g.cached_versions),

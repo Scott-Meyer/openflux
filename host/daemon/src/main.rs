@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use openfluxd::api::assets::MAX_KEYBOARD_MEDIA_BYTES;
 use openfluxd::api::build_router;
 use openfluxd::api::lifecycle_client::{request_exit, RequestOutcome};

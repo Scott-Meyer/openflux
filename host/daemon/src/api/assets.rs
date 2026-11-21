@@ -163,10 +163,22 @@ fn find_ffprobe(ff: &str) -> Option<String> {
     bundled_tool("openflux-ffprobe").map(|p| p.to_string_lossy().to_string())
 }
 
+fn hide_console_window(cmd: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    let _ = cmd;
+}
+
 fn run_command_with_timeout_diag(
     mut cmd: Command,
     timeout: Duration,
 ) -> Result<(bool, String), String> {
+    hide_console_window(&mut cmd);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
@@ -1058,6 +1070,7 @@ fn probe_video_duration_with(ff: &str, ffprobe: Option<&str>, src: &Path) -> Opt
 /// Runs `cmd` and returns its stdout (`stdout == true`) or stderr, or `None` if it couldn't run in
 /// time. With `stdout`, a failing exit status also gives `None`.
 fn run_capturing(mut cmd: Command, stdout: bool, timeout: Duration) -> Option<String> {
+    hide_console_window(&mut cmd);
     cmd.stdin(Stdio::null());
     if stdout {
         cmd.stdout(Stdio::piped()).stderr(Stdio::null());

@@ -149,8 +149,11 @@ mod win_sec {
     }
 
     fn current_user_sid_string() -> Result<String, String> {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         let who = std::process::Command::new("whoami")
             .arg("/user")
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
             .map_err(|e| format!("whoami /user failed: {e}"))?;
         String::from_utf8_lossy(&who.stdout)

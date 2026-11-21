@@ -748,7 +748,7 @@ async fn an_up_to_date_keyboard_offers_nothing() {
     assert_eq!(s["error"], serde_json::Value::Null);
     assert!(s["checkedAt"].is_string());
     assert_eq!(s["channel"], "stable");
-    assert_eq!(s["host"]["installed"], "1.0.0");
+    assert_eq!(s["host"]["installed"], env!("CARGO_PKG_VERSION"));
     assert_eq!(s["keyboard"]["mode"], "openflux");
     for c in ["firmware", "bridge", "display"] {
         assert_eq!(component(&s, c)["state"], "upToDate", "{s}");
@@ -2691,15 +2691,10 @@ async fn malformed_apply_is_rejected_and_plan_pinning_and_startup_reservation_ho
     let k = keys();
     let site = tmp.join("site");
     std::fs::create_dir_all(&site).unwrap();
-    publish(
-        &k,
-        &site,
-        vec![
-            release(&k, &site, Component::Bridge, "1.0.1", None),
-            release(&k, &site, Component::Display, "1.0.1", None),
-        ],
-        None,
-    );
+    let mut releases = baseline(&k, &site);
+    releases.push(release(&k, &site, Component::Bridge, "1.0.1", None));
+    releases.push(release(&k, &site, Component::Display, "1.0.1", None));
+    publish(&k, &site, releases, None);
 
     let kb = MockKeyboard::new(OPENFLUX_1_0_0);
     let data_dir = tmp.join("data");

@@ -403,6 +403,12 @@ export const App: React.FC<AppProps> = ({
     }
     const h = latestServerConfigRef.current.hydrated;
     const isConn = isKeyboardConnected(status);
+    if (!isReset && isConn && status?.usbUnreadable) {
+      setBanner(
+        "OpenFlux sees your keyboard on USB, but couldn't communicate with it. Close any other Flux software, reconnect the keyboard, or update its firmware/bridge if it predates Windows WinUSB support.",
+      );
+      return Promise.resolve();
+    }
     if (!isReset && isConn && h) {
       if (
         (patch.appearance && !h.appearance) ||
@@ -699,6 +705,12 @@ export const App: React.FC<AppProps> = ({
         </div>
       </header>
       {!snapshotLoaded && <div className="topbar-banner">Loading configuration from OpenFlux daemon...</div>}
+      {status?.usbUnreadable && (
+        <div className="topbar-banner">
+          OpenFlux sees your keyboard on USB, but couldn't communicate with it. Close any other Flux software, reconnect
+          the keyboard, or update its firmware/bridge if it predates Windows WinUSB support.
+        </div>
+      )}
       {banner && <div className="topbar-banner">{banner}</div>}
 
       <main className="main-pane">

@@ -156,8 +156,11 @@ fn windows_tray_loop(
     const WM_LBUTTONDBLCLK: usize = 0x0203;
     const WM_RBUTTONUP: usize = 0x0205;
     const WM_COMMAND: u32 = 0x0111;
+    const WM_CLOSE: u32 = 0x0010;
     const WM_DESTROY: u32 = 0x0002;
     const WM_TIMER: u32 = 0x0113;
+    const SM_CXSMICON: i32 = 49;
+    const SM_CYSMICON: i32 = 50;
     const RUNNING_TIMER_ID: usize = 1;
     const RUNNING_POLL_MS: u32 = 200;
     const NIM_ADD: u32 = 0x00000000;
@@ -218,6 +221,19 @@ fn windows_tray_loop(
     #[link(name = "user32")]
     extern "system" {
         fn LoadIconW(h_instance: isize, lp_icon_name: *const u16) -> isize;
+        fn CreateIconFromResourceEx(
+            presbits: *const u8,
+            dw_res_size: u32,
+            f_icon: i32,
+            dw_ver: u32,
+            cx_desired: i32,
+            cy_desired: i32,
+            flags: u32,
+        ) -> isize;
+        fn DestroyIcon(h_icon: isize) -> i32;
+        fn GetSystemMetrics(n_index: i32) -> i32;
+        fn FindWindowW(lp_class_name: *const u16, lp_window_name: *const u16) -> isize;
+        fn PostMessageW(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> i32;
         fn RegisterClassW(lp_wnd_class: *const WndClassW) -> u16;
         fn CreateWindowExW(
             dw_ex_style: u32,
@@ -316,6 +332,12 @@ fn windows_tray_loop(
                     let _ = Command::new(b).spawn();
                 }
             } else if cmd == ID_QUIT {
+                // Close OpenFlux Studio cleanly if it is open, then stop the daemon.
+                let title: Vec<u16> = "OpenFlux Studio\0".encode_utf16().collect();
+                let studio_hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+                if studio_hwnd != 0 {
+                    PostMessageW(studio_hwnd, WM_CLOSE, 0, 0);
+                }
                 // The daemon stops once keyboard work finishes; the icon stays until then.
                 if let Some(q) = QUIT.lock().unwrap().clone() {
                     q();
@@ -377,7 +399,26 @@ fn windows_tray_loop(
         if hwnd == 0 {
             return;
         }
-        let hicon = LoadIconW(0, IDI_APPLICATION as *const u16);
+        let cx = GetSystemMetrics(SM_CXSMICON).max(16);
+        let cy = GetSystemMetrics(SM_CYSMICON).max(16);
+        let embedded_icon = select_ico_entry(TRAY_ICO, cx as u32)
+            .map(|bytes| {
+                CreateIconFromResourceEx(
+                    bytes.as_ptr(),
+                    bytes.len() as u32,
+                    1,
+                    0x0003_0000,
+                    cx,
+                    cy,
+                    0,
+                )
+            })
+            .unwrap_or(0);
+        let (hicon, owns_icon) = if embedded_icon != 0 {
+            (embedded_icon, true)
+        } else {
+            (LoadIconW(0, IDI_APPLICATION as *const u16), false)
+        };
         let mut tip = [0u16; 128];
         for (i, ch) in "OpenFlux".encode_utf16().take(127).enumerate() {
             tip[i] = ch;
@@ -398,6 +439,9 @@ fn windows_tray_loop(
             dw_info_flags: 0,
         };
         if Shell_NotifyIconW(NIM_ADD, &mut nid) == 0 {
+            if owns_icon {
+                DestroyIcon(hicon);
+            }
             return;
         }
         SetTimer(hwnd, RUNNING_TIMER_ID, RUNNING_POLL_MS, std::ptr::null());
@@ -407,5 +451,74 @@ fn windows_tray_loop(
             DispatchMessageW(&msg);
         }
         Shell_NotifyIconW(NIM_DELETE, &mut nid);
+        if owns_icon {
+            DestroyIcon(hicon);
+        }
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+const TRAY_ICO: &[u8] = include_bytes!("../../studio/src-tauri/icons/icon.ico");
+
+/// Selects the ICO image payload closest to `target_px` (preferring >= `target_px` so icons
+/// downscale cleanly rather than upscaling).
+#[cfg(any(target_os = "windows", test))]
+fn select_ico_entry(ico: &[u8], target_px: u32) -> Option<&[u8]> {
+    if ico.len() < 6 {
+        return None;
+    }
+    let typ = u16::from_le_bytes([ico[2], ico[3]]);
+    let count = u16::from_le_bytes([ico[4], ico[5]]) as usize;
+    if typ != 1 || count == 0 || ico.len() < 6 + count * 16 {
+        return None;
+    }
+    let mut best: Option<(bool, u32, &[u8])> = None;
+    for i in 0..count {
+        let base = 6 + i * 16;
+        let w = match ico[base] {
+            0 => 256u32,
+            n => n as u32,
+        };
+        let size =
+            u32::from_le_bytes([ico[base + 8], ico[base + 9], ico[base + 10], ico[base + 11]])
+                as usize;
+        let off = u32::from_le_bytes([
+            ico[base + 12],
+            ico[base + 13],
+            ico[base + 14],
+            ico[base + 15],
+        ]) as usize;
+        let Some(end) = off.checked_add(size) else {
+            continue;
+        };
+        if size == 0 || end > ico.len() {
+            continue;
+        }
+        let ge = w >= target_px;
+        let diff = w.abs_diff(target_px);
+        let replace = match best {
+            None => true,
+            Some((best_ge, best_diff, _)) => {
+                (ge && !best_ge) || (ge == best_ge && diff < best_diff)
+            }
+        };
+        if replace {
+            best = Some((ge, diff, &ico[off..end]));
+        }
+    }
+    best.map(|(_, _, slice)| slice)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn embedded_windows_tray_icon_selects_crisp_small_png() {
+        let icon16 = select_ico_entry(TRAY_ICO, 16).expect("16px icon entry");
+        assert!(icon16.starts_with(b"\x89PNG"));
+        let icon24 = select_ico_entry(TRAY_ICO, 24).expect("24px icon entry");
+        assert!(icon24.starts_with(b"\x89PNG"));
+        assert_ne!(icon16.len(), icon24.len());
     }
 }

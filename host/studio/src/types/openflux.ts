@@ -263,6 +263,8 @@ export interface AutoProfileSwitch {
 
 export interface DeviceStatus {
   connected: { bridge: boolean; firmware: boolean };
+  /** True when the keyboard is detected on USB but neither bridge nor firmware answered version queries. */
+  usbUnreadable?: boolean;
   /** Optional; omitted when profile-lock status is unavailable. */
   autoProfileSwitch?: AutoProfileSwitch;
   /** Optional; omitted when keymap sync status is unavailable. */

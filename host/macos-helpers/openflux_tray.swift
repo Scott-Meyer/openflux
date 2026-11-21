@@ -353,6 +353,9 @@ final class OpenFluxTrayApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func quitDaemon() {
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: "org.openflux.studio") {
+            app.terminate()
+        }
         if daemonPid > 0 {
             kill(daemonPid, SIGTERM)
         }

@@ -1292,24 +1292,30 @@ pub fn reconcile_tick_with_state(
         platform_sent,
     );
     let mut cur_desired_prof_id: Option<String>;
+    let mut disconnected_now = false;
     {
         let mut g = state.inner.lock().unwrap();
+        let prev_connected = g.cached_connected;
         if (has_bridge || has_firmware)
             && (!g.versions_loaded
-                || has_bridge != g.cached_connected.0
-                || has_firmware != g.cached_connected.1)
+                || has_bridge != prev_connected.0
+                || has_firmware != prev_connected.1)
         {
             need_versions = true;
         }
         g.cached_connected = (has_bridge, has_firmware);
         if !has_bridge && !has_firmware {
             g.versions_loaded = false;
+            g.cached_versions = crate::api::state::empty_versions();
             g.appearance_hydrated = false;
             g.settings_hydrated = false;
             g.mosaic_hydrated = false;
             g.forget_keymap();
             g.committed_profile_ids = None;
             wstate.pull_backoff_secs = 0;
+            if prev_connected.0 || prev_connected.1 {
+                disconnected_now = true;
+            }
         }
         g.hardware = hw.clone();
         g.media = media.clone();
@@ -1327,6 +1333,12 @@ pub fn reconcile_tick_with_state(
         cur_prof_rev = g.profiles_rev;
         cur_applied_lang = g.applied_language_code;
         platform_sent = g.platform_sent;
+    }
+
+    if disconnected_now {
+        if let Some(u) = state.updates() {
+            u.observe_keyboard((false, false), &crate::api::state::empty_versions());
+        }
     }
 
     if need_versions {

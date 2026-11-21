@@ -212,11 +212,18 @@ impl PreviewWorkerProcess {
         child_slot: Arc<Mutex<Option<Child>>>,
         epoch_check: Option<(&Arc<AtomicU64>, u64)>,
     ) -> Result<Self, String> {
-        let mut child = Command::new(exe)
-            .arg("--preview-worker")
+        let mut cmd = Command::new(exe);
+        cmd.arg("--preview-worker")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        let mut child = cmd
             .spawn()
             .map_err(|e| format!("spawn --preview-worker: {e}"))?;
         let stdin = child.stdin.take().ok_or("missing worker stdin")?;
