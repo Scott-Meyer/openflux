@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0](https://github.com/Scott-Meyer/openflux/compare/host-v1.0.1...host-v1.1.0) (2026-11-21)
+
+
+### Features
+
+* **host:** support custom OpenFlux builds and local developer build folder ([e4bab03](https://github.com/Scott-Meyer/openflux/commit/e4bab036822e2858b7bdc394ae32cd6a82eb1b25))
+
+
+### Bug Fixes
+
+* **host:** add localInstall job title and narrow test literal types ([be6910d](https://github.com/Scott-Meyer/openflux/commit/be6910d294e742d6725f33a7186c5f0f71175285))
+* **host:** fix Windows tray icon, console popups, tray quit, and USB unreadable state ([766c00c](https://github.com/Scott-Meyer/openflux/commit/766c00cc3226f6e48ed1b7cf2808c9ecbeff9a7f))
+
 ## [1.0.1](https://github.com/Scott-Meyer/openflux/compare/host-v1.0.0...host-v1.0.1) (2026-11-21)
 
 
