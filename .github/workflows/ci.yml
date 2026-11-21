@@ -180,7 +180,7 @@ jobs:
       - name: RP2040 build
         run: |
           docker build -t openflux-firmware-build -f keyboard/firmware/Dockerfile.build keyboard/firmware
-          docker run --rm -v "$PWD:/work" -w /work openflux-firmware-build \
+          docker run --rm --network none -v "$PWD:/work" -w /work openflux-firmware-build \
             sh -c "cmake -S keyboard/firmware -B build/firmware -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/firmware"
           ls -l build/firmware/*.uf2
       - name: Firmware licenses

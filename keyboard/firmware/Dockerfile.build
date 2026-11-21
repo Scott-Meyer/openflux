@@ -3,6 +3,8 @@
 FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 ARG PICO_SDK_TAG=2.1.1
 ARG PICO_SDK_SHA=bddd20f928ce76142793bef434d4f75f4af6e433
+ARG PICOTOOL_TAG=2.1.1
+ARG PICOTOOL_SHA=de8ae5ac334e1126993f72a5c67949712fd1e1a4
 ARG LITTLEFS_TAG=v2.9.3
 ARG LITTLEFS_SHA=d01280e64934a09ba16cac60cf9d3a37e228bb66
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
@@ -14,6 +16,15 @@ RUN git clone --depth 1 --branch "${PICO_SDK_TAG}" https://github.com/raspberryp
     git -C /opt/pico-sdk submodule update --init --depth 1 lib/tinyusb && \
     git clone --depth 1 --branch "${LITTLEFS_TAG}" https://github.com/littlefs-project/littlefs.git /opt/littlefs && \
     test "$(git -C /opt/littlefs rev-parse HEAD^{commit})" = "${LITTLEFS_SHA}"
+# picotool turns the ELF into a .uf2. It is built here so the firmware build itself needs no
+# network access; without it the SDK would download picotool during every build.
+RUN git clone --depth 1 --branch "${PICOTOOL_TAG}" https://github.com/raspberrypi/picotool.git /tmp/picotool && \
+    test "$(git -C /tmp/picotool rev-parse HEAD^{commit})" = "${PICOTOOL_SHA}" && \
+    cmake -S /tmp/picotool -B /tmp/picotool/build -G Ninja -DPICO_SDK_PATH=/opt/pico-sdk \
+        -DPICOTOOL_NO_LIBUSB=1 -DPICOTOOL_FLAT_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/opt/picotool && \
+    cmake --build /tmp/picotool/build && cmake --install /tmp/picotool/build && \
+    rm -rf /tmp/picotool
 ENV PICO_SDK_PATH=/opt/pico-sdk
+ENV picotool_DIR=/opt/picotool/picotool
 ENV LITTLEFS_PATH=/opt/littlefs
 WORKDIR /work
