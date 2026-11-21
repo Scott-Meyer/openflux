@@ -3,7 +3,8 @@
 # programs: a glibc package may carry a fully static helper (the display's
 # openflux-ffmpeg), a static package may not carry a dynamic executable,
 # libraries outside the keyboard OS's set and too-new glibc symbols are
-# refused, and required files and the presence of executables are checked.
+# refused, and required (non-empty) files and the presence of executables
+# are checked.
 #
 # Needs an AArch64 C compiler for Linux (CC_AARCH64, default
 # aarch64-linux-gnu-gcc from gcc-aarch64-linux-gnu, with static glibc from
@@ -65,6 +66,10 @@ package display openflux-display 1.0.0 dynamic:$D/openflux-display static:$D/ope
 expect pass "glibc package with a fully static helper" display.ipk openflux-display 1.0.0 glibc \
     --require $D/openflux-ffmpeg --require $D/licenses/FFMPEG-LGPL-2.1.txt
 expect fail "a required file is missing" display.ipk openflux-display 1.0.0 glibc --require $D/licenses/FFMPEG-NOTICE.txt
+: > empty.txt
+package display-empty openflux-display 1.0.0 dynamic:$D/openflux-display empty.txt:$D/licenses/openflux-display-rust-licenses.txt
+expect fail "a required file is empty" display-empty.ipk openflux-display 1.0.0 glibc \
+    --require $D/licenses/openflux-display-rust-licenses.txt
 expect fail "the control version differs" display.ipk openflux-display 1.0.1 glibc
 expect fail "the control package name differs" display.ipk openflux-bridge 1.0.0 glibc
 GLIBC_MAX=2.16 expect fail "a glibc symbol newer than the keyboard's" display.ipk openflux-display 1.0.0 glibc

@@ -11,6 +11,9 @@
 #            openflux-ffmpeg), plus openflux-ffmpeg-source-*.tar.xz and
 #            openflux-ffmpeg-build.txt, the LGPL source and build
 #            configuration of that FFmpeg
+# Each package installs the license texts of the Rust crates in its binary
+# in /usr/lib/openflux/<component>/licenses/ (scripts/licenses/
+# rust-licenses.sh, run by the Makefile with the build image's cargo-about).
 # Everything the Makefile writes is published. The .ipk files are the
 # artifacts the update index lists; the other files are release files.
 #
@@ -19,7 +22,8 @@
 # target directories (mounted at the same path inside the container, so
 # paths compiled into the binaries match). Both rounds must compile the
 # component, and the two sets of files must be identical. The packages are
-# then checked for architecture, linkage and required files before upload.
+# then checked for architecture, linkage and required, non-empty files
+# (binaries and licenses) before upload.
 
 name: Release keyboard package
 
@@ -104,7 +108,8 @@ jobs:
             bridge)
               "$check" "dist/artifacts/openflux-bridge_${VERSION}_aarch64.ipk" openflux-bridge "$VERSION" static \
                 --require /usr/lib/openflux/bridge/openflux-bridge \
-                --require /usr/lib/openflux/bridge/restore-factory.sh
+                --require /usr/lib/openflux/bridge/restore-factory.sh \
+                --require /usr/lib/openflux/bridge/licenses/openflux-bridge-rust-licenses.txt
               "$check" "dist/artifacts/openflux-factory-restore_${VERSION}_aarch64.ipk" openflux-factory-restore "$VERSION" static --no-executables
               ;;
             display)
@@ -112,7 +117,8 @@ jobs:
                 --require /usr/lib/openflux/display/openflux-display \
                 --require /usr/lib/openflux/display/openflux-ffmpeg \
                 --require /usr/lib/openflux/display/licenses/FFMPEG-LGPL-2.1.txt \
-                --require /usr/lib/openflux/display/licenses/FFMPEG-NOTICE.txt
+                --require /usr/lib/openflux/display/licenses/FFMPEG-NOTICE.txt \
+                --require /usr/lib/openflux/display/licenses/openflux-display-rust-licenses.txt
               compgen -G "dist/extra/openflux-ffmpeg-source-*.tar.xz" > /dev/null ||
                 { echo "the display build did not write the FFmpeg source archive" >&2; exit 1; }
               [ -f dist/extra/openflux-ffmpeg-build.txt ] ||

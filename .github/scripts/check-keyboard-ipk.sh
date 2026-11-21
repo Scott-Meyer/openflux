@@ -9,8 +9,9 @@
 #     the bundled openflux-ffmpeg) or dynamic against glibc with no symbol
 #     version newer than KEYBOARD_GLIBC_MAX and no library outside the
 #     keyboard OS's base set
-#   - every path given with --require is in the package (paths as installed,
-#     for example /usr/lib/openflux/display/licenses/FFMPEG-LGPL-2.1.txt)
+#   - every path given with --require is a non-empty file in the package
+#     (paths as installed, for example
+#     /usr/lib/openflux/display/licenses/FFMPEG-LGPL-2.1.txt)
 #   - the package has executables, or with --no-executables has none (a
 #     package that only runs maintainer scripts)
 #
@@ -58,6 +59,7 @@ field() { sed -n "s/^$1: *//p" "${work}/control/control"; }
 
 for path in "${required[@]}"; do
     [ -f "${work}/data/${path#/}" ] || die "${ipk}: ${path} is missing"
+    [ -s "${work}/data/${path#/}" ] || die "${ipk}: ${path} is empty"
     echo "${path}: present"
 done
 

@@ -93,16 +93,7 @@ jobs:
         run: |
           # The image holds the exact sources the firmware links: littlefs,
           # the Pico SDK and its TinyUSB.
-          mkdir -p dist/extra
-          {
-            for entry in "littlefs:/opt/littlefs/LICENSE.md" \
-                "Raspberry Pi Pico SDK:/opt/pico-sdk/LICENSE.TXT" \
-                "TinyUSB:/opt/pico-sdk/lib/tinyusb/LICENSE"; do
-              printf '%s\n\n' "${entry%%:*}"
-              docker run --rm --network none openflux-firmware-build cat "${entry#*:}"
-              printf '\n\n'
-            done
-          } > dist/extra/openflux-firmware-licenses.txt
+          .github/scripts/firmware-licenses.sh openflux-firmware-build dist/extra/openflux-firmware-licenses.txt
           ls -l dist/extra
 
       - uses: ./.github/actions/publish-release-assets

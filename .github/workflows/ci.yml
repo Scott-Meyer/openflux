@@ -75,7 +75,8 @@ jobs:
           fi
 
   # The release tooling: interface registry, factory reference, the release
-  # keys, and dry runs of the release scripts.
+  # keys, dry runs of the release scripts, and the third-party license files
+  # every release artifact carries.
   release-scripts:
     runs-on: ubuntu-latest
     steps:
@@ -86,7 +87,8 @@ jobs:
       - name: Tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq nsis gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+          sudo apt-get install -y -qq nsis p7zip-full gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+          scripts/licenses/install-cargo-about.sh
       - name: Release tool
         run: |
           # production-keys: fails if an embedded trust anchor is a placeholder development key.
@@ -119,6 +121,12 @@ jobs:
         run: .github/scripts/test-check-keyboard-ipk.sh
       - name: Tauri release configuration
         run: .github/scripts/test-tauri-release-config.sh
+      - name: Host installer checks
+        run: .github/scripts/test-check-host-installer.sh
+      - name: Third-party licenses
+        run: |
+          npm ci --prefix host/studio
+          .github/scripts/test-licenses.sh
 
   cargo-deny:
     runs-on: ubuntu-latest
@@ -175,6 +183,8 @@ jobs:
           docker run --rm -v "$PWD:/work" -w /work openflux-firmware-build \
             sh -c "cmake -S keyboard/firmware -B build/firmware -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/firmware"
           ls -l build/firmware/*.uf2
+      - name: Firmware licenses
+        run: .github/scripts/firmware-licenses.sh openflux-firmware-build build/firmware/openflux-firmware-licenses.txt
 
   shell:
     runs-on: ubuntu-latest
