@@ -1088,6 +1088,193 @@ async fn render_preview_frame(
     )
 }
 
+#[derive(Deserialize)]
+struct KeyboardUploadMediaBody {
+    local_path: String,
+    #[serde(default)]
+    remote_name: Option<String>,
+}
+
+async fn keyboard_upload_media(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<KeyboardUploadMediaBody>,
+) -> impl IntoResponse {
+    let local = std::path::PathBuf::from(&body.local_path);
+    let fname = body
+        .remote_name
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| local.file_name().and_then(|n| n.to_str()).map(str::to_string));
+    let Some(fname) = fname else {
+        return err_resp(StatusCode::BAD_REQUEST, "invalid file name");
+    };
+    let remote = format!("/home/root/openflux/media/{fname}");
+    let device = state.device.clone();
+    let res = tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&local).map_err(|e| format!("read {}: {e}", local.display()))?;
+        let size = bytes.len();
+        device.put_file(&remote, &bytes)?;
+        Ok::<(String, usize), String>((remote, size))
+    })
+    .await;
+    match res {
+        Ok(Ok((remote, size))) => (
+            StatusCode::OK,
+            Json(json!({ "ok": true, "remote_path": remote, "bytes": size })),
+        ),
+        Ok(Err(e)) => err_resp(StatusCode::BAD_GATEWAY, e),
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+#[derive(Deserialize)]
+struct KeyboardSideloadBody {
+    ipk_path: String,
+}
+
+async fn keyboard_sideload(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<KeyboardSideloadBody>,
+) -> impl IntoResponse {
+    let ipk = body.ipk_path.clone();
+    let worker = state.worker.lock().unwrap().clone();
+    let res = if let Some(w) = worker {
+        w.sideload_ipk(ipk).await
+    } else {
+        let device = state.device.clone();
+        tokio::task::spawn_blocking(move || device.sideload_ipk(&ipk))
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|r| r)
+    };
+    match res {
+        Ok(msg) => (StatusCode::OK, Json(json!({ "ok": true, "message": msg }))),
+        Err(e) => err_resp(StatusCode::BAD_GATEWAY, e),
+    }
+}
+
+#[derive(Deserialize)]
+struct KeyboardFlashUf2Body {
+    uf2_path: String,
+}
+
+async fn keyboard_flash_uf2(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<KeyboardFlashUf2Body>,
+) -> impl IntoResponse {
+    let uf2 = body.uf2_path.clone();
+    let worker = state.worker.lock().unwrap().clone();
+    let res = if let Some(w) = worker {
+        w.flash_uf2(uf2).await
+    } else {
+        let device = state.device.clone();
+        tokio::task::spawn_blocking(move || device.flash_uf2(&uf2))
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|r| r)
+    };
+    match res {
+        Ok(msg) => (StatusCode::OK, Json(json!({ "ok": true, "message": msg }))),
+        Err(e) => err_resp(StatusCode::BAD_GATEWAY, e),
+    }
+}
+
+/// Pushes enabled local/installed v2 modules, `modules_state.json`, and any referenced media video
+/// straight to `/home/root/openflux/v2/` on the connected Flux keyboard via USB `PUT_FILE`.
+async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let discovered = state.v2.registry.discover();
+    let mut kb_state = state.v2.registry.load_state();
+    let device = state.device.clone();
+
+    let res = tokio::task::spawn_blocking(move || {
+        let (has_bridge, _) = device.is_connected();
+        if !has_bridge {
+            return Err("Keyboard USB bridge is not connected".to_string());
+        }
+        let mut uploaded_files = Vec::new();
+        let mut uploaded_bytes = 0usize;
+
+        // Upload non-bundled (local/installed) modules to `/home/root/openflux/v2/modules/<id>/`
+        for (id, dm) in &discovered {
+            if dm.tier != openflux_modules::ModuleTier::Bundled {
+                let mut stack = vec![dm.path.clone()];
+                while let Some(dir) = stack.pop() {
+                    let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+                    for entry in rd.flatten() {
+                        let p = entry.path();
+                        let name = entry.file_name().to_string_lossy().into_owned();
+                        if name == ".git" || name == ".DS_Store" {
+                            continue;
+                        }
+                        if p.is_dir() {
+                            stack.push(p);
+                        } else if p.is_file() {
+                            if let Ok(rel) = p.strip_prefix(&dm.path) {
+                                let rel_str = rel.to_string_lossy().replace('\\', "/");
+                                let remote = format!("/home/root/openflux/v2/modules/{id}/{rel_str}");
+                                let bytes = std::fs::read(&p).map_err(|e| e.to_string())?;
+                                uploaded_bytes += bytes.len();
+                                device.put_file(&remote, &bytes)?;
+                                uploaded_files.push(remote);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // If `bg-media` points to a local video/image file, upload it to `/home/root/openflux/media/`
+        // if absent on the keyboard and rewrite the keyboard state path to the keyboard filename.
+        if let Some(bg_mod) = kb_state.modules.get_mut("bg-media") {
+            if let Some(media_str) = bg_mod
+                .config
+                .get("media_path")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+            {
+                let lp = std::path::Path::new(&media_str);
+                if lp.is_file() {
+                    if let Some(fname) = lp.file_name().and_then(|n| n.to_str()) {
+                        let remote_media = format!("/home/root/openflux/media/{fname}");
+                        let already_there = device.stat_file(&remote_media).unwrap_or(false);
+                        if !already_there {
+                            let bytes = std::fs::read(lp).map_err(|e| e.to_string())?;
+                            uploaded_bytes += bytes.len();
+                            device.put_file(&remote_media, &bytes)?;
+                            uploaded_files.push(remote_media);
+                        }
+                        bg_mod
+                            .config
+                            .insert("media_path".into(), json!(fname));
+                    }
+                }
+            }
+        }
+
+        // Write `modules_state.json` atomically last so the keyboard hot-reloads cleanly.
+        let state_bytes = serde_json::to_vec_pretty(&kb_state).map_err(|e| e.to_string())?;
+        uploaded_bytes += state_bytes.len();
+        let remote_state = "/home/root/openflux/v2/modules_state.json";
+        device.put_file(remote_state, &state_bytes)?;
+        uploaded_files.push(remote_state.to_string());
+
+        Ok::<(Vec<String>, usize), String>((uploaded_files, uploaded_bytes))
+    })
+    .await;
+
+    match res {
+        Ok(Ok((files, bytes))) => (
+            StatusCode::OK,
+            Json(json!({
+                "ok": true,
+                "uploaded_files": files,
+                "uploaded_bytes": bytes,
+            })),
+        ),
+        Ok(Err(e)) => err_resp(StatusCode::BAD_GATEWAY, e),
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
 /// Mounts all OpenFlux v2 routes (open localhost bus, module management, disclosure, lists, presets, GPU preview).
 pub fn router(state: Arc<ApiState>) -> Router {
     Router::new()
@@ -1115,5 +1302,9 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/simulate/impulse", post(simulate_impulse))
         .route("/v2/simulate/burst", post(simulate_physics_burst))
         .route("/v2/preview/frame", post(render_preview_frame))
+        .route("/v2/keyboard/sync", post(keyboard_sync_v2))
+        .route("/v2/keyboard/upload-media", post(keyboard_upload_media))
+        .route("/v2/keyboard/sideload", post(keyboard_sideload))
+        .route("/v2/keyboard/flash-uf2", post(keyboard_flash_uf2))
         .with_state(state)
 }

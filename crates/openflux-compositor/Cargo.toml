@@ -7,11 +7,15 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["wgpu-backend"]
+wgpu-backend = ["dep:bytemuck", "dep:pollster", "dep:wgpu"]
+
 [dependencies]
-bytemuck = { version = "1", features = ["derive"] }
+bytemuck = { version = "1", features = ["derive"], optional = true }
 fontdue = "0.9"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 openflux-bus = { path = "../openflux-bus" }
 openflux-modules = { path = "../openflux-modules" }
-pollster = "0.4"
-wgpu = { version = "23", features = ["glsl"] }
+pollster = { version = "0.4", optional = true }
+wgpu = { version = "23", features = ["glsl"], optional = true }

@@ -20,7 +20,7 @@ crc32fast = "1"
 fontdue = "0.9"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp"] }
 openflux-bus = { path = "../../crates/openflux-bus" }
-openflux-compositor = { path = "../../crates/openflux-compositor" }
+openflux-compositor = { path = "../../crates/openflux-compositor", default-features = false }
 openflux-modules = { path = "../../crates/openflux-modules" }
 resvg = { version = "0.45", default-features = false }
 serde = { version = "1", features = ["derive"] }

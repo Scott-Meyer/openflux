@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cross-builds OpenFlux v2 keyboard artifacts (firmware .uf2, bridge .ipk, display .ipk)
-# into .work/v2-keyboard-builds/ so OpenFlux Studio's Updates -> Local Builds (or openflux_dev.py)
-# can flash/sideload them straight to a connected Flux keyboard.
+# natively in ARM64 Docker using the repo's exact Dockerfiles and Makefiles, and stages
+# them in .work/v2-keyboard-builds/ for instant sideload/flash to a connected keyboard.
 #
 # Usage:
 #   scripts/v2-build-keyboard.sh [all|firmware|bridge|display]
@@ -11,31 +11,32 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$REPO/.work/v2-keyboard-builds"
 TARGET="${1:-all}"
+VERSION="${OPENFLUX_V2_VERSION:-2.0.0}"
 mkdir -p "$OUT"
 
 build_firmware() {
-  echo "==> Building RP2040 v2 firmware (.uf2) via Docker..."
+  echo "==> [firmware] Building RP2040 v2 firmware (.uf2) via Docker..."
   docker build -t openflux-fw-builder -f "$REPO/keyboard/firmware/Dockerfile.build" "$REPO/keyboard/firmware"
   docker run --rm -v "$REPO:/work" -w /work/keyboard/firmware openflux-fw-builder \
     bash -lc 'cmake -B build-pico -DPICO_SDK_PATH=/opt/pico-sdk && cmake --build build-pico -j"$(nproc)"'
-  cp "$REPO/keyboard/firmware/build-pico/"*.uf2 "$OUT/"
-  echo "  -> Staged firmware in $OUT"
+  cp "$REPO/keyboard/firmware/build-pico/"*.uf2 "$OUT/openflux-firmware-${VERSION}.uf2"
+  echo "  -> $OUT/openflux-firmware-${VERSION}.uf2"
 }
 
 build_bridge() {
-  echo "==> Building ARM64 v2 bridge (.ipk) via Docker..."
+  echo "==> [bridge] Building ARM64 v2 bridge (.ipk) via Docker..."
   docker build -t openflux-bridge-builder -f "$REPO/keyboard/bridge/Dockerfile.build" "$REPO/keyboard/bridge"
-  docker run --rm -v "$REPO:/work" -w /work openflux-bridge-builder \
-    bash -lc 'cargo build --release --target aarch64-unknown-linux-musl -p openflux-bridge && python3 scripts/build_ipk.py bridge --bin target/aarch64-unknown-linux-musl/release/openflux-bridge --out .work/v2-keyboard-builds'
-  echo "  -> Staged bridge in $OUT"
+  docker run --rm -v "$REPO:/work" -w /work/keyboard/bridge openflux-bridge-builder \
+    make ipk VERSION="$VERSION" TARGET_DIR=/work/target-linux OUT_DIR=/work/.work/v2-keyboard-builds RUST_LICENSES="true"
+  echo "  -> $OUT/openflux-bridge_${VERSION}_aarch64.ipk"
 }
 
 build_display() {
-  echo "==> Building ARM64 v2 display (.ipk) via Docker..."
+  echo "==> [display] Building ARM64 v2 display (.ipk) via Docker..."
   docker build -t openflux-display-builder -f "$REPO/keyboard/display/Dockerfile.build" "$REPO/keyboard/display"
-  docker run --rm -v "$REPO:/work" -w /work openflux-display-builder \
-    bash -lc 'cargo build --release --target aarch64-unknown-linux-gnu -p openflux-display && python3 scripts/build_ipk.py display --bin target/aarch64-unknown-linux-gnu/release/openflux-display --out .work/v2-keyboard-builds'
-  echo "  -> Staged display in $OUT"
+  docker run --rm -v "$REPO:/work" -w /work/keyboard/display openflux-display-builder \
+    make ipk VERSION="$VERSION" TARGET_DIR=/work/target-linux OUT_DIR=/work/.work/v2-keyboard-builds RUST_LICENSES="true"
+  echo "  -> $OUT/openflux-display_${VERSION}_aarch64.ipk"
 }
 
 case "$TARGET" in

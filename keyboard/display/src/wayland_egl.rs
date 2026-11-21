@@ -809,6 +809,147 @@ impl Drop for InitGuard<'_> {
     }
 }
 
+const FS_V2_REFRACT: &str = r#"
+precision highp float;
+varying vec2 v_uv;
+uniform sampler2D u_tex_y;
+uniform sampler2D u_tex_uv;
+uniform sampler2D u_tex_rgba;
+uniform sampler2D u_tex_wave;
+uniform int u_bg_mode; // 0 = aurora shader, 1 = rkmpp NV12 video, 2 = RGBA image
+uniform float u_time;
+uniform float u_refract_px;
+uniform float u_specular;
+uniform float u_wave_enabled;
+uniform vec2 u_screen;
+uniform vec4 u_tint;
+
+vec3 sample_bg(vec2 uv) {
+    vec2 suv = clamp(uv, vec2(0.001), vec2(0.999));
+    if (u_bg_mode == 1) {
+        float y = texture2D(u_tex_y, suv).r;
+        vec2 cbcr = texture2D(u_tex_uv, suv).ra - vec2(0.5, 0.5);
+        float ys = (y - 0.062745) * 1.164383;
+        float r = ys + 1.792741 * cbcr.y;
+        float g = ys - 0.213249 * cbcr.x - 0.532909 * cbcr.y;
+        float b = ys + 2.112402 * cbcr.x;
+        return clamp(vec3(r, g, b), 0.0, 1.0);
+    } else if (u_bg_mode == 2) {
+        return texture2D(u_tex_rgba, suv).bgr;
+    } else {
+        float t = u_time * 0.45;
+        vec2 p = vec2(suv.x * 1.777, suv.y);
+        float r1 = sin(p.x * 3.8 + t + sin(p.y * 4.2 - t * 0.6) * 0.9);
+        float r2 = sin(p.x * 6.5 - p.y * 3.2 - t * 1.15);
+        float r3 = cos((p.x + p.y) * 9.0 + t * 0.8);
+        float rib1 = smoothstep(-0.35, 0.95, r1 * 0.65 + r2 * 0.35);
+        float rib2 = smoothstep(0.1, 0.98, r2 * 0.55 + r3 * 0.45);
+        vec3 deep = vec3(0.025, 0.04, 0.09);
+        vec3 cyan = vec3(0.06, 0.42, 0.58);
+        vec3 emerald = vec3(0.07, 0.52, 0.44);
+        vec3 violet = vec3(0.36, 0.14, 0.56);
+        vec3 col = mix(deep, mix(cyan, emerald, suv.y), rib1 * 0.72);
+        col = mix(col, violet, rib2 * 0.42 * (0.35 + 0.65 * suv.x));
+        float gx = smoothstep(0.96, 1.0, abs(sin(suv.x * 34.0 + r1 * 0.35)));
+        float gy = smoothstep(0.96, 1.0, abs(sin(suv.y * 20.0 + r2 * 0.35)));
+        return clamp(col + vec3(0.16, 0.34, 0.48) * max(gx, gy) * 0.22, 0.0, 1.0);
+    }
+}
+
+void main() {
+    if (u_wave_enabled < 0.5) {
+        gl_FragColor = vec4(sample_bg(v_uv), 1.0);
+        return;
+    }
+    vec4 w = texture2D(u_tex_wave, v_uv);
+    vec2 grad = (w.rg - vec2(0.5, 0.5)) * 2.0;
+    float hc = (w.b - 0.5) / 0.35;
+    vec2 offset_uv = (grad * u_refract_px) / u_screen;
+
+    float r = sample_bg(v_uv + offset_uv * 1.12).r;
+    float g = sample_bg(v_uv + offset_uv).g;
+    float b = sample_bg(v_uv + offset_uv * 0.88).b;
+    vec3 col = vec3(r, g, b);
+
+    vec3 n = normalize(vec3(-grad.x * 6.5, -grad.y * 6.5, 1.0));
+    vec3 l1 = normalize(vec3(-0.35, -0.55, 0.76));
+    vec3 l2 = normalize(vec3( 0.45,  0.30, 0.84));
+    vec3 view = vec3(0.0, 0.0, 1.0);
+    float s1 = pow(max(dot(n, normalize(l1 + view)), 0.0), 42.0);
+    float s2 = pow(max(dot(n, normalize(l2 + view)), 0.0), 28.0) * 0.45;
+    float caustic = smoothstep(0.02, 0.25, length(grad)) * max(hc, 0.0) * 0.35;
+    col = clamp(col + u_tint.rgb * ((s1 + s2) * u_specular + caustic), 0.0, 1.0);
+    gl_FragColor = vec4(col, 1.0);
+}
+"#;
+
+const FS_V2_GLOW: &str = r#"
+precision highp float;
+varying vec2 v_uv;
+uniform vec2 u_screen;
+uniform vec4 u_rect;   // cx, cy, w, h
+uniform vec4 u_params; // shape, radius_px, thickness_px, intensity
+uniform vec4 u_color;
+
+float sd_round_box(vec2 p, vec2 b, float r) {
+    vec2 q = abs(p) - b + vec2(r);
+    return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - r;
+}
+
+void main() {
+    vec2 px = v_uv * u_screen;
+    vec2 local = px - u_rect.xy;
+    vec2 half_sz = u_rect.zw * 0.5;
+    int shape = int(u_params.x + 0.5);
+    float radius = max(u_params.y, 1.0);
+    float thick = max(u_params.z, 1.0);
+    float intensity = u_params.w;
+
+    float alpha = 0.0;
+    float boost = 1.0;
+
+    if (shape == 0) {
+        float d = sd_round_box(local, half_sz, 10.0);
+        float inside = smoothstep(4.0, -6.0, d);
+        float dout = max(d, 0.0);
+        float win = smoothstep(radius * 2.3, radius * 0.4, dout);
+        float halo = exp(-dout / max(radius * 0.48, 4.0)) * win;
+        alpha = clamp(inside * 0.45 + halo * 0.78, 0.0, 1.0) * intensity;
+        boost = 1.0 + inside * 0.35;
+    } else if (shape == 1) {
+        float d = sd_round_box(local, half_sz + vec2(radius), 12.0);
+        alpha = smoothstep(thick, 0.0, abs(d)) * intensity;
+        boost = 1.2;
+    } else if (shape == 2) {
+        float dist = length(local);
+        alpha = smoothstep(thick, 0.0, abs(dist - radius)) * intensity;
+        boost = 1.15;
+    } else if (shape == 3) {
+        float d = sd_round_box(local, half_sz, 10.0);
+        alpha = smoothstep(1.5, -1.5, d) * intensity;
+    } else {
+        float dist = length(local);
+        float core = smoothstep(radius, radius * 0.25, dist);
+        float aura = exp(-dist / max(radius * 1.35, 2.0)) * 0.55;
+        alpha = clamp(core + aura, 0.0, 1.0) * intensity;
+        boost = 1.0 + core * 0.6;
+    }
+
+    float fa = clamp(alpha * u_color.a, 0.0, 1.0);
+    if (fa < 0.002) discard;
+    gl_FragColor = vec4(clamp(u_color.rgb * boost, 0.0, 1.0), fa);
+}
+"#;
+
+const FS_V2_OVERLAY: &str = r#"
+precision mediump float;
+varying vec2 v_uv;
+uniform sampler2D u_tex;
+void main() {
+    gl_FragColor = texture2D(u_tex, v_uv);
+}
+"#;
+
 pub struct WaylandGpuPresenter {
     conn: Connection,
     queue: EventQueue<WlEglState>,
@@ -827,12 +968,19 @@ pub struct WaylandGpuPresenter {
     prog_rgba: u32,
     prog_rect: u32,
     prog_keyfx: u32,
+    prog_v2_refract: u32,
+    prog_v2_glow: u32,
+    prog_v2_overlay: u32,
     shader_bg: Option<(i32, f32, f32)>,
 
     tex_y: [u32; 2],
     tex_uv: [u32; 2],
     tex_bg_rgba: u32,
     tex_ui_rgba: [u32; 2],
+    tex_v2_wave: u32,
+    tex_v2_overlay: u32,
+    v2_wave_uploaded: bool,
+    v2_overlay_uploaded: bool,
     fbo_a: u32,
     tex_fbo_a: u32,
     fbo_b: u32,
@@ -976,11 +1124,17 @@ impl WaylandGpuPresenter {
             guard.progs.push(prog_rect);
             let prog_keyfx = build_program(&gl, "key_fx", VS_QUAD, FS_KEY_FX)?;
             guard.progs.push(prog_keyfx);
+            let prog_v2_refract = build_program(&gl, "v2_refract", VS_QUAD, FS_V2_REFRACT)?;
+            guard.progs.push(prog_v2_refract);
+            let prog_v2_glow = build_program(&gl, "v2_glow", VS_QUAD, FS_V2_GLOW)?;
+            guard.progs.push(prog_v2_glow);
+            let prog_v2_overlay = build_program(&gl, "v2_overlay", VS_QUAD, FS_V2_OVERLAY)?;
+            guard.progs.push(prog_v2_overlay);
             guard.active = false;
             drop(guard);
 
-            let mut texs = [0u32; 9];
-            (gl.gl_gen_textures)(9, texs.as_mut_ptr());
+            let mut texs = [0u32; 11];
+            (gl.gl_gen_textures)(11, texs.as_mut_ptr());
             for &t in &texs {
                 (gl.gl_bind_texture)(GL_TEXTURE_2D, t);
                 (gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -991,7 +1145,8 @@ impl WaylandGpuPresenter {
             let tex_y = [texs[0], texs[1]];
             let tex_uv = [texs[2], texs[3]];
             let tex_ui_rgba = [texs[5], texs[6]];
-            let (tex_bg_rgba, tex_fbo_a, tex_fbo_b) = (texs[4], texs[7], texs[8]);
+            let (tex_bg_rgba, tex_fbo_a, tex_fbo_b, tex_v2_wave, tex_v2_overlay) =
+                (texs[4], texs[7], texs[8], texs[9], texs[10]);
 
             let blur_w = (width / 4).max(16);
             let blur_h = (height / 4).max(16);
@@ -1058,11 +1213,18 @@ impl WaylandGpuPresenter {
                 prog_rgba,
                 prog_rect,
                 prog_keyfx,
+                prog_v2_refract,
+                prog_v2_glow,
+                prog_v2_overlay,
                 shader_bg: None,
                 tex_y,
                 tex_uv,
                 tex_bg_rgba,
                 tex_ui_rgba,
+                tex_v2_wave,
+                tex_v2_overlay,
+                v2_wave_uploaded: false,
+                v2_overlay_uploaded: false,
                 fbo_a: fbos[0],
                 tex_fbo_a,
                 fbo_b: fbos[1],
@@ -1509,6 +1671,225 @@ impl WaylandGpuPresenter {
         Ok(())
     }
 
+    /// Renders the complete OpenFlux v2 frame natively on Mali-G52 GLES 2.0:
+    /// 1. Single-pass 3D chromatic water refraction + Fresnel specular over live `rkmpp` NV12 video
+    ///    (or RGBA image, or animated Aurora Velvet shader)
+    /// 2. Bounded-quad additive under-key glows (Analog Depth/Velocity + Classics) & SDF particles
+    /// 3. Straight-alpha 2D overlay (cached keycap legends + top-bar Lua widgets + roaming Idle Pet)
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_v2_and_swap(
+        &mut self,
+        suspended: bool,
+        has_bg_media: bool,
+        time_sec: f32,
+        wave_enabled: bool,
+        wave_w: i32,
+        wave_h: i32,
+        wave_rgba: &[u8],
+        refract_px: f32,
+        specular: f32,
+        tint: [f32; 4],
+        glows: &[crate::v2_runtime::V2GlowDraw],
+        overlay_rgba: &[u8],
+        overlay_dirty: bool,
+    ) -> Result<(), String> {
+        let _ = self.queue.dispatch_pending(&mut self.state);
+        unsafe {
+            (self.gl.gl_bind_framebuffer)(GL_FRAMEBUFFER, 0);
+            (self.gl.gl_viewport)(0, 0, self.width, self.height);
+
+            if suspended {
+                (self.gl.gl_clear_color)(0.0, 0.0, 0.0, 1.0);
+                (self.gl.gl_clear)(GL_COLOR_BUFFER_BIT);
+            } else {
+                // Upload tiny 192x108 RGBA8 wave normal/height map (~82 KB)
+                if wave_enabled && wave_rgba.len() >= (wave_w as usize) * (wave_h as usize) * 4 {
+                    (self.gl.gl_active_texture)(GL_TEXTURE0 + 3);
+                    (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_v2_wave);
+                    if !self.v2_wave_uploaded {
+                        (self.gl.gl_tex_image_2d)(
+                            GL_TEXTURE_2D,
+                            0,
+                            GL_RGBA as i32,
+                            wave_w,
+                            wave_h,
+                            0,
+                            GL_RGBA,
+                            GL_UNSIGNED_BYTE,
+                            wave_rgba.as_ptr() as *const c_void,
+                        );
+                        self.v2_wave_uploaded = true;
+                    } else {
+                        (self.gl.gl_tex_sub_image_2d)(
+                            GL_TEXTURE_2D,
+                            0,
+                            0,
+                            0,
+                            wave_w,
+                            wave_h,
+                            GL_RGBA,
+                            GL_UNSIGNED_BYTE,
+                            wave_rgba.as_ptr() as *const c_void,
+                        );
+                    }
+                }
+
+                // Pass 1: Background + 3D Water Refraction & Specular
+                (self.gl.gl_disable)(GL_BLEND);
+                (self.gl.gl_use_program)(self.prog_v2_refract);
+
+                (self.gl.gl_active_texture)(GL_TEXTURE0);
+                (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_y[self.nv12_idx]);
+                (self.gl.gl_uniform1i)(
+                    (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tex_y".as_ptr()),
+                    0,
+                );
+                (self.gl.gl_active_texture)(GL_TEXTURE1);
+                (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_uv[self.nv12_idx]);
+                (self.gl.gl_uniform1i)(
+                    (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tex_uv".as_ptr()),
+                    1,
+                );
+                (self.gl.gl_active_texture)(GL_TEXTURE0 + 2);
+                (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_bg_rgba);
+                (self.gl.gl_uniform1i)(
+                    (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tex_rgba".as_ptr()),
+                    2,
+                );
+                (self.gl.gl_active_texture)(GL_TEXTURE0 + 3);
+                (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_v2_wave);
+                (self.gl.gl_uniform1i)(
+                    (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tex_wave".as_ptr()),
+                    3,
+                );
+
+                let bg_mode = if has_bg_media && self.bg_is_nv12 {
+                    1
+                } else if has_bg_media && self.bg_tex_dims.0 > 0 {
+                    2
+                } else {
+                    0
+                };
+                (self.gl.gl_uniform1i)(
+                    (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_bg_mode".as_ptr()),
+                    bg_mode,
+                );
+                (self.gl.gl_uniform1f)(
+                    (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_time".as_ptr()),
+                    time_sec,
+                );
+                (self.gl.gl_uniform1f)(
+                    (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_refract_px".as_ptr()),
+                    refract_px,
+                );
+                (self.gl.gl_uniform1f)(
+                    (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_specular".as_ptr()),
+                    specular,
+                );
+                (self.gl.gl_uniform1f)(
+                    (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_wave_enabled".as_ptr()),
+                    if wave_enabled { 1.0 } else { 0.0 },
+                );
+                (self.gl.gl_uniform2f)(
+                    (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_screen".as_ptr()),
+                    self.width as f32,
+                    self.height as f32,
+                );
+                (self.gl.gl_uniform4f)(
+                    (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tint".as_ptr()),
+                    tint[0],
+                    tint[1],
+                    tint[2],
+                    tint[3],
+                );
+                self.draw_fullscreen_quad(self.prog_v2_refract);
+
+                // Pass 2: Additive Under-Key Glows + SDF Bouncing/Refracting Particles
+                if !glows.is_empty() {
+                    (self.gl.gl_enable)(GL_BLEND);
+                    (self.gl.gl_blend_func_separate)(
+                        GL_SRC_ALPHA,
+                        GL_ONE,
+                        GL_ONE,
+                        GL_ONE_MINUS_SRC_ALPHA,
+                    );
+                    (self.gl.gl_use_program)(self.prog_v2_glow);
+                    let loc_scr = (self.gl.gl_get_uniform_location)(self.prog_v2_glow, c"u_screen".as_ptr());
+                    let loc_rect = (self.gl.gl_get_uniform_location)(self.prog_v2_glow, c"u_rect".as_ptr());
+                    let loc_par = (self.gl.gl_get_uniform_location)(self.prog_v2_glow, c"u_params".as_ptr());
+                    let loc_col = (self.gl.gl_get_uniform_location)(self.prog_v2_glow, c"u_color".as_ptr());
+                    (self.gl.gl_uniform2f)(loc_scr, self.width as f32, self.height as f32);
+
+                    for g in glows {
+                        (self.gl.gl_uniform4f)(loc_rect, g.cx, g.cy, g.w, g.h);
+                        (self.gl.gl_uniform4f)(loc_par, g.shape, g.radius_px, g.thickness_px, g.intensity);
+                        (self.gl.gl_uniform4f)(loc_col, g.color[0], g.color[1], g.color[2], g.color[3]);
+                        let expand = g.radius_px * 2.5 + g.thickness_px + 24.0;
+                        let hx = g.w * 0.5 + expand;
+                        let hy = g.h * 0.5 + expand;
+                        self.draw_bounds_quad(self.prog_v2_glow, g.cx - hx, g.cy - hy, g.cx + hx, g.cy + hy);
+                    }
+                }
+
+                // Pass 3: 2D Straight-Alpha Overlay (Legends + Top-Bar Widgets + Idle Pet)
+                if overlay_rgba.len() >= (self.width as usize) * (self.height as usize) * 4 {
+                    (self.gl.gl_active_texture)(GL_TEXTURE0);
+                    (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_v2_overlay);
+                    if !self.v2_overlay_uploaded {
+                        (self.gl.gl_tex_image_2d)(
+                            GL_TEXTURE_2D,
+                            0,
+                            GL_RGBA as i32,
+                            self.width,
+                            self.height,
+                            0,
+                            GL_RGBA,
+                            GL_UNSIGNED_BYTE,
+                            overlay_rgba.as_ptr() as *const c_void,
+                        );
+                        self.v2_overlay_uploaded = true;
+                    } else if overlay_dirty {
+                        (self.gl.gl_tex_sub_image_2d)(
+                            GL_TEXTURE_2D,
+                            0,
+                            0,
+                            0,
+                            self.width,
+                            self.height,
+                            GL_RGBA,
+                            GL_UNSIGNED_BYTE,
+                            overlay_rgba.as_ptr() as *const c_void,
+                        );
+                    }
+                    (self.gl.gl_enable)(GL_BLEND);
+                    (self.gl.gl_blend_func_separate)(
+                        GL_SRC_ALPHA,
+                        GL_ONE_MINUS_SRC_ALPHA,
+                        GL_ONE,
+                        GL_ONE_MINUS_SRC_ALPHA,
+                    );
+                    (self.gl.gl_use_program)(self.prog_v2_overlay);
+                    (self.gl.gl_uniform1i)(
+                        (self.gl.gl_get_uniform_location)(self.prog_v2_overlay, c"u_tex".as_ptr()),
+                        0,
+                    );
+                    self.draw_fullscreen_quad(self.prog_v2_overlay);
+                }
+            }
+
+            if let Some(ref s) = self.state.surface {
+                let qh = self.queue.handle();
+                s.frame(&qh, ());
+                self.state.frame_pending = true;
+            }
+            if (self.gl.egl_swap_buffers)(self.egl_disp, self.egl_surf) == 0 {
+                return Err("eglSwapBuffers failed".into());
+            }
+            let _ = self.conn.flush();
+        }
+        Ok(())
+    }
+
     unsafe fn draw_bg_pass(&self, dim_factor: f32) {
         if let Some((kind, time_s, hue_rad)) = self.shader_bg {
             (self.gl.gl_use_program)(self.prog_shader);
@@ -1588,6 +1969,9 @@ impl Drop for WaylandGpuPresenter {
             (self.gl.gl_delete_program)(self.prog_rgba);
             (self.gl.gl_delete_program)(self.prog_rect);
             (self.gl.gl_delete_program)(self.prog_keyfx);
+            (self.gl.gl_delete_program)(self.prog_v2_refract);
+            (self.gl.gl_delete_program)(self.prog_v2_glow);
+            (self.gl.gl_delete_program)(self.prog_v2_overlay);
             let fbos = [self.fbo_a, self.fbo_b];
             (self.gl.gl_delete_framebuffers)(2, fbos.as_ptr());
             let texs = [
@@ -1600,8 +1984,10 @@ impl Drop for WaylandGpuPresenter {
                 self.tex_ui_rgba[1],
                 self.tex_fbo_a,
                 self.tex_fbo_b,
+                self.tex_v2_wave,
+                self.tex_v2_overlay,
             ];
-            (self.gl.gl_delete_textures)(9, texs.as_ptr());
+            (self.gl.gl_delete_textures)(11, texs.as_ptr());
             let _ = (self.gl.egl_make_current)(
                 self.egl_disp,
                 EGL_NO_SURFACE,

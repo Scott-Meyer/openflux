@@ -89,6 +89,28 @@ enum Commands {
         #[command(subcommand)]
         cmd: PreviewCmd,
     },
+
+    /// Sync v2 modules, upload background videos, and sideload/flash local builds to the connected keyboard.
+    Keyboard {
+        #[command(subcommand)]
+        cmd: KeyboardCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum KeyboardCmd {
+    /// Push enabled v2 modules, modules_state.json, and referenced background media to the connected keyboard.
+    Sync,
+    /// Upload a video or image straight to `/home/root/openflux/media/` on the connected keyboard.
+    UploadMedia {
+        path: PathBuf,
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Sideload a local `.ipk` package (`openflux-bridge` or `openflux-display`) to the connected keyboard.
+    Sideload { ipk: PathBuf },
+    /// Flash a local RP2040 `.uf2` firmware image to the connected keyboard.
+    FlashUf2 { uf2: PathBuf },
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -558,6 +580,87 @@ fn run(cli: Cli) -> Result<(), String> {
         Commands::Bus { cmd } => handle_bus(&cli, cmd),
         Commands::Simulate { cmd } => handle_simulate(&cli, cmd),
         Commands::Preview { cmd } => handle_preview(&cli, &reg, cmd),
+        Commands::Keyboard { cmd } => handle_keyboard(&cli, cmd),
+    }
+}
+
+fn handle_keyboard(cli: &Cli, cmd: &KeyboardCmd) -> Result<(), String> {
+    let base = require_live_daemon(cli)?;
+    match cmd {
+        KeyboardCmd::Sync => {
+            let val = daemon_json(
+                reqwest::Method::POST,
+                &format!("{base}/v2/keyboard/sync"),
+                Some(&json!({})),
+                120_000,
+            )?;
+            let count = val["uploaded_files"].as_array().map(|a| a.len()).unwrap_or(0);
+            let bytes = val["uploaded_bytes"].as_u64().unwrap_or(0);
+            print_out(
+                cli.json,
+                &val,
+                &format!("Synced v2 setup to keyboard ({count} files, {bytes} bytes)"),
+            );
+            Ok(())
+        }
+        KeyboardCmd::UploadMedia { path, name } => {
+            let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+            let val = daemon_json(
+                reqwest::Method::POST,
+                &format!("{base}/v2/keyboard/upload-media"),
+                Some(&json!({ "local_path": abs.to_string_lossy(), "remote_name": name })),
+                180_000,
+            )?;
+            print_out(
+                cli.json,
+                &val,
+                &format!(
+                    "Uploaded {} -> {} ({} bytes)",
+                    abs.display(),
+                    val["remote_path"].as_str().unwrap_or(""),
+                    val["bytes"].as_u64().unwrap_or(0)
+                ),
+            );
+            Ok(())
+        }
+        KeyboardCmd::Sideload { ipk } => {
+            let abs = std::fs::canonicalize(ipk).unwrap_or_else(|_| ipk.clone());
+            let val = daemon_json(
+                reqwest::Method::POST,
+                &format!("{base}/v2/keyboard/sideload"),
+                Some(&json!({ "ipk_path": abs.to_string_lossy() })),
+                180_000,
+            )?;
+            print_out(
+                cli.json,
+                &val,
+                &format!(
+                    "Sideloaded {}: {}",
+                    abs.display(),
+                    val["message"].as_str().unwrap_or("ok")
+                ),
+            );
+            Ok(())
+        }
+        KeyboardCmd::FlashUf2 { uf2 } => {
+            let abs = std::fs::canonicalize(uf2).unwrap_or_else(|_| uf2.clone());
+            let val = daemon_json(
+                reqwest::Method::POST,
+                &format!("{base}/v2/keyboard/flash-uf2"),
+                Some(&json!({ "uf2_path": abs.to_string_lossy() })),
+                180_000,
+            )?;
+            print_out(
+                cli.json,
+                &val,
+                &format!(
+                    "Flashed {}: {}",
+                    abs.display(),
+                    val["message"].as_str().unwrap_or("ok")
+                ),
+            );
+            Ok(())
+        }
     }
 }
 

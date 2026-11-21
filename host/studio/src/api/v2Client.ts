@@ -200,6 +200,8 @@ export const v2Client = {
   simulateImpulse: (x: number, y: number, radius = 64, force = 1.15) =>
     v2Call("POST", "/v2/simulate/impulse", { x, y, radius, force, kind: "ripple", source: "studio" }),
   simulateBurst: () => v2Call("POST", "/v2/simulate/burst", {}),
+  syncToKeyboard: () =>
+    v2Call<{ ok: boolean; uploaded_files: string[]; uploaded_bytes: number }>("POST", "/v2/keyboard/sync", {}),
   renderPreviewFrame: (steps = 2, step_ms = 16.667, width = 960, height = 540) =>
     v2Call<PreviewFrameResponse>("POST", "/v2/preview/frame", { steps, step_ms, width, height }),
 };

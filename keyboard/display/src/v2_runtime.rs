@@ -1,25 +1,64 @@
-//! OpenFlux v2 keyboard-side display runtime: bridges `openflux-bridge` IPC lines (`key_state`,
+//! OpenFlux v2 keyboard-side display engine: bridges `openflux-bridge` IPC lines (`key_state`,
 //! `key_analog`, `live_data`, `bus_frame`) onto the keyboard's local `openflux-bus` broker,
-//! runs `openflux-modules::ModuleRuntime` (100% standalone capable!), and feeds `openflux-compositor`.
+//! runs `openflux-modules::ModuleRuntime` (100% standalone capable!), steps `WaveField2D`,
+//! `ParticleSystem` (Key-SDF wall bounces + clear-keycap lens magnification + collisions),
+//! and `Canvas2D` (cached key legends + top-bar widgets + Idle Pet), ready for native Mali-G52
+//! OpenGL ES 2.0 presentation with zero-copy `rkmpp` 1080p NV12 video refraction.
 
 use openflux_bus::{
     apply_remote_frame, topics, AnalogKeyFrame, AnalogKeySample, Broker, FrameLayout,
     HostConnectionState, KeyEvent, KeyEventKind, KeyboardGeometry, KeyboardState, MediaNowPlaying,
-    PublishOptions, SystemMetrics, WeatherState, WireFrame,
+    PublishOptions, SystemMetrics, WeatherState, WireFrame, DISPLAY_HEIGHT_PX, DISPLAY_WIDTH_PX,
 };
-use openflux_compositor::{Compositor, CompositorOptions};
-use openflux_modules::{FrameScene, ModuleRegistry, ModuleRuntime};
+use openflux_compositor::{
+    Canvas2D, KeySdfGrid, ParticleSystem, WaveField2D, DEFAULT_ANSI_LABELS, WAVE2D_H, WAVE2D_W,
+};
+use openflux_modules::{
+    KeyGlowShape, ModuleRegistry, ModuleRuntime, WaveFieldParams,
+};
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+
+/// Packed GPU draw primitive for Mali-G52 GLES2 under-key glows & SDF-refracting particles.
+#[derive(Clone, Copy, Debug)]
+pub struct V2GlowDraw {
+    pub cx: f32,
+    pub cy: f32,
+    pub w: f32,
+    pub h: f32,
+    /// `0=Glow`, `1=Ring`, `2=Ripple`, `3=Solid`, `4=Particle`
+    pub shape: f32,
+    pub radius_px: f32,
+    pub thickness_px: f32,
+    pub intensity: f32,
+    pub color: [f32; 4],
+}
 
 pub struct KeyboardV2Display {
     pub broker: Broker,
     pub geometry: KeyboardGeometry,
     pub registry: ModuleRegistry,
     pub runtime: ModuleRuntime,
-    pub compositor: Option<Compositor>,
+    pub sdf_grid: KeySdfGrid,
+    pub particles: ParticleSystem,
+    pub wave: WaveField2D,
+    pub canvas: Canvas2D,
+    pub wave_enabled: bool,
+    pub wave_params: WaveFieldParams,
+    pub active_media_path: Option<String>,
+    pub glows: Vec<V2GlowDraw>,
+    pub time_sec: f32,
+    pub overlay_dirty: bool,
+    last_overlay_hash: u64,
+    last_overlay_ms: u64,
     last_bitmap: [u8; 32],
     last_input_ms: u64,
+    last_state_mtime: Option<SystemTime>,
+}
+
+fn file_mtime(p: &Path) -> Option<SystemTime> {
+    std::fs::metadata(p).and_then(|m| m.modified()).ok()
 }
 
 impl KeyboardV2Display {
@@ -38,25 +77,54 @@ impl KeyboardV2Display {
             &geometry,
             PublishOptions::retained(),
         );
+        let last_state_mtime = file_mtime(&state_path);
         let registry = ModuleRegistry::new(bundled_dir, installed_dir, local_dir, state_path);
         let mut runtime = ModuleRuntime::new(broker.clone(), geometry.clone());
         let discovered = registry.discover();
         let saved = registry.load_state();
         runtime.sync_modules(&discovered, &saved.modules);
 
-        let compositor =
-            Compositor::new_headless(geometry.clone(), font_bytes, CompositorOptions::default())
-                .ok();
+        let sdf_grid = KeySdfGrid::build(&geometry);
+        let canvas = Canvas2D::new(DISPLAY_WIDTH_PX, DISPLAY_HEIGHT_PX, font_bytes);
 
         Self {
             broker,
             geometry,
             registry,
             runtime,
-            compositor,
+            sdf_grid,
+            particles: ParticleSystem::default(),
+            wave: WaveField2D::new(),
+            canvas,
+            wave_enabled: false,
+            wave_params: WaveFieldParams::default(),
+            active_media_path: None,
+            glows: Vec::with_capacity(256),
+            time_sec: 0.0,
+            overlay_dirty: true,
+            last_overlay_hash: 0,
+            last_overlay_ms: 0,
             last_bitmap: [0u8; 32],
             last_input_ms: openflux_bus::now_unix_ms(),
+            last_state_mtime,
         }
+    }
+
+    /// Checks whether `modules_state.json` or any Lua module file changed on disk (e.g. after USB sync).
+    pub fn poll_reload(&mut self) -> bool {
+        let cur_mtime = file_mtime(&self.registry.state_path);
+        if cur_mtime != self.last_state_mtime {
+            self.last_state_mtime = cur_mtime;
+            let discovered = self.registry.discover();
+            let saved = self.registry.load_state();
+            self.runtime.sync_modules(&discovered, &saved.modules);
+            return true;
+        }
+        !self.runtime.check_hot_reload().is_empty()
+    }
+
+    pub fn wave_dims(&self) -> (usize, usize) {
+        (WAVE2D_W, WAVE2D_H)
     }
 
     /// Consumes one newline-delimited JSON IPC message from `openflux-bridge` and publishes
@@ -310,19 +378,104 @@ impl KeyboardV2Display {
         }
     }
 
-    /// Feeds a hardware-decoded `rkmpp` NV12 video frame straight into the v2 GPU compositor.
-    pub fn upload_rkmpp_nv12(&mut self, w: u32, h: u32, y_plane: &[u8], uv_plane: &[u8]) {
-        if let Some(comp) = self.compositor.as_mut() {
-            comp.upload_nv12_background(w, h, y_plane, uv_plane);
-        }
-    }
+    /// Steps Lua modules, 2D wave simulation, Key-SDF colliding/refracting particles, and 2D overlay.
+    pub fn step_frame(&mut self, dt_sec: f32, now_ms: u64) {
+        let dt = dt_sec.clamp(0.001, 0.06);
+        self.time_sec += dt;
+        let scene = self.runtime.step_frame(dt, now_ms);
 
-    pub fn step_and_render(&mut self, dt_sec: f32, now_ms: u64) -> FrameScene {
-        let _ = self.runtime.check_hot_reload();
-        let scene = self.runtime.step_frame(dt_sec, now_ms);
-        if let Some(comp) = self.compositor.as_mut() {
-            comp.render_scene(&scene);
+        self.active_media_path = scene.background_media.clone();
+        self.wave_enabled = scene.distortion_enabled;
+        self.wave_params = scene.wave_params.clone();
+
+        if self.wave_enabled {
+            for imp in &scene.wave_impulses {
+                self.wave.apply_impulse(imp);
+            }
+            self.wave.step(&self.wave_params);
         }
-        scene
+
+        for sp in &scene.particle_spawns {
+            self.particles.spawn(sp, &self.sdf_grid);
+        }
+        self.particles.step(dt, &self.sdf_grid, &self.geometry);
+
+        // Pack glows + particles for Mali-G52 bounded-quad additive pass
+        self.glows.clear();
+        for g in &scene.key_glows {
+            let shape = match g.shape {
+                KeyGlowShape::Glow => 0.0,
+                KeyGlowShape::Ring => 1.0,
+                KeyGlowShape::Ripple => 2.0,
+                KeyGlowShape::Solid => 3.0,
+            };
+            self.glows.push(V2GlowDraw {
+                cx: g.cx,
+                cy: g.cy,
+                w: g.w,
+                h: g.h,
+                shape,
+                radius_px: g.radius_px,
+                thickness_px: g.thickness_px,
+                intensity: g.intensity,
+                color: g.color,
+            });
+        }
+        for p in &self.particles.particles {
+            let life_t = (p.age_ms / p.life_ms).clamp(0.0, 1.0);
+            let fade = (1.0 - life_t).powf(1.2);
+            let lens_boost = if p.inside_key { 1.35 } else { 1.0 };
+            self.glows.push(V2GlowDraw {
+                cx: p.x,
+                cy: p.y,
+                w: 2.0,
+                h: 2.0,
+                shape: 4.0,
+                radius_px: p.radius_px * p.current_scale,
+                thickness_px: 2.0,
+                intensity: fade * lens_boost,
+                color: p.color,
+            });
+        }
+
+        // Only re-rasterize & re-upload the 1920x1080 2D overlay when draw commands actually change
+        // (and rate-limit purely decorative animations like equalizer bars to ~10 Hz on the SoC
+        // so Mali-G52 + rkmpp video + 3D water ripples + particles stay locked at 60 FPS!).
+        let has_world_anim = !scene.world_overlay_draws.is_empty();
+        let min_overlay_interval_ms = if has_world_anim { 45 } else { 180 };
+        let overlay_hash = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            if let Ok(b) = serde_json::to_vec(&(
+                &scene.under_key_draws,
+                &scene.tile_draws,
+                &scene.world_overlay_draws,
+            )) {
+                b.hash(&mut h);
+            }
+            h.finish()
+        };
+        let due_for_overlay = self.last_overlay_hash == 0
+            || (overlay_hash != self.last_overlay_hash
+                && now_ms.saturating_sub(self.last_overlay_ms) >= min_overlay_interval_ms);
+        if due_for_overlay {
+            self.last_overlay_hash = overlay_hash;
+            self.last_overlay_ms = now_ms;
+            self.canvas.clear();
+            if !scene.under_key_draws.is_empty() {
+                self.canvas.execute(&scene.under_key_draws);
+            }
+            self.canvas
+                .blit_cached_default_key_legends(&self.geometry, DEFAULT_ANSI_LABELS);
+            if !scene.tile_draws.is_empty() {
+                self.canvas.execute(&scene.tile_draws);
+            }
+            if !scene.world_overlay_draws.is_empty() {
+                self.canvas.execute(&scene.world_overlay_draws);
+            }
+            self.overlay_dirty = true;
+        } else {
+            self.overlay_dirty = false;
+        }
     }
 }

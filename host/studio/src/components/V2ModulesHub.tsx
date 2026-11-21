@@ -301,6 +301,21 @@ export const V2ModulesHub: React.FC = () => {
             <button type="button" onClick={() => void handleExportPreset()}>
               Export Preset
             </button>
+            <button
+              type="button"
+              style={{ background: "#1ea7d8", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6 }}
+              onClick={async () => {
+                try {
+                  setNotice("Syncing v2 modules & media to keyboard…");
+                  const r = await v2Client.syncToKeyboard();
+                  setNotice(`Synced to keyboard (${r.uploaded_files.length} files, ${(r.uploaded_bytes / 1024).toFixed(1)} KB).`);
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : String(err));
+                }
+              }}
+            >
+              Sync to Keyboard
+            </button>
           </div>
         </div>
 

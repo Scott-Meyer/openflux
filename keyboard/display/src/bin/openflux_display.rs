@@ -622,6 +622,40 @@ fn main() {
                 .ok(),
         );
 
+        let v2_root = std::env::var("OPENFLUX_V2_DIR")
+            .unwrap_or_else(|_| "/home/root/openflux/v2".to_string());
+        let v2_state_path = std::path::PathBuf::from(&v2_root).join("modules_state.json");
+        let v2_font_bytes: Option<Vec<u8>> = [
+            "/usr/lib/openflux/display/assets/fonts/Montserrat-VariableFont_wght.ttf",
+            "/usr/lib/openflux/display/fonts/Montserrat-VariableFont_wght.ttf",
+            "/home/root/openflux/v2/Montserrat-VariableFont_wght.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        .iter()
+        .find_map(|p| std::fs::read(p).ok());
+        let mut v2_display: Option<openflux_display::v2_runtime::KeyboardV2Display> =
+            if v2_state_path.is_file() {
+                log_diag(&format!("OpenFlux v2 runtime active (root={v2_root})"));
+                let fl = if cfg.keymap.selected_layout
+                    == openflux_display::layout::FrameLayoutType::Iso
+                {
+                    openflux_bus::FrameLayout::Iso
+                } else {
+                    openflux_bus::FrameLayout::Ansi
+                };
+                Some(openflux_display::v2_runtime::KeyboardV2Display::new(
+                    std::path::PathBuf::from("/usr/lib/openflux/display/modules"),
+                    std::path::PathBuf::from(&v2_root).join("modules"),
+                    std::path::PathBuf::from(&v2_root).join("local"),
+                    v2_state_path.clone(),
+                    fl,
+                    v2_font_bytes.as_deref(),
+                ))
+            } else {
+                None
+            };
+        let mut last_v2_step_ms: u64 = 0;
+
         while RUNNING.load(Ordering::SeqCst) {
             let now_sec = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -737,6 +771,32 @@ fn main() {
 
             if mono_ms >= next_reload_ms {
                 next_reload_ms = mono_ms + 250;
+                if let Some(ref mut v2) = v2_display {
+                    if v2.poll_reload() {
+                        log_diag("OpenFlux v2 modules hot-reloaded on keyboard");
+                        rkmpp_failed_path.clear();
+                        bg_dirty = true;
+                    }
+                } else if v2_state_path.is_file() {
+                    log_diag(&format!("OpenFlux v2 state detected — activating v2 runtime (root={v2_root})"));
+                    let fl = if cfg.keymap.selected_layout
+                        == openflux_display::layout::FrameLayoutType::Iso
+                    {
+                        openflux_bus::FrameLayout::Iso
+                    } else {
+                        openflux_bus::FrameLayout::Ansi
+                    };
+                    v2_display = Some(openflux_display::v2_runtime::KeyboardV2Display::new(
+                        std::path::PathBuf::from("/usr/lib/openflux/display/modules"),
+                        std::path::PathBuf::from(&v2_root).join("modules"),
+                        std::path::PathBuf::from(&v2_root).join("local"),
+                        v2_state_path.clone(),
+                        fl,
+                        v2_font_bytes.as_deref(),
+                    ));
+                    rkmpp_failed_path.clear();
+                    bg_dirty = true;
+                }
                 if reloader.poll_reload(&mut cfg) {
                     renderer.assets.invalidate();
                     ui_assets_dirty = true;
@@ -777,6 +837,9 @@ fn main() {
             let mut theme_assets_changed = false;
             let mut theme_reconciled = false;
             for line in ipc.poll_lines() {
+                if let Some(ref mut v2) = v2_display {
+                    v2.ingest_bridge_ipc_line(&line);
+                }
                 let res =
                     cfg.apply_ipc_line(&mut state, &line, mono_ms, Some(Path::new(&config_dir)));
                 if res.applied {
@@ -876,6 +939,141 @@ fn main() {
             let mut video_wait_ms: Option<i32> = None;
             match presenter {
                 ActivePresenter::Gpu(ref mut gpu) => {
+                    if let Some(ref mut v2) = v2_display {
+                        anim_active = !cached_suspended;
+                        let desired_bg = v2
+                            .active_media_path
+                            .as_deref()
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or(cfg.appearance.bg_path.as_str())
+                            .to_string();
+                        let bg_is_vid = openflux_display::media_bg::is_video_path(&desired_bg);
+                        if !bg_is_vid || cached_suspended {
+                            if rkmpp_stream.is_some() {
+                                rkmpp_stream = None;
+                                rkmpp_path.clear();
+                                rkmpp_pending = None;
+                                rkmpp_due = None;
+                                rkmpp_epoch_set = false;
+                            }
+                        } else if desired_bg != rkmpp_path && desired_bg != rkmpp_failed_path {
+                            rkmpp_stream = None;
+                            rkmpp_path.clear();
+                            rkmpp_pending = None;
+                            rkmpp_due = None;
+                            rkmpp_epoch_set = false;
+                            let mut rp = openflux_display::media_bg::resolve_bg_media_path(
+                                Some(&media_dir),
+                                &desired_bg,
+                            );
+                            if rp.is_empty() || !Path::new(&rp).is_file() {
+                                if let Some(fname) = Path::new(&desired_bg).file_name().and_then(|n| n.to_str()) {
+                                    let cand = Path::new(&media_dir).join(fname);
+                                    if cand.is_file() {
+                                        rp = cand.to_string_lossy().into_owned();
+                                    }
+                                }
+                            }
+                            if !rp.is_empty() && Path::new(&rp).is_file() {
+                                if let Some(st_mpp) = openflux_display::rkmpp::open_rkmpp_stream(&rp) {
+                                    log_diag(&format!(
+                                        "v2 RKMPP hardware video opened: {} ({:.1} fps)",
+                                        desired_bg, st_mpp.fps
+                                    ));
+                                    rkmpp_stream = Some(st_mpp);
+                                    rkmpp_path = desired_bg.clone();
+                                } else {
+                                    log_diag(&format!("v2 RKMPP failed for: {desired_bg}"));
+                                    rkmpp_failed_path = desired_bg.clone();
+                                }
+                            } else {
+                                rkmpp_failed_path = desired_bg.clone();
+                            }
+                        }
+                        let mut v2_stream_ended = false;
+                        if let Some(ref mut st_mpp) = rkmpp_stream {
+                            if rkmpp_pending.is_none() {
+                                match st_mpp.try_read_frame() {
+                                    Ok(Some(f)) => rkmpp_pending = Some(f),
+                                    Ok(None) => {}
+                                    Err(StreamEnded) => {
+                                        v2_stream_ended = true;
+                                    }
+                                }
+                            }
+                            if !v2_stream_ended {
+                                if let Some(ref pend) = rkmpp_pending {
+                                    if !rkmpp_epoch_set {
+                                        rkmpp_epoch_ms = mono_ms.saturating_sub(pend.pts_ms);
+                                        rkmpp_epoch_set = true;
+                                    }
+                                    let elapsed = mono_ms.saturating_sub(rkmpp_epoch_ms);
+                                    if pend.pts_ms <= elapsed.saturating_add(10) {
+                                        let mut best = rkmpp_pending.take().unwrap();
+                                        while let Ok(Some(nxt)) = st_mpp.try_read_frame() {
+                                            if nxt.pts_ms <= elapsed {
+                                                best = nxt;
+                                            } else {
+                                                rkmpp_pending = Some(nxt);
+                                                break;
+                                            }
+                                        }
+                                        rkmpp_due = Some(best);
+                                    }
+                                }
+                            }
+                        }
+                        if v2_stream_ended {
+                            rkmpp_stream = None;
+                            rkmpp_path.clear();
+                            rkmpp_pending = None;
+                            rkmpp_due = None;
+                            rkmpp_epoch_set = false;
+                        }
+
+                        if !gpu.is_frame_pending() {
+                            let t_ren = Instant::now();
+                            if let Some(f) = rkmpp_due.take() {
+                                gpu.upload_bg_nv12(f.width, f.height, &f.nv12);
+                                rkmpp_vframes += 1;
+                            }
+                            let dt_ms = if last_v2_step_ms == 0 {
+                                16
+                            } else {
+                                mono_ms.saturating_sub(last_v2_step_ms).clamp(4, 50)
+                            };
+                            last_v2_step_ms = mono_ms;
+                            v2.step_frame(dt_ms as f32 * 0.001, mono_ms);
+                            let (ww, wh) = v2.wave_dims();
+                            let has_bg_media = rkmpp_stream.is_some();
+                            if let Err(e) = gpu.render_v2_and_swap(
+                                cached_suspended,
+                                has_bg_media,
+                                v2.time_sec,
+                                v2.wave_enabled,
+                                ww as i32,
+                                wh as i32,
+                                &v2.wave.rgba,
+                                v2.wave_params.refraction_strength,
+                                v2.wave_params.specular_strength,
+                                v2.wave_params.tint,
+                                &v2.glows,
+                                &v2.canvas.rgba,
+                                v2.overlay_dirty,
+                            ) {
+                                eprintln!("Wayland EGL v2 present error, exiting cleanly: {e}");
+                                break;
+                            }
+                            last_render_ms = t_ren.elapsed().as_millis() as u64;
+                            if frame_log_count < 8 {
+                                log_diag(&format!(
+                                    "v2 gpu frame #{frame_log_count}: total={}ms rkmpp={} glows={} wave={}",
+                                    last_render_ms, has_bg_media, v2.glows.len(), v2.wave_enabled
+                                ));
+                            }
+                            frame_log_count = frame_log_count.saturating_add(1);
+                        }
+                    } else {
                     let bg_is_shader =
                         openflux_display::media_bg::is_shader_path(&cfg.appearance.bg_path);
                     let bg_is_vid = !bg_is_shader
@@ -1178,6 +1376,7 @@ fn main() {
                         if let Some(ref w) = ui_worker {
                             w.recycle(buf);
                         }
+                    }
                     }
                 }
                 ActivePresenter::Shm(ref mut shm) => {
