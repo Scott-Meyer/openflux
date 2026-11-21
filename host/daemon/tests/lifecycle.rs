@@ -258,11 +258,18 @@ fn refused_addr() -> std::net::SocketAddr {
 }
 
 fn stop_with(data: &Path) -> openfluxd::api::lifecycle_client::RequestOutcome {
+    stop_with_connect_timeout(data, Duration::from_millis(300))
+}
+
+fn stop_with_connect_timeout(
+    data: &Path,
+    timeout: Duration,
+) -> openfluxd::api::lifecycle_client::RequestOutcome {
     openfluxd::api::lifecycle_client::request_exit_with_timeout(
         data,
         ExitKind::Stop,
         Duration::from_secs(1),
-        Duration::from_millis(300),
+        timeout,
     )
 }
 
@@ -307,8 +314,10 @@ fn a_refused_connection_means_not_running_only_without_a_daemon_process() {
     let tmp = temp_dir("client_refused");
     let data = tmp.join("data");
     plaintext_discovery(&data, refused_addr());
+    // Windows retries loopback SYNs for ~2s before returning ConnectionRefused.
+    let refused_timeout = Duration::from_secs(4);
     assert_eq!(
-        stop_with(&data).exit_code(),
+        stop_with_connect_timeout(&data, refused_timeout).exit_code(),
         4,
         "nothing listens and nothing holds the instance lock"
     );
@@ -316,7 +325,7 @@ fn a_refused_connection_means_not_running_only_without_a_daemon_process() {
     let lock = openfluxd::lifecycle::InstanceLock::acquire(&data)
         .unwrap()
         .expect("lock is free");
-    let outcome = stop_with(&data);
+    let outcome = stop_with_connect_timeout(&data, refused_timeout);
     assert_eq!(
         outcome.exit_code(),
         1,
@@ -329,7 +338,10 @@ fn a_refused_connection_means_not_running_only_without_a_daemon_process() {
         "a second daemon can't take the lock"
     );
     drop(lock);
-    assert_eq!(stop_with(&data).exit_code(), 4);
+    assert_eq!(
+        stop_with_connect_timeout(&data, refused_timeout).exit_code(),
+        4
+    );
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
