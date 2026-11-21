@@ -411,6 +411,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn a_sleeping_nvidia_gpu_is_reported_without_loading_nvml() {
         let t = Tree::new("nvidia");
         t.file("nvidia/0000:01:00.0/power/runtime_status", "suspended\n");

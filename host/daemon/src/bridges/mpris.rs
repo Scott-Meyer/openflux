@@ -528,6 +528,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn the_shown_track_carries_its_art_from_a_file() {
         let dir = std::env::temp_dir().join(format!("openflux-mpris-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

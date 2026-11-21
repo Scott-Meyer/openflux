@@ -1573,7 +1573,8 @@ mod tests {
             return;
         }
         assert_eq!(
-            DEFAULT_KEYMAP_JSON, json,
+            DEFAULT_KEYMAP_JSON.replace("\r\n", "\n"),
+            json,
             "tests/fixtures/default_keymap.json is stale"
         );
         assert_eq!(
