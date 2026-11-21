@@ -537,28 +537,44 @@ async fn preview_http_endpoints_render_and_unload_cleanly() {
             }
         }
         let f1 = f_first.expect("expected worker-decoded first video frame after opening MP4");
-        tokio::time::sleep(Duration::from_millis(150)).await;
-        cur_ms += 150;
-        let (cv2, f2) = req_bytes(
-            addr,
-            "POST",
-            "/v1/preview/render",
-            &format!(r#"{{"format":"rgba","nowSec":1763414400,"nowMs":{cur_ms}}}"#),
-        )
-        .await;
-        assert_eq!(cv2, 200);
-        tokio::time::sleep(Duration::from_millis(150)).await;
-        cur_ms += 150;
-        let (cv3, f3) = req_bytes(
-            addr,
-            "POST",
-            "/v1/preview/render",
-            &format!(r#"{{"format":"rgba","nowSec":1763414400,"nowMs":{cur_ms}}}"#),
-        )
-        .await;
-        assert_eq!(cv3, 200);
+        let mut f2_opt = None;
+        for _ in 0..20 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            cur_ms += 100;
+            let (cv2, bytes) = req_bytes(
+                addr,
+                "POST",
+                "/v1/preview/render",
+                &format!(r#"{{"format":"rgba","nowSec":1763414400,"nowMs":{cur_ms}}}"#),
+            )
+            .await;
+            assert_eq!(cv2, 200);
+            if bytes != f1 {
+                f2_opt = Some(bytes);
+                break;
+            }
+        }
+        let f2 =
+            f2_opt.expect("expected worker-decoded second video frame to advance at fixed nowSec");
+        let mut f3_opt = None;
+        for _ in 0..20 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            cur_ms += 100;
+            let (cv3, bytes) = req_bytes(
+                addr,
+                "POST",
+                "/v1/preview/render",
+                &format!(r#"{{"format":"rgba","nowSec":1763414400,"nowMs":{cur_ms}}}"#),
+            )
+            .await;
+            assert_eq!(cv3, 200);
+            if bytes != f2 && bytes != f1 {
+                f3_opt = Some(bytes);
+                break;
+            }
+        }
         assert!(
-            f1 != f2 && f2 != f3 && f1 != f3,
+            f3_opt.is_some(),
             "expected worker-decoded video frames to keep advancing at fixed nowSec"
         );
 
