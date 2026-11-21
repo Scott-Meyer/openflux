@@ -15,8 +15,13 @@ pub struct Identified {
     pub reported: Option<String>,
     pub identity: Identity,
     /// Interfaces of an OpenFlux version, from the verified indexes or, for the version this
-    /// host was built with, from its own registry. `None` when neither knows the version.
+    /// host was built with (or a same-major custom/local OpenFlux build), from its own registry.
+    /// `None` when neither knows the version or the major version differs.
     pub interfaces: Option<InterfaceSet>,
+    /// True when the component reports an OpenFlux version not listed in the release catalog
+    /// (e.g. a local developer build or community fork) and is using the host's compiled
+    /// same-major interface compatibility table.
+    pub custom_build: bool,
 }
 
 impl Identified {
@@ -77,24 +82,30 @@ impl KeyboardView {
                     .and_then(|v| v.as_str())
                     .map(String::from);
                 let identity = crate::conversion::identify(c, reported.as_deref());
-                let interfaces = match &identity {
-                    Identity::OpenFlux(v) => catalog
-                        .find(c, v)
-                        .map(|r| r.interfaces.clone())
-                        .or_else(|| {
-                            compat
-                                .components
-                                .get(&c)
-                                .filter(|d| &d.version == v)
-                                .map(|_| compat.interface_set(c))
-                        }),
-                    _ => None,
+                let (interfaces, custom_build) = match &identity {
+                    Identity::OpenFlux(v) => {
+                        if let Some(r) = catalog.find(c, v) {
+                            (Some(r.interfaces.clone()), false)
+                        } else if let Some(d) = compat.components.get(&c) {
+                            if &d.version == v {
+                                (Some(compat.interface_set(c)), false)
+                            } else if d.version.major == v.major {
+                                (Some(compat.interface_set(c)), true)
+                            } else {
+                                (None, false)
+                            }
+                        } else {
+                            (None, false)
+                        }
+                    }
+                    _ => (None, false),
                 };
                 Identified {
                     component: c,
                     reported,
                     identity,
                     interfaces,
+                    custom_build,
                 }
             })
             .collect();
@@ -428,6 +439,10 @@ pub fn status_blocks(
                     reason.get_or_insert_with(|| {
                         "The installed version was withdrawn by its publisher".into()
                     });
+                } else if c.custom_build && matches!(st.state, ComponentState::UpToDate) {
+                    reason.get_or_insert_with(|| {
+                        "Custom or local OpenFlux build (not listed in the official release index)".into()
+                    });
                 }
                 let required = matches!(
                     st.state,
@@ -440,6 +455,7 @@ pub fn status_blocks(
                 "installed": installed,
                 "reported": c.reported,
                 "kind": c.kind(),
+                "customBuild": c.custom_build,
                 "latest": latest.map(|r| r.version.to_string()),
                 "state": state,
                 "required": required,

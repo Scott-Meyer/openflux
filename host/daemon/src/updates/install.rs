@@ -371,6 +371,172 @@ pub(crate) fn flash_verified_uf2(
     Ok(())
 }
 
+/// Flashes a validated unsigned local `.uf2` file from the developer's build folder.
+pub fn flash_local_firmware(
+    svc: &UpdateService,
+    job: &mut JobRecord,
+    i: usize,
+) -> Result<(), JobError> {
+    let step = job.steps[i].clone();
+    let local_path = step
+        .state
+        .get("localPath")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| JobError::new("malformed", "The local step has no firmware path", ""))?;
+    let path = std::path::Path::new(local_path);
+    let t = svc.timings();
+    if !wait_until(svc, t.reconnect_wait, || svc.device.is_connected().1) {
+        return Err(JobError::new(
+            "keyboardDisconnected",
+            "The keyboard firmware isn't connected",
+            "Connect the keyboard and try again.",
+        ));
+    }
+    set_step(svc, job, i, "flashing", serde_json::json!(true));
+    match svc.device.flash_uf2(&path.to_string_lossy()) {
+        Ok(msg) => job.log.push(msg),
+        Err(e) => {
+            let calibration = e.contains(crate::usb::picoboot::CALIBRATION_CHANGED);
+            return Err(if calibration {
+                JobError::new(
+                    "calibrationChanged",
+                    format!("The keyboard's calibration region changed while flashing: {e}"),
+                    "Stop using the keyboard's analog features and re-verify calibration.",
+                )
+            } else {
+                JobError::new(
+                    "installFailed",
+                    format!("Flashing the local firmware failed: {e}"),
+                    "Keep the keyboard connected and retry, or copy the .uf2 onto RPI-RP2.",
+                )
+            });
+        }
+    }
+    let expect = step.expect.as_deref();
+    if !wait_until(svc, t.install_wait, || match expect {
+        Some(want) => reported(svc, "firmware").as_deref() == Some(want),
+        None => svc.device.is_connected().1 && reported(svc, "firmware").is_some(),
+    }) {
+        return Err(JobError::new(
+            "versionMismatch",
+            format!(
+                "The firmware didn't come back cleanly; it reports {}",
+                describe(&reported(svc, "firmware"))
+            ),
+            "Reconnect the keyboard and try again.",
+        ));
+    }
+    Ok(())
+}
+
+/// Installs a validated unsigned local `.ipk` package from the developer's build folder.
+/// Bridge packages still run through [`PendingInstall`] so automatic rollback protection remains active.
+pub fn install_local_package(
+    svc: &UpdateService,
+    job: &mut JobRecord,
+    i: usize,
+) -> Result<(), JobError> {
+    let step = job.steps[i].clone();
+    let component = step.component.clone().unwrap_or_default();
+    let local_path = step
+        .state
+        .get("localPath")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| JobError::new("malformed", "The local step has no package path", ""))?;
+    let path = std::path::Path::new(local_path);
+    let t = svc.timings();
+    if !wait_until(svc, t.reconnect_wait, || svc.device.is_connected().0) {
+        return Err(JobError::new(
+            "keyboardDisconnected",
+            "The keyboard bridge isn't connected",
+            "Connect the keyboard and try again.",
+        ));
+    }
+    let is_bridge = component == "bridge";
+    let expect = step.expect.clone();
+    let mut pending: Option<PendingInstall> = step
+        .state
+        .get("pending")
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+    if !step_flag(job, i, "uploaded") {
+        if is_bridge {
+            if let Some(target) = expect.clone() {
+                let p = PendingInstall::begin(&*svc.device, target);
+                set_step(
+                    svc,
+                    job,
+                    i,
+                    "pending",
+                    serde_json::to_value(&p).unwrap_or_default(),
+                );
+                pending = Some(p);
+            }
+        }
+        svc.device
+            .sideload_ipk(&path.to_string_lossy())
+            .map_err(|e| {
+                JobError::new(
+                    "installFailed",
+                    format!("Uploading {} failed: {e}", path.display()),
+                    "Nothing was installed. Reconnect the keyboard and try again.",
+                )
+            })?;
+        set_step(svc, job, i, "uploaded", serde_json::json!(true));
+        job.log.push(format!("Uploaded local {}", path.display()));
+    }
+    let done = if is_bridge {
+        if let Some(mut p) = pending {
+            let mut learned = p.attempt.is_some();
+            let ok = wait_until(svc, t.install_wait, || {
+                if !svc.device.is_connected().0 {
+                    return false;
+                }
+                let r = p.poll(&*svc.device);
+                if !learned && p.attempt.is_some() {
+                    learned = true;
+                    job.steps[i].state.insert(
+                        "pending".into(),
+                        serde_json::to_value(&p).unwrap_or_default(),
+                    );
+                    svc.save_job(job);
+                }
+                matches!(r, Ok(Progress::Confirmed { .. }))
+            });
+            if ok {
+                job.log.push(format!(
+                    "Confirmed the new local bridge ({})",
+                    describe(&expect)
+                ));
+            }
+            ok
+        } else {
+            wait_until(svc, t.install_wait, || {
+                svc.device.is_connected().0 && reported(svc, "bridge").is_some()
+            })
+        }
+    } else {
+        wait_until(svc, t.install_wait, || match expect.as_deref() {
+            Some(want) => reported(svc, &component).as_deref() == Some(want),
+            None => svc.device.is_connected().0 && reported(svc, &component).is_some(),
+        })
+    };
+    if !done {
+        return Err(JobError::new(
+            "versionMismatch",
+            format!(
+                "The local {component} didn't come back cleanly; it reports {}",
+                describe(&reported(svc, &component))
+            ),
+            if is_bridge {
+                "The keyboard automatically restores its previous bridge if the new one fails to start or confirm."
+            } else {
+                "Reconnect the keyboard and try again."
+            },
+        ));
+    }
+    Ok(())
+}
+
 /// Checks that every component reports what the job expects.
 pub fn verify(svc: &UpdateService, job: &mut JobRecord, i: usize) -> Result<(), JobError> {
     let expect = job.steps[i]

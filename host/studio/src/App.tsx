@@ -887,6 +887,7 @@ export const App: React.FC<AppProps> = ({
             updates={services.updates}
             hostFlow={hostFlow}
             service={services.daemonService}
+            pickFolder={(title) => client.pickFolder(title)}
             onStatus={(s) => {
               setUpdatesStatus(s);
               setUpdatesBadge(updatesNeedAttention(s));

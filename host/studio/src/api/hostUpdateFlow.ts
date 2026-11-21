@@ -101,6 +101,7 @@ export class HostUpdateFlow {
    * check that comes due after an install has begun changes nothing.
    */
   check(channel: UpdateChannel): Promise<HostUpdateState> {
+    if (channel === "local") return Promise.resolve(this.stateValue);
     const run = (this.checking ?? Promise.resolve(this.stateValue)).then(() => this.runCheck(channel));
     this.checking = run;
     void run.finally(() => {

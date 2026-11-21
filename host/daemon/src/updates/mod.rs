@@ -11,6 +11,7 @@
 
 pub mod install;
 pub mod jobs;
+pub mod local;
 pub mod source;
 pub mod status;
 
@@ -20,9 +21,7 @@ use crate::api::state::DeviceSink;
 use crate::lifecycle::{BusyLease, Lifecycle};
 use jobs::{JobError, JobKind, JobRecord, JobState, Journal, PlannedStep, StepKind};
 use openflux_update::compat::{Compat, HostProfile};
-use openflux_update::{
-    Channel, Component, Engine, PlanRequest, Preferences, TrustAnchors, TrustStore,
-};
+use openflux_update::{Component, Engine, PlanRequest, Preferences, TrustAnchors, TrustStore};
 use serde::{Deserialize, Serialize};
 use source::{FileTrustStore, SourceError, Sources};
 use status::{AreaState, KeyboardView, ViewMode};
@@ -123,18 +122,43 @@ pub fn bundled_keyboard_dir() -> Option<PathBuf> {
         .find(|p| p.join("index.json").is_file())
 }
 
+/// Update source chosen by the user: signed remote channels (`stable`/`beta`) or an unsigned
+/// local developer build folder (`local`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub enum UpdateChannel {
+    Stable,
+    Beta,
+    Local,
+}
+
+impl std::str::FromStr for UpdateChannel {
+    type Err = &'static str;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "stable" => Ok(Self::Stable),
+            "beta" => Ok(Self::Beta),
+            "local" => Ok(Self::Local),
+            _ => Err("channel must be stable, beta, or local"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Settings {
-    pub channel: Channel,
+    pub channel: UpdateChannel,
     pub auto_check: bool,
+    #[serde(default)]
+    pub local_dir: Option<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            channel: Channel::Stable,
+            channel: UpdateChannel::Stable,
             auto_check: true,
+            local_dir: None,
         }
     }
 }
@@ -318,13 +342,14 @@ impl UpdateService {
     }
 
     pub fn settings(&self) -> Settings {
-        self.inner.lock().unwrap().settings
+        self.inner.lock().unwrap().settings.clone()
     }
 
     pub fn put_settings(
         &self,
-        channel: Option<Channel>,
+        channel: Option<UpdateChannel>,
         auto_check: Option<bool>,
+        local_dir: Option<Option<String>>,
     ) -> Result<(), String> {
         let s = {
             let mut g = self.inner.lock().unwrap();
@@ -334,7 +359,10 @@ impl UpdateService {
             if let Some(a) = auto_check {
                 g.settings.auto_check = a;
             }
-            g.settings
+            if let Some(dir) = local_dir {
+                g.settings.local_dir = dir.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+            }
+            g.settings.clone()
         };
         let raw = serde_json::to_vec_pretty(&s).map_err(|e| e.to_string())?;
         source::write_durably(&updates_dir(&self.config).join("settings.json"), &raw)
@@ -342,7 +370,7 @@ impl UpdateService {
 
     fn prefs(&self) -> Preferences {
         Preferences {
-            beta: self.settings().channel == Channel::Beta,
+            beta: self.settings().channel == UpdateChannel::Beta,
         }
     }
 
@@ -483,7 +511,7 @@ impl UpdateService {
         let (settings, checked_at, checking, error, catalog, source, job) = {
             let g = self.inner.lock().unwrap();
             (
-                g.settings,
+                g.settings.clone(),
                 g.checked_at.clone(),
                 g.checking,
                 g.error.clone(),
@@ -493,11 +521,17 @@ impl UpdateService {
             )
         };
         let (host, keyboard) = status::status_blocks(&view, &catalog, &self.profile, self.prefs());
+        let local_builds = settings
+            .local_dir
+            .as_deref()
+            .map(|d| local::scan_dir(std::path::Path::new(d)));
         serde_json::json!({
             "checkedAt": checked_at,
             "checking": checking,
             "channel": settings.channel,
             "autoCheck": settings.auto_check,
+            "localDir": settings.local_dir,
+            "localBuilds": local_builds,
             "indexSource": source,
             "error": error.map(|e| serde_json::json!({"code": e.code, "message": e.message})),
             "host": host,
@@ -697,6 +731,8 @@ impl UpdateService {
             StepKind::Prepare => install::prepare(self, job),
             StepKind::InstallPackage => install::install_package(self, job, i),
             StepKind::FlashFirmware => install::flash_firmware(self, job, i),
+            StepKind::InstallLocalPackage => install::install_local_package(self, job, i),
+            StepKind::FlashLocalFirmware => install::flash_local_firmware(self, job, i),
             StepKind::Verify => install::verify(self, job, i),
             StepKind::ReadSettings => crate::conversion::jobs::read_settings(self, job, i),
             StepKind::StageRescue => crate::conversion::jobs::stage_rescue(self, job, i),
@@ -865,6 +901,103 @@ impl UpdateService {
                 .collect(),
         });
         self.admit(JobKind::Update, steps)
+    }
+
+    /// `POST /v1/updates/install-local`: validates and installs unsigned local developer builds
+    /// from the configured `localDir`.
+    pub fn apply_local(
+        self: &Arc<Self>,
+        components: Vec<String>,
+        confirm: bool,
+    ) -> Result<String, Refused> {
+        if !confirm {
+            return Err(Refused {
+                status: 400,
+                code: "confirmationRequired",
+                message: "Installing unsigned local builds needs {\"confirm\": true}".into(),
+            });
+        }
+        let req = Self::parse_plan_request(Some(components))?;
+        let Some(local_dir) = self.settings().local_dir else {
+            return Err(Refused {
+                status: 400,
+                code: "badRequest",
+                message: "Choose a local build folder first".into(),
+            });
+        };
+        let root = std::path::PathBuf::from(&local_dir);
+        let scan = local::scan_dir(&root);
+        if !scan.exists {
+            return Err(Refused {
+                status: 400,
+                code: "badRequest",
+                message: scan
+                    .error
+                    .unwrap_or_else(|| "Local build folder doesn't exist".into()),
+            });
+        }
+
+        self.refresh_keyboard();
+        let view = self.view();
+        if !view.connected() {
+            return Err(Refused::conflict(
+                "keyboardDisconnected",
+                "The keyboard isn't connected",
+            ));
+        }
+
+        // Order: firmware -> bridge -> display (matches standard update ordering).
+        let order = [Component::Firmware, Component::Bridge, Component::Display];
+        let mut steps = Vec::new();
+        for c in order {
+            if !req.components.contains(&c) {
+                continue;
+            }
+            let Some(art) = scan.artifact_for(c) else {
+                return Err(Refused {
+                    status: 400,
+                    code: "badRequest",
+                    message: format!("No local {} build found in {}", c.as_str(), scan.dir),
+                });
+            };
+            local::validate_local_artifact(c, &art.path_buf, &root).map_err(|e| Refused {
+                status: 400,
+                code: "badRequest",
+                message: e,
+            })?;
+            let expect = art
+                .version
+                .as_ref()
+                .map(|v| format!("openflux-{} {v}", c.as_str()));
+            let mut state = serde_json::Map::new();
+            state.insert("localPath".into(), serde_json::json!(art.path));
+            let (kind, label) = match c {
+                Component::Firmware => (
+                    StepKind::FlashLocalFirmware,
+                    format!("Flash local firmware ({})", art.name),
+                ),
+                Component::Bridge => (
+                    StepKind::InstallLocalPackage,
+                    format!("Install local keyboard bridge ({})", art.name),
+                ),
+                Component::Display => (
+                    StepKind::InstallLocalPackage,
+                    format!("Install local display ({})", art.name),
+                ),
+                Component::Host => continue,
+            };
+            steps.push(PlannedStep {
+                kind,
+                label,
+                component: Some(c.as_str().into()),
+                from: None,
+                expect,
+                artifact: None,
+                state,
+            });
+        }
+
+        self.admit(JobKind::LocalInstall, steps)
     }
 
     /// `POST /v1/conversion/convert`.

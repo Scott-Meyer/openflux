@@ -305,6 +305,18 @@ pub async fn apply_updates(
 }
 
 #[tauri::command]
+pub async fn install_local_updates(
+    st: State<'_, DesktopState>,
+    components: Vec<String>,
+) -> Result<Value, CommandError> {
+    st.post_api(
+        "/v1/updates/install-local",
+        json!({ "components": components, "confirm": true }),
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn get_conversion(st: State<'_, DesktopState>) -> Result<Value, CommandError> {
     st.get_api("/v1/conversion").await
 }

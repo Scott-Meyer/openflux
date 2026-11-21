@@ -63,13 +63,13 @@ async fn put_settings(
     };
     let channel = match body.get("channel") {
         None => None,
-        Some(v) => match v.as_str().map(str::parse::<openflux_update::Channel>) {
+        Some(v) => match v.as_str().map(str::parse::<crate::updates::UpdateChannel>) {
             Some(Ok(c)) => Some(c),
             _ => {
                 return error(
                     StatusCode::BAD_REQUEST,
                     "badRequest",
-                    "channel must be stable or beta",
+                    "channel must be stable, beta, or local",
                 )
             }
         },
@@ -87,7 +87,21 @@ async fn put_settings(
             }
         },
     };
-    if let Err(e) = u.put_settings(channel, auto_check) {
+    let local_dir = match body.get("localDir") {
+        None => None,
+        Some(serde_json::Value::Null) => Some(None),
+        Some(v) => match v.as_str() {
+            Some(s) => Some(Some(s.to_string())),
+            None => {
+                return error(
+                    StatusCode::BAD_REQUEST,
+                    "badRequest",
+                    "localDir must be a string path or null",
+                )
+            }
+        },
+    };
+    if let Err(e) = u.put_settings(channel, auto_check, local_dir) {
         return error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "storage",
@@ -283,6 +297,33 @@ async fn get_job(State(state): State<Arc<ApiState>>, Path(id): Path<String>) -> 
     }
 }
 
+async fn post_install_local(State(state): State<Arc<ApiState>>, body: Bytes) -> Response {
+    let parsed = match parse_optional_json_object(&body) {
+        Ok(Some(v)) => v,
+        Ok(None) => {
+            return error(
+                StatusCode::BAD_REQUEST,
+                "badRequest",
+                "components and confirm are required",
+            )
+        }
+        Err(r) => return *r,
+    };
+    let components = match parse_components_field(Some(&parsed)) {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            return error(
+                StatusCode::BAD_REQUEST,
+                "badRequest",
+                "components must name at least one component",
+            )
+        }
+        Err(r) => return *r,
+    };
+    let confirm = confirmed(Some(&parsed));
+    spawn_job(state, move |u| u.apply_local(components, confirm)).await
+}
+
 pub fn router() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/v1/updates", get(get_updates))
@@ -290,6 +331,7 @@ pub fn router() -> Router<Arc<ApiState>> {
         .route("/v1/updates/settings", put(put_settings))
         .route("/v1/updates/plan", post(post_plan))
         .route("/v1/updates/apply", post(post_apply))
+        .route("/v1/updates/install-local", post(post_install_local))
         .route("/v1/conversion", get(get_conversion))
         .route("/v1/conversion/convert", post(post_convert))
         .route("/v1/conversion/restore", post(post_restore))

@@ -1,8 +1,34 @@
 import { invoke } from "@tauri-apps/api/core";
 import { toDaemonError } from "./daemonError";
 
-export type UpdateChannel = "stable" | "beta";
+export type UpdateChannel = "stable" | "beta" | "local";
 export type KeyboardComponent = "firmware" | "bridge" | "display";
+
+export interface LocalArtifact {
+  component: KeyboardComponent;
+  name: string;
+  path: string;
+  version: string | null;
+  sizeBytes: number;
+  modifiedAt: string;
+}
+
+export interface LocalHostInstaller {
+  name: string;
+  path: string;
+  sizeBytes: number;
+  modifiedAt: string;
+}
+
+export interface LocalScan {
+  dir: string;
+  exists: boolean;
+  error: string | null;
+  firmware: LocalArtifact | null;
+  bridge: LocalArtifact | null;
+  display: LocalArtifact | null;
+  host: LocalHostInstaller | null;
+}
 
 export interface ApiErrorInfo {
   code: string;
@@ -32,6 +58,7 @@ export interface ComponentStatus {
   component: KeyboardComponent;
   installed: string | null;
   kind: "openflux" | "preRelease" | "factory" | "unknown";
+  customBuild?: boolean;
   latest: string | null;
   state: ComponentState;
   required?: boolean;
@@ -63,7 +90,7 @@ export interface KeyboardStatus {
   conversion: { found: ComponentStatus[]; install: { component: KeyboardComponent; version: string }[] } | null;
 }
 
-export type JobKind = "update" | "convert" | "restore";
+export type JobKind = "update" | "convert" | "restore" | "localInstall";
 
 export interface Job {
   id: string;
@@ -91,6 +118,8 @@ export interface UpdatesStatus {
   checking: boolean;
   channel: UpdateChannel;
   autoCheck: boolean;
+  localDir?: string | null;
+  localBuilds?: LocalScan | null;
   indexSource: "online" | "bundled" | "none";
   error: ApiErrorInfo | null;
   host: HostStatus;
@@ -120,11 +149,17 @@ export interface LifecycleReply {
 export interface UpdatesClient {
   getUpdates(): Promise<UpdatesStatus>;
   checkUpdates(): Promise<UpdatesStatus>;
-  putUpdateSettings(settings: { channel?: UpdateChannel; autoCheck?: boolean }): Promise<UpdatesStatus>;
+  putUpdateSettings(settings: {
+    channel?: UpdateChannel;
+    autoCheck?: boolean;
+    localDir?: string | null;
+  }): Promise<UpdatesStatus>;
   /** Previews the exact plan for `components` (or the whole keyboard when omitted). */
   planUpdates?(components?: KeyboardComponent[]): Promise<{ plan: UpdatePlan | null }>;
   /** Starts installing keyboard updates. Omitting `components` installs the whole plan. */
   applyUpdates(components?: KeyboardComponent[], expectedSteps?: ExpectedPlanStep[]): Promise<{ jobId: string }>;
+  /** Starts installing unsigned local keyboard builds from the configured local folder. */
+  installLocalUpdates?(components: KeyboardComponent[]): Promise<{ jobId: string }>;
   getConversion(): Promise<ConversionStatus>;
   startConversion(step: ConversionStep): Promise<{ jobId: string }>;
   getJob(id: string): Promise<Job>;
@@ -159,6 +194,7 @@ export function createUpdatesClient(): UpdatesClient {
           expectedSteps: expectedSteps ?? null,
         }),
       ),
+    installLocalUpdates: async (components) => jobIdOf(await call("install_local_updates", { components })),
     getConversion: () => call("get_conversion"),
     startConversion: async (step) => jobIdOf(await call("start_conversion", { step })),
     getJob: (id) => call("get_job", { id }),

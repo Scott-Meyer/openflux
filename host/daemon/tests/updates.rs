@@ -2765,3 +2765,89 @@ async fn malformed_apply_is_rejected_and_plan_pinning_and_startup_reservation_ho
     kb.hold(false);
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[tokio::test]
+async fn custom_openflux_build_stays_writable_and_local_folder_installs_unsigned_builds() {
+    let tmp = temp_dir("custom_and_local");
+    let k = keys();
+    let site = tmp.join("site");
+    std::fs::create_dir_all(&site).unwrap();
+    publish(&k, &site, baseline(&k, &site), None);
+
+    // Keyboard runs a custom/dev OpenFlux bridge not listed in the signed release index.
+    let kb = MockKeyboard::new([
+        ("firmware", "openflux-firmware 1.0.0"),
+        ("bridge", "openflux-bridge 1.0.2-dev2"),
+        ("display", "openflux-display 1.0.0"),
+    ]);
+    let d = daemon(
+        kb.clone(),
+        config(&tmp.join("data"), file_url(&site), None, &k),
+    )
+    .await;
+
+    // 1. Same-major custom OpenFlux builds must not lock out bridgeUsb / live telemetry writes.
+    let (code, dev_status) = http(d.addr, "GET", "/v1/device/status", None).await;
+    assert_eq!(code, 200, "{dev_status}");
+    assert_eq!(
+        dev_status["compatibility"]["bridgeUsb"], "ok",
+        "{dev_status}"
+    );
+    assert_eq!(
+        dev_status["compatibility"]["firmwareUsb"], "ok",
+        "{dev_status}"
+    );
+
+    let (code, upd) = http(d.addr, "GET", "/v1/updates", None).await;
+    assert_eq!(code, 200, "{upd}");
+    assert_eq!(component(&upd, "bridge")["customBuild"], true, "{upd}");
+
+    // 2. Pointing the Local builds channel at a folder scans local artifacts and installs with confirmation.
+    let local_dir = tmp.join("local-builds");
+    std::fs::create_dir_all(local_dir.join("build/bridge")).unwrap();
+    std::fs::write(
+        local_dir.join("build/bridge/openflux-bridge_1.0.3-local_aarch64.ipk"),
+        b"!<arch>\nfake-ipk-payload",
+    )
+    .unwrap();
+
+    let body = serde_json::json!({
+        "channel": "local",
+        "localDir": local_dir.to_string_lossy(),
+    })
+    .to_string();
+    let (code, upd) = http(d.addr, "PUT", "/v1/updates/settings", Some(&body)).await;
+    assert_eq!(code, 200, "{upd}");
+    assert_eq!(upd["channel"], "local");
+    assert_eq!(upd["localBuilds"]["exists"], true);
+    assert_eq!(
+        upd["localBuilds"]["bridge"]["name"],
+        "openflux-bridge_1.0.3-local_aarch64.ipk"
+    );
+
+    // Must refuse without confirm: true.
+    let (code, err) = http(
+        d.addr,
+        "POST",
+        "/v1/updates/install-local",
+        Some(r#"{"components":["bridge"]}"#),
+    )
+    .await;
+    assert_eq!(code, 400, "{err}");
+    assert_eq!(err["error"]["code"], "confirmationRequired");
+
+    // Confirmed local install runs through the job & confirms the bridge trial.
+    let job_id = start_job(
+        &d,
+        "/v1/updates/install-local",
+        r#"{"components":["bridge"],"confirm":true}"#,
+    )
+    .await;
+    let job = wait_job(&d, &job_id).await;
+    assert_eq!(job["state"], "succeeded", "{job}");
+    assert_eq!(
+        kb.version("bridge").as_deref(),
+        Some("openflux-bridge 1.0.3-local")
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+}

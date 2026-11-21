@@ -13,6 +13,7 @@ pub enum JobKind {
     Update,
     Convert,
     Restore,
+    LocalInstall,
 }
 
 impl JobKind {
@@ -21,6 +22,7 @@ impl JobKind {
             JobKind::Update => "update",
             JobKind::Convert => "convert",
             JobKind::Restore => "restore",
+            JobKind::LocalInstall => "localInstall",
         }
     }
 
@@ -30,6 +32,7 @@ impl JobKind {
             JobKind::Update => "updating the keyboard",
             JobKind::Convert => "converting the keyboard to OpenFlux",
             JobKind::Restore => "restoring the keyboard's factory software",
+            JobKind::LocalInstall => "installing local keyboard builds",
         }
     }
 }
@@ -103,6 +106,10 @@ pub enum StepKind {
     InstallPackage,
     /// Flash firmware through the boot loader.
     FlashFirmware,
+    /// Install an unsigned local bridge or display package from a developer folder.
+    InstallLocalPackage,
+    /// Flash an unsigned local firmware `.uf2` from a developer folder.
+    FlashLocalFirmware,
     /// Read the keyboard's existing settings for import.
     ReadSettings,
     /// Stage the OpenFlux bridge and its launcher as the keyboard's rescue pair.

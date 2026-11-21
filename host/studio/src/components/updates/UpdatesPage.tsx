@@ -11,6 +11,8 @@ import {
   type Job,
   type KeyboardComponent,
   type KeyboardStatus,
+  type LocalArtifact,
+  type LocalScan,
   type PlanStep,
   type UpdateChannel,
   type UpdatePlan,
@@ -69,6 +71,7 @@ const ComponentTable: React.FC<{ components: ComponentStatus[]; onOpenUrl: (url:
           <td>{c.installed ?? "Not detected"}</td>
           <td>
             <span className={`state-label state-${c.state}`}>{componentStateLabel(c)}</span>
+            {c.customBuild && <span className="pill">Custom / local</span>}
             {c.required && c.state === "updateAvailable" && <span className="pill pill-warn">Required</span>}
             {c.reason && <div className="muted">{c.reason}</div>}
             {c.notesUrl && (
@@ -252,12 +255,146 @@ const KeyboardUpdates: React.FC<{
   );
 };
 
+function formatSizeKb(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+const LOCAL_COMPONENTS: KeyboardComponent[] = ["firmware", "bridge", "display"];
+
+/** Unsigned local developer builds scanned from the user's chosen local folder. */
+const LocalKeyboardUpdates: React.FC<{
+  updates: UpdatesClient;
+  localBuilds: LocalScan | null | undefined;
+  connected: boolean;
+  jobRunning: boolean;
+  onJobStarted: (jobId: string) => void;
+}> = ({ updates, localBuilds, connected, jobRunning, onJobStarted }) => {
+  const found: LocalArtifact[] = LOCAL_COMPONENTS.map((c) => localBuilds?.[c] ?? null).filter(
+    (a): a is LocalArtifact => a !== null,
+  );
+  const foundKey = found.map((a) => `${a.component}:${a.path}`).join("|");
+  const [selected, setSelected] = useState<Set<KeyboardComponent>>(() => new Set(found.map((a) => a.component)));
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [error, setError] = useState<DaemonError | null>(null);
+
+  useEffect(() => {
+    setSelected(new Set(foundKey ? foundKey.split("|").map((s) => s.split(":")[0] as KeyboardComponent) : []));
+  }, [foundKey]);
+
+  if (!localBuilds) {
+    return (
+      <p className="muted">
+        Choose a local build folder above (e.g. an OpenFlux checkout or output directory) to scan for local{" "}
+        <code>.uf2</code> and <code>.ipk</code> builds.
+      </p>
+    );
+  }
+  if (!localBuilds.exists) {
+    return (
+      <ErrorNotice
+        title="Local build folder isn't available"
+        code="badRequest"
+        message={localBuilds.error ?? `Folder not found: ${localBuilds.dir}`}
+      />
+    );
+  }
+
+  const chosen = found.filter((a) => selected.has(a.component));
+  const toggle = (c: KeyboardComponent) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(c)) next.delete(c);
+      else next.add(c);
+      return next;
+    });
+  };
+
+  const install = async () => {
+    if (!updates.installLocalUpdates || chosen.length === 0) return;
+    setConfirmOpen(false);
+    setError(null);
+    try {
+      const { jobId } = await updates.installLocalUpdates(chosen.map((a) => a.component));
+      onJobStarted(jobId);
+    } catch (e) {
+      setError(toDaemonError(e));
+    }
+  };
+
+  return (
+    <div className="updates-plan">
+      <div className="toolbar-between">
+        <h4>Local builds in folder</h4>
+        <span className="pill pill-warn">Local (unsigned)</span>
+      </div>
+      <div className="updates-choices">
+        {LOCAL_COMPONENTS.map((c) => {
+          const art = localBuilds[c];
+          if (!art) {
+            return (
+              <div key={c} className="muted">
+                {COMPONENT_LABELS[c]}: no matching build found in folder
+              </div>
+            );
+          }
+          return (
+            <label key={c} className="checkbox-row">
+              <input type="checkbox" checked={selected.has(c)} disabled={jobRunning} onChange={() => toggle(c)} />
+              <span>
+                <strong>{COMPONENT_LABELS[c]}</strong>: <code>{art.name}</code>
+                {art.version ? ` (${art.version})` : ""} · {formatSizeKb(art.sizeBytes)} · {formatTime(art.modifiedAt)}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {found.length > 0 && (
+        <div className="button-row">
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={jobRunning || !connected || chosen.length === 0 || !updates.installLocalUpdates}
+            onClick={() => setConfirmOpen(true)}
+          >
+            Install local builds…
+          </button>
+          {!connected && <span className="muted">Connect the keyboard to install local builds.</span>}
+        </div>
+      )}
+      {error && <DaemonErrorNotice error={error} />}
+      {confirmOpen && (
+        <ConfirmDialog
+          title="Install unsigned local builds?"
+          confirmLabel="Install unsigned builds"
+          onConfirm={() => void install()}
+          onCancel={() => setConfirmOpen(false)}
+        >
+          <p>
+            These local files skip release signature verification. Firmware flashing still preserves your calibration
+            region, and bridge packages still use automatic rollback if they fail to reconnect.
+          </p>
+          <ol className="updates-steps">
+            {chosen.map((a) => (
+              <li key={a.component}>
+                {COMPONENT_LABELS[a.component]}: <code>{a.name}</code>
+              </li>
+            ))}
+          </ol>
+        </ConfirmDialog>
+      )}
+    </div>
+  );
+};
+
 /** The Updates page: OpenFlux itself, and the keyboard's software. */
 export const UpdatesPage: React.FC<{
   updates: UpdatesClient;
   hostFlow: HostUpdateFlow;
   /** Shows whether the background service runs and starts at login. */
   service?: DaemonServiceClient;
+  /** Native folder picker for the Local builds developer source. */
+  pickFolder?: (title?: string) => Promise<string | null>;
   /** Called with every status the page loads, so the navigation badge stays current. */
   onStatus?: (s: UpdatesStatus) => void;
   /** Called after a keyboard job succeeds, so the rest of Studio reloads the keyboard's config. */
@@ -265,8 +402,9 @@ export const UpdatesPage: React.FC<{
   /** Poll intervals for a running check and a running job. */
   pollMs?: number;
   jobPollMs?: number;
-}> = ({ updates, hostFlow, service, onStatus, onKeyboardChanged, pollMs = 1500, jobPollMs = 1000 }) => {
+}> = ({ updates, hostFlow, service, pickFolder, onStatus, onKeyboardChanged, pollMs = 1500, jobPollMs = 1000 }) => {
   const [status, setStatus] = useState<UpdatesStatus | null>(null);
+  const [localDirInput, setLocalDirInput] = useState("");
   const [conversion, setConversion] = useState<ConversionStatus | null>(null);
   const [loadError, setLoadError] = useState<DaemonError | null>(null);
   const [actionError, setActionError] = useState<DaemonError | null>(null);
@@ -281,6 +419,7 @@ export const UpdatesPage: React.FC<{
 
   const accept = useCallback((s: UpdatesStatus) => {
     setStatus(s);
+    setLocalDirInput(s.localDir ?? "");
     setLoadError(null);
     setCheckPollError(null);
     onStatusRef.current?.(s);
@@ -323,7 +462,9 @@ export const UpdatesPage: React.FC<{
   const hostAvailable = status?.host.state === "updateAvailable";
   const channel = status?.channel;
   useEffect(() => {
-    if (hostAvailable && channel && hostFlow.state.phase === "idle") void hostFlow.check(channel);
+    if (hostAvailable && channel && channel !== "local" && hostFlow.state.phase === "idle") {
+      void hostFlow.check(channel);
+    }
   }, [hostAvailable, channel, hostFlow]);
 
   const { job, unreachable } = useJob(
@@ -346,17 +487,26 @@ export const UpdatesPage: React.FC<{
     } catch (e) {
       setActionError(toDaemonError(e));
     }
-    if (status) void hostFlow.check(status.channel);
+    if (status && status.channel !== "local") void hostFlow.check(status.channel);
   };
 
-  const saveSettings = async (patch: { channel?: UpdateChannel; autoCheck?: boolean }) => {
+  const saveSettings = async (patch: { channel?: UpdateChannel; autoCheck?: boolean; localDir?: string | null }) => {
     setActionError(null);
     try {
       const s = await updates.putUpdateSettings(patch);
       accept(s);
-      if (patch.channel) void hostFlow.check(s.channel);
+      if (patch.channel && s.channel !== "local") void hostFlow.check(s.channel);
     } catch (e) {
       setActionError(toDaemonError(e));
+    }
+  };
+
+  const browseLocalDir = async () => {
+    if (!pickFolder) return;
+    const picked = await pickFolder("Choose local OpenFlux build folder");
+    if (picked) {
+      setLocalDirInput(picked);
+      await saveSettings({ localDir: picked });
     }
   };
 
@@ -404,6 +554,7 @@ export const UpdatesPage: React.FC<{
             >
               <option value="stable">Stable</option>
               <option value="beta">Beta (early releases, may have problems)</option>
+              <option value="local">Local builds (developer folder — unsigned)</option>
             </select>
           </label>
           <label className="checkbox-row">
@@ -415,7 +566,40 @@ export const UpdatesPage: React.FC<{
             Check for updates automatically
           </label>
         </div>
-        {sourceNote && <p className="muted">{sourceNote}</p>}
+        {status.channel === "local" && (
+          <div className="field">
+            <span>Local build folder</span>
+            <div className="button-row">
+              <input
+                type="text"
+                aria-label="Local build folder"
+                value={localDirInput}
+                placeholder="Path to OpenFlux checkout or build folder…"
+                onChange={(e) => setLocalDirInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void saveSettings({ localDir: localDirInput });
+                }}
+              />
+              {pickFolder && (
+                <button type="button" className="btn-secondary" onClick={() => void browseLocalDir()}>
+                  Browse…
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => void saveSettings({ localDir: localDirInput })}
+              >
+                Scan
+              </button>
+            </div>
+            <p className="muted">
+              Scans this folder (and standard <code>build/</code> subdirectories) for local <code>.uf2</code> and{" "}
+              <code>.ipk</code> files. Local builds skip release signature checks.
+            </p>
+          </div>
+        )}
+        {status.channel !== "local" && sourceNote && <p className="muted">{sourceNote}</p>}
         {status.error && (
           <ErrorNotice title="The last check failed" code={status.error.code} message={status.error.message} />
         )}
@@ -426,6 +610,20 @@ export const UpdatesPage: React.FC<{
       </div>
 
       <HostUpdateCard flow={hostFlow} host={status.host} onOpenUrl={openUrl} />
+      {status.channel === "local" && status.localBuilds?.host && (
+        <section className="card" aria-label="Local desktop installer">
+          <div className="toolbar-between">
+            <div>
+              <strong>Local Studio installer found</strong>
+              <div className="muted">
+                <code>{status.localBuilds.host.path}</code> · {formatSizeKb(status.localBuilds.host.sizeBytes)} ·{" "}
+                {formatTime(status.localBuilds.host.modifiedAt)}
+              </div>
+            </div>
+            <span className="pill pill-warn">Local (unsigned)</span>
+          </div>
+        </section>
+      )}
       {service && <BackgroundServiceCard service={service} />}
 
       <section className="card" aria-label="Keyboard">
@@ -460,13 +658,22 @@ export const UpdatesPage: React.FC<{
             onJobStarted={startJob}
           />
         )}
-        {kb.mode === "openflux" && (
+        {kb.mode === "openflux" && status.channel !== "local" && (
           <KeyboardUpdates
             updates={updates}
             keyboard={kb}
             jobRunning={jobRunning}
             onJobStarted={startJob}
             onPlanChanged={() => void refresh()}
+          />
+        )}
+        {status.channel === "local" && (
+          <LocalKeyboardUpdates
+            updates={updates}
+            localBuilds={status.localBuilds}
+            connected={kb.connected}
+            jobRunning={jobRunning}
+            onJobStarted={startJob}
           />
         )}
         {kb.mode === "openflux" && (

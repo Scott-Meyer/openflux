@@ -297,4 +297,51 @@ describe("Conversion", () => {
     await waitFor(() => screen.getByText("Restoring the factory software"));
     expect(screen.getByText("Step 1 of 4: Installing factory software")).toBeTruthy();
   });
+
+  it("lets developers switch to Local builds, scan a folder, and confirm an unsigned local install", async () => {
+    const daemon = new MockDaemon();
+    const { updates } = setup(daemon);
+    const installLocalUpdates = vi.fn(async () => ({ jobId: "local-job-1" }));
+    updates.installLocalUpdates = installLocalUpdates;
+    const origPut = updates.putUpdateSettings;
+    updates.putUpdateSettings = vi.fn(async (patch) => {
+      const next = await origPut(patch);
+      if (patch.channel === "local" || patch.localDir) {
+        const localDir = patch.localDir ?? "/tmp/openflux-dev";
+        return {
+          ...next,
+          channel: "local",
+          localDir,
+          localBuilds: {
+            dir: localDir,
+            exists: true,
+            error: null,
+            firmware: null,
+            bridge: {
+              component: "bridge",
+              name: "openflux-bridge_1.0.3-dev_aarch64.ipk",
+              path: "/tmp/openflux-dev/openflux-bridge_1.0.3-dev_aarch64.ipk",
+              version: "1.0.3-dev",
+              sizeBytes: 340000,
+              modifiedAt: "2026-11-21T19:00:00Z",
+            },
+            display: null,
+            host: null,
+          },
+        };
+      }
+      return next;
+    });
+
+    await waitFor(() => screen.getByLabelText("Update channel"));
+    fireEvent.change(screen.getByLabelText("Update channel"), { target: { value: "local" } });
+    await waitFor(() => screen.getByText("Local builds in folder"));
+    expect(screen.getByText("openflux-bridge_1.0.3-dev_aarch64.ipk")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Install local builds…"));
+    const dlg = screen.getByRole("dialog", { name: "Install unsigned local builds?" });
+    expect(dlg.textContent).toContain("skip release signature verification");
+    fireEvent.click(within(dlg).getByText("Install unsigned builds"));
+    await waitFor(() => expect(installLocalUpdates).toHaveBeenCalledWith(["bridge"]));
+  });
 });

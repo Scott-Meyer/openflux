@@ -1125,6 +1125,7 @@ fn main() {
             daemon_api::put_update_settings,
             daemon_api::plan_updates,
             daemon_api::apply_updates,
+            daemon_api::install_local_updates,
             daemon_api::get_conversion,
             daemon_api::start_conversion,
             daemon_api::get_job,
