@@ -190,8 +190,7 @@ case "$target" in
         cc="gcc"
         extra_ldflags="-static"
         x264_flags+=(--host=x86_64-w64-mingw32)
-        ffmpeg_flags+=(--target-os=mingw32 --arch=x86_64 --enable-w32threads
-                       --enable-mediafoundation --enable-encoder=h264_mf)
+        ffmpeg_flags+=(--target-os=mingw32 --arch=x86_64 --enable-w32threads)
         ;;
     *)
         die "unsupported target: ${target}"
