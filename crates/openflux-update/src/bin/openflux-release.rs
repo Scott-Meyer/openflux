@@ -203,6 +203,10 @@ struct BundleArgs {
     /// Skip components with no eligible release instead of failing.
     #[arg(long)]
     allow_missing: bool,
+    /// Map artifact URLs starting with `<url-prefix>/` to files under `<dir>/`
+    /// instead of fetching them over HTTP (for verifying a staged site before deploy).
+    #[arg(long = "local-prefix", value_name = "URL=DIR")]
+    local_prefix: Option<String>,
     /// Output directory: index.json, index.json.sig and the artifacts, flat.
     #[arg(short = 'o', long)]
     output: PathBuf,
@@ -808,6 +812,16 @@ fn bundle(a: BundleArgs) -> Result<()> {
         }
     }
 
+    let local_prefix = match &a.local_prefix {
+        Some(spec) => {
+            let (prefix, dir) = spec.split_once('=').ok_or_else(|| {
+                format!("--local-prefix {spec:?}: expected <url-prefix>=<local-dir>")
+            })?;
+            Some((prefix.trim_end_matches('/').to_string(), PathBuf::from(dir)))
+        }
+        None => None,
+    };
+
     fs::create_dir_all(&a.output).map_err(|e| format!("{}: {e}", a.output.display()))?;
     let index_dir = if is_url(&a.index) {
         None
@@ -816,7 +830,26 @@ fn bundle(a: BundleArgs) -> Result<()> {
     };
     for r in &chosen {
         for art in &r.artifacts {
-            let location = if is_url(&art.url) {
+            let location = if let Some((prefix, dir)) = &local_prefix {
+                if let Some(rest) = art
+                    .url
+                    .strip_prefix(prefix)
+                    .and_then(|s| s.strip_prefix('/'))
+                {
+                    dir.join(rest).to_string_lossy().into_owned()
+                } else if is_url(&art.url) {
+                    art.url.clone()
+                } else {
+                    let index_dir = index_dir.as_ref().ok_or_else(|| {
+                        format!(
+                            "{}: artifact {} has a relative url but the index is remote",
+                            r.label(),
+                            art.name
+                        )
+                    })?;
+                    index_dir.join(&art.url).to_string_lossy().into_owned()
+                }
+            } else if is_url(&art.url) {
                 art.url.clone()
             } else {
                 let dir = index_dir.as_ref().ok_or_else(|| {

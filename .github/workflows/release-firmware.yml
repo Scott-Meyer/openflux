@@ -1,15 +1,10 @@
-# Builds and uploads a firmware release (firmware-vX.Y.Z[-beta.N]).
+# Builds and stages a firmware release (firmware-vX.Y.Z[-beta.N]).
 #
-# Called by release-please.yml when release-please creates the release, or
-# run by hand to rebuild an existing tag. The build environment is
-# keyboard/firmware/Dockerfile.build, which installs the toolchain, the Pico
-# SDK and LittleFS. The version comes from
-# `set(OPENFLUX_FIRMWARE_VERSION ...)` in keyboard/firmware/CMakeLists.txt
-# (release-meta.sh checks it against the tag) and is compiled into the image.
-# The image is built twice, each time into a new build directory without
-# network access, and the two .uf2 files must be identical. The release also
-# carries openflux-firmware-licenses.txt, the license texts of the littlefs,
-# Pico SDK and TinyUSB code the image links.
+# Called by release-please.yml when a firmware release PR is merged, or run
+# by hand to rebuild an existing tag. Builds reproducibly twice inside
+# keyboard/firmware/Dockerfile.build without network access and uploads a
+# staged workflow artifact for publish-index.yml (hosted on GitHub Pages,
+# not as a public GitHub release).
 
 name: Release firmware
 
@@ -29,7 +24,7 @@ on:
         type: string
         required: true
       publish-index:
-        description: Publish the update index afterwards (needs approval)
+        description: Publish the update index afterwards
         type: boolean
         default: true
 
@@ -42,9 +37,7 @@ jobs:
       run:
         shell: bash
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -56,7 +49,13 @@ jobs:
         run: .github/scripts/release-meta.sh "$TAG"
         env:
           TAG: ${{ inputs.tag }}
-        shell: bash
+          OPENFLUX_PAGES_URL: ${{ vars.OPENFLUX_PAGES_URL }}
+
+      - name: Check component
+        if: steps.meta.outputs.component != 'firmware'
+        run: |
+          echo "release-firmware builds firmware releases only" >&2
+          exit 1
 
       - name: Host unit tests (ASan, UBSan)
         run: |
@@ -82,46 +81,59 @@ jobs:
           a="$(sha256sum "build/firmware-1/$name" | cut -d' ' -f1)"
           b="$(sha256sum "build/firmware-2/$name" | cut -d' ' -f1)"
           [ "$a" = "$b" ] || { echo "firmware build is not reproducible: $a vs $b" >&2; exit 1; }
-          # The firmware reports its version, so the image must carry it. The flat
-          # .bin is searched because UF2 blocks can split a string.
           grep -qaF "$VERSION" "build/firmware-1/${name%.uf2}.bin" || { echo "${name%.uf2}.bin does not contain version $VERSION" >&2; exit 1; }
-          mkdir -p dist/artifacts
-          cp "build/firmware-1/$name" "dist/artifacts/openflux-firmware-$VERSION.uf2"
-          ls -l dist/artifacts
+          mkdir -p staged/artifacts staged/source
+          cp "build/firmware-1/$name" "staged/artifacts/openflux-firmware-$VERSION.uf2"
+          ls -l staged/artifacts
 
       - name: Licenses of the linked code
         run: |
-          # The image holds the exact sources the firmware links: littlefs,
-          # the Pico SDK and its TinyUSB.
-          .github/scripts/firmware-licenses.sh openflux-firmware-build dist/extra/openflux-firmware-licenses.txt
-          ls -l dist/extra
+          .github/scripts/firmware-licenses.sh openflux-firmware-build staged/source/openflux-firmware-licenses.txt
+          ls -l staged/source
 
-      - uses: ./.github/actions/publish-release-assets
-        with:
-          tag: ${{ inputs.tag }}
-          component: firmware
-          version: ${{ steps.meta.outputs.version }}
-          channel: ${{ steps.meta.outputs.channel }}
-          release-url: ${{ steps.meta.outputs.release_url }}
-          notes-url: ${{ steps.meta.outputs.notes_url }}
-          artifacts: dist/artifacts
-          extra: dist/extra
-          github-token: ${{ github.token }}
-
-      - name: Set release title
+      - name: Preflight and stage
         env:
-          GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
+          COMPONENT: ${{ steps.meta.outputs.component }}
           VERSION: ${{ steps.meta.outputs.version }}
-        run: gh release edit "$TAG" --title "Keyboard Firmware v${VERSION} (bundled in OpenFlux Studio)"
+          CHANNEL: ${{ steps.meta.outputs.channel }}
+          EPOCH: ${{ steps.meta.outputs.source_date_epoch }}
+          PAGES_URL: ${{ steps.meta.outputs.pages_url }}
+          NOTES_URL: ${{ steps.meta.outputs.notes_url }}
+        run: |
+          cargo build --locked --release --manifest-path crates/openflux-update/Cargo.toml --bin openflux-release
+          tool="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/openflux-update/Cargo.toml | jq -r .target_directory)/release/openflux-release"
+          "$tool" manifest --component "$COMPONENT" --version "$VERSION" --channel "$CHANNEL" \
+            --compat compat.toml --artifact "staged/artifacts/openflux-firmware-${VERSION}.uf2" \
+            --base-url "${PAGES_URL}/packages/${COMPONENT}/${VERSION}" --notes-url "$NOTES_URL" \
+            -o "$RUNNER_TEMP/preflight-release.json"
+          cp compat.toml staged/compat.toml
+          jq -n \
+            --arg component "$COMPONENT" \
+            --arg version "$VERSION" \
+            --arg channel "$CHANNEL" \
+            --arg tag "$TAG" \
+            --arg source_date_epoch "$EPOCH" \
+            --arg notes_url "$NOTES_URL" \
+            '{component: $component, version: $version, channel: $channel, tag: $tag, source_date_epoch: $source_date_epoch, notes_url: $notes_url}' \
+            > staged/meta.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: staged-keyboard-firmware
+          path: staged
+          retention-days: 7
+          if-no-files-found: error
 
   publish-index:
     needs: build
     if: inputs.publish-index
     permissions:
-      contents: write
+      contents: read
       pages: write
       id-token: write
       deployments: write
     uses: ./.github/workflows/publish-index.yml
     secrets: inherit
+    with:
+      staged-pattern: staged-keyboard-firmware

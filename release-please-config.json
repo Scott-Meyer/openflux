@@ -104,6 +104,7 @@
       "component": "firmware",
       "release-type": "simple",
       "initial-version": "1.0.0",
+      "skip-github-release": true,
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
@@ -121,6 +122,7 @@
       "component": "bridge",
       "release-type": "simple",
       "initial-version": "1.0.0",
+      "skip-github-release": true,
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
@@ -144,6 +146,7 @@
       "component": "display",
       "release-type": "simple",
       "initial-version": "1.0.0",
+      "skip-github-release": true,
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {

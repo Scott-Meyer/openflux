@@ -1,15 +1,13 @@
 # Releases are made only here. release-please keeps one release pull request
-# per component open on main; merging it tags the release and creates the
-# GitHub release, and this workflow then builds and publishes it in the same
-# run. Tags created with the default token do not trigger other workflows,
-# so the build workflows are called directly rather than through tag events.
+# per component open on main. Merging a host PR tags and creates the public
+# OpenFlux Studio GitHub release. Merging a keyboard PR (firmware, bridge or
+# display) bumps its manifest version and tags it without creating a public
+# GitHub release; its packages are published directly to GitHub Pages.
 #
 # Order when keyboard components and the host are released together: keyboard
-# builds, then the index is published (approval), then the host builds and
-# bundles the keyboard software that was just published, then the index is
-# published again (second approval). The first release of all is cut the
-# same way: keyboard 1.0.0 first, then host 1.0.0, whose build refuses to
-# run while the index has no stable keyboard releases. See docs/releasing.md.
+# builds, then the index is published to GitHub Pages, then the host builds
+# and bundles the keyboard software that was just published, then the index
+# and Studio update feeds are published again. See docs/releasing.md.
 
 name: Release
 
@@ -35,18 +33,54 @@ jobs:
       prs: ${{ steps.rp.outputs.prs }}
       host_created: ${{ steps.rp.outputs['host--release_created'] }}
       host_tag: ${{ steps.rp.outputs['host--tag_name'] }}
-      firmware_created: ${{ steps.rp.outputs['keyboard/firmware--release_created'] }}
-      firmware_tag: ${{ steps.rp.outputs['keyboard/firmware--tag_name'] }}
-      bridge_created: ${{ steps.rp.outputs['keyboard/bridge--release_created'] }}
-      bridge_tag: ${{ steps.rp.outputs['keyboard/bridge--tag_name'] }}
-      display_created: ${{ steps.rp.outputs['keyboard/display--release_created'] }}
-      display_tag: ${{ steps.rp.outputs['keyboard/display--tag_name'] }}
+      firmware_created: ${{ steps.keyboard-tags.outputs.firmware_created }}
+      firmware_tag: ${{ steps.keyboard-tags.outputs.firmware_tag }}
+      bridge_created: ${{ steps.keyboard-tags.outputs.bridge_created }}
+      bridge_tag: ${{ steps.keyboard-tags.outputs.bridge_tag }}
+      display_created: ${{ steps.keyboard-tags.outputs.display_created }}
+      display_tag: ${{ steps.keyboard-tags.outputs.display_tag }}
     steps:
       - id: rp
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      # Keyboard components use skip-github-release: true so they never create
+      # public GitHub releases or steal the Latest badge from OpenFlux Studio.
+      # Detect version bumps in .release-please-manifest.json and push their
+      # git tags so the build workflows can check out and build them.
+      - id: keyboard-tags
+        run: |
+          if git rev-parse -q --verify HEAD^1 >/dev/null 2>&1 && git cat-file -e HEAD^1:.release-please-manifest.json 2>/dev/null; then
+            prev="$(git show HEAD^1:.release-please-manifest.json)"
+          else
+            prev='{}'
+          fi
+          curr="$(cat .release-please-manifest.json)"
+
+          for entry in firmware:keyboard/firmware bridge:keyboard/bridge display:keyboard/display; do
+            comp="${entry%%:*}"
+            path="${entry#*:}"
+            old_v="$(jq -r --arg p "$path" '.[$p] // ""' <<<"$prev")"
+            new_v="$(jq -r --arg p "$path" '.[$p] // ""' <<<"$curr")"
+            if [ -n "$new_v" ] && [ "$new_v" != "$old_v" ]; then
+              tag="${comp}-v${new_v}"
+              if [ -z "$(git ls-remote --tags origin "refs/tags/${tag}")" ]; then
+                git tag "$tag" HEAD
+                git push origin "refs/tags/${tag}"
+              fi
+              echo "${comp}_created=true" >> "$GITHUB_OUTPUT"
+              echo "${comp}_tag=${tag}" >> "$GITHUB_OUTPUT"
+            else
+              echo "${comp}_created=false" >> "$GITHUB_OUTPUT"
+              echo "${comp}_tag=" >> "$GITHUB_OUTPUT"
+            fi
+          done
 
   # Release pull requests are opened with the default token, which does not
   # trigger CI on them. This checks what release-please edits: the version
@@ -75,11 +109,7 @@ jobs:
     needs: release-please
     if: needs.release-please.outputs.firmware_created == 'true'
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
-      pages: write
-      deployments: write
+      contents: read
     uses: ./.github/workflows/release-firmware.yml
     secrets: inherit
     with:
@@ -89,11 +119,7 @@ jobs:
     needs: release-please
     if: needs.release-please.outputs.bridge_created == 'true'
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
-      pages: write
-      deployments: write
+      contents: read
     uses: ./.github/workflows/release-keyboard.yml
     secrets: inherit
     with:
@@ -103,37 +129,32 @@ jobs:
     needs: release-please
     if: needs.release-please.outputs.display_created == 'true'
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
-      pages: write
-      deployments: write
+      contents: read
     uses: ./.github/workflows/release-keyboard.yml
     secrets: inherit
     with:
       tag: ${{ needs.release-please.outputs.display_tag }}
 
-  # Publishes the keyboard releases before the host build, so that the host
-  # installers bundle them. A component whose build failed has no artifacts
-  # and is left for a rebuild; the others are published.
+  # Publishes any keyboard releases that succeeded before the host build, so
+  # that host installers bundle them.
   publish-keyboard:
     needs: [release-please, firmware, bridge, display]
     if: >-
       !cancelled() &&
       (needs.firmware.result == 'success' || needs.bridge.result == 'success' || needs.display.result == 'success')
     permissions:
-      contents: write
+      contents: read
       pages: write
       id-token: write
       deployments: write
     uses: ./.github/workflows/publish-index.yml
     secrets: inherit
+    with:
+      staged-pattern: staged-keyboard-*
 
   # The host build bundles keyboard software from the published index, so it
   # waits for publish-keyboard. If a keyboard build of this run failed, the
-  # host is not built either: its installers would bundle an older keyboard
-  # release than the one this run released. Rebuild the failed component, then
-  # run Release host for the host tag.
+  # host is not built either.
   host:
     needs: [release-please, firmware, bridge, display, publish-keyboard]
     if: >-
@@ -146,8 +167,6 @@ jobs:
       actions: read
       id-token: write
       attestations: write
-      pages: write
-      deployments: write
     uses: ./.github/workflows/release-host.yml
     secrets: inherit
     with:
@@ -157,9 +176,11 @@ jobs:
     needs: [host]
     if: ${{ !cancelled() && needs.host.result == 'success' }}
     permissions:
-      contents: write
+      contents: read
       pages: write
       id-token: write
       deployments: write
     uses: ./.github/workflows/publish-index.yml
     secrets: inherit
+    with:
+      staged-pattern: staged-host

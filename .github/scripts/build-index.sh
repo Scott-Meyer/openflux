@@ -1,37 +1,33 @@
 #!/usr/bin/env bash
-# Builds and signs the next update index from the published one.
+# Builds and signs the next update index from the published one, and mirrors
+# existing static files from GitHub Pages into the output site directory so
+# deploying Pages never drops previously published packages or source archives.
 #
 #   1. Fetch the published index.json and index.json.sig from the site,
 #      bypassing caches, and verify the signature against the release keys
 #      the pipeline knows (the active key, the key it replaces during a
 #      rotation, and the initial key built into every host).
 #   2. Refuse to continue if its sequence is lower than the last sequence
-#      recorded as published (--recorded-sequence): the site is serving an
-#      older index than one that was already deployed, and building on it
-#      would drop what came after it. With no published index, the recorded
-#      sequence must be 0 (no index was ever published).
-#   3. With --resign, sign every artifact of every published release again
+#      recorded as published (--recorded-sequence). With no published index,
+#      the recorded sequence must be 0.
+#   3. Mirror existing live Pages static files listed in site-manifest.json
+#      into --output (without clobbering newly staged files), verifying every
+#      mirrored file's sha256.
+#   4. With --resign, sign every artifact of every published release again
 #      with the release key in the environment, for a key rotation.
-#   4. `openflux-release index`: merge the published index with the release
-#      manifests in --releases, record the active key, the factory reference
-#      and the key statements, apply withdrawals, and increment the sequence.
-#   5. Sign the index with the release key, verify it with the active key,
-#      and check it the way a host does: with only the root and initial
-#      release keys built into the host, the new index must be accepted.
+#   5. `openflux-release index`: merge the published index with any newly
+#      staged release manifests in --releases, record the active key, the
+#      factory reference and the key statements, apply withdrawals, and
+#      increment the sequence.
+#   6. Sign the index with the release key, verify it with the active key,
+#      and check it the way a host does (using --local-prefix so newly staged
+#      Pages packages are verified before deploy).
 #
 # Usage:
 #   build-index.sh --tool <openflux-release> --pages-url <url> --releases <dir>
 #       --keys <dir> --factory <factory-reference.toml> --recorded-sequence <n>
 #       [--expires-days <n>] [--withdraw "<component>@<version> ..."] [--resign]
 #       [--root-pubkey <file>] [--initial-pubkey <file>] -o <site dir>
-#
-# --keys holds active-release.pub, optionally previous-release.pub, and
-# statements/*.json (root-signed key statements to carry in the index).
-# --root-pubkey and --initial-pubkey default to the keys built into hosts
-# (crates/openflux-update/keys/root.pub and release.pub).
-#
-# Writes <site dir>/index.json and index.json.sig, and prints sequence=<n>
-# and sha256=<hex> (also to $GITHUB_OUTPUT when set).
 #
 # Environment: OPENFLUX_RELEASE_KEY, and OPENFLUX_RELEASE_KEY_PASSWORD when
 # the key has one. Requires curl, jq and sha256sum.
@@ -42,7 +38,7 @@ die() { echo "build-index: $*" >&2; exit 1; }
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 tool="" pages_url="" releases="" keys="" factory="" recorded="" out=""
-expires_days=90 withdraw="" resign=false
+expires_days=365 withdraw="" resign=false
 root_pub="${repo}/crates/openflux-update/keys/root.pub"
 initial_pub="${repo}/crates/openflux-update/keys/release.pub"
 while [ $# -gt 0 ]; do
@@ -109,14 +105,67 @@ case "$status" in
         ;;
 esac
 
-# 3. Signatures by the active key for every published artifact.
+# 3. Mirror existing static files from live Pages (without overwriting newly staged files).
+if [ "${previous[1]}" != none ]; then
+    manifest_status="$(curl --silent --show-error --location --output "${work}/site-manifest.json" --write-out '%{http_code}' \
+        -H 'Cache-Control: no-cache' "${pages_url}/site-manifest.json?${fresh}")" || manifest_status=000
+    case "$manifest_status" in
+        200)
+            mirrored=0
+            while IFS=$'\t' read -r rel expected_sha; do
+                [[ "$rel" != /* && "$rel" != *..* ]] || die "unsafe path in site-manifest.json: ${rel}"
+                dest="${out}/${rel}"
+                if [ -f "$dest" ]; then
+                    continue
+                fi
+                mkdir -p "$(dirname "$dest")"
+                curl --fail --silent --show-error --location --output "$dest" "${pages_url}/${rel}"
+                actual_sha="$(sha256sum "$dest" | cut -d' ' -f1)"
+                [ "$actual_sha" = "$expected_sha" ] ||
+                    die "mirrored ${rel} sha256 mismatch: expected ${expected_sha}, got ${actual_sha}"
+                mirrored=$((mirrored + 1))
+            done < <(jq -r '.files | to_entries[] | "\(.key)\t\(.value)"' "${work}/site-manifest.json")
+            echo "build-index: mirrored ${mirrored} live file(s) from site-manifest.json" >&2
+            ;;
+        404)
+            # First run after migrating from the older Pages layout: preserve
+            # any existing Tauri update feeds if they are served live.
+            for feed in stable beta; do
+                rel="updates/${feed}/latest.json"
+                dest="${out}/${rel}"
+                [ -f "$dest" ] && continue
+                mkdir -p "$(dirname "$dest")"
+                fstatus="$(curl --silent --show-error --location --output "$dest" --write-out '%{http_code}' \
+                    -H 'Cache-Control: no-cache' "${pages_url}/${rel}?${fresh}")" || fstatus=000
+                if [ "$fstatus" != 200 ]; then
+                    rm -f "$dest"
+                fi
+            done
+            echo "build-index: no live site-manifest.json yet; bootstrapped existing feeds" >&2
+            ;;
+        *)
+            die "fetching ${pages_url}/site-manifest.json returned HTTP ${manifest_status}"
+            ;;
+    esac
+fi
+
+# 4. Signatures by the active key for every published artifact (key rotation).
 resign_args=()
 if [ "$resign" = true ]; then
     [ "${previous[1]}" != none ] || die "--resign needs a published index"
     mkdir -p "${work}/resign"
     while IFS=$'\t' read -r name url; do
         echo "build-index: signing ${name} again" >&2
-        curl --fail --silent --show-error --location --output "${work}/resign/${name}" "$url"
+        if [[ "$url" == "${pages_url}/"* ]]; then
+            rel="${url#"${pages_url}/"}"
+            if [ -f "${out}/${rel}" ]; then
+                cp "${out}/${rel}" "${work}/resign/${name}"
+            else
+                curl --fail --silent --show-error --location --output "${work}/resign/${name}" "$url"
+            fi
+        else
+            curl --fail --silent --show-error --location --output "${work}/resign/${name}" "$url"
+        fi
         "$tool" sign "${sign_args[@]}" "${work}/resign/${name}" 2>&1 | sed 's/^/  /' >&2
         "$tool" verify --pubkey "$active_pub" "${work}/resign/${name}" > /dev/null
         resign_args+=(--signature "${work}/resign/${name}.sig")
@@ -124,7 +173,7 @@ if [ "$resign" = true ]; then
     echo "build-index: $(( ${#resign_args[@]} / 2 )) artifacts signed again" >&2
 fi
 
-# 4. The next index.
+# 5. The next index.
 statements=()
 for s in "${keys}"/statements/*.json; do
     [ -f "$s" ] && statements+=(--statement "$s")
@@ -138,13 +187,14 @@ count="$(jq '[.releases[][]] | length' "${out}/index.json")"
 [ "$count" -gt 0 ] || die "the index has no releases; nothing is published"
 jq -r '.releases | to_entries[] | .key as $c | .value[] | "  \($c)\t\(.component) \(.version)\t\(.artifacts | length) artifacts\(if .withdrawn then " (withdrawn)" else "" end)"' "${out}/index.json" >&2
 
-# 5. Sign, verify, and check it as a host would.
+# 6. Sign, verify, and check it as a host would (resolving staged Pages URLs locally).
 "$tool" sign "${sign_args[@]}" "${out}/index.json"
 "$tool" verify --pubkey "$active_pub" "${out}/index.json" >&2 ||
     die "the index signature does not verify with ${active_pub}: the release key secret and the active public key differ"
 host_check="${work}/host-check"
 "$tool" bundle --index "${out}/index.json" --pubkey "$initial_pub" --root-pubkey "$root_pub" \
-    --channel beta --component firmware --allow-missing -o "$host_check" >&2 ||
+    --channel beta --component firmware --component bridge --component display --allow-missing \
+    --local-prefix "${pages_url}=${out}" -o "$host_check" >&2 ||
     die "a host built with ${initial_pub} and ${root_pub} would refuse this index (is a root-signed statement for the active key missing?)"
 
 sequence="$(jq -r .sequence "${out}/index.json")"

@@ -1,45 +1,37 @@
-# Publishes the signed update index and the Studio update feeds to GitHub
-# Pages.
+# Publishes the signed update index, keyboard packages, compliance source
+# archives and Studio Tauri update feeds to GitHub Pages.
 #
-# The sign job runs in the release-signing environment, whose required
-# reviewers approve every run; it is the only place the release key and the
-# updater key are available. It signs the artifacts of newly built releases,
-# writes their release.json, merges every release into the next index.json
-# (sequence one higher than the published index), signs it and prepares the
-# site (.github/scripts/build-index.sh). The deploy job publishes the site
-# with the Pages deployment action, checks that the live site serves exactly
-# the new index, and records its sequence as a deployment of the
-# update-index environment. The next run refuses to build on a published
-# index whose sequence is lower than the newest record.
-#
-# One concurrency group covers the whole run, from reading the published
-# index to recording the deployed one, so two runs never build on the same
-# index. A run queued behind another one is cancelled when a newer run
-# queues. No release is lost that way, because every run collects all
-# published releases again. The inputs of a manual run (withdraw, resign,
-# expires-days) are lost with it, so a cancelled manual run has to be
-# started again.
+# Runs in the release-signing environment (branch-protected to main) where
+# the release key and Tauri updater key live. Newly built releases arrive as
+# workflow artifacts (staged-*), avoiding GitHub Release scraping and keeping
+# public GitHub releases focused strictly on OpenFlux Studio installers.
 #
 # Site layout:
-#   index.json, index.json.sig        update index for openfluxd
-#   updates/stable/latest.json        Tauri updater feed, stable channel
-#   updates/beta/latest.json          Tauri updater feed, beta channel
+#   index.json, index.json.sig            update index for openfluxd
+#   site-manifest.json                    sha256 inventory of static files
+#   packages/<component>/<version>/...    keyboard OTA packages (.uf2, .ipk)
+#   updates/stable/latest.json (+ .app.tar.gz)  Tauri updater feed, stable
+#   updates/beta/latest.json   (+ .app.tar.gz)  Tauri updater feed, beta
+#   source/...                            GPL/LGPL FFmpeg source & licenses
 #
-# Called after release builds, run by hand to withdraw a release, refresh the
-# expiry or re-sign every artifact after a key rotation, and run monthly so
-# the published index never expires.
+# Called automatically after release builds, run by hand to withdraw a
+# release, refresh the expiry or re-sign artifacts after a key rotation,
+# and run monthly so the published index stays fresh.
 
 name: Publish index
 
 on:
   workflow_call:
     inputs:
+      staged-pattern:
+        type: string
+        default: ""
       withdraw:
         type: string
         default: ""
       expires-days:
         type: number
-        default: 90
+        default: 365
       resign:
         type: boolean
         default: false
@@ -52,7 +44,7 @@ on:
       expires-days:
         description: Days until the index expires
         type: number
-        default: 90
+        default: 365
       resign:
         description: Sign every published artifact again with the current release key (key rotation)
         type: boolean
@@ -71,7 +63,7 @@ jobs:
     runs-on: ubuntu-24.04
     environment: release-signing
     permissions:
-      contents: write
+      contents: read
       deployments: read
     outputs:
       sequence: ${{ steps.index.outputs.sequence }}
@@ -89,11 +81,17 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+
+      - name: Download staged releases
+        if: inputs.staged-pattern != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ${{ inputs.staged-pattern }}
+          path: build/staged
+
       - name: Release tool
         id: tool
         run: |
-          # production-keys: the build fails if an embedded trust anchor is a
-          # placeholder development key.
           cargo build --locked --release --manifest-path crates/openflux-update/Cargo.toml --bin openflux-release --features production-keys
           dir="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/openflux-update/Cargo.toml | jq -r .target_directory)"
           echo "TOOL=$dir/release/openflux-release" >> "$GITHUB_ENV"
@@ -104,18 +102,32 @@ jobs:
 
       - name: Last published sequence
         run: |
-          # Every deploy records its index sequence as a deployment of the
-          # update-index environment.
-          recorded="$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=update-index&per_page=100" \
-            --jq '[.[].payload.sequence? // 0 | tonumber? // 0] | max // 0')"
+          recorded=""
+          for attempt in 1 2 3; do
+            if recorded="$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=update-index&per_page=100" \
+                --jq '[.[].payload.sequence? // 0 | tonumber? // 0] | max // 0')"; then
+              break
+            fi
+            echo "attempt $attempt failed; retrying..." >&2
+            sleep 5
+          done
+          [ -n "$recorded" ] || { echo "could not read last recorded index sequence" >&2; exit 1; }
           echo "Last recorded index sequence: $recorded"
           echo "RECORDED_SEQUENCE=$recorded" >> "$GITHUB_ENV"
 
-      - name: Sign built releases
+      - name: Sign staged releases
         env:
           OPENFLUX_RELEASE_KEY: ${{ secrets.OPENFLUX_RELEASE_KEY }}
           OPENFLUX_RELEASE_KEY_PASSWORD: ${{ secrets.OPENFLUX_RELEASE_KEY_PASSWORD }}
-        run: .github/scripts/finalize-releases.sh "$TOOL" build/releases host/packaging/keys/active-release.pub
+        run: |
+          mkdir -p build/staged build/releases build/site
+          .github/scripts/stage-releases.sh \
+            --tool "$TOOL" \
+            --staged build/staged \
+            --pages-url "$PAGES_URL" \
+            --active-pubkey host/packaging/keys/active-release.pub \
+            --releases-out build/releases \
+            --site-out build/site
 
       - name: Index
         id: index
@@ -123,7 +135,7 @@ jobs:
           OPENFLUX_RELEASE_KEY: ${{ secrets.OPENFLUX_RELEASE_KEY }}
           OPENFLUX_RELEASE_KEY_PASSWORD: ${{ secrets.OPENFLUX_RELEASE_KEY_PASSWORD }}
           WITHDRAW: ${{ inputs.withdraw }}
-          EXPIRES_DAYS: ${{ inputs.expires-days || 90 }}
+          EXPIRES_DAYS: ${{ inputs.expires-days || 365 }}
           RESIGN: ${{ inputs.resign && 'true' || 'false' }}
         run: |
           args=()
@@ -135,22 +147,27 @@ jobs:
 
       - name: Studio update feeds
         env:
-          # Each update archive is signed after any platform signing (the
-          # signed Windows setup program, the notarized macOS app), and the
-          # signature is bound to the release version.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          mkdir -p build/site/updates/stable build/site/updates/beta
+          extra=()
+          if [ -f build/staged/staged-host/meta.json ]; then
+            extra+=(--staged-host build/staged/staged-host)
+          fi
           for feed in stable beta; do
-            .github/scripts/tauri-feed.py --index build/site/index.json --feed "$feed" \
-              --work build/feed-downloads -o "build/site/updates/$feed/latest.json"
+            .github/scripts/tauri-feed.py \
+              --index build/site/index.json \
+              --feed "$feed" \
+              --pages-url "$PAGES_URL" \
+              --site build/site \
+              --work build/feed-downloads \
+              "${extra[@]}" \
+              -o "build/site/updates/$feed/latest.json"
           done
+          .github/scripts/write-site-manifest.sh build/site
           touch build/site/.nojekyll
           find build/site -type f | sort
 
-      # Kept for 90 days, so a deploy job can be re-run to restore this
-      # site if the published index ever goes back.
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: build/site
@@ -176,7 +193,6 @@ jobs:
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
       - name: The live site serves the new index
         run: |
-          # The Pages CDN can take a few minutes to serve a new deployment.
           for attempt in $(seq 1 40); do
             if curl --fail --silent --show-error --location -H 'Cache-Control: no-cache' \
                 --output live-index.json "$PAGES_URL/index.json?fresh=$SEQUENCE-$attempt-$RANDOM"; then
@@ -195,11 +211,19 @@ jobs:
       - name: Record the published sequence
         run: |
           run="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          id="$(jq -n --arg ref "$GITHUB_SHA" --argjson sequence "$SEQUENCE" --arg sha256 "$SHA256" --arg run "$run" \
-            '{ref: $ref, environment: "update-index", auto_merge: false, required_contexts: [],
-              description: "update index sequence \($sequence)",
-              payload: {sequence: $sequence, sha256: $sha256, run: $run}}' \
-            | gh api "repos/$GITHUB_REPOSITORY/deployments" --input - --jq .id)"
+          id=""
+          for attempt in 1 2 3; do
+            if id="$(jq -n --arg ref "$GITHUB_SHA" --argjson sequence "$SEQUENCE" --arg sha256 "$SHA256" --arg run "$run" \
+              '{ref: $ref, environment: "update-index", auto_merge: false, required_contexts: [],
+                description: "update index sequence \($sequence)",
+                payload: {sequence: $sequence, sha256: $sha256, run: $run}}' \
+              | gh api "repos/$GITHUB_REPOSITORY/deployments" --input - --jq .id)"; then
+              break
+            fi
+            echo "attempt $attempt failed; retrying..." >&2
+            sleep 5
+          done
+          [ -n "$id" ] || { echo "could not record index sequence deployment" >&2; exit 1; }
           gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=success \
             -f environment_url="$PAGES_URL/index.json" -f log_url="$run" -f description="sequence $SEQUENCE" > /dev/null
           echo "Recorded index sequence $SEQUENCE (deployment $id)"
