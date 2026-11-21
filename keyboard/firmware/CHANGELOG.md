@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/Scott-Meyer/openflux/compare/firmware-v1.0.0...firmware-v1.0.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **firmware:** advertise MS OS 2.0 WinUSB descriptors for Windows ([de9550a](https://github.com/Scott-Meyer/openflux/commit/de9550a15ff7148df8a11adeae7a9de36261c7a4))
+
 ## 1.0.0 (2026-11-21)
 
 
