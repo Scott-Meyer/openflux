@@ -81,6 +81,7 @@ jobs:
       pages: write
       deployments: write
     uses: ./.github/workflows/release-firmware.yml
+    secrets: inherit
     with:
       tag: ${{ needs.release-please.outputs.firmware_tag }}
 
@@ -94,6 +95,7 @@ jobs:
       pages: write
       deployments: write
     uses: ./.github/workflows/release-keyboard.yml
+    secrets: inherit
     with:
       tag: ${{ needs.release-please.outputs.bridge_tag }}
 
@@ -107,6 +109,7 @@ jobs:
       pages: write
       deployments: write
     uses: ./.github/workflows/release-keyboard.yml
+    secrets: inherit
     with:
       tag: ${{ needs.release-please.outputs.display_tag }}
 
@@ -124,6 +127,7 @@ jobs:
       id-token: write
       deployments: write
     uses: ./.github/workflows/publish-index.yml
+    secrets: inherit
 
   # The host build bundles keyboard software from the published index, so it
   # waits for publish-keyboard. If a keyboard build of this run failed, the
@@ -145,6 +149,7 @@ jobs:
       pages: write
       deployments: write
     uses: ./.github/workflows/release-host.yml
+    secrets: inherit
     with:
       tag: ${{ needs.release-please.outputs.host_tag }}
 
@@ -157,3 +162,4 @@ jobs:
       id-token: write
       deployments: write
     uses: ./.github/workflows/publish-index.yml
+    secrets: inherit

@@ -160,3 +160,4 @@ jobs:
       id-token: write
       deployments: write
     uses: ./.github/workflows/publish-index.yml
+    secrets: inherit
