@@ -77,7 +77,8 @@ export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid
 export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 src="${work}/src"
 mkdir -p "$src"
-cp "${repo}/compat.toml" "${src}/compat.toml"
+# The synthetic test tags all start at 1.0.0 regardless of the repository's live component versions.
+sed -E 's/^version = "[0-9]+\.[0-9]+\.[0-9]+"/version = "1.0.0"/' "${repo}/compat.toml" > "${src}/compat.toml"
 tgit() {
     timeout 60 git -C "$src" -c core.hooksPath=/dev/null -c commit.gpgSign=false -c tag.gpgSign=false "$@" < /dev/null
 }
