@@ -1053,10 +1053,10 @@ fn handle_preview(cli: &Cli, reg: &ModuleRegistry, cmd: &PreviewCmd) -> Result<(
             );
 
             let discovered = reg.discover();
+            let saved = reg.load_state().modules;
             let mut states = if modules.is_empty() {
-                let saved = reg.load_state().modules;
                 if saved.values().any(|s| s.enabled) {
-                    saved
+                    saved.clone()
                 } else {
                     // Default v2 showcase stack when user has no saved state yet!
                     default_showcase_states()
@@ -1064,12 +1064,13 @@ fn handle_preview(cli: &Cli, reg: &ModuleRegistry, cmd: &PreviewCmd) -> Result<(
             } else {
                 let mut m = std::collections::BTreeMap::new();
                 for id in modules {
+                    let prev = saved.get(id).cloned().unwrap_or_default();
                     m.insert(
                         id.clone(),
                         ModuleInstanceState {
                             enabled: true,
-                            slot: None,
-                            config: Default::default(),
+                            slot: prev.slot,
+                            config: prev.config,
                         },
                     );
                 }
@@ -1078,7 +1079,14 @@ fn handle_preview(cli: &Cli, reg: &ModuleRegistry, cmd: &PreviewCmd) -> Result<(
             for pair in slots {
                 if let Some((id, s)) = pair.split_once('=') {
                     if let Ok(slot_num) = s.parse::<u8>() {
-                        let entry = states.entry(id.to_string()).or_default();
+                        let prev_cfg = saved.get(id).map(|p| p.config.clone()).unwrap_or_default();
+                        let entry = states.entry(id.to_string()).or_insert_with(|| {
+                            ModuleInstanceState {
+                                enabled: true,
+                                slot: None,
+                                config: prev_cfg,
+                            }
+                        });
                         entry.enabled = true;
                         entry.slot = Some(slot_num);
                     }

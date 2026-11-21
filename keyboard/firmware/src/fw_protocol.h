@@ -62,10 +62,19 @@ enum fw_uart_msg_type {
     FW_UART_MSG_NAK = 1,
     FW_UART_MSG_UPDATE = 2,
     FW_UART_MSG_QC_SENSORS = 3,
+    FW_UART_MSG_ANALOG = 4,
 };
 
-#define FW_UART_MSG_UPDATE_LEN 139U
-#define FW_UART_MSG_QC_LEN     401U
+#define FW_UART_MSG_UPDATE_LEN     139U
+#define FW_UART_MSG_QC_LEN         401U
+#define FW_UART_ANALOG_MAX_ENTRIES 32U
+#define FW_UART_MSG_ANALOG_HDR_LEN 10U
+#define FW_UART_MSG_ANALOG_ENT_LEN 5U
+#define FW_UART_MSG_ANALOG_MAX_LEN (FW_UART_MSG_ANALOG_HDR_LEN + FW_UART_ANALOG_MAX_ENTRIES * FW_UART_MSG_ANALOG_ENT_LEN)
+
+/* Bridge -> firmware UART response byte 2 flags */
+#define FW_UART_FLAG_QC_MODE     0x01U
+#define FW_UART_FLAG_ANALOG_MODE 0x02U
 
 enum fw_of_func_code {
     FW_OF_FUNC_TRANSPARENT = 0x00,

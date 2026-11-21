@@ -204,8 +204,9 @@ static int on_platform_saved(uint32_t code, void *ctx) {
 
 static void on_uart_frame(const uint8_t *payload, size_t len, void *ctx) {
     (void)ctx;
-    if (len != 4 || (payload[0] != FW_UART_MSG_UPDATE && payload[0] != FW_UART_MSG_QC_SENSORS) || payload[1] > 1 ||
-        payload[2] > 1 || payload[3] > 1)
+    if (len != 4 || (payload[0] != FW_UART_MSG_UPDATE && payload[0] != FW_UART_MSG_QC_SENSORS &&
+                     payload[0] != FW_UART_MSG_ANALOG) || payload[1] > 1 ||
+        payload[2] > (FW_UART_FLAG_QC_MODE | FW_UART_FLAG_ANALOG_MODE) || payload[3] > 1)
         return;
     if (payload[1] == 0) {
         g_bridge_ack_expires_us = time_us_64() + 3ULL * BRIDGE_HEARTBEAT_MS * 1000;
@@ -343,7 +344,9 @@ int main(void) {
     static union {
         uint8_t update[FW_UART_MSG_UPDATE_LEN];
         uint8_t qc[FW_UART_MSG_QC_LEN];
+        uint8_t analog[FW_UART_MSG_ANALOG_MAX_LEN];
     } io;
+    uint32_t last_analog_tx_ms = 0U;
     uint8_t last_leds = 0U;
     uint32_t last_profile = g_rt.active_profile;
     uint32_t last_act_mode = g_rt.active_actuation_mode;
@@ -438,6 +441,13 @@ int main(void) {
             last_platform = g_rt.platform_code;
             last_eff_layer = g_rt.effective_layer_bitfield;
             last_uart_ms = now_ms;
+        }
+        if (g_rt.analog_mode && (now_ms - last_analog_tx_ms) >= 8U) {
+            size_t alen = fw_runtime_build_msg_analog(&g_rt, now_ms, io.analog);
+            if (alen > 0U) {
+                uart_send_hdlc(io.analog, alen);
+            }
+            last_analog_tx_ms = now_ms;
         }
         if (g_rt.qc_mode && full_scan) {
             fw_runtime_build_msg_qc(&g_rt, io.qc);

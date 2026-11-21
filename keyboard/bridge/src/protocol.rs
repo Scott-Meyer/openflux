@@ -38,7 +38,12 @@ pub const RESP_ACK: u8 = 1;
 pub const FW_UART_DEFAULT_DEV: &str = "/dev/ttyS3";
 pub const FW_UART_MSG_UPDATE: u8 = 2;
 pub const FW_UART_MSG_QC_DATA: u8 = 3;
+pub const FW_UART_MSG_ANALOG: u8 = 4;
 pub const FW_MSG_UPDATE_LEN: usize = 139;
 pub const FW_MSG_QC_DATA_LEN: usize = 401;
+pub const FW_UART_FLAG_QC_MODE: u8 = 0x01;
+pub const FW_UART_FLAG_ANALOG_MODE: u8 = 0x02;
+
+pub const LIVE_DATA_TYPE_BUS_FRAME: u8 = 10;
 
 pub const DISPLAY_MAX_CLIENTS: usize = 8;

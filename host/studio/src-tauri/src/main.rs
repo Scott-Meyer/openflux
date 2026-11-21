@@ -1138,6 +1138,7 @@ fn main() {
             daemon_api::revoke_third_party_app,
             daemon_api::forget_third_party_denied,
             daemon_api::get_third_party_settings,
+            daemon_api::v2_request,
             daemon_api::put_third_party_settings,
             daemon_api::open_url,
             daemon_service::daemon_service_status,

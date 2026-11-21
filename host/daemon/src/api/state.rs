@@ -596,6 +596,8 @@ pub struct ApiState {
     pub registration_timeout_ms: std::sync::atomic::AtomicU64,
     /// Update discovery, keyboard updates and conversion, once configured.
     pub updates: Mutex<Option<Arc<crate::updates::UpdateService>>>,
+    /// OpenFlux v2 pub/sub bus, module system, and unified GPU compositor runtime.
+    pub v2: Arc<crate::api::v2::V2State>,
 }
 
 impl ApiState {
@@ -750,6 +752,7 @@ impl ApiState {
             third_party_access: tokio::sync::watch::channel(0).0,
             registration_timeout_ms: std::sync::atomic::AtomicU64::new(120_000),
             updates: Mutex::new(None),
+            v2: crate::api::v2::V2State::new(None),
         })
     }
 

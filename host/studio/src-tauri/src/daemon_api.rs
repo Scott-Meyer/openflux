@@ -468,6 +468,27 @@ pub async fn put_third_party_settings(
     .await
 }
 
+/// Generic OpenFlux v2 daemon proxy for `/v2/*` routes (bus, modules, disclosure, lists, presets, GPU preview).
+#[tauri::command]
+pub async fn v2_request(
+    st: State<'_, DesktopState>,
+    method: String,
+    path: String,
+    body: Option<Value>,
+) -> Result<Value, CommandError> {
+    if !path.starts_with("/v2/") {
+        return Err(CommandError::local("v2_request path must start with /v2/"));
+    }
+    let m = reqwest::Method::from_bytes(method.trim().to_ascii_uppercase().as_bytes())
+        .map_err(|e| CommandError::local(format!("invalid HTTP method: {e}")))?;
+    if m == reqwest::Method::GET {
+        st.get_api(&path).await
+    } else {
+        st.send_api(m, &path, body.unwrap_or_else(|| json!({})), Duration::from_secs(20))
+            .await
+    }
+}
+
 /// The link `open_url` hands to the browser: a well-formed `https` URL with a host, in its
 /// normalized form, so the opener receives no spaces, quotes or other raw text.
 fn browser_link(url: &str) -> Result<String, CommandError> {

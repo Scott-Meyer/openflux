@@ -17,18 +17,20 @@ import { ProfilesPanel } from "./components/ProfilesPanel";
 import { ShortcutsProfilesPanel } from "./components/ShortcutsProfilesPanel";
 import { ThemeBackgroundPanel } from "./components/ThemeBackgroundPanel";
 import { ThirdPartyAppsPage } from "./components/ThirdPartyAppsPage";
+import { V2ModulesHub } from "./components/V2ModulesHub";
 import { UpdatesPage } from "./components/updates/UpdatesPage";
 import type { AssetCatalog, DeviceStatus, OpenFluxConfig, PreviewKeyRect } from "./types/openflux";
 import { isKeyboardConnected, keymapSyncNotice, PLACEHOLDER_CONFIG } from "./types/openflux";
 
 /** The Studio pages, in navigation order, with their navigation labels. */
 const NAV = [
+  { id: "v2", label: "v2 Modules" },
   { id: "named_profiles", label: "Profiles" },
   { id: "themes", label: "Themes" },
   { id: "actuation", label: "Actuation" },
   { id: "keymap", label: "Keymap" },
   { id: "profiles", label: "Shortcuts" },
-  { id: "mosaic", label: "Modules" },
+  { id: "mosaic", label: "Mosaic (v1)" },
   { id: "firmware", label: "Device" },
   { id: "updates", label: "Updates" },
   { id: "apps", label: "Apps" },
@@ -732,6 +734,7 @@ export const App: React.FC<AppProps> = ({
             </button>
           </section>
         )}
+        {tab === "v2" && <V2ModulesHub />}
         {tab === "named_profiles" && (
           <ProfilesPanel
             client={client}

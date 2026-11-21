@@ -1324,6 +1324,35 @@ pub fn reconcile_tick_with_state(
         }
         g.hardware = hw.clone();
         g.media = media.clone();
+        let _ = state.v2.broker.publish_typed(
+            openflux_bus::topics::HOST_SYSTEM_METRICS,
+            &openflux_bus::SystemMetrics {
+                cpu_percent: hw.cpu_pct as f32,
+                memory_used_gb: hw.mem_used_gb as f32,
+                memory_total_gb: hw.mem_total_gb as f32,
+                gpu_percent: hw.gpu_pct as f32,
+                gpu_unified: hw.gpu_unified_mem,
+                vram_used_gb: hw.vram_used_gb.map(|v| v as f32),
+                vram_total_gb: hw.vram_total_gb.map(|v| v as f32),
+                net_down_kbps: 0.0,
+                net_up_kbps: 0.0,
+            },
+            openflux_bus::PublishOptions::retained(),
+        );
+        let _ = state.v2.broker.publish_typed(
+            openflux_bus::topics::HOST_MEDIA_NOW_PLAYING,
+            &openflux_bus::MediaNowPlaying {
+                title: media.title.clone(),
+                artist: media.artists.clone(),
+                album: media.album.clone(),
+                playing: media.playing,
+                length_sec: media.length_s as f32,
+                position_sec: media.played_s as f32,
+                track_id: String::new(),
+                art_base64: String::new(),
+            },
+            openflux_bus::PublishOptions::retained(),
+        );
         if !has_firmware {
             g.record_firmware_detached();
             g.forget_keymap();

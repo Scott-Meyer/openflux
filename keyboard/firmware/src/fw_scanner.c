@@ -1018,12 +1018,69 @@ void fw_runtime_build_msg_qc(fw_runtime_t *rt, uint8_t out_buf[FW_UART_MSG_QC_LE
     }
 }
 
+size_t fw_runtime_build_msg_analog(fw_runtime_t *rt, uint32_t timestamp_ms,
+                                   uint8_t out_buf[FW_UART_MSG_ANALOG_MAX_LEN]) {
+    if (!rt || !out_buf)
+        return 0U;
+
+    /* Deadzone suppresses idle Hall ADC noise; hysteresis suppresses 1-LSB jitter on held keys. */
+    enum {
+        ANALOG_DEADZONE_UM = 60,
+        ANALOG_HYSTERESIS_UM = 32,
+        ANALOG_MAX_TRAVEL_UM = 2800,
+    };
+
+    uint32_t dt_ms = timestamp_ms - rt->analog_last_ms;
+    if (dt_ms == 0U)
+        dt_ms = 1U;
+    if (dt_ms > 250U)
+        dt_ms = 250U;
+
+    uint8_t count = 0U;
+    uint8_t *dst = out_buf + FW_UART_MSG_ANALOG_HDR_LEN;
+    for (uint16_t k = 0U; k < FW_MAX_KEYS_PER_LAYOUT && count < FW_UART_ANALOG_MAX_ENTRIES; k++) {
+        uint16_t raw = rt->flux[k];
+        uint16_t cur = raw < ANALOG_DEADZONE_UM ? 0U : (raw > ANALOG_MAX_TRAVEL_UM ? ANALOG_MAX_TRAVEL_UM : raw);
+        uint16_t prev = rt->analog_last_sent[k];
+        int32_t diff = (int32_t)cur - (int32_t)prev;
+        int32_t abs_diff = diff < 0 ? -diff : diff;
+
+        /* Include if changed beyond hysteresis, or returning cleanly to rest (0). */
+        if (abs_diff < ANALOG_HYSTERESIS_UM && !(prev > 0U && cur == 0U))
+            continue;
+
+        int32_t vel = (diff * 1000) / (int32_t)dt_ms;
+        if (vel > 32767)
+            vel = 32767;
+        else if (vel < -32767)
+            vel = -32767;
+
+        dst[0] = (uint8_t)k;
+        wr_le16(dst + 1U, cur);
+        wr_le16(dst + 3U, (uint16_t)(int16_t)vel);
+        dst += FW_UART_MSG_ANALOG_ENT_LEN;
+        rt->analog_last_sent[k] = cur;
+        count++;
+    }
+
+    rt->analog_last_ms = timestamp_ms;
+    if (count == 0U)
+        return 0U;
+
+    out_buf[0] = FW_UART_MSG_ANALOG;
+    wr_le32(out_buf + 1U, ++rt->uart_tx_seq);
+    wr_le32(out_buf + 5U, timestamp_ms);
+    out_buf[9] = count;
+    return FW_UART_MSG_ANALOG_HDR_LEN + (size_t)count * FW_UART_MSG_ANALOG_ENT_LEN;
+}
+
 void fw_runtime_handle_uart_response(fw_runtime_t *rt, const uint8_t *payload, size_t len) {
     if (!rt || !payload || len < 4U)
         return;
     uint8_t mtype = payload[0];
-    if (mtype == FW_UART_MSG_UPDATE || mtype == FW_UART_MSG_QC_SENSORS) {
-        rt->qc_mode = payload[2] ? 1U : 0U;
+    if (mtype == FW_UART_MSG_UPDATE || mtype == FW_UART_MSG_QC_SENSORS || mtype == FW_UART_MSG_ANALOG) {
+        rt->qc_mode = (payload[2] & FW_UART_FLAG_QC_MODE) ? 1U : 0U;
+        rt->analog_mode = (payload[2] & FW_UART_FLAG_ANALOG_MODE) ? 1U : 0U;
         rt->stress_test_enabled = payload[3] ? 1U : 0U;
     }
 }

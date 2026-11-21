@@ -136,7 +136,10 @@ typedef struct fw_runtime {
     uint8_t macro_nkro_bitmap[32];
 
     uint8_t qc_mode;
+    uint8_t analog_mode;
     uint8_t stress_test_enabled;
+    uint16_t analog_last_sent[FW_MAX_KEYS_PER_LAYOUT];
+    uint32_t analog_last_ms;
     uint8_t host_state_status; /* HID LED bitmask: 0x01 Num, 0x02 Caps, 0x04 Scroll */
     uint8_t platform_dirty;
     uint16_t of_event_seq;
@@ -188,9 +191,12 @@ int fw_runtime_set_active_profile(fw_runtime_t *rt, uint32_t profile_idx);
 /* Runs one Hall-effect evaluation pass over raw_adc[160], producing key_bitmap + HID report. */
 void fw_runtime_process_scan(fw_runtime_t *rt, const uint16_t raw_adc[FW_NUM_SENSORS], fw_hid_report_t *out_hid);
 
-/* Builds 139-byte MSG_UPDATE frame and 401-byte MSG_QC_SENSOR_DATA frame. */
+/* Builds 139-byte MSG_UPDATE frame, 401-byte MSG_QC_SENSOR_DATA frame, and sparse v2 MSG_ANALOG frame. */
 void fw_runtime_build_msg_update(fw_runtime_t *rt, uint32_t timestamp_ms, uint8_t out_buf[FW_UART_MSG_UPDATE_LEN]);
 void fw_runtime_build_msg_qc(fw_runtime_t *rt, uint8_t out_buf[FW_UART_MSG_QC_LEN]);
+/* Returns total frame payload length (0 if no active keys changed beyond deadzone/hysteresis). */
+size_t fw_runtime_build_msg_analog(fw_runtime_t *rt, uint32_t timestamp_ms,
+                                   uint8_t out_buf[FW_UART_MSG_ANALOG_MAX_LEN]);
 
 /* Handles 4-byte UART ACK/response from the SoC bridge: [msg_type, error, qc_mode, stress_test]. */
 void fw_runtime_handle_uart_response(fw_runtime_t *rt, const uint8_t *payload, size_t len);

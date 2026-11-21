@@ -1,5 +1,8 @@
 use crate::device_paths::BRIDGE_SOCK_DEFAULT;
-use crate::protocol::{DISPLAY_MAX_CLIENTS, FW_UART_MSG_QC_DATA, FW_UART_MSG_UPDATE};
+use crate::protocol::{
+    DISPLAY_MAX_CLIENTS, FW_UART_MSG_ANALOG, FW_UART_MSG_QC_DATA, FW_UART_MSG_UPDATE,
+    LIVE_DATA_TYPE_BUS_FRAME,
+};
 use crate::simple_hdlc::SimpleHdlcDecoder;
 use crate::uart_bridge::{FirmwareUartState, UartBridge};
 use std::io::{self, Read, Write};
@@ -193,9 +196,20 @@ impl DisplayIpc {
                             uart.qc_mode = on;
                         }
                     }
+                    Some("set_analog") => {
+                        if let Some(on) = val.get("enabled").and_then(|v| v.as_bool()) {
+                            uart.analog_mode = on;
+                        }
+                    }
                     Some("set_stress") => {
                         if let Some(on) = val.get("enabled").and_then(|v| v.as_bool()) {
                             uart.stress_test_enabled = on;
+                        }
+                    }
+                    Some("bus_frame") => {
+                        if let Some(frame) = val.get("frame") {
+                            let line = format!("{{\"type\":\"bus_frame\",\"frame\":{frame}}}\n");
+                            self.broadcast_line(&line);
                         }
                     }
                     Some("get_state") => {
@@ -285,6 +299,15 @@ fn format_live_data_line(message: &[u8]) -> Option<String> {
                 "{{\"type\":\"live_data\",\"data_type\":{LIVE_DATA_TYPE_JSON},\"payload\":{value}}}\n"
             ))
         }
+        LIVE_DATA_TYPE_BUS_FRAME => {
+            let value = serde_json::from_slice::<serde_json::Value>(body).ok()?;
+            if !value.is_object() {
+                return None;
+            }
+            Some(format!(
+                "{{\"type\":\"bus_frame\",\"frame\":{value}}}\n"
+            ))
+        }
         _ => None,
     }
 }
@@ -346,6 +369,21 @@ pub fn format_uart_json(state: &FirmwareUartState, msg_type: u8) -> String {
                 out.push(',');
             }
             let _ = write!(&mut out, "{s}");
+        }
+        out.push_str("]}\n");
+        return out;
+    }
+    if msg_type == FW_UART_MSG_ANALOG {
+        let mut out = format!(
+            "{{\"type\":\"key_analog\",\"seq\":{},\"timestamp_ms\":{},\"samples\":[",
+            state.seq, state.analog_timestamp_ms
+        );
+        for (i, s) in state.analog_samples.iter().enumerate() {
+            use std::fmt::Write;
+            if i > 0 {
+                out.push(',');
+            }
+            let _ = write!(&mut out, "[{},{},{}]", s.key_index, s.depth_um, s.velocity_um_s);
         }
         out.push_str("]}\n");
         return out;

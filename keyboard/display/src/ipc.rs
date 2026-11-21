@@ -108,7 +108,7 @@ impl BridgeIpcClient {
         }
         if let Ok(mut s) = UnixStream::connect(sock_path) {
             let _ = s.set_nonblocking(true);
-            let _ = s.write_all(b"{\"cmd\":\"get_state\"}\n");
+            let _ = s.write_all(b"{\"cmd\":\"get_state\"}\n{\"cmd\":\"set_analog\",\"enabled\":true}\n");
             self.line_buf.clear();
             self.stream = Some(s);
             true

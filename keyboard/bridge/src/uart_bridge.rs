@@ -1,6 +1,6 @@
 use crate::protocol::{
-    FW_MSG_QC_DATA_LEN, FW_MSG_UPDATE_LEN, FW_UART_DEFAULT_DEV, FW_UART_MSG_QC_DATA,
-    FW_UART_MSG_UPDATE,
+    FW_MSG_QC_DATA_LEN, FW_MSG_UPDATE_LEN, FW_UART_DEFAULT_DEV, FW_UART_FLAG_ANALOG_MODE,
+    FW_UART_FLAG_QC_MODE, FW_UART_MSG_ANALOG, FW_UART_MSG_QC_DATA, FW_UART_MSG_UPDATE,
 };
 use crate::simple_hdlc::{simple_hdlc_encode, SimpleHdlcDecoder};
 use std::os::unix::io::RawFd;
@@ -35,7 +35,14 @@ fn le_u32(b: &[u8], at: usize) -> u32 {
     u32::from_le_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]])
 }
 
-/// The firmware's latest key state and sensor readings, decoded from its UART messages.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AnalogEntry {
+    pub key_index: u8,
+    pub depth_um: u16,
+    pub velocity_um_s: i16,
+}
+
+/// The firmware's latest key state, analog depth/velocity deltas, and sensor readings.
 #[derive(Clone)]
 pub struct FirmwareUartState {
     pub valid: bool,
@@ -59,6 +66,8 @@ pub struct FirmwareUartState {
     pub module_types: u8,
     pub module_buttons: u16,
     pub qc_sensors: [u16; QC_SENSOR_COUNT],
+    pub analog_timestamp_ms: u32,
+    pub analog_samples: Vec<AnalogEntry>,
 }
 
 impl Default for FirmwareUartState {
@@ -85,6 +94,8 @@ impl Default for FirmwareUartState {
             module_types: 0,
             module_buttons: 0,
             qc_sensors: [0u16; QC_SENSOR_COUNT],
+            analog_timestamp_ms: 0,
+            analog_samples: Vec::new(),
         }
     }
 }
@@ -94,6 +105,7 @@ pub struct UartBridge {
     pub tx_fd: RawFd,
     owns_fds: bool,
     pub qc_mode: bool,
+    pub analog_mode: bool,
     pub stress_test_enabled: bool,
     pub tx_buf: Vec<u8>,
     pub state: FirmwareUartState,
@@ -119,6 +131,7 @@ impl UartBridge {
             tx_fd: -1,
             owns_fds: false,
             qc_mode: false,
+            analog_mode: false,
             stress_test_enabled: false,
             tx_buf: Vec::new(),
             state: FirmwareUartState::default(),
@@ -232,10 +245,16 @@ impl UartBridge {
         if self.tx_fd < 0 {
             return 0;
         }
+        let flags = (if self.qc_mode { FW_UART_FLAG_QC_MODE } else { 0 })
+            | (if self.analog_mode {
+                FW_UART_FLAG_ANALOG_MODE
+            } else {
+                0
+            });
         let resp = [
             msg_type,
             err,
-            u8::from(self.qc_mode),
+            flags,
             u8::from(self.stress_test_enabled),
         ];
         let Ok(wire) = simple_hdlc_encode(&resp) else {
@@ -312,6 +331,32 @@ impl UartBridge {
             let readings = &payload[MSG_STATE_START..];
             for (i, v) in self.state.qc_sensors.iter_mut().enumerate() {
                 *v = u16::from_le_bytes([readings[i * 2], readings[i * 2 + 1]]);
+            }
+            let _ = self.send_ack(msg_type, 0);
+            on_update(&self.state, msg_type);
+            return 0;
+        }
+        if msg_type == FW_UART_MSG_ANALOG {
+            if payload.len() < 10 {
+                let _ = self.send_ack(msg_type, 1);
+                return -1;
+            }
+            let count = payload[9] as usize;
+            let expected = 10 + count * 5;
+            if payload.len() != expected || count > 32 {
+                let _ = self.send_ack(msg_type, 1);
+                return -1;
+            }
+            self.state.seq = le_u32(payload, 1);
+            self.state.analog_timestamp_ms = le_u32(payload, 5);
+            self.state.analog_samples.clear();
+            for i in 0..count {
+                let off = 10 + i * 5;
+                self.state.analog_samples.push(AnalogEntry {
+                    key_index: payload[off],
+                    depth_um: u16::from_le_bytes([payload[off + 1], payload[off + 2]]),
+                    velocity_um_s: i16::from_le_bytes([payload[off + 3], payload[off + 4]]),
+                });
             }
             let _ = self.send_ack(msg_type, 0);
             on_update(&self.state, msg_type);
