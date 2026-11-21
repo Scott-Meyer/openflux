@@ -1,0 +1,19 @@
+# Changelog
+
+## 1.0.0 (2026-11-21)
+
+
+### Features
+
+* OpenFlux 1.0 ([8b991dd](https://github.com/Scott-Meyer/openflux/commit/8b991dd4ddf956aa064d2cb200eef4323a24874d))
+
+
+### Bug Fixes
+
+* add Windows icon.ico for Studio and de-flake preview video frame test ([96e6d4b](https://github.com/Scott-Meyer/openflux/commit/96e6d4b3b1eb9953bc8f84609b833be9319058b1))
+* gate Unix-only test imports in preview_matches_display ([f3b2c56](https://github.com/Scott-Meyer/openflux/commit/f3b2c5690dc81f8aaa97f5ccb042e77da2abeb93))
+* resolve cross-platform CI checks and enable press refinement by default ([0177e39](https://github.com/Scott-Meyer/openflux/commit/0177e39f658a64cca986d283bd0f4e2d500c6b78))
+* **studio:** allow 4s for loopback connection refusal probe on Windows ([c7cadd1](https://github.com/Scott-Meyer/openflux/commit/c7cadd13a193a298f6058ab1953a6829d66d2e20))
+* **tests:** allow 4s for Windows loopback refusal in lifecycle test ([96c655f](https://github.com/Scott-Meyer/openflux/commit/96c655f7278f2e60a7b5c5cae9c396d87179ef6a))
+* **tests:** gate unix-only Tree helper in linux_gpu tests ([e4dd038](https://github.com/Scott-Meyer/openflux/commit/e4dd038f6e76df11133f0e5d7b6ff4d5d4d42c20))
+* **tests:** make linux_gpu, mpris and default_keymap tests Windows-safe ([0a6f5af](https://github.com/Scott-Meyer/openflux/commit/0a6f5af4355adb402e321655281f97f3748e3a2b))
