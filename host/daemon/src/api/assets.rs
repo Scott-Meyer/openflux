@@ -28,6 +28,21 @@ pub fn expand_home_path(raw: &str) -> PathBuf {
     PathBuf::from(raw)
 }
 
+/// The installer's `assets/` resource directory (bundled fonts, default backgrounds, weather icons),
+/// relative to the daemon's executable: `../Resources/assets` on macOS, `assets` on Windows,
+/// `../lib/<app>/assets` on Linux.
+pub fn bundled_assets_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let candidates = [
+        dir.join("../Resources/assets"),
+        dir.join("assets"),
+        dir.join("../lib/OpenFlux Studio/assets"),
+        dir.join("../lib/openflux-studio/assets"),
+    ];
+    candidates.into_iter().find(|p| p.is_dir())
+}
+
 pub fn resolve_asset_roots(state: &ApiState) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(env_dir) = std::env::var("OPENFLUX_ASSET_DIR") {
@@ -44,6 +59,11 @@ pub fn resolve_asset_roots(state: &ApiState) -> Vec<PathBuf> {
     let def = crate::api::state::default_data_dir().join("assets");
     if !roots.contains(&def) {
         roots.push(def);
+    }
+    if let Some(bundled) = bundled_assets_dir() {
+        if !roots.contains(&bundled) {
+            roots.push(bundled);
+        }
     }
     roots
 }

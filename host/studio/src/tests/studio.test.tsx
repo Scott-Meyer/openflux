@@ -7,6 +7,7 @@ import { DaemonError } from "../api/daemonError";
 import { computeCenterKeyParallax } from "../components/ParallaxDiagram";
 import type { DeviceStatus, OpenFluxConfig, PreviewKeyRect } from "../types/openflux";
 import { TEST_CONFIG } from "./fixtures";
+import { FACTORY_KEYBOARD, MockDaemon, mockServices } from "./mockDaemon";
 
 afterEach(() => {
   cleanup();
@@ -169,7 +170,7 @@ function createMockClient(initial: OpenFluxConfig = structuredClone(TEST_CONFIG)
 describe("OpenFlux Studio", () => {
   it("shows the daemon's config, renders the live preview, and closes the preview on unmount", async () => {
     const { client, calls } = createMockClient();
-    const { unmount } = render(<App client={client} />);
+    const { unmount } = render(<App client={client} initialTab="themes" />);
 
     await waitFor(() => {
       expect(calls).toContain("getConfig");
@@ -264,7 +265,7 @@ describe("OpenFlux Studio", () => {
       return { message: "Saved" };
     });
 
-    render(<App client={client} />);
+    render(<App client={client} initialTab="themes" />);
     await waitFor(() => expect(calls).toContain("getConfig"));
     const initialRenders = calls.filter((c) => c.startsWith("renderPreview")).length;
 
@@ -345,7 +346,7 @@ describe("OpenFlux Studio", () => {
       savedPayloads.push(patch);
     });
 
-    render(<App client={client} />);
+    render(<App client={client} initialTab="themes" />);
     await waitFor(() => expect(releaseInitialGet).toBeDefined());
 
     // An appearance edit before the first config arrives is not sent.
@@ -463,7 +464,7 @@ describe("OpenFlux Studio", () => {
       return { message: "Imported", profiles: ["Work"] };
     });
 
-    render(<App client={client} />);
+    render(<App client={client} initialTab="themes" />);
     await waitFor(() => expect(calls).toContain("getConfig:Test Theme:0"));
 
     // Hold edit A in flight.
@@ -851,7 +852,7 @@ describe("OpenFlux Studio", () => {
       outPath,
     }));
 
-    render(<App client={client} />);
+    render(<App client={client} initialTab="themes" />);
     await waitFor(() => expect(client.getAssetsCatalog).toHaveBeenCalled());
 
     // Preset browser
@@ -966,7 +967,7 @@ describe("OpenFlux Studio", () => {
         }),
     );
 
-    render(<App client={client} />);
+    render(<App client={client} initialTab="themes" />);
     await waitFor(() => expect(client.getConfig).toHaveBeenCalled());
 
     client.pickFile = vi.fn(async () => "/tmp/slow_clip.mov");
@@ -1010,7 +1011,7 @@ describe("OpenFlux Studio", () => {
       return { message: "Exported", outPath };
     });
 
-    render(<App client={client} />);
+    render(<App client={client} initialTab="themes" />);
     await waitFor(() => expect(client.getConfig).toHaveBeenCalled());
 
     // Export waits for the pending write.
@@ -1108,7 +1109,7 @@ describe("OpenFlux Studio", () => {
     Object.defineProperty(document, "fonts", { configurable: true, value: { add: () => {} } });
 
     try {
-      render(<App client={client} />);
+      render(<App client={client} initialTab="themes" />);
       await waitFor(() => expect(client.getAssetsCatalog).toHaveBeenCalled());
 
       // The search narrows the list while the slow font is still loading.
@@ -1252,7 +1253,7 @@ describe("OpenFlux Studio", () => {
         }),
     );
 
-    render(<App client={client} />);
+    render(<App client={client} initialTab="themes" />);
     await waitFor(() => expect(client.getConfig).toHaveBeenCalled());
 
     // Start importing media while Theme A is selected
@@ -1295,7 +1296,7 @@ describe("OpenFlux Studio", () => {
         appliedProfileIndex: currentApplied,
       }));
 
-      render(<App client={client} />);
+      render(<App client={client} initialTab="themes" />);
       await vi.advanceTimersByTimeAsync(100);
       expect((screen.getByLabelText("Active Profile") as HTMLSelectElement).value).toBe("0");
       expect((screen.getByLabelText("Editing Theme") as HTMLSelectElement).value).toBe("default");
@@ -1348,7 +1349,7 @@ describe("OpenFlux Studio", () => {
         appliedProfileIndex: currentApplied,
       }));
 
-      render(<App client={client} />);
+      render(<App client={client} initialTab="themes" />);
       await vi.advanceTimersByTimeAsync(100);
       expect(calls).toContain("get:Test Theme");
 
@@ -1745,7 +1746,7 @@ describe("OpenFlux Studio", () => {
       resolution: "1280x720",
       bitrateKbps: 2400,
     }));
-    render(<App client={client} />);
+    render(<App client={client} initialTab="themes" />);
     await waitFor(() => expect(client.getConfig).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Aerial Videos" }));
     await waitFor(() => screen.getByTitle("Download & apply Tokyo Night"));
@@ -1779,7 +1780,7 @@ describe("OpenFlux Studio", () => {
         message: "This video is too long to fit at acceptable quality; trim it before importing",
       });
     });
-    render(<App client={client} />);
+    render(<App client={client} initialTab="themes" />);
     await waitFor(() => expect(client.getConfig).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Aerial Videos" }));
     await waitFor(() => screen.getByTitle("Download & apply Long Flight"));
@@ -1797,7 +1798,7 @@ describe("OpenFlux Studio", () => {
       { ...structuredClone(initial.appearance.defaultTheme), id: "theme_b", name: "Theme B" },
     ];
     const { client, calls } = createMockClient(initial);
-    render(<App client={client} />);
+    render(<App client={client} initialTab="themes" />);
     await waitFor(() => expect(client.getConfig).toHaveBeenCalled());
     fireEvent.change(screen.getByLabelText("Editing Theme"), { target: { value: "theme_b" } });
     await waitFor(() => expect(calls).toContain("updateConfig:appearance,themeSelection"));
@@ -1833,7 +1834,7 @@ describe("OpenFlux Studio", () => {
         message: "This video is too long to fit at acceptable quality; trim it before importing",
       });
     });
-    render(<App client={client} />);
+    render(<App client={client} initialTab="themes" />);
     await waitFor(() => expect(client.getConfig).toHaveBeenCalled());
     expect(screen.getByText(/keyboard's 96 MiB media limit/)).toBeTruthy();
     fireEvent.click(screen.getByText("+ Import Image / Video"));
@@ -1842,5 +1843,28 @@ describe("OpenFlux Studio", () => {
         "Couldn't import the file: This video is too long to fit at acceptable quality; trim it before importing",
       ),
     );
+  });
+
+  it("lands on Profiles with the live keyboard preview and profile binding controls", async () => {
+    const { client } = createMockClient();
+    render(<App client={client} />);
+    await waitFor(() => expect(client.getConfig).toHaveBeenCalled());
+    expect(screen.getByLabelText("Profile Settings")).toBeTruthy();
+    expect(screen.getByLabelText("Bound Shortcut Pack")).toBeTruthy();
+    expect(screen.getByLabelText("Bound Theme")).toBeTruthy();
+    expect(screen.getByLabelText("Bound Actuation Mode")).toBeTruthy();
+    expect(screen.getByLabelText("Bound Default Layer")).toBeTruthy();
+    await waitFor(() => expect(client.renderPreviewRgba).toHaveBeenCalled());
+  });
+
+  it("surfaces a factory keyboard conversion banner on the landing page and jumps to Updates", async () => {
+    const { client } = createMockClient();
+    const daemon = new MockDaemon(FACTORY_KEYBOARD);
+    render(<App client={client} services={mockServices(daemon)} />);
+    const callout = await screen.findByLabelText("Convert keyboard to OpenFlux");
+    expect(callout.textContent).toContain("Factory Flux keyboard detected");
+    expect(screen.getByText("Setup Required")).toBeTruthy();
+    fireEvent.click(within(callout).getByRole("button", { name: "Convert to OpenFlux…" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Updates" })).toBeTruthy());
   });
 });

@@ -99,6 +99,9 @@ jq -n \
     --argjson baseResources "$(jq '.bundle.resources // {}' "$base_config")" \
     --arg keyboard "${keyboard}/" \
     --arg licenses "${sidecars}/licenses/" \
+    --arg bundledFonts "$(abs "${repo}/assets/bundled_fonts")/" \
+    --arg defaultBgs "$(abs "${repo}/assets/default_backgrounds")/" \
+    --arg weatherIcons "$(abs "${repo}/assets/weather_icons")/" \
     --arg pubkey "$(tr -d '\r\n' < "$updater_pubkey")" \
     --arg endpoint "${pages_url}/updates/stable/latest.json" \
     --arg entitlements "$(abs "${packaging}/macos/entitlements.plist")" \
@@ -115,7 +118,13 @@ jq -n \
     active: true,
     createUpdaterArtifacts: false,
     externalBin: $externalBin,
-    resources: ($baseResources + { ($keyboard): "keyboard/", ($licenses): "licenses/" })
+    resources: ($baseResources + {
+      ($keyboard): "keyboard/",
+      ($licenses): "licenses/",
+      ($bundledFonts): "assets/bundled_fonts/",
+      ($defaultBgs): "assets/default_backgrounds/",
+      ($weatherIcons): "assets/weather_icons/"
+    })
   },
   plugins: {
     updater: { pubkey: $pubkey, endpoints: [ $endpoint ], requireSignedVersion: true }

@@ -108,6 +108,13 @@ jobs:
           extra: dist/extra
           github-token: ${{ github.token }}
 
+      - name: Set release title
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: gh release edit "$TAG" --title "Keyboard Firmware v${VERSION} (bundled in OpenFlux Studio)"
+
   publish-index:
     needs: build
     if: inputs.publish-index

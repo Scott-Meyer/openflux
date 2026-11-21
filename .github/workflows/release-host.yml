@@ -584,13 +584,27 @@ jobs:
           artifacts: dist/artifacts
           extra: dist/extra
           github-token: ${{ github.token }}
-      - name: License note in the release notes
+      - name: Release title and notes
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
         run: |
-          marker="<!-- openflux-ffmpeg-license -->"
           gh release view "$TAG" --json body --jq .body > notes.md
+          changed=0
+          dl_marker="<!-- openflux-studio-download-note -->"
+          if ! grep -qF "$dl_marker" notes.md; then
+            {
+              cat <<'EOF'
+          <!-- openflux-studio-download-note -->
+          **Download OpenFlux Studio for your computer below** (macOS `.dmg`, Windows `-setup.exe`, or Linux `.AppImage` / `.deb`). The keyboard firmware, bridge, and display are bundled inside the installer — you don't need to download the separate keyboard releases.
+
+          EOF
+              cat notes.md
+            } > notes.tmp && mv notes.tmp notes.md
+            changed=1
+          fi
+          marker="<!-- openflux-ffmpeg-license -->"
           if ! grep -qF "$marker" notes.md; then
             cat >> notes.md <<EOF
 
@@ -603,7 +617,12 @@ jobs:
           \`openflux-ffmpeg-source-${VERSION}.tar.xz\`, and the configure lines of each build are in the
           \`openflux-ffmpeg-<target>.buildinfo.txt\` files of this release. OpenFlux itself is MIT OR Apache-2.0.
           EOF
-            gh release edit "$TAG" --notes-file notes.md
+            changed=1
+          fi
+          if [ "$changed" -eq 1 ]; then
+            gh release edit "$TAG" --title "OpenFlux Studio v${VERSION}" --notes-file notes.md
+          else
+            gh release edit "$TAG" --title "OpenFlux Studio v${VERSION}"
           fi
 
   publish-index:

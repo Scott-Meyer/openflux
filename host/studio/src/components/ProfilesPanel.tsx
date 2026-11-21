@@ -6,6 +6,7 @@ interface ProfilesPanelProps {
   client: DaemonClient;
   catalog: AssetCatalog | null;
   config: OpenFluxConfig;
+  previewNode?: React.ReactNode;
   effectiveActiveIndex?: number;
   onChangeProfiles: (profiles: ShortcutProfile[], desiredProfileIndex?: number) => void;
   onSelectProfile: (index: number) => void;
@@ -17,6 +18,7 @@ export const ProfilesPanel: React.FC<ProfilesPanelProps> = ({
   client,
   catalog,
   config,
+  previewNode,
   effectiveActiveIndex,
   onChangeProfiles,
   onSelectProfile,
@@ -45,7 +47,6 @@ export const ProfilesPanel: React.FC<ProfilesPanelProps> = ({
   const selected = profiles[safeInspectIdx] ?? profiles[0];
 
   const [newName, setNewName] = useState("");
-  const [newContextText, setNewContextText] = useState("");
   const [showAppPicker, setShowAppPicker] = useState(false);
   const [installedApps, setInstalledApps] = useState<InstalledAppInfo[]>([]);
   const [appQuery, setAppQuery] = useState("");
@@ -124,17 +125,12 @@ export const ProfilesPanel: React.FC<ProfilesPanelProps> = ({
   };
 
   return (
-    <div className="workbench-3col">
-      {/* Left Column: Named Profiles List */}
-      <div className="card col-scroll">
-        <div className="toolbar-between">
-          <h3>Profiles ({profiles.length})</h3>
-          <span className="pill">Auto-Switch Ready</span>
+    <div className="profiles-studio">
+      {/* Left Rail: Profiles List */}
+      <aside className="card col-scroll profiles-sidebar">
+        <div className="toolbar-between" style={{ marginBottom: 10 }}>
+          <h3 style={{ margin: 0 }}>Profiles ({profiles.length})</h3>
         </div>
-        <p className="muted" style={{ fontSize: 12, marginTop: 4, marginBottom: 10 }}>
-          A profile bundles a Theme, Actuation feel, Base Layer, and Shortcut overlay pack—and can auto-activate when
-          you switch apps.
-        </p>
 
         <div className="profile-create-row">
           <input
@@ -159,9 +155,6 @@ export const ProfilesPanel: React.FC<ProfilesPanelProps> = ({
             const isActive = idx === activeIdx;
             const isInspected = idx === safeInspectIdx;
             const themeName = themes.find((t) => t.id === p.theme_id)?.name ?? p.theme_id;
-            const pModeIdx = p.actuation_mode_index ?? 0;
-            const pLayerIdx = p.default_layer ?? 0;
-            const modeName = modes[pModeIdx]?.name ?? `Mode #${pModeIdx}`;
             return (
               <li key={p.id}>
                 <button
@@ -177,208 +170,136 @@ export const ProfilesPanel: React.FC<ProfilesPanelProps> = ({
                     <strong>{p.name}</strong>
                     {isActive && <span className="pill">Active</span>}
                   </span>
-                  <small className="muted" title={`Theme: ${themeName} · ${modeName} · L${pLayerIdx}`}>
-                    Theme: {themeName} · {modeName} · L{pLayerIdx}
+                  <small className="muted" title={p.app_matcher || `Global Default · ${themeName}`}>
+                    {p.app_matcher ? `App: ${p.app_matcher}` : "Global Default"}
                   </small>
-                  {p.app_matcher && <small className="profile-matcher-chip">{p.app_matcher}</small>}
                 </button>
               </li>
             );
           })}
         </ul>
-      </div>
+      </aside>
 
-      {/* Center Column: Selected Profile Overview & Contexts */}
-      <div className="card col-scroll">
-        <div className="toolbar-between">
-          <h3>{selected.name} — Summary</h3>
-          <div className="btn-group">
-            <button type="button" className="btn-secondary" onClick={duplicateProfile}>
-              Duplicate
-            </button>
-            <button type="button" className="btn-secondary" disabled={profiles.length <= 1} onClick={deleteSelected}>
-              Delete
-            </button>
-          </div>
-        </div>
+      {/* Main Stage: Live Keyboard Preview + Clean 2x2 Profile Bindings */}
+      <div className="profiles-stage">
+        {previewNode && <div className="profiles-preview-frame">{previewNode}</div>}
 
-        <div className="kv-list" style={{ marginBottom: 14 }}>
-          <div>
-            <span>Profile ID</span>
-            <strong>
-              <code>{selected.id}</code>
-            </strong>
-          </div>
-          <div>
-            <span>Bound Theme</span>
-            <strong>{themes.find((t) => t.id === selected.theme_id)?.name ?? selected.theme_id}</strong>
-          </div>
-          <div>
-            <span>Actuation Mode</span>
-            <strong>
-              {modes[selected.actuation_mode_index ?? 0]?.name ?? `Mode #${selected.actuation_mode_index ?? 0}`}
-            </strong>
-          </div>
-          <div>
-            <span>Default Keymap Layer</span>
-            <strong>
-              L{selected.default_layer ?? 0}: {layers[selected.default_layer ?? 0]?.name ?? "Base"}
-            </strong>
-          </div>
-          <div>
-            <span>Shortcut Pack</span>
-            <strong>
-              {selected.shortcut_pack
-                ? (packs.find((pk) => pk.id === selected.shortcut_pack)?.name ?? selected.shortcut_pack)
-                : "None"}
-            </strong>
-          </div>
-          <div>
-            <span>Auto-Switch App</span>
-            <strong>{selected.app_matcher || "Manual only"}</strong>
-          </div>
-        </div>
+        <section className="card profiles-bindings-card" aria-label="Profile Settings">
+          <div className="profiles-bindings-header">
+            <label className="field profiles-name-field">
+              <span>Profile Name</span>
+              <input
+                type="text"
+                aria-label="Profile Name"
+                value={selected.name}
+                onChange={(e) => patchSelected({ name: e.target.value })}
+              />
+            </label>
 
-        <h4>Shortcut Contexts</h4>
-        <div className="btn-group" style={{ marginBottom: 10 }}>
-          {selected.contexts.map((ctx) => (
-            <button
-              key={ctx}
-              type="button"
-              className={`btn-secondary ${selected.active_context === ctx ? "active" : ""}`}
-              onClick={() => patchSelected({ active_context: ctx })}
-            >
-              {ctx}
-            </button>
-          ))}
-        </div>
-        <div className="btn-group">
-          <input
-            type="text"
-            placeholder="Add context (e.g. Sculpt)"
-            value={newContextText}
-            onChange={(e) => setNewContextText(e.target.value)}
-            style={{ flex: 1 }}
-          />
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => {
-              const c = newContextText.trim();
-              if (!c || selected.contexts.includes(c)) return;
-              patchSelected({ contexts: [...selected.contexts, c], active_context: c });
-              setNewContextText("");
-            }}
-          >
-            Add Context
-          </button>
-        </div>
-      </div>
+            <div className="field profiles-app-field">
+              <div className="toolbar-between" style={{ marginBottom: 4 }}>
+                <span>Auto-Switch App</span>
+                {canListApps && (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-compact"
+                    onClick={async () => {
+                      setShowAppPicker(true);
+                      try {
+                        const apps = await client.getInstalledApps();
+                        setInstalledApps(apps);
+                      } catch {
+                        setInstalledApps([]);
+                      }
+                    }}
+                  >
+                    Pick App
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                aria-label="Profile App Matcher"
+                placeholder="Global Default (or app bundle ID / executable)"
+                value={selected.app_matcher ?? ""}
+                onChange={(e) => patchSelected({ app_matcher: e.target.value || null })}
+              />
+            </div>
 
-      {/* Right Column: Profile Bindings Inspector */}
-      <div className="card col-scroll">
-        <h3>Profile Bindings</h3>
-        <label className="field">
-          <span>Profile Name</span>
-          <input
-            type="text"
-            aria-label="Profile Name"
-            value={selected.name}
-            onChange={(e) => patchSelected({ name: e.target.value })}
-          />
-        </label>
-
-        <label className="field">
-          <span>Bound Theme</span>
-          <select
-            aria-label="Bound Theme"
-            value={selected.theme_id}
-            onChange={(e) => patchSelected({ theme_id: e.target.value })}
-          >
-            {themes.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span>Bound Actuation Mode</span>
-          <select
-            aria-label="Bound Actuation Mode"
-            value={selected.actuation_mode_index}
-            onChange={(e) => patchSelected({ actuation_mode_index: Number(e.target.value) })}
-          >
-            {modes.map((m, i) => (
-              <option key={m.id} value={i}>
-                {m.name} ({m.actuationPointMm.toFixed(1)} mm)
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span>Default Layer</span>
-          <select
-            aria-label="Bound Default Layer"
-            value={selected.default_layer}
-            onChange={(e) => patchSelected({ default_layer: Number(e.target.value) })}
-          >
-            {layers.map((l, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: firmware layers are addressed by position, so the index is the layer's identity.
-              <option key={`${l.name}-${i}`} value={i}>
-                L{i}: {l.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span>Shortcut CSV Pack</span>
-          <select
-            aria-label="Bound Shortcut Pack"
-            value={selected.shortcut_pack ?? ""}
-            onChange={(e) => patchSelected({ shortcut_pack: e.target.value || null })}
-          >
-            <option value="">None</option>
-            {packs.map((pk) => (
-              <option key={pk.id} value={pk.id}>
-                {pk.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="field">
-          <div className="toolbar-between" style={{ marginBottom: 4 }}>
-            <span>Auto-Switch Application Matcher</span>
-            {canListApps && (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={async () => {
-                  setShowAppPicker(true);
-                  try {
-                    const apps = await client.getInstalledApps();
-                    setInstalledApps(apps);
-                  } catch {
-                    setInstalledApps([]);
-                  }
-                }}
-              >
-                Pick App
+            <div className="profiles-actions">
+              <button type="button" className="btn-secondary" onClick={duplicateProfile}>
+                Duplicate
               </button>
-            )}
+              <button type="button" className="btn-secondary" disabled={profiles.length <= 1} onClick={deleteSelected}>
+                Delete
+              </button>
+            </div>
           </div>
-          <input
-            type="text"
-            aria-label="Profile App Matcher"
-            placeholder="e.g. com.blenderfoundation.blender"
-            value={selected.app_matcher ?? ""}
-            onChange={(e) => patchSelected({ app_matcher: e.target.value || null })}
-          />
-        </div>
+
+          <div className="profiles-bindings-grid">
+            <label className="field">
+              <span>Shortcut Pack</span>
+              <select
+                aria-label="Bound Shortcut Pack"
+                value={selected.shortcut_pack ?? ""}
+                onChange={(e) => patchSelected({ shortcut_pack: e.target.value || null })}
+              >
+                <option value="">None</option>
+                {packs.map((pk) => (
+                  <option key={pk.id} value={pk.id}>
+                    {pk.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Theme</span>
+              <select
+                aria-label="Bound Theme"
+                value={selected.theme_id}
+                onChange={(e) => patchSelected({ theme_id: e.target.value })}
+              >
+                {themes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Actuation Mode</span>
+              <select
+                aria-label="Bound Actuation Mode"
+                value={selected.actuation_mode_index}
+                onChange={(e) => patchSelected({ actuation_mode_index: Number(e.target.value) })}
+              >
+                {modes.map((m, i) => (
+                  <option key={m.id} value={i}>
+                    {m.name} ({m.actuationPointMm.toFixed(1)} mm)
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Default Layer</span>
+              <select
+                aria-label="Bound Default Layer"
+                value={selected.default_layer}
+                onChange={(e) => patchSelected({ default_layer: Number(e.target.value) })}
+              >
+                {layers.map((l, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: firmware layers are addressed by position, so the index is the layer's identity.
+                  <option key={`${l.name}-${i}`} value={i}>
+                    L{i}: {l.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
       </div>
 
       {showAppPicker && (
@@ -429,6 +350,7 @@ export const ProfilesPanel: React.FC<ProfilesPanelProps> = ({
                     <code>{app.bundleId}</code>
                   </button>
                 ))}
+              {installedApps.length === 0 && <p className="muted">No installed applications returned.</p>}
             </div>
           </div>
         </div>

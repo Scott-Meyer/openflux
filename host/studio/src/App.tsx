@@ -4,7 +4,7 @@ import type { DaemonClient } from "./api/daemonClient";
 import { createDaemonClient } from "./api/daemonClient";
 import { HostUpdateFlow } from "./api/hostUpdateFlow";
 import { createStudioServices, type StudioServices } from "./api/services";
-import { updatesNeedAttention } from "./api/updates";
+import { COMPONENT_LABELS, type UpdatesStatus, updatesNeedAttention } from "./api/updates";
 import { ActuationPanel } from "./components/ActuationPanel";
 import { AutoProfileLockButton } from "./components/AutoProfileLockButton";
 import { DevicePanel } from "./components/DevicePanel";
@@ -69,7 +69,8 @@ export const App: React.FC<AppProps> = ({
         startDaemon: (mode) => services.daemonService.start(mode),
       }),
   );
-  const [tab, setTab] = useState<StudioTab>(initialTab ?? "themes");
+  const [tab, setTab] = useState<StudioTab>(initialTab ?? "named_profiles");
+  const [updatesStatus, setUpdatesStatus] = useState<UpdatesStatus | null>(null);
   const [updatesBadge, setUpdatesBadge] = useState(false);
   const [pendingApps, setPendingApps] = useState(0);
   const [config, setConfig] = useState<OpenFluxConfig>(initialConfig ?? PLACEHOLDER_CONFIG);
@@ -325,12 +326,20 @@ export const App: React.FC<AppProps> = ({
     return services.navigation.subscribe(open);
   }, [services]);
 
+  const keyboardConnected = isKeyboardConnected(status);
+  const needsConversion = updatesStatus?.keyboard.mode === "needsConversion";
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyboardConnected triggers an immediate update/conversion check when a keyboard is plugged in.
   useEffect(() => {
     let cancelled = false;
     const pollUpdates = () =>
       void services.updates
         .getUpdates()
-        .then((s) => !cancelled && setUpdatesBadge(updatesNeedAttention(s)))
+        .then((s) => {
+          if (cancelled) return;
+          setUpdatesStatus(s);
+          setUpdatesBadge(updatesNeedAttention(s));
+        })
         .catch(() => {});
     const pollApps = () =>
       void services.thirdParty
@@ -339,14 +348,14 @@ export const App: React.FC<AppProps> = ({
         .catch(() => {});
     pollUpdates();
     pollApps();
-    const u = window.setInterval(pollUpdates, UPDATES_BADGE_POLL_MS);
+    const u = window.setInterval(pollUpdates, needsConversion ? 10_000 : UPDATES_BADGE_POLL_MS);
     const a = window.setInterval(pollApps, APPS_BADGE_POLL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(u);
       window.clearInterval(a);
     };
-  }, [services]);
+  }, [services, keyboardConnected, needsConversion]);
 
   const lastLayoutRef = useRef(config.keymap.selectedFrameLayoutType);
 
@@ -681,7 +690,9 @@ export const App: React.FC<AppProps> = ({
         </nav>
 
         <div className="topbar-right">
-          <div className="conn-pill">{isKeyboardConnected(status) ? "Connected" : "Offline"}</div>
+          <div className={`conn-pill ${needsConversion ? "needs-setup" : ""}`}>
+            {needsConversion ? "Setup Required" : keyboardConnected ? "Connected" : "Offline"}
+          </div>
           <button type="button" className={`btn-primary ${dirty ? "" : "is-clean"}`} onClick={handleSaveToKeyboard}>
             {dirty ? "Save Changes to Keyboard" : "Save to Keyboard"}
           </button>
@@ -691,12 +702,41 @@ export const App: React.FC<AppProps> = ({
       {banner && <div className="topbar-banner">{banner}</div>}
 
       <main className="main-pane">
+        {needsConversion && tab !== "updates" && (
+          <section className="conversion-callout" aria-label="Convert keyboard to OpenFlux">
+            <div className="conversion-callout-copy">
+              <strong>Factory Flux keyboard detected — Convert to OpenFlux</strong>
+              <p className="muted">
+                {updatesStatus?.keyboard.components
+                  .filter((c) => c.installed)
+                  .map((c) => `${COMPONENT_LABELS[c.component]} ${c.installed}`)
+                  .join(" · ") || "This keyboard is running its original factory software."}
+                {" — "}Converting installs OpenFlux across the keyboard, keeps your factory calibration and settings,
+                and can be reset to factory software anytime.
+              </p>
+            </div>
+            <button type="button" className="btn-primary" onClick={() => setTab("updates")}>
+              Convert to OpenFlux…
+            </button>
+          </section>
+        )}
         {tab === "named_profiles" && (
           <ProfilesPanel
             client={client}
             catalog={catalog}
             platform={platform}
             config={config}
+            previewNode={
+              <LivePreviewCanvas
+                client={client}
+                config={config}
+                syncedRevision={syncedRevision}
+                activeLayer={activeLayer}
+                selectedKeyIndex={selectedKeyIndex}
+                rects={previewRects}
+                onSelectKey={(k) => setSelectedKeyIndex(k)}
+              />
+            }
             effectiveActiveIndex={effectiveProfileIndex}
             onChangeProfiles={(profiles, nextDesired) => {
               const curProfiles = configRef.current.profiles ?? activeProfiles;
@@ -835,7 +875,10 @@ export const App: React.FC<AppProps> = ({
             updates={services.updates}
             hostFlow={hostFlow}
             service={services.daemonService}
-            onStatus={(s) => setUpdatesBadge(updatesNeedAttention(s))}
+            onStatus={(s) => {
+              setUpdatesStatus(s);
+              setUpdatesBadge(updatesNeedAttention(s));
+            }}
             onKeyboardChanged={() => {
               void refreshFromDaemon();
               refreshCatalog();

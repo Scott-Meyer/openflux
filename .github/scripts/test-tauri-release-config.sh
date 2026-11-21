@@ -37,8 +37,8 @@ for os in macos windows linux; do
     # shellcheck disable=SC2016 # jq variables
     expect "$out" "${os}: openfluxd, openflux-ffmpeg and openflux-ffprobe are sidecars" \
         '[.bundle.externalBin[] | split("/") | last] as $b | ["openfluxd", "openflux-ffmpeg", "openflux-ffprobe"] - $b == []'
-    expect "$out" "${os}: keyboard software and licenses are resources" \
-        '[.bundle.resources[]] | sort == ["keyboard/", "licenses/"]'
+    expect "$out" "${os}: keyboard software, licenses and preview assets are resources" \
+        '[.bundle.resources[]] | sort == ["assets/bundled_fonts/", "assets/default_backgrounds/", "assets/weather_icons/", "keyboard/", "licenses/"]'
     expect "$out" "${os}: updater requires the signed version" '.plugins.updater.requireSignedVersion == true'
     if jq -e --arg k "$pubkey" '.plugins.updater.pubkey == $k and
         .plugins.updater.endpoints == ["https://example.invalid/openflux/updates/stable/latest.json"]' "$out" > /dev/null; then

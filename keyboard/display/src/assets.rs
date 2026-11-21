@@ -92,44 +92,56 @@ impl AssetCache {
             return Some(p.to_path_buf());
         }
         let mut cands: Vec<PathBuf> = Vec::new();
+        let push_root = |cands: &mut Vec<PathBuf>, root: &Path| {
+            if !cat.is_empty() {
+                cands.push(root.join(cat).join(filename));
+                if cat == "fonts" {
+                    cands.push(root.join("bundled_fonts").join(filename));
+                }
+            }
+            cands.push(root.join(filename));
+        };
         if let Ok(env_dir) = std::env::var("OPENFLUX_ASSET_DIR") {
             if !env_dir.is_empty() {
-                if !cat.is_empty() {
-                    cands.push(Path::new(&env_dir).join(cat).join(filename));
-                }
-                cands.push(Path::new(&env_dir).join(filename));
+                push_root(&mut cands, Path::new(&env_dir));
             }
         }
         if let Ok(home) = std::env::var("HOME") {
             if !home.is_empty() {
                 let base = Path::new(&home).join(".local/share/openflux/assets");
-                if !cat.is_empty() {
-                    cands.push(base.join(cat).join(filename));
-                }
-                cands.push(base.join(filename));
+                push_root(&mut cands, &base);
             }
         }
         if let Some(md) = media_dir.filter(|s| !s.is_empty()) {
             let mdp = Path::new(md);
+            push_root(&mut cands, mdp);
             if !cat.is_empty() {
-                cands.push(mdp.join(cat).join(filename));
                 cands.push(mdp.join("../assets").join(cat).join(filename));
-            }
-            cands.push(mdp.join(filename));
-        }
-        if !cat.is_empty() {
-            cands.push(
-                Path::new(crate::device_paths::DISPLAY_INSTALL_DIR)
-                    .join(cat)
-                    .join(filename),
-            );
-            cands.push(Path::new("assets").join(cat).join(filename));
-            if cat == "fonts" {
-                cands.push(Path::new("assets/bundled_fonts").join(filename));
+                if cat == "fonts" {
+                    cands.push(mdp.join("../assets/bundled_fonts").join(filename));
+                }
             }
         }
-        cands.push(Path::new(crate::device_paths::DISPLAY_INSTALL_DIR).join(filename));
-        cands.push(Path::new("assets").join(filename));
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                for rel in [
+                    "../Resources/assets",
+                    "assets",
+                    "../lib/OpenFlux Studio/assets",
+                    "../lib/openflux-studio/assets",
+                ] {
+                    let root = dir.join(rel);
+                    if root.is_dir() {
+                        push_root(&mut cands, &root);
+                    }
+                }
+            }
+        }
+        push_root(
+            &mut cands,
+            Path::new(crate::device_paths::DISPLAY_INSTALL_DIR),
+        );
+        push_root(&mut cands, Path::new("assets"));
 
         cands.into_iter().find(|c| c.is_file())
     }
@@ -272,6 +284,12 @@ impl AssetCache {
         candidates.push((format!("{clean}-Bold.ttf"), false));
         candidates.push((format!("{clean}.ttf"), false));
         candidates.push((format!("{clean}.otf"), false));
+        if clean != "Montserrat" {
+            if italic {
+                candidates.push(("Montserrat-Italic-VariableFont_wght.ttf".to_string(), true));
+            }
+            candidates.push(("Montserrat-VariableFont_wght.ttf".to_string(), false));
+        }
 
         for (fname, nat_it) in candidates {
             if let Some(resolved) = Self::resolve_asset_path(media_dir, "fonts", &fname) {

@@ -151,6 +151,20 @@ jobs:
           extra: dist/extra
           github-token: ${{ github.token }}
 
+      - name: Set release title
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          COMPONENT: ${{ steps.meta.outputs.component }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          case "$COMPONENT" in
+            bridge) label="Keyboard Bridge" ;;
+            display) label="Keyboard Display" ;;
+            *) label="$COMPONENT" ;;
+          esac
+          gh release edit "$TAG" --title "${label} v${VERSION} (bundled in OpenFlux Studio)"
+
   publish-index:
     needs: build
     if: inputs.publish-index
