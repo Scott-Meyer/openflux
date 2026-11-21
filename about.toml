@@ -1,0 +1,59 @@
+# cargo-about configuration for the third-party license files installed with
+# every OpenFlux binary (scripts/licenses/rust-licenses.sh).
+#
+# `accepted` must list exactly the licenses deny.toml allows; CI compares the
+# two (.github/scripts/test-licenses.sh).
+accepted = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "BSL-1.0",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
+    "OFL-1.1",
+]
+# Test-only crates are not in any shipped binary.
+ignore-dev-dependencies = true
+
+# libusb1-sys compiles its bundled C libusb (LGPL-2.1-or-later) into
+# openfluxd (feature "vendored"); its crate license covers only the Rust
+# bindings. See NOTICE. The checksums pin the reviewed texts: a new version
+# with different files fails the generation until it is reviewed again.
+[libusb1-sys]
+accepted = ["LGPL-2.1-or-later"]
+
+[libusb1-sys.clarify]
+license = "MIT AND LGPL-2.1-or-later"
+
+[[libusb1-sys.clarify.files]]
+path = "LICENSE"
+license = "MIT"
+checksum = "d6b63b280f7998e4a5e9e21c7b0d2dbe79426e1b28a75e39e41bb8feae0f8b03"
+
+[[libusb1-sys.clarify.files]]
+path = "libusb/COPYING"
+license = "LGPL-2.1-or-later"
+checksum = "5df07007198989c622f5d41de8d703e7bef3d0e79d62e24332ee739a452af62a"
+
+# hidapi compiles its bundled C HIDAPI on macOS. HIDAPI is offered under a
+# choice of licenses; OpenFlux uses it under the BSD-style license.
+[hidapi.clarify]
+license = "MIT AND BSD-3-Clause"
+
+[[hidapi.clarify.files]]
+path = "LICENSE.txt"
+license = "MIT"
+checksum = "778d971f6152990cee1644e7aadcd51a68050dd73f76463c5a9c1863ca495d73"
+
+[[hidapi.clarify.files]]
+path = "etc/hidapi/LICENSE-bsd.txt"
+license = "BSD-3-Clause"
+checksum = "30eb1bef29b46f8ba7ab8b416035dbd93cb034a45481dd97815b944284582cd2"

@@ -1,0 +1,25 @@
+Rust crates
+===========
+
+The licenses of the Rust crates compiled into this program, generated from
+its Cargo.lock by cargo-about (scripts/licenses/rust-licenses.sh in the
+OpenFlux source). Each license text below is reproduced as the crates listed
+above it ship it. OpenFlux's own crates are MIT OR Apache-2.0 (LICENSE-MIT,
+LICENSE-APACHE).
+
+Licenses:
+{{#each overview}}
+  {{{name}}} ({{{id}}}): {{count}}
+{{/each}}
+
+{{#each licenses}}
+==============================================================================
+{{{name}}} ({{{id}}})
+Used by:
+{{#each used_by}}
+  {{{crate.name}}} {{{crate.version}}}
+{{/each}}
+------------------------------------------------------------------------------
+{{{text}}}
+
+{{/each}}

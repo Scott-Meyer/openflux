@@ -6,6 +6,9 @@ TARGET_DIR ?= $(CURDIR)/../../target
 VERSION ?= 1.0.0
 OUT_DIR ?= $(BUILD_DIR)
 ROOT_DIR := $(abspath $(CURDIR)/../..)
+# Writes the license texts of the Rust crates in the binary; needs cargo-about
+# (in the build image, or scripts/licenses/install-cargo-about.sh).
+RUST_LICENSES ?= $(ROOT_DIR)/scripts/licenses/rust-licenses.sh
 
 all: $(BUILD_DIR)/openflux-bridge
 
@@ -28,6 +31,8 @@ ipk: $(BUILD_DIR)/openflux-bridge
 	@cp packaging/openflux-autolaunch.sh $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/bridge/openflux-autolaunch.sh
 	@cp packaging/restore-factory.sh $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/bridge/restore-factory.sh
 	@chmod 0755 $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/bridge/*
+	$(RUST_LICENSES) --manifest-path $(CURDIR)/Cargo.toml --target $(TARGET) \
+		-o $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/bridge/licenses/openflux-bridge-rust-licenses.txt
 	python3 $(ROOT_DIR)/scripts/build_ipk.py \
 		--control-dir $(BUILD_DIR)/_ipk_stage/control \
 		--data-dir $(BUILD_DIR)/_ipk_stage/data \

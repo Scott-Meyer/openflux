@@ -11,6 +11,9 @@ FFMPEG_BIN ?= $(FFMPEG_DIR)/openflux-ffmpeg
 FFMPEG_SRC ?= $(FFMPEG_DIR)/openflux-ffmpeg-source-6.1.2.tar.xz
 FFMPEG_BUILD_TXT ?= $(FFMPEG_DIR)/openflux-ffmpeg-build.txt
 FFMPEG_LGPL ?= $(FFMPEG_DIR)/FFMPEG-LGPL-2.1.txt
+# Writes the license texts of the Rust crates in the binary; needs cargo-about
+# (in the build image, or scripts/licenses/install-cargo-about.sh).
+RUST_LICENSES ?= $(ROOT_DIR)/scripts/licenses/rust-licenses.sh
 
 all: $(BUILD_DIR)/openflux-display
 
@@ -34,6 +37,8 @@ ipk: $(BUILD_DIR)/openflux-display
 	@sed -i.bak 's/@OPENFLUX_VERSION@/$(VERSION)/g' $(BUILD_DIR)/_ipk_stage/control/postinst && rm -f $(BUILD_DIR)/_ipk_stage/control/postinst.bak
 	@cp $(BUILD_DIR)/openflux-display $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/display/openflux-display
 	@chmod 0755 $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/display/openflux-display
+	$(RUST_LICENSES) --manifest-path $(CURDIR)/Cargo.toml --target $(TARGET) \
+		-o $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/display/licenses/openflux-display-rust-licenses.txt
 	@if [ -f "$(FFMPEG_BIN)" ] || [ -f "$(BUILD_DIR)/openflux-ffmpeg" ]; then \
 		FF_SEL="$(FFMPEG_BIN)"; \
 		if [ ! -f "$$FF_SEL" ]; then FF_SEL="$(BUILD_DIR)/openflux-ffmpeg"; fi; \

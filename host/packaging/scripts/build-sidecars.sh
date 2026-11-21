@@ -11,8 +11,16 @@
 #   openflux-ffmpeg    media import tool (build-ffmpeg.sh)
 #   openflux-ffprobe   media duration probe, from the same FFmpeg build
 #
-# It also writes <out>/licenses/: the FFmpeg tools' license and build
-# information, installed with the app.
+# It also writes <out>/licenses/, installed with the app:
+#   openflux-ffmpeg-*                 the FFmpeg tools' license and build
+#                                     information
+#   openfluxd-rust-licenses.txt       license texts of the Rust crates in
+#   openflux-studio-rust-licenses.txt openfluxd and OpenFlux Studio, for the
+#                                     target (scripts/licenses/rust-licenses.sh)
+#   openflux-studio-ui-npm-licenses.txt
+#                                     license texts of the npm packages in
+#                                     Studio's interface (npm-licenses.mjs)
+# The macOS helpers are Swift programs using only system frameworks.
 #
 # Usage:
 #   build-sidecars.sh --target <triple> --ffmpeg-dir <dir> --out <dir> [--development-keys]
@@ -26,7 +34,9 @@
 # which refuses to build if the embedded trust anchors are development keys.
 # --development-keys leaves the feature off, for packaging tests only.
 #
-# Run from anywhere inside the repository. Cargo builds use --locked.
+# Needs cargo-about (scripts/licenses/install-cargo-about.sh), Node.js and
+# host/studio/node_modules (npm ci). Run from anywhere inside the repository.
+# Cargo builds use --locked.
 
 set -euo pipefail
 
@@ -87,6 +97,21 @@ copy_media_licenses() {
     compgen -G "${dir}/openflux-ffmpeg-*.buildinfo.txt" > /dev/null || die "no openflux-ffmpeg build information in ${ffmpeg_dir}"
 }
 
+# The license texts of the third-party code in the programs built for the
+# given target triples.
+write_dependency_licenses() {
+    local dir="${out}/licenses" triples=() t
+    for t in "$@"; do triples+=(--target "$t"); done
+    mkdir -p "$dir"
+    "${repo}/scripts/licenses/rust-licenses.sh" --manifest-path "${repo}/host/daemon/Cargo.toml" \
+        "${triples[@]}" -o "${dir}/openfluxd-rust-licenses.txt"
+    "${repo}/scripts/licenses/rust-licenses.sh" --manifest-path "${repo}/host/studio/src-tauri/Cargo.toml" \
+        "${triples[@]}" -o "${dir}/openflux-studio-rust-licenses.txt"
+    # vite: the production build includes its module preload polyfill.
+    node "${repo}/scripts/licenses/npm-licenses.mjs" --package-dir "${repo}/host/studio" --bundled vite \
+        -o "${dir}/openflux-studio-ui-npm-licenses.txt"
+}
+
 case "$target" in
     universal-apple-darwin|aarch64-apple-darwin|x86_64-apple-darwin)
         if [ "$target" = universal-apple-darwin ]; then
@@ -120,6 +145,9 @@ case "$target" in
         done
         rm -f "${out}"/.openflux-ff*
         copy_media_licenses "${arches[0]}-apple-darwin"
+        triples=()
+        for arch in "${arches[@]}"; do triples+=("${arch}-apple-darwin"); done
+        write_dependency_licenses "${triples[@]}"
         ;;
     *-pc-windows-msvc)
         cargo_build "$target" "${rust_bins[@]}"
@@ -127,6 +155,7 @@ case "$target" in
         copy_media_tool openflux-ffmpeg "$target" "${out}/openflux-ffmpeg-${target}.exe"
         copy_media_tool openflux-ffprobe "$target" "${out}/openflux-ffprobe-${target}.exe"
         copy_media_licenses "$target"
+        write_dependency_licenses "$target"
         ;;
     *-unknown-linux-gnu)
         cargo_build "$target" "${rust_bins[@]}"
@@ -134,6 +163,7 @@ case "$target" in
         copy_media_tool openflux-ffmpeg "$target" "${out}/openflux-ffmpeg-${target}"
         copy_media_tool openflux-ffprobe "$target" "${out}/openflux-ffprobe-${target}"
         copy_media_licenses "$target"
+        write_dependency_licenses "$target"
         ;;
     *)
         die "unsupported target: ${target}"

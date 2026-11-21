@@ -50,6 +50,14 @@ FFmpeg
   build scripts for every shipped FFmpeg binary are published with the
   release that contains it.
 
+libusb
+  Used by: desktop installers (openfluxd, through the libusb1-sys crate)
+  License: LGPL-2.1-or-later. libusb (LGPL-2.1-or-later) is statically linked
+  into openfluxd. The complete corresponding source and build instructions
+  for openfluxd are in this repository at each host release tag, so it can be
+  rebuilt with a modified libusb. The license text is installed with
+  openfluxd in licenses/openfluxd-rust-licenses.txt.
+
 Rust crates and npm packages
   The CycloneDX software bills of materials published with each release list
   every Rust crate and npm package compiled into its binaries and its license.

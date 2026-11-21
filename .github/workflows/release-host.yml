@@ -9,6 +9,13 @@
 # signed index; the build stops with an explanation if any of them has no
 # stable release (none published yet, or only betas).
 #
+# Every installer carries licenses/ (build-sidecars.sh): the FFmpeg tools'
+# license and the license texts of the Rust crates in openfluxd and Studio
+# and of the npm packages in Studio's interface, written by cargo-about
+# (pinned in scripts/licenses/install-cargo-about.sh) and
+# scripts/licenses/npm-licenses.mjs. check-host-installer.sh fails an
+# installer whose license files are missing or empty.
+#
 # openflux-ffmpeg and openflux-ffprobe come from one pinned, checksummed
 # FFmpeg build per target (host/packaging/ffmpeg/build-ffmpeg.sh). That build
 # includes x264 and is therefore GPL-2.0-or-later; its complete source,
@@ -240,6 +247,7 @@ jobs:
           rustup show active-toolchain
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
           npm ci --prefix host/studio
+          scripts/licenses/install-cargo-about.sh
       - name: Sidecars
         run: host/packaging/scripts/build-sidecars.sh --target universal-apple-darwin --ffmpeg-dir build/ffmpeg-out --out build/sidecars
       - name: Release configuration
@@ -334,6 +342,7 @@ jobs:
         run: |
           rustup show active-toolchain
           npm ci --prefix host/studio
+          scripts/licenses/install-cargo-about.sh
       - name: Sidecars
         run: host/packaging/scripts/build-sidecars.sh --target "$TARGET" --ffmpeg-dir build/ffmpeg-out --out build/sidecars
       - name: Release configuration
@@ -486,6 +495,7 @@ jobs:
             libudev-dev libwayland-dev libxdo-dev libssl-dev libfuse2 file patchelf
           rustup show active-toolchain
           npm ci --prefix host/studio
+          scripts/licenses/install-cargo-about.sh
       - name: Sidecars
         run: host/packaging/scripts/build-sidecars.sh --target "$TARGET" --ffmpeg-dir build/ffmpeg-out --out build/sidecars
       - name: Release configuration

@@ -38,7 +38,15 @@ target, configured with libx264, so these two programs are licensed under
 the GPL, version 2 or later. Their license and the configure lines of the
 build are installed in `$RESOURCE/licenses/`; the complete source is
 published with each host release. OpenFlux's own code is MIT OR Apache-2.0.
-Bundled dependencies and assets keep their own licenses; see
+`$RESOURCE/licenses/` also holds the license texts of the Rust crates
+compiled into `openfluxd` and Studio (`openfluxd-rust-licenses.txt`,
+`openflux-studio-rust-licenses.txt`, written by cargo-about through
+`scripts/licenses/rust-licenses.sh` for the build's targets) and of the npm
+packages in Studio's interface (`openflux-studio-ui-npm-licenses.txt`,
+`scripts/licenses/npm-licenses.mjs`). `build-sidecars.sh` writes them; it
+needs cargo-about (`scripts/licenses/install-cargo-about.sh`) and
+`npm ci` in `host/studio`. Bundled dependencies and assets keep their own
+licenses; see
 [NOTICE](../../NOTICE) and the
 [asset license manifest](../../assets/LICENSE_MANIFEST.md).
 

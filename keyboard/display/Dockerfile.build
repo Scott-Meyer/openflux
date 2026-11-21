@@ -43,4 +43,22 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     } > /opt/openflux-ffmpeg/openflux-ffmpeg-build.txt && \
     rm -rf /tmp/ff && \
     rm -rf /var/lib/apt/lists/*
+# cargo-about writes the license texts of the Rust crates in the package
+# (scripts/licenses/rust-licenses.sh); same version and checksums as
+# scripts/licenses/install-cargo-about.sh.
+ARG CARGO_ABOUT_VERSION=0.9.3
+ARG CARGO_ABOUT_SHA256_AARCH64=eb4d9ff6ebd2518152a8308729431a04b3836e71d2bd5ead7aea69f91a71162e
+ARG CARGO_ABOUT_SHA256_X86_64=3ad1e94ea1e63d69d1961f4fb15ccbbe9575d906111f96d2cb4dce6df48f71b4
+RUN case "$(uname -m)" in \
+      aarch64) triple=aarch64-unknown-linux-musl sha="${CARGO_ABOUT_SHA256_AARCH64}" ;; \
+      x86_64) triple=x86_64-unknown-linux-musl sha="${CARGO_ABOUT_SHA256_X86_64}" ;; \
+      *) echo "no cargo-about for $(uname -m)" >&2; exit 1 ;; \
+    esac && \
+    name="cargo-about-${CARGO_ABOUT_VERSION}-${triple}" && \
+    curl -fsSL --retry 3 -o "/tmp/${name}.tar.gz" \
+      "https://github.com/EmbarkStudios/cargo-about/releases/download/${CARGO_ABOUT_VERSION}/${name}.tar.gz" && \
+    echo "${sha}  /tmp/${name}.tar.gz" | sha256sum -c - && \
+    tar -xzf "/tmp/${name}.tar.gz" -C /tmp && \
+    install -m 0755 "/tmp/${name}/cargo-about" /usr/local/cargo/bin/cargo-about && \
+    rm -rf "/tmp/${name}" "/tmp/${name}.tar.gz"
 WORKDIR /work
