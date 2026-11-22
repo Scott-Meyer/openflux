@@ -867,22 +867,20 @@ void main() {
         return;
     }
     vec4 w = texture2D(u_tex_wave, v_uv);
-    vec2 grad = (w.rg - vec2(0.5, 0.5)) * 2.0;
-    float hc = (w.b - 0.5) / 0.35;
-    vec2 offset_uv = (grad * u_refract_px) / u_screen;
+    // Exact ±1.5-texel gradient decoded from RG ([-0.18, +0.18]) and full-range glint/shadow from BA!
+    vec2 grad = (w.rg - vec2(0.5, 0.5)) * 0.36;
+    float refract_uv = u_refract_px / 100.0;
+    vec2 refracted_uv = clamp(v_uv + grad * refract_uv, vec2(0.001), vec2(0.999));
 
-    float r = sample_bg(v_uv + offset_uv * 1.12).r;
-    float g = sample_bg(v_uv + offset_uv).g;
-    float b = sample_bg(v_uv + offset_uv * 0.88).b;
-    vec3 col = vec3(r, g, b) * dim_scale;
+    // Refracts the live rkmpp NV12 video (or RGBA/shader background) directly!
+    vec3 col = sample_bg(refracted_uv) * dim_scale;
 
-    vec3 n = normalize(vec3(-grad.x * 4.2, -grad.y * 4.2, 1.0));
-    vec3 l1 = normalize(vec3(-0.32, -0.52, 0.79));
-    vec3 view = vec3(0.0, 0.0, 1.0);
-    float spec = pow(max(dot(n, normalize(l1 + view)), 0.0), 26.0) * smoothstep(0.05, 0.45, max(hc, 0.0));
-    float crest = pow(clamp(hc, 0.0, 1.0), 2.2) * 0.38;
-    col = clamp(col + u_tint.rgb * (spec * u_specular + crest * u_specular), 0.0, 1.0);
-    gl_FragColor = vec4(col, 1.0);
+    float pos_f = w.b;
+    float neg_f = w.a;
+    float spec = pos_f * pos_f * pos_f;
+    col += u_tint.rgb * spec * u_specular * 0.55;
+    col *= 1.0 - neg_f * u_specular * 0.18;
+    gl_FragColor = vec4(clamp(col, vec3(0.0), vec3(1.0)), 1.0);
 }
 "#;
 

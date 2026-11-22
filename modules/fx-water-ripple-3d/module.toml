@@ -1,7 +1,7 @@
 id = "fx-water-ripple-3d"
 name = "3D Water Ripple"
-version = "2.0.0"
-description = "Refracts the playing video or background with a real-time 2D wave simulation and specular highlights"
+version = "2.1.0"
+description = "Refracts live video and backgrounds with a 60 Hz viscosity-damped water simulation (Ripple per key or Gentle Swell per key) and warm sunlit glints"
 author = "OpenFlux"
 category = "effect"
 tags = ["3d", "water", "refraction", "ripple", "visual"]
@@ -18,45 +18,44 @@ subscribes = ["input/keys/event", "fx/surface/impulse"]
 publishes = []
 
 [[settings]]
+key = "mode"
+label = "Water Mode"
+kind = "select"
+default = "ripple"
+options = ["ripple", "gentle"]
+
+[[settings]]
 key = "refraction"
 label = "Refraction Strength"
 kind = "number"
-default = 38.0
+default = 25.0
 min = 5.0
-max = 120.0
+max = 60.0
 
 [[settings]]
 key = "specular"
-label = "3D Highlight"
+label = "Sunlit Glint"
 kind = "number"
-default = 0.55
+default = 1.0
 min = 0.0
-max = 1.5
+max = 2.0
 
 [[settings]]
 key = "damping"
 label = "Wave Persistence"
 kind = "number"
-default = 0.935
-min = 0.88
-max = 0.996
-
-[[settings]]
-key = "speed"
-label = "Wave Speed"
-kind = "number"
-default = 0.76
-min = 0.15
-max = 0.85
+default = 0.988
+min = 0.95
+max = 0.995
 
 [[settings]]
 key = "tint"
-label = "Specular Tint"
+label = "Glint Color"
 kind = "color"
-default = "#9ce8ff"
+default = "#ffdb9e"
 
 [[actions]]
 id = "test_ripple"
-label = "Trigger Test Ripple"
+label = "Trigger Test Drop"
 topic = "fx/surface/impulse"
-payload = { x = 960, y = 640, radius = 64, force = 1.2, kind = "ripple", source = "studio" }
+payload = { x = 960, y = 640, radius = 46, force = 0.9, kind = "ripple", source = "studio" }

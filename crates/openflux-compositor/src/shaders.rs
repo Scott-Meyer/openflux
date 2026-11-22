@@ -162,29 +162,18 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     }
 
     let w = textureSample(wave_tex, samp, uv);
-    let grad = (w.rg - vec2<f32>(0.5, 0.5)) * 2.0;
-    let h_c = (w.b - 0.5) / 0.35;
-    let offset_uv = (grad * u.refraction_px) / u.resolution;
+    // Exact ±1.5-texel gradient decoded from RG ([-0.18, +0.18]) and full-range f32 glint/shadow from BA!
+    let grad = (w.rg - vec2<f32>(0.5, 0.5)) * 0.36;
+    let refract_uv = u.refraction_px / 100.0;
+    let refracted_uv = clamp(uv + grad * refract_uv, vec2<f32>(0.001), vec2<f32>(0.999));
 
-    // Subtle RGB chromatic dispersion along the single outgoing crest for crisp glass/water feel.
-    let uv_r = clamp(uv + offset_uv * 1.12, vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_g = clamp(uv + offset_uv,        vec2<f32>(0.001), vec2<f32>(0.999));
-    let uv_b = clamp(uv + offset_uv * 0.88, vec2<f32>(0.001), vec2<f32>(0.999));
+    var col = textureSample(bg_tex, samp, refracted_uv).rgb * dim_scale;
 
-    let bg_r = textureSample(bg_tex, samp, uv_r).r;
-    let bg_g = textureSample(bg_tex, samp, uv_g).g;
-    let bg_b = textureSample(bg_tex, samp, uv_b).b;
-    var col = vec3<f32>(bg_r, bg_g, bg_b) * dim_scale;
-
-    let n = normalize(vec3<f32>(-grad.x * 4.2, -grad.y * 4.2, 1.0));
-    let light1 = normalize(vec3<f32>(-0.32, -0.52, 0.79));
-    let view = vec3<f32>(0.0, 0.0, 1.0);
-
-    // Single directional sheen + crisp crest glint right on the single wave peak (no double ring!).
-    let spec = pow(max(dot(n, normalize(light1 + view)), 0.0), 26.0) * smoothstep(0.05, 0.45, max(h_c, 0.0));
-    let crest_glint = pow(clamp(h_c, 0.0, 1.0), 2.2) * 0.38;
-
-    col = col + u.tint.rgb * (spec * u.specular_strength + crest_glint * u.specular_strength);
+    let pos_f = w.b;
+    let neg_f = w.a;
+    let spec = pos_f * pos_f * pos_f;
+    col = col + u.tint.rgb * spec * u.specular_strength * 0.55;
+    col = col * (1.0 - neg_f * u.specular_strength * 0.18);
     return vec4<f32>(clamp(col, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
 }
 "#;
