@@ -198,6 +198,9 @@ pub struct FrameScene {
     pub dt_sec: f32,
     pub background_shaders: Vec<ShaderPassCmd>,
     pub background_media: Option<String>,
+    /// GPU-side background dimming factor `[0.0..0.9]` (0 = full brightness, 0.3 = 30% darker).
+    #[serde(default)]
+    pub bg_dimming: f32,
     pub distortion_enabled: bool,
     pub wave_params: WaveFieldParams,
     pub wave_impulses: Vec<WaveImpulseCmd>,

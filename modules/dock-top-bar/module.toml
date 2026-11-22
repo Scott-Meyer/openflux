@@ -10,6 +10,12 @@ host_requirement = "none"
 slot_capable = false
 stackable = false
 
+[ui]
+top_tab = true
+top_tab_label = "Top Bar"
+top_tab_order = 5
+builtin_view = "top_bar"
+
 [entrypoints]
 script = "script.lua"
 

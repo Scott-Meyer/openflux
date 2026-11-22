@@ -47,14 +47,122 @@ pub struct KeyboardV2Display {
     pub wave_enabled: bool,
     pub wave_params: WaveFieldParams,
     pub active_media_path: Option<String>,
+    pub bg_dimming: f32,
     pub glows: Vec<V2GlowDraw>,
     pub time_sec: f32,
     pub overlay_dirty: bool,
-    last_overlay_hash: u64,
-    last_overlay_ms: u64,
+    last_keys_hash: u64,
+    last_tiles_hash: u64,
+    last_world_hash: u64,
+    last_tiles_ms: u64,
     last_bitmap: [u8; 32],
     last_input_ms: u64,
     last_state_mtime: Option<SystemTime>,
+}
+
+fn hash_f32<H: std::hash::Hasher>(h: &mut H, v: f32) {
+    use std::hash::Hash;
+    v.to_bits().hash(h);
+}
+
+fn hash_color<H: std::hash::Hasher>(h: &mut H, c: &[f32; 4]) {
+    for &x in c {
+        hash_f32(h, x);
+    }
+}
+
+/// Fast zero-allocation structural hash for DrawCommand slices (replaces slow JSON serialization).
+fn hash_draw_list(cmds: &[openflux_modules::DrawCommand]) -> u64 {
+    use openflux_modules::DrawCommand;
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    cmds.len().hash(&mut h);
+    for cmd in cmds {
+        match cmd {
+            DrawCommand::Clip { x, y, w, h: ch } => {
+                0u8.hash(&mut h);
+                hash_f32(&mut h, *x);
+                hash_f32(&mut h, *y);
+                hash_f32(&mut h, *w);
+                hash_f32(&mut h, *ch);
+            }
+            DrawCommand::ClearClip => 1u8.hash(&mut h),
+            DrawCommand::Rect { x, y, w, h: ch, color } => {
+                2u8.hash(&mut h);
+                hash_f32(&mut h, *x);
+                hash_f32(&mut h, *y);
+                hash_f32(&mut h, *w);
+                hash_f32(&mut h, *ch);
+                hash_color(&mut h, color);
+            }
+            DrawCommand::RoundRect { x, y, w, h: ch, radius, color, stroke_width, stroke_color } => {
+                3u8.hash(&mut h);
+                hash_f32(&mut h, *x);
+                hash_f32(&mut h, *y);
+                hash_f32(&mut h, *w);
+                hash_f32(&mut h, *ch);
+                hash_f32(&mut h, *radius);
+                hash_color(&mut h, color);
+                hash_f32(&mut h, *stroke_width);
+                hash_color(&mut h, stroke_color);
+            }
+            DrawCommand::Circle { cx, cy, r, color, stroke_width, stroke_color } => {
+                4u8.hash(&mut h);
+                hash_f32(&mut h, *cx);
+                hash_f32(&mut h, *cy);
+                hash_f32(&mut h, *r);
+                hash_color(&mut h, color);
+                hash_f32(&mut h, *stroke_width);
+                hash_color(&mut h, stroke_color);
+            }
+            DrawCommand::Ellipse { cx, cy, rx, ry, color } => {
+                5u8.hash(&mut h);
+                hash_f32(&mut h, *cx);
+                hash_f32(&mut h, *cy);
+                hash_f32(&mut h, *rx);
+                hash_f32(&mut h, *ry);
+                hash_color(&mut h, color);
+            }
+            DrawCommand::Line { x1, y1, x2, y2, width, color } => {
+                6u8.hash(&mut h);
+                hash_f32(&mut h, *x1);
+                hash_f32(&mut h, *y1);
+                hash_f32(&mut h, *x2);
+                hash_f32(&mut h, *y2);
+                hash_f32(&mut h, *width);
+                hash_color(&mut h, color);
+            }
+            DrawCommand::Arc { cx, cy, r, start_deg, end_deg, width, color } => {
+                7u8.hash(&mut h);
+                hash_f32(&mut h, *cx);
+                hash_f32(&mut h, *cy);
+                hash_f32(&mut h, *r);
+                hash_f32(&mut h, *start_deg);
+                hash_f32(&mut h, *end_deg);
+                hash_f32(&mut h, *width);
+                hash_color(&mut h, color);
+            }
+            DrawCommand::Text { x, y, text, size, color, align } => {
+                8u8.hash(&mut h);
+                hash_f32(&mut h, *x);
+                hash_f32(&mut h, *y);
+                text.hash(&mut h);
+                hash_f32(&mut h, *size);
+                hash_color(&mut h, color);
+                (*align as u8).hash(&mut h);
+            }
+            DrawCommand::Image { x, y, w, h: ch, path, tint } => {
+                9u8.hash(&mut h);
+                hash_f32(&mut h, *x);
+                hash_f32(&mut h, *y);
+                hash_f32(&mut h, *w);
+                hash_f32(&mut h, *ch);
+                path.hash(&mut h);
+                hash_color(&mut h, tint);
+            }
+        }
+    }
+    h.finish()
 }
 
 fn file_mtime(p: &Path) -> Option<SystemTime> {
@@ -99,11 +207,14 @@ impl KeyboardV2Display {
             wave_enabled: false,
             wave_params: WaveFieldParams::default(),
             active_media_path: None,
+            bg_dimming: 0.0,
             glows: Vec::with_capacity(256),
             time_sec: 0.0,
             overlay_dirty: true,
-            last_overlay_hash: 0,
-            last_overlay_ms: 0,
+            last_keys_hash: 0,
+            last_tiles_hash: 0,
+            last_world_hash: 0,
+            last_tiles_ms: 0,
             last_bitmap: [0u8; 32],
             last_input_ms: openflux_bus::now_unix_ms(),
             last_state_mtime,
@@ -446,6 +557,7 @@ impl KeyboardV2Display {
         let scene = self.runtime.step_frame(dt, now_ms);
 
         self.active_media_path = scene.background_media.clone();
+        self.bg_dimming = scene.bg_dimming;
         self.wave_enabled = scene.distortion_enabled;
         self.wave_params = scene.wave_params.clone();
 
@@ -499,29 +611,30 @@ impl KeyboardV2Display {
             });
         }
 
-        // Only re-rasterize & re-upload the 1920x1080 2D overlay when draw commands actually change
-        // (and rate-limit purely decorative animations like equalizer bars to ~10 Hz on the SoC
-        // so Mali-G52 + rkmpp video + 3D water ripples + particles stay locked at 60 FPS!).
-        let has_world_anim = !scene.world_overlay_draws.is_empty();
-        let min_overlay_interval_ms = if has_world_anim { 45 } else { 180 };
-        let overlay_hash = {
-            use std::hash::{Hash, Hasher};
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            if let Ok(b) = serde_json::to_vec(&(
-                &scene.under_key_draws,
-                &scene.tile_draws,
-                &scene.world_overlay_draws,
-            )) {
-                b.hash(&mut h);
-            }
-            h.finish()
-        };
-        let due_for_overlay = self.last_overlay_hash == 0
-            || (overlay_hash != self.last_overlay_hash
-                && now_ms.saturating_sub(self.last_overlay_ms) >= min_overlay_interval_ms);
+        // Fast zero-allocation hash split by stage:
+        // - Key legends / Shift / Cmd / Fn (`under_key_draws`) and interactive world overlays
+        //   (`world_overlay_draws`, e.g. Mochi / Prusa glance) update IMMEDIATELY with ZERO throttle
+        //   so rapid-tapping Shift/Cmd runs at full 60 FPS!
+        // - Decorative top-bar tile updates (`tile_draws`, e.g. equalizer bars) gently rate-limit
+        //   to ~8 Hz when keys didn't change so CPU stays cool.
+        let keys_hash = hash_draw_list(&scene.under_key_draws);
+        let world_hash = hash_draw_list(&scene.world_overlay_draws);
+        let tiles_hash = hash_draw_list(&scene.tile_draws);
+
+        let keys_changed = keys_hash != self.last_keys_hash;
+        let world_changed = world_hash != self.last_world_hash;
+        let tiles_changed = tiles_hash != self.last_tiles_hash;
+
+        let due_for_overlay = self.last_keys_hash == 0
+            || keys_changed
+            || world_changed
+            || (tiles_changed && now_ms.saturating_sub(self.last_tiles_ms) >= 140);
+
         if due_for_overlay {
-            self.last_overlay_hash = overlay_hash;
-            self.last_overlay_ms = now_ms;
+            self.last_keys_hash = keys_hash;
+            self.last_world_hash = world_hash;
+            self.last_tiles_hash = tiles_hash;
+            self.last_tiles_ms = now_ms;
             self.canvas.clear();
             if !scene.under_key_draws.is_empty() {
                 self.canvas.execute(&scene.under_key_draws);
@@ -561,5 +674,38 @@ impl KeyboardV2Display {
             k.visual_y = k.center_y + dy as f32;
         }
         self.runtime.update_geometry(self.geometry.clone());
+    }
+
+    /// Publishes the keyboard's real hardware keymap layers onto `keyboard/keymap` so modular
+    /// key providers (`keys-keymap`, `keys-renderer`, `keys-shortcuts`) follow user remaps!
+    pub fn sync_keymap_config(&mut self, keymap: &crate::config::KeymapConfig) {
+        let layers: Vec<serde_json::Value> = keymap
+            .layers
+            .iter()
+            .map(|l| {
+                let actions: Vec<serde_json::Value> = l
+                    .actions
+                    .iter()
+                    .map(|a| {
+                        serde_json::json!({
+                            "keyCode": a.key_code,
+                            "legend": a.legend,
+                            "type": a.action_type,
+                            "targetLayer": a.target_layer,
+                            "isMomentary": a.is_momentary,
+                        })
+                    })
+                    .collect();
+                serde_json::json!({ "name": l.name, "keyActions": actions })
+            })
+            .collect();
+        let _ = self.broker.publish(
+            "keyboard/keymap",
+            serde_json::json!({
+                "defaultLayer": keymap.default_layer,
+                "layers": layers,
+            }),
+            PublishOptions::retained(),
+        );
     }
 }

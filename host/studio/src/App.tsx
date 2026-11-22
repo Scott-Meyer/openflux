@@ -17,6 +17,7 @@ import { ProfilesPanel } from "./components/ProfilesPanel";
 import { ShortcutsProfilesPanel } from "./components/ShortcutsProfilesPanel";
 import { ThemeBackgroundPanel } from "./components/ThemeBackgroundPanel";
 import { ThirdPartyAppsPage } from "./components/ThirdPartyAppsPage";
+import { TopBarDockTab } from "./components/TopBarDockTab";
 import { V2ModulesHub } from "./components/V2ModulesHub";
 import { UpdatesPage } from "./components/updates/UpdatesPage";
 import { type V2ModuleRecord, v2Client } from "./api/v2Client";
@@ -784,6 +785,9 @@ export const App: React.FC<AppProps> = ({
           (() => {
             const modId = tab.slice(4);
             const mod = v2Modules.find((m) => m.id === modId);
+            if (mod?.manifest.ui?.builtin_view === "top_bar") {
+              return <TopBarDockTab onModulesChanged={setV2Modules} />;
+            }
             if (mod?.manifest.ui?.builtin_view === "shortcuts") {
               return (
                 <ShortcutsProfilesPanel

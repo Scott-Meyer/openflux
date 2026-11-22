@@ -536,35 +536,61 @@ impl Canvas2D {
         let baseline_y = y + size * 0.82;
         let mut pen_x = start_x;
 
+        let sr_u8 = (color[0].clamp(0.0, 1.0) * 255.0) as u32;
+        let sg_u8 = (color[1].clamp(0.0, 1.0) * 255.0) as u32;
+        let sb_u8 = (color[2].clamp(0.0, 1.0) * 255.0) as u32;
+        let sa_u8 = (color[3].clamp(0.0, 1.0) * 255.0) as u32;
+        let w_usize = self.width as usize;
+
         for ch in text.chars() {
-            let Some((m, bitmap)) = self.glyph_cache.get(&(ch, size_key)).cloned() else {
+            let Some((m, bitmap)) = self.glyph_cache.get(&(ch, size_key)) else {
                 continue;
             };
+            let m = *m;
             let gx = (pen_x + m.xmin as f32).round() as i32;
             let gy = (baseline_y - m.height as f32 - m.ymin as f32).round() as i32;
-            for row in 0..m.height {
-                let py = gy + row as i32;
-                if py < 0 || py >= self.height as i32 {
-                    continue;
-                }
-                if let Some((_, cy0, _, cy1)) = self.clip {
-                    if py < cy0 || py >= cy1 {
+            let (clip_x0, clip_y0, clip_x1, clip_y1) = self.clip.unwrap_or((0, 0, self.width as i32, self.height as i32));
+            let row_start = (clip_y0 - gy).max(0) as usize;
+            let row_end = (clip_y1 - gy).min(m.height as i32).max(0) as usize;
+            let col_start = (clip_x0 - gx).max(0) as usize;
+            let col_end = (clip_x1 - gx).min(m.width as i32).max(0) as usize;
+            let bmp_ptr = bitmap.as_ptr();
+            let bmp_w = m.width;
+
+            self.is_clean = false;
+            for row in row_start..row_end {
+                let py = (gy + row as i32) as usize;
+                let dst_row = py * w_usize;
+                let src_row = row * bmp_w;
+                for col in col_start..col_end {
+                    let cov = unsafe { *bmp_ptr.add(src_row + col) } as u32;
+                    if cov < 3 {
                         continue;
                     }
-                }
-                for col in 0..m.width {
-                    let px = gx + col as i32;
-                    if px < 0 || px >= self.width as i32 {
+                    let a = (sa_u8 * cov + 127) / 255;
+                    if a == 0 {
                         continue;
                     }
-                    if let Some((cx0, _, cx1, _)) = self.clip {
-                        if px < cx0 || px >= cx1 {
-                            continue;
+                    let idx = (dst_row + (gx + col as i32) as usize) * 4;
+                    let da = self.rgba[idx + 3] as u32;
+                    if da == 0 {
+                        self.rgba[idx] = sr_u8 as u8;
+                        self.rgba[idx + 1] = sg_u8 as u8;
+                        self.rgba[idx + 2] = sb_u8 as u8;
+                        self.rgba[idx + 3] = a as u8;
+                    } else {
+                        let inv = 255 - a;
+                        let out_a = a + ((da * inv + 127) / 255);
+                        if out_a > 0 {
+                            let dr = self.rgba[idx] as u32;
+                            let dg = self.rgba[idx + 1] as u32;
+                            let db = self.rgba[idx + 2] as u32;
+                            let da_inv = (da * inv + 127) / 255;
+                            self.rgba[idx] = ((sr_u8 * a + dr * da_inv) / out_a).min(255) as u8;
+                            self.rgba[idx + 1] = ((sg_u8 * a + dg * da_inv) / out_a).min(255) as u8;
+                            self.rgba[idx + 2] = ((sb_u8 * a + db * da_inv) / out_a).min(255) as u8;
+                            self.rgba[idx + 3] = out_a.min(255) as u8;
                         }
-                    }
-                    let cov = bitmap[row * m.width + col] as f32 / 255.0;
-                    if cov > 0.01 {
-                        self.blend_px(px, py, color, cov);
                     }
                 }
             }

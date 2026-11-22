@@ -56,7 +56,7 @@ struct RefractUniforms {
     specular_strength: f32,
     resolution: [f32; 2],
     enabled: f32,
-    _pad: f32,
+    bg_dimming: f32,
     tint: [f32; 4],
 }
 
@@ -830,7 +830,7 @@ impl Compositor {
             specular_strength: scene.wave_params.specular_strength,
             resolution: [DISPLAY_WIDTH_PX as f32, DISPLAY_HEIGHT_PX as f32],
             enabled: if scene.distortion_enabled { 1.0 } else { 0.0 },
-            _pad: 0.0,
+            bg_dimming: scene.bg_dimming,
             tint: scene.wave_params.tint,
         };
         self.queue

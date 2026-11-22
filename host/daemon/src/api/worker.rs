@@ -1726,6 +1726,28 @@ pub fn reconcile_tick_with_state(
     {
         let mut active_pack = {
             let g = state.inner.lock().unwrap();
+            // Mirror the real active hardware keymap onto the host v2 bus so Studio preview
+            // matches your exact remapped keys (e.g. Cmd on key 74, Fn on key 79).
+            let layout_key = g
+                .keymap
+                .get("selectedFrameLayoutType")
+                .and_then(|v| v.as_str())
+                .unwrap_or("ansi");
+            if let Some(km_layout) = g.keymap.get("keymaps").and_then(|m| m.get(layout_key)) {
+                let changed = state
+                    .v2
+                    .broker
+                    .get_retained("keyboard/keymap")
+                    .map(|m| &m.payload != km_layout)
+                    .unwrap_or(true);
+                if changed {
+                    let _ = state.v2.broker.publish(
+                        "keyboard/keymap",
+                        km_layout.clone(),
+                        openflux_bus::PublishOptions::retained(),
+                    );
+                }
+            }
             g.profiles
                 .get(desired_profile)
                 .and_then(|p| p.shortcut_pack.clone())

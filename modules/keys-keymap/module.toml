@@ -14,7 +14,7 @@ stackable = true
 script = "script.lua"
 
 [channels]
-subscribes = ["keyboard/state"]
+subscribes = ["keyboard/state", "keyboard/keymap"]
 publishes = ["keys/providers/keymap", "keys/providers/keymap-caps"]
 
 [[settings]]

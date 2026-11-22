@@ -13,14 +13,65 @@ local active_app = { app_id = "", process_name = "", window_title = "", profile_
 local active_profile = { index = 0, id = "", name = "" }
 local anim_t = 0.0
 
--- ANSI modifier physical key indices
+-- Dynamic modifier map (rebuilt live from `keyboard/keymap` so remapped Cmd/Ctrl/Opt/Fn work!)
 local MOD_KEYS = {
   [60] = "shift", [71] = "shift",
-  [74] = "ctrl",  [81] = "ctrl",
-  [75] = "alt",   [80] = "alt",
-  [76] = "cmd",   [79] = "cmd",
-  [77] = "fn",
+  [74] = "cmd",   [75] = "alt",
+  [76] = "ctrl",  [77] = "ctrl",
+  [79] = "fn",    [80] = "alt", [81] = "ctrl",
 }
+
+-- Canonical keyCode aliases (maps both QMK short names & Flux long names to canonical key)
+local KEYCODE_ALIAS = {
+  KC_ESCAPE = "KC_ESC", KC_BACKSPACE = "KC_BSPC", KC_ENTER = "KC_ENT", KC_RETURN = "KC_ENT",
+  KC_SPACE = "KC_SPC", KC_MINUS = "KC_MINS", KC_EQUAL = "KC_EQL", KC_LBRACKET = "KC_LBRC",
+  KC_RBRACKET = "KC_RBRC", KC_BSLASH = "KC_BSLS", KC_SCOLON = "KC_SCLN", KC_QUOTE = "KC_QUOT",
+  KC_GRAVE = "KC_GRV", KC_COMMA = "KC_COMM", KC_SLASH = "KC_SLSH", KC_DELETE = "KC_DEL",
+  KC_INSERT = "KC_INS", KC_PSCREEN = "KC_PSCR", KC_PGUP = "KC_PGUP", KC_PAGE_UP = "KC_PGUP",
+  KC_PGDOWN = "KC_PGDN", KC_PAGE_DOWN = "KC_PGDN", KC_RIGHT = "KC_RGHT",
+  KC_LEFT_SHIFT = "KC_LSFT", KC_RIGHT_SHIFT = "KC_RSFT",
+  KC_LEFT_CTRL = "KC_LCTL", KC_RIGHT_CTRL = "KC_RCTL",
+  KC_LEFT_ALT = "KC_LALT", KC_RIGHT_ALT = "KC_RALT",
+  KC_LEFT_GUI = "KC_LGUI", KC_RIGHT_GUI = "KC_RGUI",
+}
+
+local function mod_kind_for_action(act)
+  if type(act) ~= "table" then return nil end
+  if tonumber(act.type) == 2 or act.isMomentary == true or act.layerControlType == "momentaryLayer" then
+    return "fn"
+  end
+  local kc = string.upper(tostring(act.keyCode or ""))
+  kc = KEYCODE_ALIAS[kc] or kc
+  if kc == "KC_LSFT" or kc == "KC_RSFT" then return "shift" end
+  if kc == "KC_LCTL" or kc == "KC_RCTL" then return "ctrl" end
+  if kc == "KC_LALT" or kc == "KC_RALT" then return "alt" end
+  if kc == "KC_LGUI" or kc == "KC_RGUI" then return "cmd" end
+  return nil
+end
+
+local function apply_hardware_keymap(km)
+  if type(km) ~= "table" or type(km.layers) ~= "table" or #km.layers == 0 then return end
+  local l0 = km.layers[1]
+  local acts = l0 and l0.keyActions
+  if type(acts) ~= "table" or #acts == 0 then return end
+  local next_mods = {}
+  for idx, act in ipairs(acts) do
+    local ki = idx - 1
+    local mk = mod_kind_for_action(act)
+    if mk then
+      next_mods[ki] = mk
+    end
+    local kc = string.upper(tostring(act.keyCode or ""))
+    if #kc > 0 then
+      KEYCODE_TO_INDEX[kc] = ki
+      local canon = KEYCODE_ALIAS[kc]
+      if canon then KEYCODE_TO_INDEX[canon] = ki end
+    end
+  end
+  if next(next_mods) ~= nil then
+    MOD_KEYS = next_mods
+  end
+end
 
 -- Logical keyCode -> ANSI physical key_index lookup so shortcut packs & external apps can
 -- address keys by logical name ("KC_C", "C", "KC_ENTER") OR physical index (63)!
@@ -65,6 +116,10 @@ end
 
 function on_init()
   geom = keyboard.layout()
+  local km = bus.get("keyboard/keymap")
+  if type(km) == "table" then
+    apply_hardware_keymap(km)
+  end
   -- Hydrate any already-retained providers immediately
   local existing = bus.list("keys/providers/#")
   if type(existing) == "table" then
@@ -124,7 +179,8 @@ local function resolve_key_idx(k)
   if type(k) == "string" then
     local n = tonumber(k)
     if n then return math.floor(n) end
-    return KEYCODE_TO_INDEX[string.upper(k)]
+    local up = string.upper(k)
+    return KEYCODE_TO_INDEX[up] or KEYCODE_TO_INDEX[KEYCODE_ALIAS[up] or ""]
   end
   return nil
 end
@@ -169,6 +225,8 @@ function on_event(topic, payload)
   elseif topic == "keyboard/geometry" and type(payload) == "table" then
     geom = payload
     publish_layout_regions()
+  elseif topic == "keyboard/keymap" and type(payload) == "table" then
+    apply_hardware_keymap(payload)
   elseif topic == "host/app/active" and type(payload) == "table" then
     active_app = payload
   elseif topic == "host/profile/active" and type(payload) == "table" then

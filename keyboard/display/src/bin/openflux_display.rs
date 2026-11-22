@@ -652,6 +652,7 @@ fn main() {
                     v2_font_bytes.as_deref(),
                 );
                 v2_init.apply_parallax_settings(&cfg.settings);
+                v2_init.sync_keymap_config(&cfg.keymap);
                 Some(v2_init)
             } else {
                 None
@@ -788,20 +789,24 @@ fn main() {
                     } else {
                         openflux_bus::FrameLayout::Ansi
                     };
-                    v2_display = Some(openflux_display::v2_runtime::KeyboardV2Display::new(
+                    let mut v2_new = openflux_display::v2_runtime::KeyboardV2Display::new(
                         std::path::PathBuf::from("/usr/lib/openflux/display/modules"),
                         std::path::PathBuf::from(&v2_root).join("modules"),
                         std::path::PathBuf::from(&v2_root).join("local"),
                         v2_state_path.clone(),
                         fl,
                         v2_font_bytes.as_deref(),
-                    ));
+                    );
+                    v2_new.apply_parallax_settings(&cfg.settings);
+                    v2_new.sync_keymap_config(&cfg.keymap);
+                    v2_display = Some(v2_new);
                     rkmpp_failed_path.clear();
                     bg_dirty = true;
                 }
                 if reloader.poll_reload(&mut cfg) {
                     if let Some(ref mut v2) = v2_display {
                         v2.apply_parallax_settings(&cfg.settings);
+                        v2.sync_keymap_config(&cfg.keymap);
                     }
                     renderer.assets.invalidate();
                     ui_assets_dirty = true;
@@ -1057,6 +1062,7 @@ fn main() {
                             if let Err(e) = gpu.render_v2_and_swap(
                                 cached_suspended,
                                 has_bg_media,
+                                v2.bg_dimming,
                                 v2.time_sec,
                                 v2.wave_enabled,
                                 ww as i32,

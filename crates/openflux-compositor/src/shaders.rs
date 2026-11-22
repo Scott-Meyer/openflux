@@ -142,7 +142,7 @@ struct RefractUniforms {
     specular_strength: f32,
     resolution: vec2<f32>,
     enabled: f32,
-    _pad: f32,
+    bg_dimming: f32,
     tint: vec4<f32>,
 };
 
@@ -153,8 +153,9 @@ struct RefractUniforms {
 
 @fragment
 fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
+    let dim_scale = 1.0 - clamp(u.bg_dimming, 0.0, 0.9);
     if (u.enabled < 0.5) {
-        return textureSample(bg_tex, samp, uv);
+        return vec4<f32>(textureSample(bg_tex, samp, uv).rgb * dim_scale, 1.0);
     }
 
     let w = textureSample(wave_tex, samp, uv);
@@ -170,7 +171,7 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     let bg_r = textureSample(bg_tex, samp, uv_r).r;
     let bg_g = textureSample(bg_tex, samp, uv_g).g;
     let bg_b = textureSample(bg_tex, samp, uv_b).b;
-    var col = vec3<f32>(bg_r, bg_g, bg_b);
+    var col = vec3<f32>(bg_r, bg_g, bg_b) * dim_scale;
 
     let n = normalize(vec3<f32>(-grad.x * 4.2, -grad.y * 4.2, 1.0));
     let light1 = normalize(vec3<f32>(-0.32, -0.52, 0.79));

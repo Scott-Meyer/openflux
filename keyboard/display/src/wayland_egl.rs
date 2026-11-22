@@ -821,6 +821,7 @@ uniform float u_time;
 uniform float u_refract_px;
 uniform float u_specular;
 uniform float u_wave_enabled;
+uniform float u_bg_dim;
 uniform vec2 u_screen;
 uniform vec4 u_tint;
 
@@ -857,8 +858,9 @@ vec3 sample_bg(vec2 uv) {
 }
 
 void main() {
+    float dim_scale = 1.0 - clamp(u_bg_dim, 0.0, 0.9);
     if (u_wave_enabled < 0.5) {
-        gl_FragColor = vec4(sample_bg(v_uv), 1.0);
+        gl_FragColor = vec4(sample_bg(v_uv) * dim_scale, 1.0);
         return;
     }
     vec4 w = texture2D(u_tex_wave, v_uv);
@@ -869,7 +871,7 @@ void main() {
     float r = sample_bg(v_uv + offset_uv * 1.12).r;
     float g = sample_bg(v_uv + offset_uv).g;
     float b = sample_bg(v_uv + offset_uv * 0.88).b;
-    vec3 col = vec3(r, g, b);
+    vec3 col = vec3(r, g, b) * dim_scale;
 
     vec3 n = normalize(vec3(-grad.x * 4.2, -grad.y * 4.2, 1.0));
     vec3 l1 = normalize(vec3(-0.32, -0.52, 0.79));
@@ -1679,6 +1681,7 @@ impl WaylandGpuPresenter {
         &mut self,
         suspended: bool,
         has_bg_media: bool,
+        bg_dimming: f32,
         time_sec: f32,
         wave_enabled: bool,
         wave_w: i32,
@@ -1787,6 +1790,10 @@ impl WaylandGpuPresenter {
                 (self.gl.gl_uniform1f)(
                     (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_wave_enabled".as_ptr()),
                     if wave_enabled { 1.0 } else { 0.0 },
+                );
+                (self.gl.gl_uniform1f)(
+                    (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_bg_dim".as_ptr()),
+                    bg_dimming.clamp(0.0, 0.9),
                 );
                 (self.gl.gl_uniform2f)(
                     (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_screen".as_ptr()),
