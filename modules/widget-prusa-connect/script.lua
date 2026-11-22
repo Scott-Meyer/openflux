@@ -63,26 +63,44 @@ function on_render(ctx, stage)
     if not sr then return end
     ctx:clip(sr.x, sr.y, sr.w, sr.h)
 
-    local title = tostring(status.name or "Prusa")
-    if #title > 16 then title = string.sub(title, 1, 15) .. "..." end
-    ctx:text(sr.x + 18, sr.y + 14, title, 20, orange, "left")
-    ctx:text(sr.x + sr.w - 18, sr.y + 15, state_str, 16, badge_col, "right")
-
     local noz = math.floor((tonumber(status.nozzle_temp) or 0) + 0.5)
     local noz_t = math.floor((tonumber(status.nozzle_target) or 0) + 0.5)
     local bed = math.floor((tonumber(status.bed_temp) or 0) + 0.5)
     local bed_t = math.floor((tonumber(status.bed_target) or 0) + 0.5)
+    local prog = math.max(0, math.min(100, tonumber(status.progress) or 0))
+
+    if sr.w < 260 then
+      -- Half-slot compact Prusa card
+      ctx:text(sr.x + 12, sr.y + 14, "PRUSA", 15, orange, "left")
+      ctx:text(sr.x + sr.w - 12, sr.y + 14, string.format("%d%%", math.floor(prog + 0.5)), 18, badge_col, "right")
+      ctx:text(sr.x + 12, sr.y + 46, string.format("NOZ %d°", noz), 18, { 0.96, 0.98, 1.0, 0.95 }, "left")
+      ctx:text(sr.x + 12, sr.y + 76, string.format("BED %d°", bed), 18, { 0.80, 0.88, 0.98, 0.92 }, "left")
+      local bw = sr.w - 24
+      ctx:round_rect(sr.x + 12, sr.y + 114, bw, 10, 5, { 0.14, 0.17, 0.24, 0.9 }, 0, { 0, 0, 0, 0 })
+      if prog > 0 then
+        ctx:round_rect(sr.x + 12, sr.y + 114, math.max(8, bw * (prog / 100.0)), 10, 5, orange, 0, { 0, 0, 0, 0 })
+      end
+      ctx:clear_clip()
+      return
+    end
+
+    local max_title = sr.w > 580 and 36 or 16
+    local title = tostring(status.name or "Prusa")
+    if #title > max_title then title = string.sub(title, 1, max_title - 1) .. "..." end
+    ctx:text(sr.x + 18, sr.y + 14, title, 20, orange, "left")
+    ctx:text(sr.x + sr.w - 18, sr.y + 15, state_str, 16, badge_col, "right")
+
     ctx:text(sr.x + 18, sr.y + 46, string.format("NOZ %d/%dC", noz, noz_t), 20, { 0.96, 0.98, 1.0, 0.95 }, "left")
     ctx:text(sr.x + sr.w - 18, sr.y + 46, string.format("BED %d/%dC", bed, bed_t), 20, { 0.80, 0.88, 0.98, 0.92 }, "right")
 
+    local max_job = sr.w > 580 and 54 or 22
     local job = tostring(status.job_name or "")
-    if #job > 22 then job = string.sub(job, 1, 21) .. "..." end
+    if #job > max_job then job = string.sub(job, 1, max_job - 1) .. "..." end
     ctx:text(sr.x + 18, sr.y + 78, job, 17, { 0.75, 0.82, 0.90, 0.86 }, "left")
     if is_printing then
       ctx:text(sr.x + sr.w - 18, sr.y + 78, fmt_eta(status.time_remaining_min), 17, { 0.95, 0.95, 1.0, 0.92 }, "right")
     end
 
-    local prog = math.max(0, math.min(100, tonumber(status.progress) or 0))
     local bar_w = sr.w - 92
     ctx:round_rect(sr.x + 18, sr.y + 114, bar_w, 12, 6, { 0.14, 0.17, 0.24, 0.9 }, 0, { 0, 0, 0, 0 })
     if prog > 0 then

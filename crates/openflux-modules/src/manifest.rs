@@ -133,6 +133,28 @@ pub struct SettingField {
     pub secret: bool,
 }
 
+/// Explicit top-bar placement contract advertised by a slot-capable module.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TopBarSpec {
+    /// Width spans (in slot units) this module explicitly supports and has layouts for (e.g. `[0.5, 1.0, 2.0]`).
+    #[serde(default = "default_supported_spans")]
+    pub supported_spans: Vec<f32>,
+    /// Default span when newly added to the top bar.
+    #[serde(default = "default_span_one")]
+    pub default_span: f32,
+    /// Whether this module is a singleton (at most 1 active instance on the top bar).
+    #[serde(default = "default_true")]
+    pub singleton: bool,
+}
+
+fn default_supported_spans() -> Vec<f32> {
+    vec![1.0]
+}
+
+fn default_span_one() -> f32 {
+    1.0
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModuleManifest {
     pub id: String,
@@ -151,6 +173,9 @@ pub struct ModuleManifest {
     pub host_requirement: HostRequirement,
     #[serde(default)]
     pub slot_capable: bool,
+    /// Optional explicit top-bar span & singleton contract.
+    #[serde(default)]
+    pub top_bar: Option<TopBarSpec>,
     #[serde(default = "default_true")]
     pub stackable: bool,
     #[serde(default)]

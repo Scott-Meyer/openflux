@@ -48,6 +48,7 @@ pub struct KeyboardV2Display {
     pub wave_params: WaveFieldParams,
     pub active_media_path: Option<String>,
     pub bg_dimming: f32,
+    pub top_fade: f32,
     pub glows: Vec<V2GlowDraw>,
     pub time_sec: f32,
     pub overlay_dirty: bool,
@@ -208,6 +209,7 @@ impl KeyboardV2Display {
             wave_params: WaveFieldParams::default(),
             active_media_path: None,
             bg_dimming: 0.0,
+            top_fade: 0.0,
             glows: Vec::with_capacity(256),
             time_sec: 0.0,
             overlay_dirty: true,
@@ -558,6 +560,7 @@ impl KeyboardV2Display {
 
         self.active_media_path = scene.background_media.clone();
         self.bg_dimming = scene.bg_dimming;
+        self.top_fade = scene.top_fade;
         self.wave_enabled = scene.distortion_enabled;
         self.wave_params = scene.wave_params.clone();
 

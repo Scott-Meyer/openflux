@@ -60,6 +60,7 @@ fn fork_disclosure_diff_secret_stripping_and_pet_to_water_cross_module_compositi
         ModuleInstanceState {
             enabled: true,
             slot: Some(1),
+            slot_pos: Some(1.0),
             slot_span: None,
             pin_tab: None,
             config: BTreeMap::from([("api_key".into(), json!("secret-xyz"))]),
@@ -86,6 +87,7 @@ fn fork_disclosure_diff_secret_stripping_and_pet_to_water_cross_module_compositi
             ModuleInstanceState {
                 enabled: true,
                 slot: Some(3),
+                slot_pos: Some(3.0),
                 slot_span: None,
                 pin_tab: None,
                 config: BTreeMap::new(),
@@ -96,6 +98,7 @@ fn fork_disclosure_diff_secret_stripping_and_pet_to_water_cross_module_compositi
             ModuleInstanceState {
                 enabled: true,
                 slot: None,
+                slot_pos: None,
                 slot_span: None,
                 pin_tab: None,
                 config: BTreeMap::new(),

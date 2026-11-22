@@ -20,7 +20,7 @@ builtin_view = "top_bar"
 script = "script.lua"
 
 [channels]
-subscribes = ["keyboard/geometry"]
+subscribes = ["keyboard/geometry", "layout/top_bar/occupancy"]
 publishes = ["layout/slots/top-bar", "layout/regions/dock-top-bar"]
 
 [[settings]]

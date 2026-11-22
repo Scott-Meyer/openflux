@@ -1070,7 +1070,12 @@ fn main() {
                                 &v2.wave.rgba,
                                 v2.wave_params.refraction_strength,
                                 v2.wave_params.specular_strength,
-                                v2.wave_params.tint,
+                                [
+                                    v2.wave_params.tint[0],
+                                    v2.wave_params.tint[1],
+                                    v2.wave_params.tint[2],
+                                    v2.top_fade.clamp(0.0, 0.85),
+                                ],
                                 &v2.glows,
                                 &v2.canvas.rgba,
                                 v2.overlay_dirty,

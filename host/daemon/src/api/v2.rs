@@ -150,6 +150,7 @@ impl V2State {
                         ModuleInstanceState {
                             enabled: true,
                             slot,
+                            slot_pos: slot.map(|s| s as f32),
                             slot_span: None,
                             pin_tab: None,
                             config: BTreeMap::new(),
@@ -498,6 +499,8 @@ struct UpdateModuleStateBody {
     #[serde(default)]
     slot: Option<Option<u8>>,
     #[serde(default)]
+    slot_pos: Option<Option<f32>>,
+    #[serde(default)]
     slot_span: Option<Option<f32>>,
     #[serde(default)]
     pin_tab: Option<Option<bool>>,
@@ -511,24 +514,62 @@ async fn update_module_state(
     Json(body): Json<UpdateModuleStateBody>,
 ) -> impl IntoResponse {
     let discovered = state.v2.registry.discover();
-    if !discovered.contains_key(&id) {
+    let Some(dm) = discovered.get(&id) else {
         return err_resp(StatusCode::NOT_FOUND, format!("module {id:?} not found"));
-    }
+    };
     let mut saved = state.v2.registry.load_state();
-    if let Some(slot_opt) = body.slot {
+
+    // Determine effective target (pos, span) if this call changes placement or span.
+    let target_pos_change: Option<Option<f32>> = if let Some(pos_opt) = body.slot_pos {
+        Some(pos_opt.map(|v| ((v * 2.0).round() / 2.0).clamp(0.0, 3.5)))
+    } else if let Some(slot_opt) = body.slot {
         if slot_opt.is_some_and(|s| s > 3) {
             return err_resp(StatusCode::BAD_REQUEST, "slot must be 0..=3");
         }
-        if let Some(target_slot) = slot_opt {
+        Some(slot_opt.map(|s| s as f32))
+    } else {
+        None
+    };
+
+    let current_entry = saved.modules.get(&id).cloned().unwrap_or_default();
+    let new_pos = target_pos_change.unwrap_or_else(|| current_entry.effective_slot_pos());
+    let default_span = dm
+        .manifest
+        .top_bar
+        .as_ref()
+        .map(|t| t.default_span)
+        .unwrap_or(1.0);
+    let new_span = match body.slot_span {
+        Some(Some(sp)) => sp.clamp(0.5, 4.0),
+        Some(None) => default_span,
+        None => current_entry.slot_span.unwrap_or(default_span),
+    };
+
+    // Unplace any other widget whose half-slot interval overlaps `[new_pos, new_pos + new_span)`!
+    if target_pos_change.is_some() || body.slot_span.is_some() {
+        if let Some(p0) = new_pos {
+            let p1 = p0 + new_span;
             for (other_id, other) in saved.modules.iter_mut() {
-                if other_id != &id && other.slot == Some(target_slot) {
-                    other.slot = None;
+                if other_id == &id {
+                    continue;
+                }
+                if let Some(o0) = other.effective_slot_pos() {
+                    let o_span = other.slot_span.unwrap_or(1.0).clamp(0.5, 4.0);
+                    let o1 = o0 + o_span;
+                    if o0 < p1 - 0.01 && p0 < o1 - 0.01 {
+                        other.slot = None;
+                        other.slot_pos = None;
+                    }
                 }
             }
         }
-        saved.modules.entry(id.clone()).or_default().slot = slot_opt;
     }
+
     let entry = saved.modules.entry(id.clone()).or_default();
+    if let Some(pos_opt) = target_pos_change {
+        entry.slot_pos = pos_opt;
+        entry.slot = pos_opt.map(|p| p.floor().clamp(0.0, 3.0) as u8);
+    }
     if let Some(en) = body.enabled {
         entry.enabled = en;
     }

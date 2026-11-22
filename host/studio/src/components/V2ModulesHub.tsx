@@ -208,17 +208,6 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
     }
   };
 
-  const handleSlotChange = async (mod: V2ModuleRecord, raw: string) => {
-    try {
-      const slot = raw === "" ? null : Number(raw);
-      await v2Client.updateModuleState(mod.id, { slot });
-      await refresh();
-      scheduleKeyboardSync();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
   const handleSettingChange = async (mod: V2ModuleRecord, key: string, value: unknown) => {
     // Immediate optimistic update so sliders & text inputs feel silky-smooth
     setModules((prev) =>
@@ -564,19 +553,6 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
-                  {mod.manifest.slot_capable && (
-                    <select
-                      aria-label={`Slot for ${mod.manifest.name}`}
-                      value={mod.state.slot ?? ""}
-                      onChange={(e) => void handleSlotChange(mod, e.target.value)}
-                    >
-                      <option value="">No Slot</option>
-                      <option value="0">Slot 0</option>
-                      <option value="1">Slot 1</option>
-                      <option value="2">Slot 2</option>
-                      <option value="3">Slot 3</option>
-                    </select>
-                  )}
                   <button type="button" onClick={() => void handleToggle(mod)}>
                     {mod.state.enabled ? "Enabled" : "Disabled"}
                   </button>

@@ -153,7 +153,10 @@ struct RefractUniforms {
 
 @fragment
 fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
-    let dim_scale = 1.0 - clamp(u.bg_dimming, 0.0, 0.9);
+    let top_t = clamp(uv.y / 0.25, 0.0, 1.0);
+    let top_ease = (1.0 - top_t) * (1.0 - top_t) * (1.0 - top_t);
+    let top_fade = clamp(u.tint.a, 0.0, 0.85) * top_ease;
+    let dim_scale = (1.0 - clamp(u.bg_dimming, 0.0, 0.9)) * (1.0 - top_fade);
     if (u.enabled < 0.5) {
         return vec4<f32>(textureSample(bg_tex, samp, uv).rgb * dim_scale, 1.0);
     }

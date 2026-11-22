@@ -93,7 +93,20 @@ function on_render(ctx, stage)
 
   local cfg_city = tostring(module.config().city or "")
   local city = (#cfg_city > 0) and cfg_city or tostring(weather.city or "Denver")
-  if #city > 12 then city = string.sub(city, 1, 11) .. "..." end
+  local temp_s = weather.ready and string.format("%.0f°", tonumber(weather.temp) or 0) or "--°"
+  local hl_s = weather.ready and string.format("%.0f° / %.0f°", tonumber(weather.high) or 0, tonumber(weather.low) or 0) or "Syncing..."
+
+  if tw < 260 then
+    -- Half-slot compact weather tile
+    local cx = tx + tw * 0.5
+    draw_weather_icon(ctx, cx, ty + 42, 44, weather.condition, weather.is_day)
+    ctx:text(cx, ty + 74, temp_s, 40, white, "center")
+    ctx:text(cx, ty + 122, city, 14, subtle, "center")
+    ctx:clear_clip()
+    return
+  end
+
+  if #city > 14 then city = string.sub(city, 1, 13) .. "..." end
 
   local now = os.date("*t")
   local h12 = now.hour % 12
@@ -117,28 +130,48 @@ function on_render(ctx, stage)
   ctx:text(tx + 12, stat_y0 + 44, "AQI", 13, subtle, "left")
   ctx:text(left_right, stat_y0 + 44, aqi_s, 13, white, "right")
 
-  -- Vertical hairline divider
   ctx:rect(div_x, ty + 16, 1, th - 36, { 1.0, 1.0, 1.0, 0.14 })
 
-  -- Right weather readout
-  local rx = div_x + 14
-  local rw = (tx + tw - 10) - rx
-  local temp_s = weather.ready and string.format("%.1f°", tonumber(weather.temp) or 0) or "--°"
-  local hl_s = weather.ready and string.format("%.0f° / %.0f°", tonumber(weather.high) or 0, tonumber(weather.low) or 0) or "Syncing..."
-  ctx:text(rx, ty + 12, temp_s, 40, white, "left")
-  ctx:text(rx, ty + 58, hl_s, 15, subtle, "left")
+  local rx = div_x + 16
+  local rw = (tx + tw - 12) - rx
+  local temp_1 = weather.ready and string.format("%.1f°", tonumber(weather.temp) or 0) or "--°"
 
-  draw_weather_icon(ctx, tx + tw - 42, ty + 38, 52, weather.condition, weather.is_day)
+  if tw > 580 then
+    -- Widescreen 2-slot layout: current temp + condition + icon on center-left, hourly forecast columns on right
+    ctx:text(rx, ty + 18, temp_1, 56, white, "left")
+    ctx:text(rx, ty + 84, tostring(weather.condition or ""), 20, white, "left")
+    ctx:text(rx, ty + 112, "H/L " .. hl_s, 16, subtle, "left")
+    draw_weather_icon(ctx, rx + 215, ty + 52, 68, weather.condition, weather.is_day)
 
-  -- 3-hour forecast strip along bottom right
-  if weather.ready and type(weather.hourly) == "table" and #weather.hourly > 0 then
-    local col_w = rw / 3.0
-    for i = 1, math.min(3, #weather.hourly) do
-      local hf = weather.hourly[i]
-      local fcx = rx + col_w * (i - 1) + col_w * 0.5
-      ctx:text(fcx, ty + 90, tostring(hf.hour or ""), 13, subtle, "center")
-      draw_weather_icon(ctx, fcx, ty + 118, 22, hf.condition, hf.is_day)
-      ctx:text(fcx, ty + 134, string.format("%.0f°", tonumber(hf.temp) or 0), 15, white, "center")
+    local fx = rx + 290
+    local fw = math.max(120, (tx + tw - 16) - fx)
+    ctx:rect(fx - 16, ty + 20, 1, th - 40, { 1.0, 1.0, 1.0, 0.14 })
+    if weather.ready and type(weather.hourly) == "table" and #weather.hourly > 0 then
+      local n = math.min(5, #weather.hourly)
+      local col_w = fw / math.max(1, n)
+      for i = 1, n do
+        local hf = weather.hourly[i]
+        local fcx = fx + col_w * (i - 1) + col_w * 0.5
+        ctx:text(fcx, ty + 28, tostring(hf.hour or ""), 15, subtle, "center")
+        draw_weather_icon(ctx, fcx, ty + 82, 34, hf.condition, hf.is_day)
+        ctx:text(fcx, ty + 124, string.format("%.0f°", tonumber(hf.temp) or 0), 20, white, "center")
+      end
+    end
+  else
+    -- Classic 1-slot v1 readout
+    ctx:text(rx, ty + 12, temp_1, 40, white, "left")
+    ctx:text(rx, ty + 58, hl_s, 15, subtle, "left")
+    draw_weather_icon(ctx, tx + tw - 42, ty + 38, 52, weather.condition, weather.is_day)
+
+    if weather.ready and type(weather.hourly) == "table" and #weather.hourly > 0 then
+      local col_w = rw / 3.0
+      for i = 1, math.min(3, #weather.hourly) do
+        local hf = weather.hourly[i]
+        local fcx = rx + col_w * (i - 1) + col_w * 0.5
+        ctx:text(fcx, ty + 90, tostring(hf.hour or ""), 13, subtle, "center")
+        draw_weather_icon(ctx, fcx, ty + 118, 22, hf.condition, hf.is_day)
+        ctx:text(fcx, ty + 134, string.format("%.0f°", tonumber(hf.temp) or 0), 15, white, "center")
+      end
     end
   end
 

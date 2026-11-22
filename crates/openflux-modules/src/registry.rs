@@ -27,9 +27,12 @@ pub struct DiscoveredModule {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ModuleInstanceState {
     pub enabled: bool,
-    /// Optional top-bar slot assignment (`0..=3`) for widgets and companions.
+    /// Legacy integer top-bar slot assignment (`0..=3`). Kept for backward compatibility.
     #[serde(default)]
     pub slot: Option<u8>,
+    /// Exact fractional half-slot start position (`0.0, 0.5, 1.0, ..., 3.5`). Overrides `slot` when set.
+    #[serde(default)]
+    pub slot_pos: Option<f32>,
     /// Optional slot width span in slot units (e.g. `0.5` = half-slot, `1.0` = 1 slot, `2.0`..`4.0` = multi-slot!).
     #[serde(default)]
     pub slot_span: Option<f32>,
@@ -38,6 +41,13 @@ pub struct ModuleInstanceState {
     pub pin_tab: Option<bool>,
     #[serde(default)]
     pub config: BTreeMap<String, Value>,
+}
+
+impl ModuleInstanceState {
+    /// Effective fractional start position in slot units (`0.0..=3.5`), if placed in the top bar.
+    pub fn effective_slot_pos(&self) -> Option<f32> {
+        self.slot_pos.or_else(|| self.slot.map(|s| s as f32))
+    }
 }
 
 /// Persistent user configuration of enabled modules, slot placements, and settings.

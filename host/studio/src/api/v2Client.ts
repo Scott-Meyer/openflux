@@ -31,6 +31,12 @@ export interface ModuleActionField {
   retain?: boolean;
 }
 
+export interface TopBarSpec {
+  supported_spans: number[];
+  default_span: number;
+  singleton: boolean;
+}
+
 export interface ModuleManifest {
   id: string;
   name: string;
@@ -42,6 +48,7 @@ export interface ModuleManifest {
   stages: string[];
   host_requirement: HostRequirement;
   slot_capable: boolean;
+  top_bar?: TopBarSpec | null;
   stackable: boolean;
   forked_from?: string | null;
   ui?: ModuleUiSpec;
@@ -61,6 +68,7 @@ export interface ModuleManifest {
 export interface ModuleInstanceState {
   enabled: boolean;
   slot?: number | null;
+  slot_pos?: number | null;
   slot_span?: number | null;
   pin_tab?: boolean | null;
   config: Record<string, unknown>;
@@ -200,6 +208,7 @@ export const v2Client = {
     patch: {
       enabled?: boolean;
       slot?: number | null;
+      slot_pos?: number | null;
       slot_span?: number | null;
       pin_tab?: boolean | null;
       config?: Record<string, unknown>;

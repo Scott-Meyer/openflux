@@ -201,6 +201,9 @@ pub struct FrameScene {
     /// GPU-side background dimming factor `[0.0..0.9]` (0 = full brightness, 0.3 = 30% darker).
     #[serde(default)]
     pub bg_dimming: f32,
+    /// GPU-side smooth per-pixel top-bar vignette fade `[0.0..0.85]` (zero horizontal lines or border!).
+    #[serde(default)]
+    pub top_fade: f32,
     pub distortion_enabled: bool,
     pub wave_params: WaveFieldParams,
     pub wave_impulses: Vec<WaveImpulseCmd>,

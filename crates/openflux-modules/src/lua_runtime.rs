@@ -434,6 +434,10 @@ impl UserData for RenderCtxHandle {
             this.scene.lock().unwrap().bg_dimming = frac.clamp(0.0, 0.9);
             Ok(())
         });
+        methods.add_method("top_fade", |_, this, frac: f32| {
+            this.scene.lock().unwrap().top_fade = frac.clamp(0.0, 0.85);
+            Ok(())
+        });
     }
 }
 
@@ -641,9 +645,9 @@ impl LoadedLuaModule {
         let mod_tbl = self.lua.create_table()?;
         let mod_id = self.discovered.manifest.id.clone();
         let mod_dir = self.discovered.path.to_string_lossy().into_owned();
-        let slot_idx = self.instance.slot;
+        let slot_pos = self.instance.effective_slot_pos();
         let slot_span = self.instance.slot_span.unwrap_or(1.0).clamp(0.5, 4.0);
-        let slot_rect = slot_idx.and_then(|i| geometry.slot(i).map(|s| s.rect));
+        let fallback_slot_rect = slot_pos.and_then(|p| geometry.slot(p.floor() as u8).map(|s| s.rect));
 
         // Merge manifest defaults with instance overrides.
         let mut merged_cfg = self.discovered.manifest.default_config();
@@ -657,49 +661,78 @@ impl LoadedLuaModule {
             "dir",
             self.lua.create_function(move |_, ()| Ok(mod_dir.clone()))?,
         )?;
+        let slot_idx = slot_pos.map(|p| p.floor() as u8);
         mod_tbl.set("slot", self.lua.create_function(move |_, ()| Ok(slot_idx))?)?;
+        mod_tbl.set("slot_pos", self.lua.create_function(move |_, ()| Ok(slot_pos))?)?;
+        mod_tbl.set("slot_span", self.lua.create_function(move |_, ()| Ok(slot_span))?)?;
         {
             let broker_slot = broker.clone();
             mod_tbl.set(
                 "slot_rect",
                 self.lua.create_function(move |lua, ()| {
-                    // Compute exact rect from `dock-top-bar`'s `layout/slots/top-bar` supporting
-                    // fractional (0.5) and multi-slot (2, 3, 4) spans seamlessly!
-                    if let Some(sidx) = slot_idx {
+                    // Exact pixel rect from `dock-top-bar`'s `layout/slots/top-bar`,
+                    // supporting half-slot positioning (`0.0, 0.5, 1.0, ...`) and `0.5..4.0` spans!
+                    if let Some(pos) = slot_pos {
+                        let compute_rect = |hx: f32, hy: f32, hw: f32, hh: f32, count: f32, gap: f32, sw: f32| -> openflux_bus::RectPx {
+                            let start = pos.clamp(0.0, (count - 0.5).max(0.0));
+                            let end = (start + slot_span).min(count);
+                            let span = (end - start).max(0.5);
+                            let edge_x = |u: f32, is_right: bool| -> f32 {
+                                let whole = u.floor();
+                                let frac = u - whole;
+                                if frac < 0.25 {
+                                    // Clean integer slot boundary
+                                    if is_right && whole >= 1.0 {
+                                        hx + (whole - 1.0) * (sw + gap) + sw
+                                    } else {
+                                        hx + whole * (sw + gap)
+                                    }
+                                } else {
+                                    // Half-slot boundary inside slot `whole` with a 10px breathing gap
+                                    let slot_left = hx + whole * (sw + gap);
+                                    if is_right {
+                                        slot_left + sw * 0.5 - 5.0
+                                    } else {
+                                        slot_left + sw * 0.5 + 5.0
+                                    }
+                                }
+                            };
+                            let x0 = edge_x(start, false);
+                            let x1 = edge_x(start + span, true).min(hx + hw);
+                            openflux_bus::RectPx {
+                                x: x0,
+                                y: hy,
+                                w: (x1 - x0).max(60.0),
+                                h: hh,
+                            }
+                        };
+
                         if let Some(msg) = broker_slot.get_retained("layout/slots/top-bar") {
                             let gap = msg.payload.get("gap").and_then(|v| v.as_f64()).unwrap_or(89.4) as f32;
                             let sw = msg.payload.get("slot_w").and_then(|v| v.as_f64()).unwrap_or(408.9) as f32;
-                            if let Some(arr) = msg.payload.get("slots").and_then(|v| v.as_array()) {
-                                if let Some(entry) = arr.get(sidx as usize) {
-                                    if let Some(r) = entry.get("rect") {
-                                        let x = r.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                                        let y = r.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-                                        let h = r.get("h").and_then(|v| v.as_f64()).unwrap_or(180.0) as f32;
-                                        let w = if slot_span <= 1.0 {
-                                            sw * slot_span
-                                        } else {
-                                            sw * slot_span + gap * (slot_span - 1.0)
-                                        };
-                                        return lua.to_value(&openflux_bus::RectPx { x, y, w, h });
-                                    }
-                                }
+                            let count = msg.payload.get("slot_count").and_then(|v| v.as_f64()).unwrap_or(4.0) as f32;
+                            if let Some(hr) = msg.payload.get("header_rect") {
+                                let hx = hr.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                let hy = hr.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                let hw = hr.get("w").and_then(|v| v.as_f64()).unwrap_or(1904.0) as f32;
+                                let hh = hr.get("h").and_then(|v| v.as_f64()).unwrap_or(180.0) as f32;
+                                return lua.to_value(&compute_rect(hx, hy, hw, hh, count, gap, sw));
                             }
                         }
-                    }
-                    match slot_rect {
-                        Some(mut r) => {
-                            if (slot_span - 1.0).abs() > 0.01 {
-                                let gap = 89.4_f32;
-                                r.w = if slot_span <= 1.0 {
-                                    r.w * slot_span
-                                } else {
-                                    r.w * slot_span + gap * (slot_span - 1.0)
-                                };
+                        if let Some(mut r) = fallback_slot_rect {
+                            let gap = 89.4_f32;
+                            if (pos - pos.floor()) >= 0.25 {
+                                r.x += r.w * 0.5 + 5.0;
                             }
-                            lua.to_value(&r)
+                            r.w = if slot_span <= 0.75 {
+                                r.w * 0.5 - 5.0
+                            } else {
+                                r.w * slot_span + gap * (slot_span - 1.0)
+                            };
+                            return lua.to_value(&r);
                         }
-                        None => Ok(LuaValue::Nil),
                     }
+                    Ok(LuaValue::Nil)
                 })?,
             )?;
         }
@@ -856,6 +889,38 @@ impl ModuleRuntime {
                 self.modules.insert(id, loaded);
             }
         }
+
+        // Publish live top-bar occupancy so `dock-top-bar` draws smart dividers only between distinct widgets!
+        let mut occupied: Vec<serde_json::Value> = self
+            .modules
+            .values()
+            .filter_map(|m| {
+                let start = m.instance.effective_slot_pos()?;
+                let span = m.instance.slot_span.unwrap_or_else(|| {
+                    m.discovered
+                        .manifest
+                        .top_bar
+                        .as_ref()
+                        .map(|t| t.default_span)
+                        .unwrap_or(1.0)
+                });
+                Some(serde_json::json!({
+                    "id": m.discovered.manifest.id,
+                    "start": start,
+                    "span": span.clamp(0.5, 4.0),
+                }))
+            })
+            .collect();
+        occupied.sort_by(|a, b| {
+            let sa = a.get("start").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let sb = b.get("start").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            sa.partial_cmp(&sb).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let _ = self.broker.publish(
+            "layout/top_bar/occupancy",
+            serde_json::json!({ "items": occupied }),
+            PublishOptions::retained().with_origin("runtime"),
+        );
     }
 
     /// Checks on-disk mtimes and hot-reloads any edited module in place.

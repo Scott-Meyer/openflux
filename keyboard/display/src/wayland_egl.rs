@@ -858,7 +858,10 @@ vec3 sample_bg(vec2 uv) {
 }
 
 void main() {
-    float dim_scale = 1.0 - clamp(u_bg_dim, 0.0, 0.9);
+    float top_t = clamp(v_uv.y / 0.25, 0.0, 1.0);
+    float top_ease = (1.0 - top_t) * (1.0 - top_t) * (1.0 - top_t);
+    float top_fade = clamp(u_tint.a, 0.0, 0.85) * top_ease;
+    float dim_scale = (1.0 - clamp(u_bg_dim, 0.0, 0.9)) * (1.0 - top_fade);
     if (u_wave_enabled < 0.5) {
         gl_FragColor = vec4(sample_bg(v_uv) * dim_scale, 1.0);
         return;

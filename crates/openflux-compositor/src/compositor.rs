@@ -831,7 +831,12 @@ impl Compositor {
             resolution: [DISPLAY_WIDTH_PX as f32, DISPLAY_HEIGHT_PX as f32],
             enabled: if scene.distortion_enabled { 1.0 } else { 0.0 },
             bg_dimming: scene.bg_dimming,
-            tint: scene.wave_params.tint,
+            tint: [
+                scene.wave_params.tint[0],
+                scene.wave_params.tint[1],
+                scene.wave_params.tint[2],
+                scene.top_fade.clamp(0.0, 0.85),
+            ],
         };
         self.queue
             .write_buffer(&self.refract_uniform_buf, 0, bytemuck::bytes_of(&refract_u));

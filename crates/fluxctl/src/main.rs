@@ -1221,6 +1221,7 @@ fn handle_modules(
                 ModuleInstanceState {
                     enabled: true,
                     slot: Some(0),
+                    slot_pos: Some(0.0),
                     slot_span: None,
                     pin_tab: None,
                     config: Default::default(),
@@ -1924,6 +1925,7 @@ fn handle_preview(cli: &Cli, reg: &ModuleRegistry, cmd: &PreviewCmd) -> Result<(
                         ModuleInstanceState {
                             enabled: true,
                             slot: prev.slot,
+                            slot_pos: prev.slot_pos,
                             slot_span: prev.slot_span,
                             pin_tab: prev.pin_tab,
                             config: prev.config,
@@ -1940,6 +1942,7 @@ fn handle_preview(cli: &Cli, reg: &ModuleRegistry, cmd: &PreviewCmd) -> Result<(
                             ModuleInstanceState {
                                 enabled: true,
                                 slot: None,
+                                slot_pos: None,
                                 slot_span: None,
                                 pin_tab: None,
                                 config: prev_cfg,
@@ -2047,6 +2050,7 @@ fn default_showcase_states() -> std::collections::BTreeMap<String, ModuleInstanc
             ModuleInstanceState {
                 enabled: true,
                 slot,
+                slot_pos: slot.map(|s| s as f32),
                 slot_span: None,
                 pin_tab: None,
                 config: Default::default(),
