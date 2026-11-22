@@ -70,10 +70,10 @@ impl WaveField2D {
             cx: imp.x,
             cy: imp.y,
             base_r: key_unit * 0.32,
-            max_travel: key_unit * 2.05 * radius_scale,
-            duration_sec: 1.05,
+            max_travel: key_unit * 1.95 * radius_scale,
+            duration_sec: 0.90,
             age_sec: 0.0,
-            band_width: 22.0,
+            band_width: 10.5,
             force: imp.force.clamp(-2.0, 2.0),
         });
     }
@@ -140,9 +140,9 @@ impl WaveField2D {
                 continue;
             }
 
-            let bw = ring.band_width * (0.85 + 0.35 * pt);
-            let outer_px = cur_r + bw * 2.6;
-            let inner_px = (cur_r - bw * 2.6).max(0.0);
+            let bw = ring.band_width * (0.9 + 0.25 * pt);
+            let outer_px = cur_r + bw * 2.4;
+            let inner_px = (cur_r - bw * 2.4).max(0.0);
             let outer2 = outer_px * outer_px;
             let inner2 = inner_px * inner_px;
             let inv_bw = 1.0 / bw;
@@ -170,13 +170,14 @@ impl WaveField2D {
                     let dist = d2.sqrt();
                     let u = (dist - cur_r) * inv_bw;
                     let g = (-u * u).exp();
-                    // Single raised water crest (`height`) + exact analytical outward slope (`dh/dr`).
+                    // Single unified outward wave-front lens (one peak in both displacement and crest,
+                    // eliminating the double-ring split caused by opposing inner/outer slopes).
                     let height = g * env;
-                    let slope = -2.0 * u * g * env * 0.72;
+                    let displace = g * env * 0.95;
                     let inv_d = 1.0 / dist;
                     let i = row + px;
-                    gx_acc[i] += slope * dx * inv_d;
-                    gy_acc[i] += slope * dy * inv_d;
+                    gx_acc[i] += displace * dx * inv_d;
+                    gy_acc[i] += displace * dy * inv_d;
                     h_acc[i] += height;
                 }
             }

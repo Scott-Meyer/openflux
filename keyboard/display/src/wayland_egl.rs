@@ -871,14 +871,12 @@ void main() {
     float b = sample_bg(v_uv + offset_uv * 0.88).b;
     vec3 col = vec3(r, g, b);
 
-    vec3 n = normalize(vec3(-grad.x * 6.5, -grad.y * 6.5, 1.0));
-    vec3 l1 = normalize(vec3(-0.35, -0.55, 0.76));
-    vec3 l2 = normalize(vec3( 0.45,  0.30, 0.84));
+    vec3 n = normalize(vec3(-grad.x * 4.2, -grad.y * 4.2, 1.0));
+    vec3 l1 = normalize(vec3(-0.32, -0.52, 0.79));
     vec3 view = vec3(0.0, 0.0, 1.0);
-    float s1 = pow(max(dot(n, normalize(l1 + view)), 0.0), 42.0);
-    float s2 = pow(max(dot(n, normalize(l2 + view)), 0.0), 28.0) * 0.45;
-    float caustic = smoothstep(0.02, 0.25, length(grad)) * max(hc, 0.0) * 0.35;
-    col = clamp(col + u_tint.rgb * ((s1 + s2) * u_specular + caustic), 0.0, 1.0);
+    float spec = pow(max(dot(n, normalize(l1 + view)), 0.0), 26.0) * smoothstep(0.05, 0.45, max(hc, 0.0));
+    float crest = pow(clamp(hc, 0.0, 1.0), 2.2) * 0.38;
+    col = clamp(col + u_tint.rgb * (spec * u_specular + crest * u_specular), 0.0, 1.0);
     gl_FragColor = vec4(col, 1.0);
 }
 "#;

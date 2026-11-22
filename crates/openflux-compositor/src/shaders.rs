@@ -172,17 +172,15 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     let bg_b = textureSample(bg_tex, samp, uv_b).b;
     var col = vec3<f32>(bg_r, bg_g, bg_b);
 
-    let n = normalize(vec3<f32>(-grad.x * 6.5, -grad.y * 6.5, 1.0));
-    let light1 = normalize(vec3<f32>(-0.35, -0.55, 0.76));
-    let light2 = normalize(vec3<f32>( 0.45,  0.30, 0.84));
+    let n = normalize(vec3<f32>(-grad.x * 4.2, -grad.y * 4.2, 1.0));
+    let light1 = normalize(vec3<f32>(-0.32, -0.52, 0.79));
     let view = vec3<f32>(0.0, 0.0, 1.0);
 
-    let spec1 = pow(max(dot(n, normalize(light1 + view)), 0.0), 42.0);
-    let spec2 = pow(max(dot(n, normalize(light2 + view)), 0.0), 28.0) * 0.45;
-    let slope_mag = length(grad);
-    let caustic = smoothstep(0.02, 0.25, slope_mag) * max(h_c, 0.0) * 0.35;
+    // Single directional sheen + crisp crest glint right on the single wave peak (no double ring!).
+    let spec = pow(max(dot(n, normalize(light1 + view)), 0.0), 26.0) * smoothstep(0.05, 0.45, max(h_c, 0.0));
+    let crest_glint = pow(clamp(h_c, 0.0, 1.0), 2.2) * 0.38;
 
-    col = col + u.tint.rgb * ((spec1 + spec2) * u.specular_strength + caustic);
+    col = col + u.tint.rgb * (spec * u.specular_strength + crest_glint * u.specular_strength);
     return vec4<f32>(clamp(col, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
 }
 "#;
