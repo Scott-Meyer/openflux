@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Classic v1-style weather tile with city, local time, sunrise/sunset/AQI, temperature, condition icon, and 3-hour forecast"
 author = "OpenFlux"
 category = "widget"
+tags = ["weather", "forecast", "aqi", "top-bar"]
 stages = ["tile"]
 host_requirement = "optional"
 slot_capable = true

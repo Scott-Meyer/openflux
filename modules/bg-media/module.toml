@@ -1,10 +1,11 @@
 id = "bg-media"
 name = "Media Background"
 version = "2.0.0"
-description = "Displays a local image or video texture as the compositor background layer"
+description = "Displays a local 1080p looping video or image as the compositor background with adjustable background dimming for key legend clarity"
 author = "OpenFlux"
 category = "background"
-stages = ["background"]
+tags = ["background", "video", "image", "visibility", "dimming"]
+stages = ["background", "under_key"]
 host_requirement = "none"
 slot_capable = false
 stackable = false
@@ -18,6 +19,14 @@ publishes = []
 
 [[settings]]
 key = "media_path"
-label = "Image Path"
-kind = "string"
+label = "Video or Image File"
+kind = "file"
 default = "assets/default_backgrounds/aurora_velvet.png"
+
+[[settings]]
+key = "bg_dimming"
+label = "Background Dimming (%)"
+kind = "number"
+default = 20
+min = 0
+max = 85

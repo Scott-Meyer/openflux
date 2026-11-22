@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Particles burst from keys, ricochet down 2mm keycap trenches, or pass beneath clear keycaps with lens refraction"
 author = "OpenFlux"
 category = "effect"
+tags = ["physics", "particles", "3d", "refraction", "visual"]
 stages = ["under_key"]
 host_requirement = "none"
 slot_capable = false

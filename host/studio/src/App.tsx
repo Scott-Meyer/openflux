@@ -19,26 +19,30 @@ import { ThemeBackgroundPanel } from "./components/ThemeBackgroundPanel";
 import { ThirdPartyAppsPage } from "./components/ThirdPartyAppsPage";
 import { V2ModulesHub } from "./components/V2ModulesHub";
 import { UpdatesPage } from "./components/updates/UpdatesPage";
+import { type V2ModuleRecord, v2Client } from "./api/v2Client";
 import type { AssetCatalog, DeviceStatus, OpenFluxConfig, PreviewKeyRect } from "./types/openflux";
 import { isKeyboardConnected, keymapSyncNotice, PLACEHOLDER_CONFIG } from "./types/openflux";
 
-/** The Studio pages, in navigation order, with their navigation labels. */
-const NAV = [
-  { id: "v2", label: "v2 Modules" },
+/** Core Studio pages (Modules hub + RP2040/hardware core tabs). Software modules opt into their own dynamic top tabs! */
+const CORE_NAV = [
+  { id: "v2", label: "Modules" },
   { id: "named_profiles", label: "Profiles" },
-  { id: "themes", label: "Themes" },
   { id: "actuation", label: "Actuation" },
   { id: "keymap", label: "Keymap" },
-  { id: "profiles", label: "Shortcuts" },
-  { id: "mosaic", label: "Mosaic (v1)" },
   { id: "firmware", label: "Device" },
   { id: "updates", label: "Updates" },
   { id: "apps", label: "Apps" },
 ] as const;
 
-export type StudioTab = (typeof NAV)[number]["id"];
+export type CoreStudioTab = (typeof CORE_NAV)[number]["id"];
+export type StudioTab = CoreStudioTab | `mod:${string}` | "themes" | "profiles" | "mosaic";
 
-const isStudioTab = (page: string): page is StudioTab => NAV.some((n) => n.id === page);
+const isStudioTab = (page: string): page is StudioTab =>
+  CORE_NAV.some((n) => n.id === page) ||
+  page.startsWith("mod:") ||
+  page === "themes" ||
+  page === "profiles" ||
+  page === "mosaic";
 
 interface AppProps {
   client?: DaemonClient;
@@ -72,6 +76,21 @@ export const App: React.FC<AppProps> = ({
       }),
   );
   const [tab, setTab] = useState<StudioTab>(initialTab ?? "v2");
+  const [v2Modules, setV2Modules] = useState<V2ModuleRecord[]>([]);
+
+  useEffect(() => {
+    void v2Client
+      .listModules()
+      .then((res) => setV2Modules(res.modules))
+      .catch(() => {
+        // Ignore in offline unit tests
+      });
+  }, []);
+
+  // Enabled modules that opt into a dedicated top-level Studio tab (via `manifest.ui.top_tab` or user `pin_tab`)
+  const moduleTabs = v2Modules
+    .filter((m) => m.state.enabled && (m.state.pin_tab ?? Boolean(m.manifest.ui?.top_tab)))
+    .sort((a, b) => (a.manifest.ui?.top_tab_order ?? 50) - (b.manifest.ui?.top_tab_order ?? 50));
   const [updatesStatus, setUpdatesStatus] = useState<UpdatesStatus | null>(null);
   const [updatesBadge, setUpdatesBadge] = useState(false);
   const [pendingApps, setPendingApps] = useState(0);
@@ -671,7 +690,28 @@ export const App: React.FC<AppProps> = ({
         </div>
 
         <nav className="topbar-nav" aria-label="Studio Sections">
-          {NAV.map(({ id, label }) => {
+          <button
+            type="button"
+            className={`nav-btn ${tab === "v2" ? "active" : ""}`}
+            onClick={() => setTab("v2")}
+          >
+            Modules
+          </button>
+          {moduleTabs.map((mod) => {
+            const tabId: StudioTab = `mod:${mod.id}`;
+            const label = mod.manifest.ui?.top_tab_label || mod.manifest.name;
+            return (
+              <button
+                key={tabId}
+                type="button"
+                className={`nav-btn ${tab === tabId ? "active" : ""}`}
+                onClick={() => setTab(tabId)}
+              >
+                {label}
+              </button>
+            );
+          })}
+          {CORE_NAV.filter((n) => n.id !== "v2").map(({ id, label }) => {
             const badge =
               id === "updates" && updatesBadge
                 ? "Updates available"
@@ -734,7 +774,43 @@ export const App: React.FC<AppProps> = ({
             </button>
           </section>
         )}
-        {tab === "v2" && <V2ModulesHub />}
+        {tab === "v2" && (
+          <V2ModulesHub
+            pickFile={(title) => client.pickFile(title)}
+            onModulesChanged={setV2Modules}
+          />
+        )}
+        {tab.startsWith("mod:") &&
+          (() => {
+            const modId = tab.slice(4);
+            const mod = v2Modules.find((m) => m.id === modId);
+            if (mod?.manifest.ui?.builtin_view === "shortcuts") {
+              return (
+                <ShortcutsProfilesPanel
+                  client={client}
+                  catalog={catalog}
+                  platform={platform}
+                  config={config}
+                  activeLayer={activeLayer}
+                  selectedKeyIndex={selectedKeyIndex}
+                  keymapBlocked={keymapLocked}
+                  rules={config.appRules}
+                  onChangeRules={(appRules) => void pushConfigPatch({ appRules })}
+                  onChangeKeymap={(keymap) => void pushConfigPatch({ keymap })}
+                  onChangeAppearance={applyActiveTheme}
+                  onImportBundle={importBundleSerialized}
+                  onExportBundle={exportBundleSerialized}
+                />
+              );
+            }
+            return (
+              <V2ModulesHub
+                focusedModuleId={modId}
+                pickFile={(title) => client.pickFile(title)}
+                onModulesChanged={setV2Modules}
+              />
+            );
+          })()}
         {tab === "named_profiles" && (
           <ProfilesPanel
             client={client}

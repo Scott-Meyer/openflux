@@ -10,19 +10,56 @@ import {
   v2Client,
 } from "../api/v2Client";
 
-const CATEGORY_TABS: Array<{ id: ModuleCategory; label: string; subtitle: string }> = [
-  { id: "effect", label: "Key Press Effects", subtitle: "Stackable — combine 3D water, analog depth glow, particles & classics" },
-  { id: "widget", label: "Top Bar Widgets", subtitle: "Place modules into top-bar slots 0–3" },
-  { id: "background", label: "Backgrounds", subtitle: "Live WGSL/GLSL shaders, images, or video textures" },
-  { id: "companion", label: "Companions", subtitle: "Spatial modules that live in a slot and roam across physical keys" },
-  { id: "host_service", label: "Host Services", subtitle: "Unrestricted host processes & local API integrations" },
+const CATEGORY_TABS: Array<{ id: ModuleCategory | "all"; label: string }> = [
+  { id: "all", label: "All Modules" },
+  { id: "effect", label: "Keys & Effects" },
+  { id: "widget", label: "Top Bar & Widgets" },
+  { id: "background", label: "Backgrounds" },
+  { id: "companion", label: "Companions" },
+  { id: "host_service", label: "Host Services" },
 ];
 
-export const V2ModulesHub: React.FC = () => {
+const KEY_INDEX_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 0, label: "Esc (0)" },
+  { value: 1, label: "F1 (1)" },
+  { value: 2, label: "F2 (2)" },
+  { value: 3, label: "F3 (3)" },
+  { value: 4, label: "F4 (4)" },
+  { value: 5, label: "F5 (5)" },
+  { value: 6, label: "F6 (6)" },
+  { value: 7, label: "F7 (7)" },
+  { value: 8, label: "F8 (8)" },
+  { value: 9, label: "F9 (9)" },
+  { value: 10, label: "F10 (10)" },
+  { value: 11, label: "F11 (11)" },
+  { value: 12, label: "F12 (12)" },
+  { value: 13, label: "Prt (13)" },
+  { value: 14, label: "Ins (14)" },
+  { value: 15, label: "Del (15)" },
+  { value: 30, label: "Home (30)" },
+  { value: 45, label: "PgUp (45)" },
+  { value: 59, label: "PgDn (59)" },
+  { value: 73, label: "End (73)" },
+];
+
+export interface V2ModulesHubProps {
+  /** When set, focuses this dedicated single-module workspace (for module-contributed top tabs). */
+  focusedModuleId?: string;
+  pickFile?: (title: string) => Promise<string | null>;
+  onModulesChanged?: (mods: V2ModuleRecord[]) => void;
+}
+
+export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
+  focusedModuleId,
+  pickFile,
+  onModulesChanged,
+}) => {
   const [modules, setModules] = useState<V2ModuleRecord[]>([]);
   const [lists, setLists] = useState<CuratedListSubscription[]>([]);
-  const [category, setCategory] = useState<ModuleCategory>("effect");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [category, setCategory] = useState<ModuleCategory | "all">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(focusedModuleId ?? null);
   const [autoSyncKeyboard, setAutoSyncKeyboard] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -62,6 +99,7 @@ export const V2ModulesHub: React.FC = () => {
     try {
       const [mRes, lRes] = await Promise.all([v2Client.listModules(), v2Client.listCuratedLists()]);
       setModules(mRes.modules);
+      onModulesChanged?.(mRes.modules);
       setLists(lRes.lists);
       if (typeof mRes.modules_rev === "number") {
         modulesRevRef.current = mRes.modules_rev;
@@ -70,7 +108,7 @@ export const V2ModulesHub: React.FC = () => {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [onModulesChanged]);
 
   useEffect(() => {
     void refresh();
@@ -276,9 +314,44 @@ export const V2ModulesHub: React.FC = () => {
     }
   };
 
-  const filtered = modules.filter((m) => m.manifest.category === category);
-  // Scope selection to the active category so switching tabs always shows settings for a module in this tab!
-  const selected = filtered.find((m) => m.id === selectedId) ?? filtered[0] ?? null;
+  const handleTogglePinTab = async (mod: V2ModuleRecord) => {
+    const currentlyPinned = mod.state.pin_tab ?? Boolean(mod.manifest.ui?.top_tab);
+    try {
+      await v2Client.updateModuleState(mod.id, { pin_tab: !currentlyPinned });
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleTriggerAction = async (mod: V2ModuleRecord, actionId: string, label: string) => {
+    try {
+      await v2Client.triggerAction(mod.id, actionId);
+      setNotice(`Triggered "${label}" on ${mod.manifest.name}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // Collect all tags across discovered modules for quick filtering
+  const allTags = Array.from(
+    new Set(modules.flatMap((m) => m.manifest.tags ?? [])),
+  ).sort();
+
+  const q = searchQuery.trim().toLowerCase();
+  const filtered = modules.filter((m) => {
+    if (focusedModuleId) return m.id === focusedModuleId;
+    if (category !== "all" && m.manifest.category !== category) return false;
+    if (activeTag && !(m.manifest.tags ?? []).includes(activeTag)) return false;
+    if (q) {
+      const hay = `${m.id} ${m.manifest.name} ${m.manifest.description} ${(m.manifest.tags ?? []).join(" ")}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  const selected = focusedModuleId
+    ? (modules.find((m) => m.id === focusedModuleId) ?? null)
+    : (filtered.find((m) => m.id === selectedId) ?? filtered[0] ?? null);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: 16 }}>
@@ -401,29 +474,93 @@ export const V2ModulesHub: React.FC = () => {
         </div>
       )}
 
-      {/* Friendly Category Bar (All backed by the same unified Module runtime) */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {CATEGORY_TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setCategory(t.id)}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 8,
-              border: category === t.id ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.14)",
-              background: category === t.id ? "rgba(77, 225, 255, 0.16)" : "rgba(20, 24, 34, 0.7)",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            {t.label} ({modules.filter((m) => m.manifest.category === t.id).length})
-          </button>
-        ))}
-      </div>
+      {/* Category Bar + Search + Tag Filter Pills (hidden in focused single-module top tab) */}
+      {!focusedModuleId && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {CATEGORY_TABS.map((t) => {
+              const cnt =
+                t.id === "all"
+                  ? modules.length
+                  : modules.filter((m) => m.manifest.category === t.id).length;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setCategory(t.id)}
+                  style={{
+                    padding: "7px 13px",
+                    borderRadius: 8,
+                    border: category === t.id ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.14)",
+                    background: category === t.id ? "rgba(77, 225, 255, 0.16)" : "rgba(20, 24, 34, 0.7)",
+                    color: "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  {t.label} ({cnt})
+                </button>
+              );
+            })}
+            <input
+              type="search"
+              placeholder="Search modules or tags…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                marginLeft: "auto",
+                minWidth: 220,
+                padding: "7px 10px",
+                borderRadius: 8,
+                border: "1px solid rgba(255,255,255,0.16)",
+                background: "rgba(12, 16, 24, 0.85)",
+                color: "#fff",
+              }}
+            />
+          </div>
+          {allTags.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 11, opacity: 0.6 }}>Tags:</span>
+              <button
+                type="button"
+                onClick={() => setActiveTag(null)}
+                style={{
+                  fontSize: 11,
+                  padding: "3px 8px",
+                  borderRadius: 99,
+                  border: activeTag === null ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.12)",
+                  background: activeTag === null ? "rgba(77, 225, 255, 0.18)" : "transparent",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                All
+              </button>
+              {allTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                  style={{
+                    fontSize: 11,
+                    padding: "3px 8px",
+                    borderRadius: 99,
+                    border: activeTag === tag ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.12)",
+                    background: activeTag === tag ? "rgba(77, 225, 255, 0.18)" : "rgba(255,255,255,0.04)",
+                    color: "#dbe7f5",
+                    cursor: "pointer",
+                  }}
+                >
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Module List + Inspector / Settings */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: focusedModuleId ? "1fr" : "1.2fr 1fr", gap: 16 }}>
+        {!focusedModuleId && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {filtered.map((mod) => (
             <div
@@ -472,12 +609,31 @@ export const V2ModulesHub: React.FC = () => {
                 </div>
               </div>
               <div style={{ fontSize: 12, opacity: 0.78, marginTop: 6 }}>{mod.manifest.description}</div>
+              {(mod.manifest.tags ?? []).length > 0 && (
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
+                  {(mod.manifest.tags ?? []).map((t) => (
+                    <span
+                      key={t}
+                      style={{
+                        fontSize: 10,
+                        padding: "2px 6px",
+                        borderRadius: 99,
+                        background: "rgba(255,255,255,0.07)",
+                        color: "#a8c5e5",
+                      }}
+                    >
+                      #{t}
+                    </span>
+                  ))}
+                </div>
+              )}
               {!mod.healthy && mod.last_error && (
                 <div style={{ fontSize: 12, color: "#ff8c96", marginTop: 6 }}>Runtime Error: {mod.last_error}</div>
               )}
             </div>
           ))}
         </div>
+        )}
 
         {/* Selected Module Details, Settings & Fork */}
         <div
@@ -500,7 +656,10 @@ export const V2ModulesHub: React.FC = () => {
                     <code>{selected.id}</code> · {selected.path}
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => void handleTogglePinTab(selected)}>
+                    {(selected.state.pin_tab ?? Boolean(selected.manifest.ui?.top_tab)) ? "Unpin Top Tab" : "Pin as Top Tab"}
+                  </button>
                   <button type="button" onClick={() => void handleFork(selected)}>
                     Fork to Local
                   </button>
@@ -509,6 +668,21 @@ export const V2ModulesHub: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {(selected.manifest.actions ?? []).length > 0 && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <strong style={{ fontSize: 12 }}>Actions:</strong>
+                  {(selected.manifest.actions ?? []).map((act) => (
+                    <button
+                      key={act.id}
+                      type="button"
+                      onClick={() => void handleTriggerAction(selected, act.id, act.label)}
+                    >
+                      {act.label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {selected.manifest.settings.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -522,7 +696,60 @@ export const V2ModulesHub: React.FC = () => {
                         <span>
                           {field.label} {field.secret && <em style={{ opacity: 0.6 }}>(secret — excluded from presets)</em>}
                         </span>
-                        {field.kind === "color" ? (
+                        {field.kind === "boolean" ? (
+                          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(cur)}
+                              onChange={(e) => void handleSettingChange(selected, field.key, e.target.checked)}
+                            />
+                            <span style={{ fontSize: 12, opacity: 0.8 }}>{Boolean(cur) ? "On" : "Off"}</span>
+                          </span>
+                        ) : field.kind === "select" ? (
+                          <select
+                            value={String(cur)}
+                            onChange={(e) => void handleSettingChange(selected, field.key, e.target.value)}
+                          >
+                            {(field.options ?? []).map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        ) : field.kind === "key" ? (
+                          <select
+                            value={Number(cur) || 0}
+                            onChange={(e) => void handleSettingChange(selected, field.key, Number(e.target.value))}
+                          >
+                            {KEY_INDEX_OPTIONS.map((k) => (
+                              <option key={k.value} value={k.value}>
+                                {k.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : field.kind === "file" ? (
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <input
+                              type="text"
+                              value={String(cur)}
+                              onChange={(e) => void handleSettingChange(selected, field.key, e.target.value)}
+                              style={{ flex: 1 }}
+                            />
+                            {pickFile && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const picked = await pickFile(`Select ${field.label}`);
+                                  if (picked) {
+                                    await handleSettingChange(selected, field.key, picked);
+                                  }
+                                }}
+                              >
+                                Browse…
+                              </button>
+                            )}
+                          </div>
+                        ) : field.kind === "color" ? (
                           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                             <input
                               type="color"

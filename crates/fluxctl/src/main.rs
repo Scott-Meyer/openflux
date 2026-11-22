@@ -141,6 +141,8 @@ enum ModulesCmd {
         #[arg(long)]
         category: Option<TemplateArg>,
         #[arg(long)]
+        tag: Option<String>,
+        #[arg(long)]
         enabled_only: bool,
     },
     /// Show detailed manifest, state, disclosure report, and recent logs for a module.
@@ -203,6 +205,8 @@ enum ModulesCmd {
     },
     /// Hot-reload a module inside the running openfluxd daemon immediately.
     Reload { id: String },
+    /// Trigger a declared action button on a module (publishes its bus event).
+    Action { id: String, action_id: String },
     /// Read live Lua and host-process logs from the running app (one module or all modules).
     Logs {
         /// Optional module ID; omit to show logs across all active modules.
@@ -673,11 +677,13 @@ fn handle_modules(
     match cmd {
         ModulesCmd::List {
             category,
+            tag,
             enabled_only,
         } => {
             if let Some(base) = live {
                 let val = daemon_json(reqwest::Method::GET, &format!("{base}/v2/modules"), None, 5000)?;
                 let filter_cat = category.map(|c| serde_json::to_value(ModuleCategory::from(c)).unwrap());
+                let filter_tag = tag.as_deref().map(|t| t.to_ascii_lowercase());
                 let mut filtered = Vec::new();
                 let mut lines = Vec::new();
                 if let Some(arr) = val.get("modules").and_then(|v| v.as_array()) {
@@ -685,6 +691,14 @@ fn handle_modules(
                         let cat_v = &m["manifest"]["category"];
                         if let Some(ref fc) = filter_cat {
                             if cat_v != fc {
+                                continue;
+                            }
+                        }
+                        if let Some(ref ft) = filter_tag {
+                            let has_tag = m["manifest"]["tags"]
+                                .as_array()
+                                .is_some_and(|ts| ts.iter().any(|x| x.as_str().is_some_and(|s| s.eq_ignore_ascii_case(ft))));
+                            if !has_tag {
                                 continue;
                             }
                         }
@@ -725,11 +739,17 @@ fn handle_modules(
             let discovered = reg.discover();
             let state = reg.load_state();
             let filter_cat = category.map(ModuleCategory::from);
+            let filter_tag = tag.as_deref().map(|t| t.to_ascii_lowercase());
             let mut items = Vec::new();
             let mut lines = Vec::new();
             for (id, dm) in &discovered {
                 if let Some(cat) = filter_cat {
                     if dm.manifest.category != cat {
+                        continue;
+                    }
+                }
+                if let Some(ref ft) = filter_tag {
+                    if !dm.manifest.tags.iter().any(|t| t.eq_ignore_ascii_case(ft)) {
                         continue;
                     }
                 }
@@ -1135,6 +1155,17 @@ fn handle_modules(
             print_out(cli.json, &val, &format!("Hot-reloaded {id} in live daemon"));
             Ok(())
         }
+        ModulesCmd::Action { id, action_id } => {
+            let base = require_live_daemon(cli)?;
+            let val = daemon_json(
+                reqwest::Method::POST,
+                &format!("{base}/v2/modules/{id}/action"),
+                Some(&json!({ "action_id": action_id })),
+                5000,
+            )?;
+            print_out(cli.json, &val, &format!("Triggered action {action_id} on {id}"));
+            Ok(())
+        }
         ModulesCmd::Logs { id } => {
             let base = require_live_daemon(cli)?;
             let url = match id {
@@ -1190,6 +1221,7 @@ fn handle_modules(
                 ModuleInstanceState {
                     enabled: true,
                     slot: Some(0),
+                    pin_tab: None,
                     config: Default::default(),
                 },
             );
@@ -1891,6 +1923,7 @@ fn handle_preview(cli: &Cli, reg: &ModuleRegistry, cmd: &PreviewCmd) -> Result<(
                         ModuleInstanceState {
                             enabled: true,
                             slot: prev.slot,
+                            pin_tab: prev.pin_tab,
                             config: prev.config,
                         },
                     );
@@ -1905,6 +1938,7 @@ fn handle_preview(cli: &Cli, reg: &ModuleRegistry, cmd: &PreviewCmd) -> Result<(
                             ModuleInstanceState {
                                 enabled: true,
                                 slot: None,
+                                pin_tab: None,
                                 config: prev_cfg,
                             }
                         });
@@ -2010,6 +2044,7 @@ fn default_showcase_states() -> std::collections::BTreeMap<String, ModuleInstanc
             ModuleInstanceState {
                 enabled: true,
                 slot,
+                pin_tab: None,
                 config: Default::default(),
             },
         );

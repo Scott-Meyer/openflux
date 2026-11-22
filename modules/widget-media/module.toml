@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Displays live host media track, artist, animated equalizer, and playback progress"
 author = "OpenFlux"
 category = "widget"
+tags = ["media", "music", "now-playing", "top-bar"]
 stages = ["tile"]
 host_requirement = "optional"
 slot_capable = true

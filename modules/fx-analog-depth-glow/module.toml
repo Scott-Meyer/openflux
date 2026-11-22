@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Spreads wider and brighter beneath neighboring keys on the way down, and contracts gently on the way up"
 author = "OpenFlux"
 category = "effect"
+tags = ["analog", "hall-effect", "glow", "velocity", "visual"]
 stages = ["under_key"]
 host_requirement = "none"
 slot_capable = false

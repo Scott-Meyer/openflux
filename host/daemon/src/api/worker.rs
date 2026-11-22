@@ -1724,13 +1724,51 @@ pub fn reconcile_tick_with_state(
     }
     let mut live_json = build_live_data_json(&hw, &media, weather_snap.as_ref());
     {
-        let active_pack = {
+        let mut active_pack = {
             let g = state.inner.lock().unwrap();
             g.profiles
                 .get(desired_profile)
                 .and_then(|p| p.shortcut_pack.clone())
                 .unwrap_or_default()
         };
+        // Auto-select a matching v1 shortcut pack for the foreground app when the profile leaves it blank!
+        if active_pack.is_empty() {
+            let fg_l = format!(
+                "{} {}",
+                win.as_ref().map(|w| w.app_id.as_str()).unwrap_or(""),
+                win.as_ref().map(|w| w.process_name.as_str()).unwrap_or("")
+            )
+            .to_ascii_lowercase();
+            active_pack = if fg_l.contains("chrome") {
+                "chrome".into()
+            } else if fg_l.contains("safari") {
+                "safari".into()
+            } else if fg_l.contains("firefox") {
+                "firefox".into()
+            } else if fg_l.contains("vscode") || fg_l.contains("visual studio code") || fg_l.contains("cursor") {
+                "vscode".into()
+            } else if fg_l.contains("finder") {
+                "finder".into()
+            } else if fg_l.contains("slack") {
+                "slack".into()
+            } else if fg_l.contains("discord") {
+                "discord".into()
+            } else if fg_l.contains("figma") {
+                "figma".into()
+            } else if fg_l.contains("zoom") {
+                "zoom".into()
+            } else if fg_l.contains("blender") {
+                "blender".into()
+            } else if fg_l.contains("photoshop") {
+                "photoshop".into()
+            } else if fg_l.contains("terminal") || fg_l.contains("iterm") || fg_l.contains("flightdeck") {
+                "macos-terminal".into()
+            } else if platform_code == 2 {
+                "macos".into()
+            } else {
+                "windows".into()
+            };
+        }
         let cache_key = format!("{active_pack}:{platform_code}");
         if wstate.cached_pack_name.as_deref() != Some(cache_key.as_str()) {
             wstate.cached_pack_name = Some(cache_key);

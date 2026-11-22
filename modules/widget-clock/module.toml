@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Classic v1-style sleek digital clock with large centered time, AM/PM, and uppercase date"
 author = "OpenFlux"
 category = "widget"
+tags = ["clock", "time", "standalone", "top-bar"]
 stages = ["tile"]
 host_requirement = "none"
 slot_capable = true

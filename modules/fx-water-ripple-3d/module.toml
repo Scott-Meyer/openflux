@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Refracts the playing video or background with a real-time 2D wave simulation and specular highlights"
 author = "OpenFlux"
 category = "effect"
+tags = ["3d", "water", "refraction", "ripple", "visual"]
 stages = ["distortion"]
 host_requirement = "none"
 slot_capable = false
@@ -53,3 +54,9 @@ key = "tint"
 label = "Specular Tint"
 kind = "color"
 default = "#9ce8ff"
+
+[[actions]]
+id = "test_ripple"
+label = "Trigger Test Ripple"
+topic = "fx/surface/impulse"
+payload = { x = 960, y = 640, radius = 64, force = 1.2, kind = "ripple", source = "studio" }

@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Shows live 3D printer telemetry (nozzle, bed, progress, ETA) in a top-bar slot and opens a live camera glance overlay while holding a key"
 author = "OpenFlux"
 category = "widget"
+tags = ["3d-printer", "prusa", "camera", "telemetry", "rtsp"]
 stages = ["tile", "world_overlay"]
 host_requirement = "required"
 slot_capable = true
@@ -44,8 +45,8 @@ default = ""
 
 [[settings]]
 key = "peek_key_index"
-label = "Hold-to-Glance Key Index (13=PRT, 14=INS, 15=DEL)"
-kind = "number"
+label = "Hold-to-Glance Camera Key"
+kind = "key"
 default = 13
 min = 0
 max = 84
@@ -57,3 +58,17 @@ kind = "number"
 default = 5
 min = 2
 max = 60
+
+[[actions]]
+id = "peek_on"
+label = "Show Camera Preview"
+topic = "modules/prusa-connect/peek"
+retain = true
+payload = { active = true }
+
+[[actions]]
+id = "peek_off"
+label = "Hide Camera Preview"
+topic = "modules/prusa-connect/peek"
+retain = true
+payload = { active = false }

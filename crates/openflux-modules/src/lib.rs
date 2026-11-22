@@ -20,7 +20,7 @@ pub use ir::{
 pub use lua_runtime::{parse_hex_color, ModuleLogEntry, ModuleRuntime, RuntimeModuleStatus};
 pub use manifest::{
     ChannelDeclarations, CompositorStage, Entrypoints, HostRequirement, ManifestError,
-    ModuleCategory, ModuleManifest, SettingField, SettingKind,
+    ModuleActionField, ModuleCategory, ModuleManifest, ModuleUiSpec, SettingField, SettingKind,
 };
 pub use registry::{
     CuratedListDocument, CuratedListEntry, CuratedListSubscription, DiscoveredModule,

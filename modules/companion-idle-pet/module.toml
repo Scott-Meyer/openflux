@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Lives in a top-bar slot, swipes at upper-row typing, gets startled by ripples, and climbs onto keys when idle—sending surface impulses on every paw landing"
 author = "OpenFlux"
 category = "companion"
+tags = ["pet", "cat", "companion", "mario", "interactive"]
 stages = ["tile", "world_overlay"]
 host_requirement = "none"
 slot_capable = true
@@ -35,3 +36,15 @@ kind = "number"
 default = 15.0
 min = 2.0
 max = 120.0
+
+[[actions]]
+id = "roam"
+label = "Send Mochi Roaming"
+topic = "modules/companion-idle-pet/command"
+payload = { action = "roam" }
+
+[[actions]]
+id = "home"
+label = "Call Mochi Home"
+topic = "modules/companion-idle-pet/command"
+payload = { action = "home" }

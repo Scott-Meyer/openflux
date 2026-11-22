@@ -653,14 +653,30 @@ impl LoadedLuaModule {
             self.lua.create_function(move |_, ()| Ok(mod_dir.clone()))?,
         )?;
         mod_tbl.set("slot", self.lua.create_function(move |_, ()| Ok(slot_idx))?)?;
-        mod_tbl.set(
-            "slot_rect",
-            self.lua
-                .create_function(move |lua, ()| match slot_rect {
-                    Some(r) => lua.to_value(&r),
-                    None => Ok(LuaValue::Nil),
+        {
+            let broker_slot = broker.clone();
+            mod_tbl.set(
+                "slot_rect",
+                self.lua.create_function(move |lua, ()| {
+                    // Prefer dynamic slot geometry published by `dock-top-bar` on the bus!
+                    if let Some(sidx) = slot_idx {
+                        if let Some(msg) = broker_slot.get_retained("layout/slots/top-bar") {
+                            if let Some(arr) = msg.payload.get("slots").and_then(|v| v.as_array()) {
+                                if let Some(entry) = arr.get(sidx as usize) {
+                                    if let Some(r) = entry.get("rect") {
+                                        return lua.to_value(r);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    match slot_rect {
+                        Some(r) => lua.to_value(&r),
+                        None => Ok(LuaValue::Nil),
+                    }
                 })?,
-        )?;
+            )?;
+        }
         mod_tbl.set(
             "config",
             self.lua
@@ -934,6 +950,7 @@ impl ModuleRuntime {
             time_sec: self.elapsed_sec,
             dt_sec,
             has_custom_keys_renderer: self.has_module("keys-renderer"),
+            has_custom_dock: self.has_module("dock-top-bar"),
             ..Default::default()
         }));
 

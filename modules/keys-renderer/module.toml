@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Core modular key-face compositor: resolves all `keys/providers/#` claims (keymap, Shift case, v1 shortcuts, game ability decks) in one atomic zero-flash frame with full parallax alignment"
 author = "OpenFlux"
 category = "effect"
+tags = ["keys", "core", "legends", "parallax"]
 stages = ["under_key"]
 host_requirement = "none"
 slot_capable = false

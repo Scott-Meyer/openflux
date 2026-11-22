@@ -211,4 +211,7 @@ pub struct FrameScene {
     /// True when a `keys-renderer` module is active and owns keycap face rendering (no hardcoded legends!).
     #[serde(default)]
     pub has_custom_keys_renderer: bool,
+    /// True when a `dock-top-bar` module is active and owns top-bar slot layout & dividers.
+    #[serde(default)]
+    pub has_custom_dock: bool,
 }

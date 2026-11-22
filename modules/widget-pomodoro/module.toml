@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Keyboard-standalone Pomodoro focus timer that emits a celebratory surface impulse when a session completes"
 author = "OpenFlux"
 category = "widget"
+tags = ["timer", "pomodoro", "productivity", "standalone", "top-bar"]
 stages = ["tile"]
 host_requirement = "none"
 slot_capable = true
@@ -23,3 +24,15 @@ kind = "number"
 default = 25
 min = 1
 max = 90
+
+[[actions]]
+id = "toggle"
+label = "Start / Pause"
+topic = "modules/widget-pomodoro/command"
+payload = { action = "toggle" }
+
+[[actions]]
+id = "reset"
+label = "Reset Timer"
+topic = "modules/widget-pomodoro/command"
+payload = { action = "reset" }

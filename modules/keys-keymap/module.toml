@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Publishes base keycap legends with dynamic Shift case (a/A), shifted symbols (1/!), Caps Lock badge, and Fn layer media keys onto `keys/providers/keymap`"
 author = "OpenFlux"
 category = "effect"
+tags = ["keys", "core", "keymap", "shift", "fn"]
 stages = ["under_key"]
 host_requirement = "none"
 slot_capable = false

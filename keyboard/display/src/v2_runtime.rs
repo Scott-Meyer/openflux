@@ -527,7 +527,9 @@ impl KeyboardV2Display {
                 self.canvas.execute(&scene.under_key_draws);
             }
             if scene.has_custom_keys_renderer {
-                self.canvas.draw_top_bar_dividers(&self.geometry);
+                if !scene.has_custom_dock {
+                    self.canvas.draw_top_bar_dividers(&self.geometry);
+                }
             } else {
                 self.canvas
                     .blit_cached_default_key_legends(&self.geometry, DEFAULT_ANSI_LABELS);

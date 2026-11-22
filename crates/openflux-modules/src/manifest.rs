@@ -78,6 +78,39 @@ pub enum SettingKind {
     String,
     Color,
     Select,
+    File,
+    Key,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleUiSpec {
+    /// Whether this module offers its own dedicated top-level tab in OpenFlux Studio when enabled.
+    #[serde(default)]
+    pub top_tab: bool,
+    /// Optional custom label for the top-level tab (defaults to `manifest.name`).
+    #[serde(default)]
+    pub top_tab_label: Option<String>,
+    /// Sort order among module-contributed top tabs (lower appears first).
+    #[serde(default = "default_tab_order")]
+    pub top_tab_order: i32,
+    /// Optional built-in Studio view key (e.g. `"shortcuts"` for the v1 shortcut-pack editor).
+    #[serde(default)]
+    pub builtin_view: Option<String>,
+}
+
+fn default_tab_order() -> i32 {
+    50
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModuleActionField {
+    pub id: String,
+    pub label: String,
+    pub topic: String,
+    #[serde(default)]
+    pub payload: Value,
+    #[serde(default)]
+    pub retain: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -111,6 +144,8 @@ pub struct ModuleManifest {
     pub author: String,
     pub category: ModuleCategory,
     #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
     pub stages: Vec<CompositorStage>,
     #[serde(default)]
     pub host_requirement: HostRequirement,
@@ -121,11 +156,15 @@ pub struct ModuleManifest {
     #[serde(default)]
     pub forked_from: Option<String>,
     #[serde(default)]
+    pub ui: ModuleUiSpec,
+    #[serde(default)]
     pub entrypoints: Entrypoints,
     #[serde(default)]
     pub channels: ChannelDeclarations,
     #[serde(default)]
     pub settings: Vec<SettingField>,
+    #[serde(default)]
+    pub actions: Vec<ModuleActionField>,
 }
 
 fn default_true() -> bool {

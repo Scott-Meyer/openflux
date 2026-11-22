@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Hybrid CPU, RAM, and GPU telemetry bar that gracefully shows standalone status when host disconnects"
 author = "OpenFlux"
 category = "widget"
+tags = ["system", "cpu", "gpu", "ram", "network", "telemetry", "top-bar"]
 stages = ["tile"]
 host_requirement = "optional"
 slot_capable = true

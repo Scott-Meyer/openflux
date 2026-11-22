@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Publishes live game abilities, sweeping cooldowns, charge counts, and Shift/Ctrl banks to `keys/providers/ability-deck` (100% transparent, zero-flash override)"
 author = "OpenFlux"
 category = "effect"
+tags = ["gaming", "streamdeck", "abilities", "cooldowns", "keys"]
 stages = ["under_key"]
 host_requirement = "optional"
 slot_capable = false

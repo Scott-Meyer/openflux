@@ -30,6 +30,9 @@ pub struct ModuleInstanceState {
     /// Optional top-bar slot assignment (`0..=3`) for widgets and companions.
     #[serde(default)]
     pub slot: Option<u8>,
+    /// Optional user override for whether this module appears as a dedicated top tab in Studio.
+    #[serde(default)]
+    pub pin_tab: Option<bool>,
     #[serde(default)]
     pub config: BTreeMap<String, Value>,
 }

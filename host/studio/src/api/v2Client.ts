@@ -7,13 +7,28 @@ export type ModuleTier = "bundled" | "installed" | "local";
 export interface SettingField {
   key: string;
   label: string;
-  kind: "number" | "boolean" | "string" | "color" | "select";
+  kind: "number" | "boolean" | "string" | "color" | "select" | "file" | "key";
   default?: unknown;
   min?: number;
   max?: number;
   options?: string[];
   description?: string;
   secret?: boolean;
+}
+
+export interface ModuleUiSpec {
+  top_tab?: boolean;
+  top_tab_label?: string | null;
+  top_tab_order?: number;
+  builtin_view?: string | null;
+}
+
+export interface ModuleActionField {
+  id: string;
+  label: string;
+  topic: string;
+  payload?: unknown;
+  retain?: boolean;
 }
 
 export interface ModuleManifest {
@@ -23,11 +38,13 @@ export interface ModuleManifest {
   description: string;
   author: string;
   category: ModuleCategory;
+  tags?: string[];
   stages: string[];
   host_requirement: HostRequirement;
   slot_capable: boolean;
   stackable: boolean;
   forked_from?: string | null;
+  ui?: ModuleUiSpec;
   entrypoints: {
     script?: string | null;
     shader?: string | null;
@@ -38,11 +55,13 @@ export interface ModuleManifest {
     publishes: string[];
   };
   settings: SettingField[];
+  actions?: ModuleActionField[];
 }
 
 export interface ModuleInstanceState {
   enabled: boolean;
   slot?: number | null;
+  pin_tab?: boolean | null;
   config: Record<string, unknown>;
 }
 
@@ -177,8 +196,10 @@ export const v2Client = {
     ),
   updateModuleState: (
     id: string,
-    patch: { enabled?: boolean; slot?: number | null; config?: Record<string, unknown> },
+    patch: { enabled?: boolean; slot?: number | null; pin_tab?: boolean | null; config?: Record<string, unknown> },
   ) => v2Call("PUT", `/v2/modules/${encodeURIComponent(id)}/state`, patch),
+  triggerAction: (id: string, action_id: string) =>
+    v2Call("POST", `/v2/modules/${encodeURIComponent(id)}/action`, { action_id }),
   createModule: (body: { id: string; category: ModuleCategory; name?: string; enable?: boolean; slot?: number }) =>
     v2Call("POST", "/v2/modules/create", body),
   forkModule: (body: { source_id: string; new_id: string; name?: string; enable?: boolean }) =>

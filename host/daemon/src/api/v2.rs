@@ -131,6 +131,7 @@ impl V2State {
         if state_file.modules.is_empty() && !discovered.is_empty() {
             let defaults = [
                 ("bg-aurora-shader", None),
+                ("dock-top-bar", None),
                 ("keys-renderer", None),
                 ("keys-keymap", None),
                 ("keys-shortcuts", None),
@@ -149,6 +150,7 @@ impl V2State {
                         ModuleInstanceState {
                             enabled: true,
                             slot,
+                            pin_tab: None,
                             config: BTreeMap::new(),
                         },
                     );
@@ -495,6 +497,8 @@ struct UpdateModuleStateBody {
     #[serde(default)]
     slot: Option<Option<u8>>,
     #[serde(default)]
+    pin_tab: Option<Option<bool>>,
+    #[serde(default)]
     config: Option<BTreeMap<String, Value>>,
 }
 
@@ -524,6 +528,9 @@ async fn update_module_state(
     let entry = saved.modules.entry(id.clone()).or_default();
     if let Some(en) = body.enabled {
         entry.enabled = en;
+    }
+    if let Some(pin) = body.pin_tab {
+        entry.pin_tab = pin;
     }
     if let Some(cfg) = body.config {
         for (k, v) in cfg {
@@ -661,6 +668,37 @@ async fn install_module_api(
             )
         }
         Err(e) => err_resp(StatusCode::BAD_REQUEST, e),
+    }
+}
+
+#[derive(Deserialize)]
+struct TriggerActionBody {
+    action_id: String,
+}
+
+async fn trigger_module_action(
+    State(state): State<Arc<ApiState>>,
+    AxumPath(id): AxumPath<String>,
+    Json(body): Json<TriggerActionBody>,
+) -> impl IntoResponse {
+    let discovered = state.v2.registry.discover();
+    let Some(dm) = discovered.get(&id) else {
+        return err_resp(StatusCode::NOT_FOUND, format!("module {id:?} not found"));
+    };
+    let Some(act) = dm.manifest.actions.iter().find(|a| a.id == body.action_id) else {
+        return err_resp(
+            StatusCode::NOT_FOUND,
+            format!("action {:?} not declared by module {id:?}", body.action_id),
+        );
+    };
+    let opts = PublishOptions {
+        retain: act.retain,
+        origin: Some(format!("action:{id}")),
+        ..Default::default()
+    };
+    match state.v2.broker.publish(act.topic.clone(), act.payload.clone(), opts) {
+        Ok(msg) => (StatusCode::OK, Json(json!({ "ok": true, "message": msg }))),
+        Err(e) => err_resp(StatusCode::BAD_REQUEST, e.to_string()),
     }
 }
 
@@ -1284,6 +1322,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/modules/install", post(install_module_api))
         .route("/v2/modules/:id", get(get_module_detail))
         .route("/v2/modules/:id/state", put(update_module_state))
+        .route("/v2/modules/:id/action", post(trigger_module_action))
         .route("/v2/modules/:id/reload", post(reload_module_api))
         .route("/v2/modules/:id/logs", get(get_module_logs_api))
         .route("/v2/lists", get(list_curated_lists).post(add_curated_list))

@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Animated bioluminescent aurora background shader designed to showcase 3D water refraction"
 author = "OpenFlux"
 category = "background"
+tags = ["background", "shader", "wgsl", "animated"]
 stages = ["background"]
 host_requirement = "none"
 slot_capable = false
