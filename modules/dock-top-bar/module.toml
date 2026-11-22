@@ -32,9 +32,9 @@ options = ["4", "3", "2"]
 
 [[settings]]
 key = "module_dimming"
-label = "Top Bar Soft Vignette Fade (%)"
+label = "Top Bar Tint Dimming (%)"
 kind = "number"
-default = 0
+default = 30
 min = 0
 max = 80
 

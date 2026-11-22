@@ -342,7 +342,7 @@ export function TopBarDockTab({
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          <strong>Top Bar Soft Fade (GPU): {dimming}%</strong>
+          <strong>Top Bar Tint Dimming: {dimming}%</strong>
           <input
             type="range"
             min={0}
