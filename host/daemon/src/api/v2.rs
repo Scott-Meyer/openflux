@@ -150,6 +150,7 @@ impl V2State {
                         ModuleInstanceState {
                             enabled: true,
                             slot,
+                            slot_span: None,
                             pin_tab: None,
                             config: BTreeMap::new(),
                         },
@@ -497,6 +498,8 @@ struct UpdateModuleStateBody {
     #[serde(default)]
     slot: Option<Option<u8>>,
     #[serde(default)]
+    slot_span: Option<Option<f32>>,
+    #[serde(default)]
     pin_tab: Option<Option<bool>>,
     #[serde(default)]
     config: Option<BTreeMap<String, Value>>,
@@ -528,6 +531,9 @@ async fn update_module_state(
     let entry = saved.modules.entry(id.clone()).or_default();
     if let Some(en) = body.enabled {
         entry.enabled = en;
+    }
+    if let Some(sp) = body.slot_span {
+        entry.slot_span = sp.map(|v| v.clamp(0.5, 4.0));
     }
     if let Some(pin) = body.pin_tab {
         entry.pin_tab = pin;

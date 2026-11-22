@@ -10,14 +10,12 @@ import {
   v2Client,
 } from "../api/v2Client";
 
-const CATEGORY_TABS: Array<{ id: ModuleCategory | "all"; label: string }> = [
-  { id: "all", label: "All Modules" },
-  { id: "effect", label: "Keys & Effects" },
-  { id: "widget", label: "Top Bar & Widgets" },
-  { id: "background", label: "Backgrounds" },
-  { id: "companion", label: "Companions" },
-  { id: "host_service", label: "Host Services" },
-];
+const PINNED_TAGS = ["keys", "top-bar", "visual", "background", "companion", "3d", "prusa", "gaming", "core"];
+
+function moduleAllTags(m: V2ModuleRecord): string[] {
+  const set = new Set<string>(m.manifest.tags ?? []);
+  return Array.from(set);
+}
 
 const KEY_INDEX_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 0, label: "Esc (0)" },
@@ -56,7 +54,6 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
 }) => {
   const [modules, setModules] = useState<V2ModuleRecord[]>([]);
   const [lists, setLists] = useState<CuratedListSubscription[]>([]);
-  const [category, setCategory] = useState<ModuleCategory | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(focusedModuleId ?? null);
@@ -179,7 +176,7 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
 
   // Live logs refresh for the selected module (updates when AI edits or module logs)
   useEffect(() => {
-    const targetId = selectedId ?? modules.find((m) => m.manifest.category === category)?.id;
+    const targetId = selectedId ?? modules[0]?.id;
     if (!targetId) {
       setSelectedLogs([]);
       return;
@@ -199,7 +196,7 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
       alive = false;
       window.clearInterval(timer);
     };
-  }, [selectedId, category, modules]);
+  }, [selectedId, modules]);
 
   const handleToggle = async (mod: V2ModuleRecord) => {
     try {
@@ -259,7 +256,7 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
       await v2Client.createModule({ id, category: newModCat, enable: true });
       setNewModId("");
       setNotice(`Created local plain-folder module "${id}" ready for live editing & hot-reload.`);
-      setCategory(newModCat);
+      setActiveTag(null);
       await refresh();
       setSelectedId(id);
     } catch (err) {
@@ -333,18 +330,22 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
     }
   };
 
-  // Collect all tags across discovered modules for quick filtering
-  const allTags = Array.from(
-    new Set(modules.flatMap((m) => m.manifest.tags ?? [])),
-  ).sort();
+  // Single unified tag list (popular/core tags first, then alphabetical — no weird super-tags!)
+  const allTags = Array.from(new Set(modules.flatMap(moduleAllTags))).sort((a, b) => {
+    const ia = PINNED_TAGS.indexOf(a);
+    const ib = PINNED_TAGS.indexOf(b);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    return a.localeCompare(b);
+  });
 
   const q = searchQuery.trim().toLowerCase();
   const filtered = modules.filter((m) => {
     if (focusedModuleId) return m.id === focusedModuleId;
-    if (category !== "all" && m.manifest.category !== category) return false;
-    if (activeTag && !(m.manifest.tags ?? []).includes(activeTag)) return false;
+    if (activeTag && !moduleAllTags(m).includes(activeTag)) return false;
     if (q) {
-      const hay = `${m.id} ${m.manifest.name} ${m.manifest.description} ${(m.manifest.tags ?? []).join(" ")}`.toLowerCase();
+      const hay = `${m.id} ${m.manifest.name} ${m.manifest.description} ${moduleAllTags(m).join(" ")}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -474,87 +475,60 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
         </div>
       )}
 
-      {/* Category Bar + Search + Tag Filter Pills (hidden in focused single-module top tab) */}
+      {/* Single Unified Tag Filter Bar + Search (hidden in focused single-module top tab) */}
       {!focusedModuleId && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            {CATEGORY_TABS.map((t) => {
-              const cnt =
-                t.id === "all"
-                  ? modules.length
-                  : modules.filter((m) => m.manifest.category === t.id).length;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setCategory(t.id)}
-                  style={{
-                    padding: "7px 13px",
-                    borderRadius: 8,
-                    border: category === t.id ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.14)",
-                    background: category === t.id ? "rgba(77, 225, 255, 0.16)" : "rgba(20, 24, 34, 0.7)",
-                    color: "#fff",
-                    cursor: "pointer",
-                  }}
-                >
-                  {t.label} ({cnt})
-                </button>
-              );
-            })}
-            <input
-              type="search"
-              placeholder="Search modules or tags…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                marginLeft: "auto",
-                minWidth: 220,
-                padding: "7px 10px",
-                borderRadius: 8,
-                border: "1px solid rgba(255,255,255,0.16)",
-                background: "rgba(12, 16, 24, 0.85)",
-                color: "#fff",
-              }}
-            />
-          </div>
-          {allTags.length > 0 && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: 11, opacity: 0.6 }}>Tags:</span>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            type="button"
+            onClick={() => setActiveTag(null)}
+            style={{
+              fontSize: 12,
+              padding: "6px 12px",
+              borderRadius: 99,
+              border: activeTag === null ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.14)",
+              background: activeTag === null ? "rgba(77, 225, 255, 0.18)" : "rgba(20, 24, 34, 0.7)",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            All ({modules.length})
+          </button>
+          {allTags.map((tag) => {
+            const cnt = modules.filter((m) => moduleAllTags(m).includes(tag)).length;
+            return (
               <button
+                key={tag}
                 type="button"
-                onClick={() => setActiveTag(null)}
+                onClick={() => setActiveTag(activeTag === tag ? null : tag)}
                 style={{
-                  fontSize: 11,
-                  padding: "3px 8px",
+                  fontSize: 12,
+                  padding: "6px 11px",
                   borderRadius: 99,
-                  border: activeTag === null ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.12)",
-                  background: activeTag === null ? "rgba(77, 225, 255, 0.18)" : "transparent",
-                  color: "#fff",
+                  border: activeTag === tag ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.12)",
+                  background: activeTag === tag ? "rgba(77, 225, 255, 0.18)" : "rgba(255,255,255,0.04)",
+                  color: "#dbe7f5",
                   cursor: "pointer",
                 }}
               >
-                All
+                #{tag} ({cnt})
               </button>
-              {allTags.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => setActiveTag(activeTag === tag ? null : tag)}
-                  style={{
-                    fontSize: 11,
-                    padding: "3px 8px",
-                    borderRadius: 99,
-                    border: activeTag === tag ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.12)",
-                    background: activeTag === tag ? "rgba(77, 225, 255, 0.18)" : "rgba(255,255,255,0.04)",
-                    color: "#dbe7f5",
-                    cursor: "pointer",
-                  }}
-                >
-                  #{tag}
-                </button>
-              ))}
-            </div>
-          )}
+            );
+          })}
+          <input
+            type="search"
+            placeholder="Search modules…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              marginLeft: "auto",
+              minWidth: 210,
+              padding: "7px 10px",
+              borderRadius: 8,
+              border: "1px solid rgba(255,255,255,0.16)",
+              background: "rgba(12, 16, 24, 0.85)",
+              color: "#fff",
+            }}
+          />
         </div>
       )}
 

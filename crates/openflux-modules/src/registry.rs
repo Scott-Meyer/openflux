@@ -30,6 +30,9 @@ pub struct ModuleInstanceState {
     /// Optional top-bar slot assignment (`0..=3`) for widgets and companions.
     #[serde(default)]
     pub slot: Option<u8>,
+    /// Optional slot width span in slot units (e.g. `0.5` = half-slot, `1.0` = 1 slot, `2.0`..`4.0` = multi-slot!).
+    #[serde(default)]
+    pub slot_span: Option<f32>,
     /// Optional user override for whether this module appears as a dedicated top tab in Studio.
     #[serde(default)]
     pub pin_tab: Option<bool>,

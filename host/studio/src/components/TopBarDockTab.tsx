@@ -107,6 +107,18 @@ export const TopBarDockTab: React.FC<TopBarDockTabProps> = ({ onModulesChanged }
     }
   };
 
+  const handleSpanChange = async (mod: V2ModuleRecord, span: number) => {
+    setModules((prev) =>
+      prev.map((m) => (m.id === mod.id ? { ...m, state: { ...m.state, slot_span: span } } : m)),
+    );
+    try {
+      await v2Client.updateModuleState(mod.id, { slot_span: span });
+      scheduleSync();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const handleWidgetSetting = async (mod: V2ModuleRecord, key: string, value: unknown) => {
     setModules((prev) =>
       prev.map((m) =>
@@ -220,6 +232,20 @@ export const TopBarDockTab: React.FC<TopBarDockTabProps> = ({ onModulesChanged }
 
               {occ && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+                  <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12 }}>
+                    <span>Width Span</span>
+                    <select
+                      aria-label={`Width for ${occ.manifest.name}`}
+                      value={String(occ.state.slot_span ?? 1)}
+                      onChange={(e) => void handleSpanChange(occ, Number(e.target.value))}
+                    >
+                      <option value="0.5">½ Slot</option>
+                      <option value="1">1 Slot</option>
+                      <option value="2">2 Slots</option>
+                      <option value="3">3 Slots</option>
+                      <option value="4">4 Slots (Full Bar)</option>
+                    </select>
+                  </label>
                   <div style={{ fontSize: 11, opacity: 0.7 }}>{occ.manifest.description}</div>
                   {occ.manifest.settings.slice(0, 4).map((field) => {
                     const cur = occ.state.config[field.key] ?? field.default ?? "";
@@ -287,11 +313,11 @@ export const TopBarDockTab: React.FC<TopBarDockTabProps> = ({ onModulesChanged }
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
-          <strong>Module Backdrop Dimming: {dimming}%</strong>
+          <strong>Top Bar Soft Vignette Fade: {dimming}%</strong>
           <input
             type="range"
             min={0}
-            max={85}
+            max={80}
             step={1}
             value={dimming}
             onChange={(e) => void handleDockSetting("module_dimming", Number(e.target.value))}

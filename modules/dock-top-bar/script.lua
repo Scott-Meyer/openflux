@@ -1,6 +1,6 @@
 -- Top Bar Dock Module (`dock-top-bar`)
--- Owns top-bar slot layout (2, 3, or 4 slots), optional frosted dimming backdrop for
--- crisp widget legibility over bright backgrounds, and subtle vertical slot dividers.
+-- Owns flexible top-bar slot layout (supporting 0.5x half-slots, 1x, 2x, 3x, and 4x full-bar spans!),
+-- seamless edge-free vertical fade vignette (no visible box edges!), and subtle slot dividers.
 
 local geom = nil
 local computed_slots = {}
@@ -27,6 +27,9 @@ local function recompute_slots()
   bus.publish("layout/slots/top-bar", {
     owner = "dock-top-bar",
     slot_count = count,
+    header_rect = hr,
+    gap = gap,
+    slot_w = slot_w,
     slots = computed_slots,
   }, true)
   bus.publish("layout/regions/dock-top-bar", {
@@ -52,10 +55,21 @@ function on_render(ctx, stage)
   if stage ~= "under_key" or not geom or not geom.header_rect then return end
   local cfg = module.config()
   local hr = geom.header_rect
-  local dim_pct = tonumber(cfg.module_dimming) or 28
+  local dim_pct = tonumber(cfg.module_dimming) or 0
   if dim_pct > 1 then
-    local alpha = math.min(0.85, (dim_pct / 100.0) * 0.85)
-    ctx:round_rect(hr.x, hr.y, hr.w, hr.h, 14, { 0.028, 0.035, 0.055, alpha }, 0, { 0, 0, 0, 0 })
+    -- Seamless top-down gradient fade (ZERO visible box edge or border!)
+    local max_a = math.min(0.72, (dim_pct / 100.0) * 0.72)
+    local fade_h = hr.h + 70
+    local bands = 24
+    local bh = fade_h / bands
+    for i = 0, bands - 1 do
+      local t = i / (bands - 1)
+      local ease = (1.0 - t) * (1.0 - t)
+      local a = max_a * ease
+      if a > 0.005 then
+        ctx:rect(0, i * bh, 1920, bh + 1, { 0.015, 0.02, 0.035, a })
+      end
+    end
   end
 
   if cfg.show_dividers ~= false and #computed_slots >= 2 then
@@ -63,7 +77,7 @@ function on_render(ctx, stage)
       local a = computed_slots[i].rect
       local b = computed_slots[i + 1].rect
       local div_x = ((a.x + a.w) + b.x) * 0.5
-      ctx:rect(div_x, a.y + 18, 1.2, math.max(20, a.h - 36), { 1.0, 1.0, 1.0, 0.16 })
+      ctx:rect(div_x, a.y + 18, 1.2, math.max(20, a.h - 36), { 1.0, 1.0, 1.0, 0.14 })
     end
   end
 end

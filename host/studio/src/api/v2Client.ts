@@ -61,6 +61,7 @@ export interface ModuleManifest {
 export interface ModuleInstanceState {
   enabled: boolean;
   slot?: number | null;
+  slot_span?: number | null;
   pin_tab?: boolean | null;
   config: Record<string, unknown>;
 }
@@ -196,7 +197,13 @@ export const v2Client = {
     ),
   updateModuleState: (
     id: string,
-    patch: { enabled?: boolean; slot?: number | null; pin_tab?: boolean | null; config?: Record<string, unknown> },
+    patch: {
+      enabled?: boolean;
+      slot?: number | null;
+      slot_span?: number | null;
+      pin_tab?: boolean | null;
+      config?: Record<string, unknown>;
+    },
   ) => v2Call("PUT", `/v2/modules/${encodeURIComponent(id)}/state`, patch),
   triggerAction: (id: string, action_id: string) =>
     v2Call("POST", `/v2/modules/${encodeURIComponent(id)}/action`, { action_id }),

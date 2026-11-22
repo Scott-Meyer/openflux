@@ -13,6 +13,32 @@ local active_app = { app_id = "", process_name = "", window_title = "", profile_
 local active_profile = { index = 0, id = "", name = "" }
 local anim_t = 0.0
 
+-- Logical keyCode -> ANSI physical key_index lookup (declared BEFORE apply_hardware_keymap!)
+local KEYCODE_TO_INDEX = {
+  KC_ESC = 0, ESC = 0, KC_F1 = 1, F1 = 1, KC_F2 = 2, F2 = 2, KC_F3 = 3, F3 = 3,
+  KC_F4 = 4, F4 = 4, KC_F5 = 5, F5 = 5, KC_F6 = 6, F6 = 6, KC_F7 = 7, F7 = 7,
+  KC_F8 = 8, F8 = 8, KC_F9 = 9, F9 = 9, KC_F10 = 10, F10 = 10, KC_F11 = 11, F11 = 11,
+  KC_F12 = 12, F12 = 12, KC_PSCR = 13, PRT = 13, KC_INS = 14, INS = 14, KC_DEL = 15, DEL = 15,
+  KC_GRV = 16, ["`"] = 16, KC_1 = 17, ["1"] = 17, KC_2 = 18, ["2"] = 18, KC_3 = 19, ["3"] = 19,
+  KC_4 = 20, ["4"] = 20, KC_5 = 21, ["5"] = 21, KC_6 = 22, ["6"] = 22, KC_7 = 23, ["7"] = 23,
+  KC_8 = 24, ["8"] = 24, KC_9 = 25, ["9"] = 25, KC_0 = 26, ["0"] = 26,
+  KC_MINS = 27, ["-"] = 27, KC_EQL = 28, ["="] = 28, KC_BSPC = 29, BKSP = 29, KC_HOME = 30, HOME = 30,
+  KC_TAB = 31, TAB = 31, KC_Q = 32, Q = 32, KC_W = 33, W = 33, KC_E = 34, E = 34,
+  KC_R = 35, R = 35, KC_T = 36, T = 36, KC_Y = 37, Y = 37, KC_U = 38, U = 38,
+  KC_I = 39, I = 39, KC_O = 40, O = 40, KC_P = 41, P = 41,
+  KC_LBRC = 42, ["["] = 42, KC_RBRC = 43, ["]"] = 43, KC_BSLS = 44, ["\\"] = 44, KC_PGUP = 45, PGUP = 45,
+  KC_CAPS = 46, CAPS = 46, KC_A = 47, A = 47, KC_S = 48, S = 48, KC_D = 49, D = 49,
+  KC_F = 50, F = 50, KC_G = 51, G = 51, KC_H = 52, H = 52, KC_J = 53, J = 53,
+  KC_K = 54, K = 54, KC_L = 55, L = 55, KC_SCLN = 56, [";"] = 56, KC_QUOT = 57, ["'"] = 57,
+  KC_ENT = 58, ENTER = 58, KC_PGDN = 59, PGDN = 59,
+  KC_LSFT = 60, KC_Z = 61, Z = 61, KC_X = 62, X = 62, KC_C = 63, C = 63,
+  KC_V = 64, V = 64, KC_B = 65, B = 65, KC_N = 66, N = 66, KC_M = 67, M = 67,
+  KC_COMM = 68, [","] = 68, KC_DOT = 69, ["."] = 69, KC_SLSH = 70, ["/"] = 70,
+  KC_RSFT = 71, KC_UP = 72, UP = 72, KC_END = 73, END = 73,
+  KC_LCTL = 74, KC_LALT = 75, KC_LGUI = 76, KC_SPC = 78, SPACE = 78,
+  KC_RGUI = 79, KC_RALT = 80, KC_RCTL = 81, KC_LEFT = 82, LEFT = 82, KC_DOWN = 83, DOWN = 83, KC_RGHT = 84, RIGHT = 84,
+}
+
 -- Dynamic modifier map (rebuilt live from `keyboard/keymap` so remapped Cmd/Ctrl/Opt/Fn work!)
 local MOD_KEYS = {
   [60] = "shift", [71] = "shift",
@@ -72,33 +98,6 @@ local function apply_hardware_keymap(km)
     MOD_KEYS = next_mods
   end
 end
-
--- Logical keyCode -> ANSI physical key_index lookup so shortcut packs & external apps can
--- address keys by logical name ("KC_C", "C", "KC_ENTER") OR physical index (63)!
-local KEYCODE_TO_INDEX = {
-  KC_ESC = 0, ESC = 0, KC_F1 = 1, F1 = 1, KC_F2 = 2, F2 = 2, KC_F3 = 3, F3 = 3,
-  KC_F4 = 4, F4 = 4, KC_F5 = 5, F5 = 5, KC_F6 = 6, F6 = 6, KC_F7 = 7, F7 = 7,
-  KC_F8 = 8, F8 = 8, KC_F9 = 9, F9 = 9, KC_F10 = 10, F10 = 10, KC_F11 = 11, F11 = 11,
-  KC_F12 = 12, F12 = 12, KC_PSCR = 13, PRT = 13, KC_INS = 14, INS = 14, KC_DEL = 15, DEL = 15,
-  KC_GRV = 16, ["`"] = 16, KC_1 = 17, ["1"] = 17, KC_2 = 18, ["2"] = 18, KC_3 = 19, ["3"] = 19,
-  KC_4 = 20, ["4"] = 20, KC_5 = 21, ["5"] = 21, KC_6 = 22, ["6"] = 22, KC_7 = 23, ["7"] = 23,
-  KC_8 = 24, ["8"] = 24, KC_9 = 25, ["9"] = 25, KC_0 = 26, ["0"] = 26,
-  KC_MINS = 27, ["-"] = 27, KC_EQL = 28, ["="] = 28, KC_BSPC = 29, BKSP = 29, KC_HOME = 30, HOME = 30,
-  KC_TAB = 31, TAB = 31, KC_Q = 32, Q = 32, KC_W = 33, W = 33, KC_E = 34, E = 34,
-  KC_R = 35, R = 35, KC_T = 36, T = 36, KC_Y = 37, Y = 37, KC_U = 38, U = 38,
-  KC_I = 39, I = 39, KC_O = 40, O = 40, KC_P = 41, P = 41,
-  KC_LBRC = 42, ["["] = 42, KC_RBRC = 43, ["]"] = 43, KC_BSLS = 44, ["\\"] = 44, KC_PGUP = 45, PGUP = 45,
-  KC_CAPS = 46, CAPS = 46, KC_A = 47, A = 47, KC_S = 48, S = 48, KC_D = 49, D = 49,
-  KC_F = 50, F = 50, KC_G = 51, G = 51, KC_H = 52, H = 52, KC_J = 53, J = 53,
-  KC_K = 54, K = 54, KC_L = 55, L = 55, KC_SCLN = 56, [";"] = 56, KC_QUOT = 57, ["'"] = 57,
-  KC_ENT = 58, ENTER = 58, KC_PGDN = 59, PGDN = 59,
-  KC_LSFT = 60, KC_Z = 61, Z = 61, KC_X = 62, X = 62, KC_C = 63, C = 63,
-  KC_V = 64, V = 64, KC_B = 65, B = 65, KC_N = 66, N = 66, KC_M = 67, M = 67,
-  KC_COMM = 68, [","] = 68, KC_DOT = 69, ["."] = 69, KC_SLSH = 70, ["/"] = 70,
-  KC_RSFT = 71, KC_UP = 72, UP = 72, KC_END = 73, END = 73,
-  KC_LCTL = 74, KC_LALT = 75, KC_LGUI = 76, KC_SPC = 78, SPACE = 78,
-  KC_RGUI = 79, KC_RALT = 80, KC_RCTL = 81, KC_LEFT = 82, LEFT = 82, KC_DOWN = 83, DOWN = 83, KC_RGHT = 84, RIGHT = 84,
-}
 
 local function publish_layout_regions()
   if not geom then return end

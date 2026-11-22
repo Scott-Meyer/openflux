@@ -32,11 +32,11 @@ options = ["4", "3", "2"]
 
 [[settings]]
 key = "module_dimming"
-label = "Module Backdrop Dimming (%)"
+label = "Top Bar Soft Vignette Fade (%)"
 kind = "number"
-default = 28
+default = 0
 min = 0
-max = 85
+max = 80
 
 [[settings]]
 key = "show_dividers"

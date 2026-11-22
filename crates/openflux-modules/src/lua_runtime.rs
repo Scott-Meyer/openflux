@@ -642,6 +642,7 @@ impl LoadedLuaModule {
         let mod_id = self.discovered.manifest.id.clone();
         let mod_dir = self.discovered.path.to_string_lossy().into_owned();
         let slot_idx = self.instance.slot;
+        let slot_span = self.instance.slot_span.unwrap_or(1.0).clamp(0.5, 4.0);
         let slot_rect = slot_idx.and_then(|i| geometry.slot(i).map(|s| s.rect));
 
         // Merge manifest defaults with instance overrides.
@@ -662,20 +663,41 @@ impl LoadedLuaModule {
             mod_tbl.set(
                 "slot_rect",
                 self.lua.create_function(move |lua, ()| {
-                    // Prefer dynamic slot geometry published by `dock-top-bar` on the bus!
+                    // Compute exact rect from `dock-top-bar`'s `layout/slots/top-bar` supporting
+                    // fractional (0.5) and multi-slot (2, 3, 4) spans seamlessly!
                     if let Some(sidx) = slot_idx {
                         if let Some(msg) = broker_slot.get_retained("layout/slots/top-bar") {
+                            let gap = msg.payload.get("gap").and_then(|v| v.as_f64()).unwrap_or(89.4) as f32;
+                            let sw = msg.payload.get("slot_w").and_then(|v| v.as_f64()).unwrap_or(408.9) as f32;
                             if let Some(arr) = msg.payload.get("slots").and_then(|v| v.as_array()) {
                                 if let Some(entry) = arr.get(sidx as usize) {
                                     if let Some(r) = entry.get("rect") {
-                                        return lua.to_value(r);
+                                        let x = r.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                        let y = r.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                                        let h = r.get("h").and_then(|v| v.as_f64()).unwrap_or(180.0) as f32;
+                                        let w = if slot_span <= 1.0 {
+                                            sw * slot_span
+                                        } else {
+                                            sw * slot_span + gap * (slot_span - 1.0)
+                                        };
+                                        return lua.to_value(&openflux_bus::RectPx { x, y, w, h });
                                     }
                                 }
                             }
                         }
                     }
                     match slot_rect {
-                        Some(r) => lua.to_value(&r),
+                        Some(mut r) => {
+                            if (slot_span - 1.0).abs() > 0.01 {
+                                let gap = 89.4_f32;
+                                r.w = if slot_span <= 1.0 {
+                                    r.w * slot_span
+                                } else {
+                                    r.w * slot_span + gap * (slot_span - 1.0)
+                                };
+                            }
+                            lua.to_value(&r)
+                        }
                         None => Ok(LuaValue::Nil),
                     }
                 })?,
