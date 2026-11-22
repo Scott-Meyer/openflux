@@ -1,7 +1,7 @@
 id = "widget-clock"
 name = "Clock Widget"
 version = "2.0.0"
-description = "Keyboard-standalone digital clock with subtle seconds arc"
+description = "Classic v1-style sleek digital clock with large centered time, AM/PM, and uppercase date"
 author = "OpenFlux"
 category = "widget"
 stages = ["tile"]
@@ -17,7 +17,7 @@ subscribes = []
 publishes = []
 
 [[settings]]
-key = "accent"
-label = "Accent Color"
-kind = "color"
-default = "#4de1ff"
+key = "use_24h"
+label = "24-Hour Clock"
+kind = "boolean"
+default = false

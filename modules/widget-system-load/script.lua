@@ -1,45 +1,94 @@
-local metrics = { cpu_percent = 0, memory_used_gb = 0, memory_total_gb = 16, gpu_percent = 0 }
-local connected = false
+-- Exact v1 System Load Tile (`TileType::HwStatus`):
+-- Clean 3x2 hairline grid for CPU, GPU, Upload / Memory, VRAM, Download.
+
+local metrics = {
+  cpu_percent = 0,
+  memory_used_gb = 0,
+  memory_total_gb = 0,
+  gpu_percent = 0,
+  gpu_unified = false,
+  vram_used_gb = nil,
+  vram_total_gb = nil,
+  net_down = "0 KB/s",
+  net_up = "0 KB/s",
+}
 
 function on_event(topic, payload)
   if topic == "host/system/metrics" and type(payload) == "table" then
     metrics = payload
-    connected = true
-  elseif topic == "host/connection" and type(payload) == "table" then
-    connected = payload.connected == true
   end
-end
-
-local function draw_bar(ctx, x, y, w, h, frac, color)
-  ctx:round_rect(x, y, w, h, 5, { 0.14, 0.18, 0.26, 0.85 }, 0, { 0, 0, 0, 0 })
-  local fw = math.max(8, w * math.max(0.0, math.min(1.0, frac)))
-  ctx:round_rect(x, y, fw, h, 5, color, 0, { 0, 0, 0, 0 })
 end
 
 function on_render(ctx, stage)
   if stage ~= "tile" then return end
   local sr = module.slot_rect()
   if not sr then return end
-  local accent = module.color("accent", "#58f29c")
 
-  ctx:clip(sr.x, sr.y, sr.w, sr.h)
-  ctx:round_rect(sr.x + 2, sr.y + 2, sr.w - 4, sr.h - 4, 18, { 0.05, 0.07, 0.12, 0.72 }, 1.5, { accent[1], accent[2], accent[3], 0.42 })
-  ctx:text(sr.x + 20, sr.y + 14, "SYSTEM", 18, { 0.68, 0.82, 0.94, 0.9 }, "left")
-  ctx:text(sr.x + sr.w - 20, sr.y + 14, connected and "LIVE" or "STANDALONE", 16, connected and accent or { 0.7, 0.7, 0.75, 0.7 }, "right")
+  local tx, ty, tw, th = sr.x, sr.y, sr.w, sr.h
+  local gx0 = tx + 8
+  local gy0 = ty + 8
+  local cw = math.floor((tw - 16) / 3)
+  local ch = math.floor((th - 16) / 2)
+  local grid_w = cw * 3
+  local grid_h = ch * 2
 
-  local cpu = tonumber(metrics.cpu_percent) or 0
+  local glass_bg = { 0.03, 0.04, 0.06, 0.56 }
+  local hairline = { 1.0, 1.0, 1.0, 0.16 }
+  local white = { 1.0, 1.0, 1.0, 0.98 }
+  local subtle = { 0.72, 0.78, 0.86, 0.78 }
+
+  ctx:clip(tx, ty, tw, th)
+  ctx:round_rect(tx + 2, ty + 2, tw - 4, th - 4, 14, glass_bg, 0, { 0, 0, 0, 0 })
+
+  -- 3x2 hairline outer box and dividers (matching v1 HwStatus pixel-for-pixel)
+  ctx:round_rect(gx0, gy0, grid_w, grid_h, 4, { 0, 0, 0, 0 }, 1.2, hairline)
+  ctx:rect(gx0 + cw, gy0, 1, grid_h, hairline)
+  ctx:rect(gx0 + cw * 2, gy0, 1, grid_h, hairline)
+  ctx:rect(gx0, gy0 + ch, grid_w, 1, hairline)
+
+  -- Row 0: CPU | GPU | Upload
+  local cpu_s = string.format("%.0f%%", tonumber(metrics.cpu_percent) or 0)
+  ctx:text(gx0 + 12, gy0 + 10, "CPU", 14, subtle, "left")
+  ctx:text(gx0 + 12, gy0 + 34, cpu_s, 30, white, "left")
+
+  local gpu_s = string.format("%.0f%%", tonumber(metrics.gpu_percent) or 0)
+  ctx:text(gx0 + cw + 12, gy0 + 10, "GPU", 14, subtle, "left")
+  ctx:text(gx0 + cw + 12, gy0 + 34, gpu_s, 30, white, "left")
+
+  local up_s = tostring(metrics.net_up or "0 KB/s")
+  if up_s == "" then up_s = "0 KB/s" end
+  ctx:text(gx0 + cw * 2 + 12, gy0 + 10, "Upload", 14, subtle, "left")
+  ctx:text(gx0 + cw * 2 + 12, gy0 + 36, up_s, 22, white, "left")
+
+  -- Row 1: Memory | VRAM | Download
   local mem_used = tonumber(metrics.memory_used_gb) or 0
-  local mem_tot = math.max(1, tonumber(metrics.memory_total_gb) or 16)
-  local gpu = tonumber(metrics.gpu_percent) or 0
-  local bar_w = sr.w - 135
+  local mem_tot = tonumber(metrics.memory_total_gb) or 0
+  local mem_pct = (mem_tot > 0) and math.min(100, (mem_used / mem_tot) * 100.0) or 0
+  local mem_pct_s = string.format("%.0f%%", mem_pct)
+  local mem_sub = (mem_tot > 0) and string.format("%.0f/%.0fG", mem_used, mem_tot) or "--"
+  ctx:text(gx0 + 12, gy0 + ch + 10, "Memory", 14, subtle, "left")
+  ctx:text(gx0 + 12, gy0 + ch + 32, mem_pct_s, 28, white, "left")
+  ctx:text(gx0 + 12, gy0 + ch + 66, mem_sub, 13, subtle, "left")
 
-  ctx:text(sr.x + 20, sr.y + 48, string.format("CPU %2.0f%%", cpu), 20, { 0.95, 0.98, 1.0, 0.95 }, "left")
-  draw_bar(ctx, sr.x + 115, sr.y + 53, bar_w, 12, cpu / 100.0, accent)
+  ctx:text(gx0 + cw + 12, gy0 + ch + 10, "VRAM", 14, subtle, "left")
+  local vu = tonumber(metrics.vram_used_gb)
+  local vt = tonumber(metrics.vram_total_gb)
+  if vu and vt and vt > 0 then
+    local vpct = math.min(100, (vu / vt) * 100.0)
+    ctx:text(gx0 + cw + 12, gy0 + ch + 32, string.format("%.0f%%", vpct), 28, white, "left")
+    ctx:text(gx0 + cw + 12, gy0 + ch + 66, string.format("%.1f/%.1fG", vu, vt), 13, subtle, "left")
+  elseif vu and metrics.gpu_unified then
+    ctx:text(gx0 + cw + 12, gy0 + ch + 34, string.format("%.1fG", vu), 24, white, "left")
+    ctx:text(gx0 + cw + 12, gy0 + ch + 66, "Unified", 13, subtle, "left")
+  else
+    ctx:text(gx0 + cw + 12, gy0 + ch + 34, "--", 24, { 0.58, 0.64, 0.72, 0.9 }, "left")
+    ctx:text(gx0 + cw + 12, gy0 + ch + 66, metrics.gpu_unified and "Unified" or "Unavailable", 13, subtle, "left")
+  end
 
-  ctx:text(sr.x + 20, sr.y + 82, string.format("RAM %2.0fG", mem_used), 20, { 0.95, 0.98, 1.0, 0.95 }, "left")
-  draw_bar(ctx, sr.x + 115, sr.y + 87, bar_w, 12, mem_used / mem_tot, { 0.32, 0.78, 1.0, 0.95 })
+  local down_s = tostring(metrics.net_down or "0 KB/s")
+  if down_s == "" then down_s = "0 KB/s" end
+  ctx:text(gx0 + cw * 2 + 12, gy0 + ch + 10, "Download", 14, subtle, "left")
+  ctx:text(gx0 + cw * 2 + 12, gy0 + ch + 36, down_s, 22, white, "left")
 
-  ctx:text(sr.x + 20, sr.y + 116, string.format("GPU %2.0f%%", gpu), 20, { 0.95, 0.98, 1.0, 0.95 }, "left")
-  draw_bar(ctx, sr.x + 115, sr.y + 121, bar_w, 12, gpu / 100.0, { 0.78, 0.52, 1.0, 0.95 })
   ctx:clear_clip()
 end

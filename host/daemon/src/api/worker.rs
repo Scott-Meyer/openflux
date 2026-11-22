@@ -1336,6 +1336,8 @@ pub fn reconcile_tick_with_state(
                 vram_total_gb: hw.vram_total_gb.map(|v| v as f32),
                 net_down_kbps: 0.0,
                 net_up_kbps: 0.0,
+                net_down: hw.net_down.clone(),
+                net_up: hw.net_up.clone(),
             },
             openflux_bus::PublishOptions::retained(),
         );
@@ -1658,6 +1660,26 @@ pub fn reconcile_tick_with_state(
             }
         }
     }
+    // Also poll weather when the v2 `widget-weather` module is enabled!
+    {
+        let v2_saved = state.v2.registry.load_state();
+        if let Some(wm) = v2_saved.modules.get("widget-weather") {
+            if wm.enabled {
+                has_weather_tile = true;
+                if let Some(c) = wm
+                    .config
+                    .get("city")
+                    .and_then(|x| x.as_str())
+                    .filter(|s| !s.trim().is_empty())
+                {
+                    weather_city = c.trim().to_string();
+                }
+                if let Some(cel) = wm.config.get("celsius").and_then(|x| x.as_bool()) {
+                    weather_celsius = cel;
+                }
+            }
+        }
+    }
     let weather_snap =
         if has_weather_tile && !state.override_ttl.is_zero() && state.token_store_path.is_some() {
             Some(
@@ -1668,6 +1690,38 @@ pub fn reconcile_tick_with_state(
         } else {
             None
         };
+    if let Some(ref w) = weather_snap {
+        let hourly = w
+            .hourly
+            .iter()
+            .take(3)
+            .map(|h| openflux_bus::WeatherHourly {
+                hour: h.hour_label.clone(),
+                temp: h.temp as f32,
+                condition: h.condition.clone(),
+                is_day: h.is_day,
+            })
+            .collect();
+        let _ = state.v2.broker.publish_typed(
+            openflux_bus::topics::HOST_WEATHER_CURRENT,
+            &openflux_bus::WeatherState {
+                city: w.city.clone(),
+                temp: w.temp as f32,
+                high: w.max_temp as f32,
+                low: w.min_temp as f32,
+                condition: w.condition.clone(),
+                is_day: w.is_day,
+                celsius: w.celsius,
+                ready: w.ready,
+                aqi: w.aqi.map(|a| a as u16),
+                sunrise: w.sunrise.clone(),
+                sunset: w.sunset.clone(),
+                utc_offset_sec: w.utc_offset_seconds,
+                hourly,
+            },
+            openflux_bus::PublishOptions::retained(),
+        );
+    }
     let mut live_json = build_live_data_json(&hw, &media, weather_snap.as_ref());
     {
         let active_pack = {

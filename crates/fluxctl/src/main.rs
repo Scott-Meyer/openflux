@@ -1595,6 +1595,8 @@ fn seed_preview_broker(broker: &Broker, geom: &KeyboardGeometry) {
             vram_total_gb: None,
             net_down_kbps: 1420.0,
             net_up_kbps: 280.0,
+            net_down: "1.4 MB/s".into(),
+            net_up: "280 KB/s".into(),
         },
         PublishOptions::retained(),
     );
@@ -1615,15 +1617,38 @@ fn seed_preview_broker(broker: &Broker, geom: &KeyboardGeometry) {
     let _ = broker.publish_typed(
         topics::HOST_WEATHER_CURRENT,
         &WeatherState {
-            city: "Seattle".into(),
-            temp: 64.0,
-            high: 68.0,
-            low: 52.0,
+            city: "Denver".into(),
+            temp: 56.4,
+            high: 62.0,
+            low: 39.0,
             condition: "Partly Cloudy".into(),
             is_day: true,
             celsius: false,
             ready: true,
-            aqi: Some(28),
+            aqi: Some(24),
+            sunrise: "6:54 AM".into(),
+            sunset: "4:41 PM".into(),
+            utc_offset_sec: Some(-25200),
+            hourly: vec![
+                openflux_bus::WeatherHourly {
+                    hour: "3PM".into(),
+                    temp: 58.0,
+                    condition: "Partly Cloudy".into(),
+                    is_day: true,
+                },
+                openflux_bus::WeatherHourly {
+                    hour: "4PM".into(),
+                    temp: 55.0,
+                    condition: "Clear".into(),
+                    is_day: true,
+                },
+                openflux_bus::WeatherHourly {
+                    hour: "5PM".into(),
+                    temp: 49.0,
+                    condition: "Clear".into(),
+                    is_day: false,
+                },
+            ],
         },
         PublishOptions::retained(),
     );

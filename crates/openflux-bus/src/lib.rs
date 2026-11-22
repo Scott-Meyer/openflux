@@ -13,7 +13,8 @@ pub use geometry::{
 };
 pub use schema::{
     topics, AnalogKeyFrame, AnalogKeySample, HostConnectionState, KeyEvent, KeyEventKind,
-    KeyboardState, MediaNowPlaying, SurfaceImpulse, SystemMetrics, WeatherState, MAX_TRAVEL_UM,
+    KeyboardState, MediaNowPlaying, SurfaceImpulse, SystemMetrics, WeatherHourly, WeatherState,
+    MAX_TRAVEL_UM,
 };
 pub use topic::{topic_matches, validate_pattern, validate_topic, TopicError, TopicPattern};
 pub use wire::{apply_remote_frame, WireFrame};

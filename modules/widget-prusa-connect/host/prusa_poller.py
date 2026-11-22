@@ -194,16 +194,18 @@ def main():
                     },
                 )
             except Exception as e:
-                print(f"[prusa] telemetry error: {e}", flush=True)
+                err_txt = str(e)
+                print(f"[prusa] telemetry error: {err_txt}", flush=True)
+                is_sleeping = any(k in err_txt.lower() for k in ("no route", "timed out", "refused", "unreachable"))
                 bus_post(
                     "/v2/bus/pub",
                     {
                         "topic": "modules/prusa-connect/status",
                         "retain": True,
                         "payload": {
-                            "name": "Prusa Connect",
-                            "state": "OFFLINE",
-                            "job_name": str(e)[:40],
+                            "name": "Prusa CORE One",
+                            "state": "SLEEPING" if is_sleeping else "OFFLINE",
+                            "job_name": "Printer powered off" if is_sleeping else err_txt[:36],
                             "progress": 0,
                             "nozzle_temp": 0,
                             "nozzle_target": 0,

@@ -311,6 +311,16 @@ impl KeyboardV2Display {
                         .map(|v| v as f32),
                     net_down_kbps: 0.0,
                     net_up_kbps: 0.0,
+                    net_down: hw
+                        .get("netDown")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("0 KB/s")
+                        .to_string(),
+                    net_up: hw
+                        .get("netUp")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("0 KB/s")
+                        .to_string(),
                 },
                 PublishOptions::retained().with_ttl_ms(15_000),
             );
@@ -352,6 +362,29 @@ impl KeyboardV2Display {
             );
         }
         if let Some(w) = p.get("weather") {
+            let hourly = w
+                .get("hourly")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .take(3)
+                        .map(|h| openflux_bus::WeatherHourly {
+                            hour: h
+                                .get("hour")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            temp: h.get("temp").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32,
+                            condition: h
+                                .get("condition")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            is_day: h.get("isDay").and_then(|x| x.as_bool()).unwrap_or(true),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             let _ = self.broker.publish_typed(
                 topics::HOST_WEATHER_CURRENT,
                 &WeatherState {
@@ -372,6 +405,18 @@ impl KeyboardV2Display {
                     celsius: w.get("celsius").and_then(|v| v.as_bool()).unwrap_or(false),
                     ready: w.get("ready").and_then(|v| v.as_bool()).unwrap_or(false),
                     aqi: w.get("aqi").and_then(|v| v.as_u64()).map(|v| v as u16),
+                    sunrise: w
+                        .get("sunrise")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    sunset: w
+                        .get("sunset")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    utc_offset_sec: w.get("utcOffsetSec").and_then(|v| v.as_i64()),
+                    hourly,
                 },
                 PublishOptions::retained().with_ttl_ms(600_000),
             );

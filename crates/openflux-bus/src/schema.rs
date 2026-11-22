@@ -161,6 +161,10 @@ pub struct SystemMetrics {
     pub vram_total_gb: Option<f32>,
     pub net_down_kbps: f32,
     pub net_up_kbps: f32,
+    #[serde(default)]
+    pub net_down: String,
+    #[serde(default)]
+    pub net_up: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -178,6 +182,14 @@ pub struct MediaNowPlaying {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WeatherHourly {
+    pub hour: String,
+    pub temp: f32,
+    pub condition: String,
+    pub is_day: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct WeatherState {
     pub city: String,
     pub temp: f32,
@@ -189,6 +201,14 @@ pub struct WeatherState {
     pub ready: bool,
     #[serde(default)]
     pub aqi: Option<u16>,
+    #[serde(default)]
+    pub sunrise: String,
+    #[serde(default)]
+    pub sunset: String,
+    #[serde(default)]
+    pub utc_offset_sec: Option<i64>,
+    #[serde(default)]
+    pub hourly: Vec<WeatherHourly>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

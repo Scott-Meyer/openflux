@@ -1,7 +1,7 @@
 id = "widget-weather"
 name = "Weather Widget"
 version = "2.0.0"
-description = "Hybrid weather tile reading cached/live host weather over the bus"
+description = "Classic v1-style weather tile with city, local time, sunrise/sunset/AQI, temperature, condition icon, and 3-hour forecast"
 author = "OpenFlux"
 category = "widget"
 stages = ["tile"]
@@ -15,6 +15,18 @@ script = "script.lua"
 [channels]
 subscribes = ["host/weather/current"]
 publishes = []
+
+[[settings]]
+key = "city"
+label = "City"
+kind = "string"
+default = "Denver"
+
+[[settings]]
+key = "celsius"
+label = "Use Celsius"
+kind = "boolean"
+default = false
 
 [[settings]]
 key = "api_key"
