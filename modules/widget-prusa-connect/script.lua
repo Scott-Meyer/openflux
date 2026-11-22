@@ -17,6 +17,11 @@ local status = {
 }
 
 local peeking = false
+local anim_t = 0.0
+
+function on_update(dt)
+  anim_t = anim_t + dt
+end
 
 function on_event(topic, payload)
   if topic == "modules/prusa-connect/status" and type(payload) == "table" then
@@ -105,9 +110,15 @@ function on_render(ctx, stage)
       ctx:text(ox + ow * 0.5, oy + oh * 0.52, "Enable RTSP on your Buddy3D Camera and set Camera URL in Studio", 20, { 0.68, 0.78, 0.90, 0.78 }, "center")
     end
 
-    -- Header + bottom live telemetry bar
-    local hdr = (cmode == "live") and "LIVE CAMERA  •  " or "PRINT PREVIEW (enable Buddy3D RTSP for live cam)  •  "
-    ctx:text(ox + 28, oy + 18, hdr .. tostring(status.name or "Prusa"), 22, orange, "left")
+    -- Header + pulsing LIVE dot (also triggers smooth ~3 FPS live frame refresh while holding PRT!)
+    local hdr = (cmode == "live") and "LIVE CAMERA  •  " or "PRINT PREVIEW  •  "
+    if cmode == "live" then
+      local pulse = (math.floor(anim_t * 3.0) % 2 == 0) and 1.0 or 0.45
+      ctx:circle(ox + 34, oy + 29, 7, { 1.0, 0.24, 0.26, pulse })
+      ctx:text(ox + 50, oy + 18, hdr .. tostring(status.name or "Prusa"), 22, orange, "left")
+    else
+      ctx:text(ox + 28, oy + 18, hdr .. tostring(status.name or "Prusa"), 22, orange, "left")
+    end
     ctx:text(ox + ow - 28, oy + 20, "Release key to close", 18, { 0.75, 0.82, 0.92, 0.8 }, "right")
 
     local footer_y = oy + oh - 54

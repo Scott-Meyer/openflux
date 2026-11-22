@@ -12,6 +12,7 @@ import shutil
 import ssl
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -183,6 +184,98 @@ def fetch_and_upload_snapshot(cam_url: str, headers: dict, is_live_cam: bool = T
         return False
 
 
+class RtspFrameGrabber:
+    """Keeps a single persistent low-latency ffmpeg RTSP connection while printing so holding
+    PRT shows smooth ~2.5 FPS live video on the keyboard with zero RTSP reconnect delay."""
+
+    def __init__(self):
+        self._proc = None
+        self._thread = None
+        self._url = ""
+        self._stop = threading.Event()
+        self.frames_uploaded = 0
+
+    def ensure_running(self, url: str):
+        if self._url == url and self._thread and self._thread.is_alive():
+            return
+        self.stop()
+        if not url or not url.lower().startswith("rtsp://"):
+            return
+        self._url = url
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, args=(url,), daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        if self._proc is not None:
+            try:
+                self._proc.terminate()
+                self._proc.wait(timeout=2.0)
+            except Exception:
+                try:
+                    self._proc.kill()
+                except Exception:
+                    pass
+            self._proc = None
+        self._url = ""
+
+    def _run(self, url: str):
+        ff = find_ffmpeg()
+        if not ff:
+            print("[prusa] ffmpeg not found for persistent RTSP stream", flush=True)
+            return
+        print(f"[prusa] starting live RTSP stream grabber ({url})", flush=True)
+        while not self._stop.is_set():
+            try:
+                cmd = [
+                    ff, "-loglevel", "error",
+                    "-rtsp_transport", "tcp",
+                    "-i", url,
+                    "-vf", "fps=2.5,scale=800:-2",
+                    "-f", "image2pipe",
+                    "-vcodec", "mjpeg",
+                    "-q:v", "6",
+                    "pipe:1",
+                ]
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self._proc = proc
+                buf = bytearray()
+                while not self._stop.is_set() and proc.stdout:
+                    chunk = proc.stdout.read(16384)
+                    if not chunk:
+                        break
+                    buf.extend(chunk)
+                    while True:
+                        soi = buf.find(b"\xff\xd8")
+                        if soi < 0:
+                            buf.clear()
+                            break
+                        if soi > 0:
+                            del buf[:soi]
+                        eoi = buf.find(b"\xff\xd9", 2)
+                        if eoi < 0:
+                            break
+                        jpg = bytes(buf[: eoi + 2])
+                        del buf[: eoi + 2]
+                        if len(jpg) >= 1024:
+                            tmp = CAM_LOCAL_PATH + ".tmp.jpg"
+                            with open(tmp, "wb") as f:
+                                f.write(jpg)
+                            os.replace(tmp, CAM_LOCAL_PATH)
+                            bus_post(
+                                "/v2/keyboard/upload-media",
+                                {"local_path": CAM_LOCAL_PATH, "remote_name": "prusa_cam_live.jpg"},
+                                timeout=3.0,
+                            )
+                            self.frames_uploaded += 1
+                proc.wait(timeout=2.0)
+            except Exception as e:
+                print(f"[prusa] RTSP stream reconnect after error: {e}", flush=True)
+            if not self._stop.is_set():
+                time.sleep(2.0)
+
+
 def main():
     printer_url = str(CFG.get("printer_url") or "https://connect.prusa3d.com")
     printer_uuid = str(CFG.get("printer_uuid") or "")
@@ -190,13 +283,15 @@ def main():
     custom_cam = str(CFG.get("camera_url") or "")
     poll_sec = max(2.0, float(CFG.get("poll_seconds") or 5.0))
 
-    print(f"[prusa] poller started (url={printer_url}, token_set={bool(api_token)})", flush=True)
+    print(f"[prusa] poller started (url={printer_url}, token_set={bool(api_token)}, cam={custom_cam or 'auto'})", flush=True)
     last_tel = 0.0
     last_cam = 0.0
     cam_url = custom_cam
     thumb_url = ""
     last_thumb_uploaded = ""
     cam_headers = {}
+    rtsp_grabber = RtspFrameGrabber()
+    printer_active = False
 
     while True:
         now = time.monotonic()
@@ -234,18 +329,21 @@ def main():
             last_tel = now
             try:
                 tel = fetch_prusa_telemetry(printer_url, api_token, printer_uuid)
-                cam_url = custom_cam or tel.pop("default_cam_url", "")
+                default_cam = tel.pop("default_cam_url", "")
                 thumb_url = tel.pop("thumb_url", "")
-                cam_headers = {} if custom_cam else tel.pop("cam_headers", {})
-                # If no live camera URL is set yet, upload the active print's thumbnail once so
-                # holding PRT shows the real print model instead of a blank frame!
+                default_headers = tel.pop("cam_headers", {})
+                cam_url = custom_cam or default_cam
+                cam_headers = {} if custom_cam else default_headers
+                printer_active = tel.get("state") in ("PRINTING", "BUSY", "ATTENTION", "PAUSED")
+                # If no live camera URL is set yet, upload the active print's thumbnail once.
                 if not cam_url and thumb_url and thumb_url != last_thumb_uploaded:
-                    if fetch_and_upload_snapshot(thumb_url, cam_headers, is_live_cam=False):
+                    if fetch_and_upload_snapshot(thumb_url, default_headers, is_live_cam=False):
                         last_thumb_uploaded = thumb_url
                         print(f"[prusa] uploaded print preview thumbnail: {thumb_url}", flush=True)
                 tel["camera_path"] = CAM_LOCAL_PATH if os.path.isfile(CAM_LOCAL_PATH) else ""
                 tel["camera_kb_path"] = "/home/root/openflux/media/prusa_cam_live.jpg"
                 tel["camera_mode"] = "live" if cam_url else ("thumbnail" if last_thumb_uploaded else "none")
+                tel["camera_frames"] = rtsp_grabber.frames_uploaded
                 bus_post(
                     "/v2/bus/pub",
                     {
@@ -257,6 +355,7 @@ def main():
             except Exception as e:
                 err_txt = str(e)
                 print(f"[prusa] telemetry error: {err_txt}", flush=True)
+                printer_active = False
                 is_sleeping = any(k in err_txt.lower() for k in ("no route", "timed out", "refused", "unreachable"))
                 bus_post(
                     "/v2/bus/pub",
@@ -276,13 +375,20 @@ def main():
                     },
                 )
 
-        # Refresh live camera rapidly (~2 fps) while holding the glance key, or every 20s idle
-        cam_interval = 0.55 if peeking else 20.0
-        if cam_url and (now - last_cam >= cam_interval):
-            last_cam = now
-            fetch_and_upload_snapshot(cam_url, cam_headers, is_live_cam=True)
+        # Persistent ~2.5 FPS RTSP stream while printing or peeking; periodic snapshot for HTTP cams
+        if cam_url and cam_url.lower().startswith("rtsp://"):
+            if printer_active or peeking or not api_token:
+                rtsp_grabber.ensure_running(cam_url)
+            else:
+                rtsp_grabber.stop()
+        else:
+            rtsp_grabber.stop()
+            cam_interval = 0.55 if peeking else 20.0
+            if cam_url and (now - last_cam >= cam_interval):
+                last_cam = now
+                fetch_and_upload_snapshot(cam_url, cam_headers, is_live_cam=True)
 
-        time.sleep(0.25 if peeking else 0.75)
+        time.sleep(0.35 if peeking else 0.75)
 
 
 if __name__ == "__main__":
