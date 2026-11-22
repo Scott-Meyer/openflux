@@ -809,6 +809,9 @@ fn main() {
                 let susp = state.is_display_asleep(&cfg, mono_ms);
                 if susp != cached_suspended {
                     cached_suspended = susp;
+                    if !susp {
+                        rkmpp_failed_path.clear();
+                    }
                     apply_panel_sleep(susp, &mut saved_backlight_brightness, &mut log_diag);
                     render_dirty = true;
                     ui_dirty = true;

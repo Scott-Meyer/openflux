@@ -38,9 +38,8 @@ function on_render(ctx, stage)
   local subtle = { 0.72, 0.78, 0.86, 0.78 }
 
   ctx:clip(tx, ty, tw, th)
-  ctx:round_rect(tx + 2, ty + 2, tw - 4, th - 4, 14, glass_bg, 0, { 0, 0, 0, 0 })
 
-  -- 3x2 hairline outer box and dividers (matching v1 HwStatus pixel-for-pixel)
+  -- 3x2 hairline outer box and dividers (matching v1 HwStatus pixel-for-pixel, frameless over background)
   ctx:round_rect(gx0, gy0, grid_w, grid_h, 4, { 0, 0, 0, 0 }, 1.2, hairline)
   ctx:rect(gx0 + cw, gy0, 1, grid_h, hairline)
   ctx:rect(gx0 + cw * 2, gy0, 1, grid_h, hairline)

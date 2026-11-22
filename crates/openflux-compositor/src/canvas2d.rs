@@ -192,22 +192,29 @@ impl Canvas2D {
         self.clip = None;
     }
 
-    /// Draws subtle keycap frame outlines and ANSI/ISO key legends so legends stay legible over
-    /// intense refraction and particle layers.
+    /// Draws clean floating key legends (no heavy keycap boxes, matching v1's sleek frameless look)
+    /// and subtle vertical hairline separators between the 4 top-bar module slots.
     pub fn draw_default_key_legends(&mut self, geom: &KeyboardGeometry, labels: &[&str]) {
-        for key in &geom.keys {
-            let r = &key.rect;
-            // Subtle keycap rim outline so physical key boundaries are visually crisp in preview.
+        // Subtle vertical hairline dividers centered in the gaps between the 4 top-bar slots.
+        for i in 0..geom.slots.len().saturating_sub(1) {
+            let a = &geom.slots[i].rect;
+            let b = &geom.slots[i + 1].rect;
+            let div_x = ((a.x + a.w) + b.x) * 0.5;
+            let y0 = a.y + 18.0;
+            let h = (a.h - 36.0).max(20.0);
             self.fill_round_rect(
-                r.x,
-                r.y,
-                r.w,
-                r.h,
-                key.corner_radius_px,
-                [0.02, 0.03, 0.05, 0.14],
+                div_x,
+                y0,
                 1.2,
-                [0.85, 0.92, 1.0, 0.18],
+                h,
+                0.0,
+                [1.0, 1.0, 1.0, 0.16],
+                0.0,
+                [0.0; 4],
             );
+        }
+
+        for key in &geom.keys {
             if let Some(&label) = labels.get(key.key_index as usize) {
                 if !label.is_empty() {
                     let font_size = if label.len() <= 2 {
@@ -217,7 +224,7 @@ impl Canvas2D {
                     } else {
                         16.0
                     };
-                    // Soft drop shadow for legibility over bright backgrounds/water highlights.
+                    // Soft drop shadow so legends stay razor-readable over video & ripples.
                     self.draw_text(
                         key.center_x + 1.5,
                         key.center_y - font_size * 0.42 + 1.5,
@@ -231,7 +238,7 @@ impl Canvas2D {
                         key.center_y - font_size * 0.42,
                         label,
                         font_size,
-                        [0.95, 0.97, 1.0, 0.94],
+                        [0.95, 0.97, 1.0, 0.95],
                         TextAlign::Center,
                     );
                 }

@@ -18,8 +18,7 @@ function on_render(ctx, stage)
   local accent = module.color("accent", "#ff64b4")
 
   ctx:clip(sr.x, sr.y, sr.w, sr.h)
-  ctx:round_rect(sr.x + 2, sr.y + 2, sr.w - 4, sr.h - 4, 18, { 0.05, 0.07, 0.12, 0.72 }, 1.5, { accent[1], accent[2], accent[3], 0.45 })
-  ctx:text(sr.x + 20, sr.y + 16, media.playing and "NOW PLAYING" or "PAUSED", 16, accent, "left")
+  ctx:text(sr.x + 16, sr.y + 16, media.playing and "NOW PLAYING" or "PAUSED", 15, accent, "left")
 
   -- Animated equalizer bars on the right
   for i = 0, 3 do

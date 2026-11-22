@@ -57,7 +57,6 @@ function on_render(ctx, stage)
     local sr = module.slot_rect()
     if not sr then return end
     ctx:clip(sr.x, sr.y, sr.w, sr.h)
-    ctx:round_rect(sr.x + 2, sr.y + 2, sr.w - 4, sr.h - 4, 18, { 0.05, 0.07, 0.12, 0.76 }, 1.6, { orange[1], orange[2], orange[3], 0.52 })
 
     local title = tostring(status.name or "Prusa")
     if #title > 16 then title = string.sub(title, 1, 15) .. "..." end

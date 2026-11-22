@@ -38,8 +38,7 @@ function on_render(ctx, stage)
   local progress = 1.0 - (remaining_sec / math.max(1.0, total_sec))
 
   ctx:clip(sr.x, sr.y, sr.w, sr.h)
-  ctx:round_rect(sr.x + 2, sr.y + 2, sr.w - 4, sr.h - 4, 18, { 0.05, 0.07, 0.12, 0.72 }, 1.5, { accent[1], accent[2], accent[3], 0.48 })
-  ctx:text(sr.x + 22, sr.y + 18, "POMODORO", 18, accent, "left")
+  ctx:text(sr.x + 16, sr.y + 16, "POMODORO", 16, { 0.78, 0.84, 0.92, 0.85 }, "left")
   ctx:text(sr.x + 22, sr.y + 52, string.format("%02d:%02d", mins, secs), 50, { 1.0, 1.0, 1.0, 0.98 }, "left")
   local rx = sr.x + sr.w - 60
   local ry = sr.y + sr.h * 0.52

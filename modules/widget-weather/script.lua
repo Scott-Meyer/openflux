@@ -90,7 +90,6 @@ function on_render(ctx, stage)
   local glass_bg = { 0.03, 0.04, 0.06, 0.56 }
 
   ctx:clip(tx, ty, tw, th)
-  ctx:round_rect(tx + 2, ty + 2, tw - 4, th - 4, 14, glass_bg, 1.0, { 1.0, 1.0, 1.0, 0.10 })
 
   local cfg_city = tostring(module.config().city or "")
   local city = (#cfg_city > 0) and cfg_city or tostring(weather.city or "Denver")

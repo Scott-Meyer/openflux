@@ -416,8 +416,7 @@ function on_render(ctx, stage)
 
   if stage == "tile" and sr then
     ctx:clip(sr.x, sr.y, sr.w, sr.h)
-    ctx:round_rect(sr.x + 2, sr.y + 2, sr.w - 4, sr.h - 4, 18, { 0.05, 0.07, 0.12, 0.72 }, 1.5, { fur[1], fur[2], fur[3], 0.48 })
-    ctx:ellipse(home_x, sr.y + sr.h - 20, 74, 15, { 0.22, 0.16, 0.30, 0.85 })
+    ctx:ellipse(home_x, sr.y + sr.h - 20, 74, 15, { 0.22, 0.16, 0.30, 0.55 })
     ctx:text(sr.x + 18, sr.y + 14, pet_name, 22, { 1.0, 0.92, 0.82, 0.95 }, "left")
     local status = (mode == "slot") and "napping" or (returning_home and "heading home" or (mode == "swipe" and "swiping!" or "roaming!"))
     ctx:text(sr.x + sr.w - 18, sr.y + 16, status, 18, { 0.65, 0.85, 1.0, 0.85 }, "right")

@@ -85,19 +85,35 @@ def fetch_prusa_telemetry(base_url: str, token: str, uuid: str) -> dict:
             "cam_headers": headers,
         }
 
-    # Local PrusaLink LAN API (`/api/v1/status` + `/api/v1/job`)
+    # Local PrusaLink LAN API (`/api/v1/status` + `/api/v1/job` + `/api/v1/info`)
     headers = {"X-Api-Key": token, "Accept": "application/json"}
     st = json.loads(http_get(f"{base}/api/v1/status", headers).decode("utf-8"))
     printer = st.get("printer", {})
     job = st.get("job") or {}
+    printer_name = "Prusa CORE One"
+    try:
+        info = json.loads(http_get(f"{base}/api/v1/info", headers).decode("utf-8"))
+        printer_name = info.get("name") or info.get("hostname") or printer_name
+    except Exception:
+        pass
     job_name = "Ready"
     try:
         jinfo = json.loads(http_get(f"{base}/api/v1/job", headers).decode("utf-8"))
         job_name = (jinfo.get("file") or {}).get("display_name") or (jinfo.get("file") or {}).get("name") or job_name
     except Exception:
         pass
+    cam_snap = ""
+    try:
+        cams = json.loads(http_get(f"{base}/api/v1/cameras", headers).decode("utf-8"))
+        clist = cams.get("camera_list") if isinstance(cams, dict) else cams
+        if isinstance(clist, list) and clist:
+            cid = clist[0].get("camera_id") or clist[0].get("id")
+            if cid:
+                cam_snap = f"{base}/api/v1/cameras/{cid}/snap"
+    except Exception:
+        pass
     return {
-        "name": "PrusaLink",
+        "name": str(printer_name),
         "state": str(printer.get("state") or "IDLE").upper(),
         "progress": float(job.get("progress") or 0.0),
         "time_remaining_min": float(job.get("time_remaining") or 0.0) / 60.0,
@@ -106,7 +122,7 @@ def fetch_prusa_telemetry(base_url: str, token: str, uuid: str) -> dict:
         "bed_temp": float(printer.get("temp_bed") or 0.0),
         "bed_target": float(printer.get("target_bed") or 0.0),
         "job_name": str(job_name),
-        "default_cam_url": f"{base}/api/v1/cameras/snap",
+        "default_cam_url": cam_snap,
         "cam_headers": headers,
     }
 
