@@ -1057,6 +1057,9 @@ fn main() {
                             };
                             last_v2_step_ms = mono_ms;
                             v2.step_frame(dt_ms as f32 * 0.001, mono_ms);
+                            for out_frame in v2.drain_outgoing_bus_frames() {
+                                ipc.send_bus_frame(&out_frame);
+                            }
                             let (ww, wh) = v2.wave_dims();
                             let has_bg_media = rkmpp_stream.is_some();
                             if let Err(e) = gpu.render_v2_and_swap(
@@ -1064,6 +1067,7 @@ fn main() {
                                 has_bg_media,
                                 v2.bg_dimming,
                                 v2.time_sec,
+                                v2.dt_sec,
                                 v2.wave_enabled,
                                 ww as i32,
                                 wh as i32,
@@ -1076,6 +1080,9 @@ fn main() {
                                     v2.wave_params.tint[2],
                                     v2.top_fade.clamp(0.0, 0.85),
                                 ],
+                                &v2.background_shaders,
+                                &v2.distortion_shaders,
+                                &v2.under_key_shaders,
                                 &v2.glows,
                                 &v2.canvas.rgba,
                                 v2.overlay_dirty,

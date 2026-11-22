@@ -13,6 +13,7 @@ pub const LIVE_DATA_MAX_CHUNK: usize = 8000;
 pub enum DataType {
     Json = 0,
     Heartbeat = 4,
+    BusFrame = 10,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -223,6 +224,11 @@ pub fn encode_live_data(data_type: DataType, data: &[u8]) -> Result<Vec<u8>, Hdl
 pub fn encode_live_json(payload: &serde_json::Value) -> Result<Vec<u8>, HdlcError> {
     let s = serde_json::to_string(payload).map_err(|e| HdlcError(e.to_string()))?;
     encode_live_data(DataType::Json, s.as_bytes())
+}
+
+pub fn encode_live_bus_frame(frame: &openflux_bus::WireFrame) -> Result<Vec<u8>, HdlcError> {
+    let s = serde_json::to_string(frame).map_err(|e| HdlcError(e.to_string()))?;
+    encode_live_data(DataType::BusFrame, s.as_bytes())
 }
 
 #[cfg(test)]

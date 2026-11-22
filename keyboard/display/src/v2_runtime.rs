@@ -49,6 +49,10 @@ pub struct KeyboardV2Display {
     pub active_media_path: Option<String>,
     pub bg_dimming: f32,
     pub top_fade: f32,
+    pub dt_sec: f32,
+    pub background_shaders: Vec<openflux_modules::ShaderPassCmd>,
+    pub distortion_shaders: Vec<openflux_modules::ShaderPassCmd>,
+    pub under_key_shaders: Vec<openflux_modules::ShaderPassCmd>,
     pub glows: Vec<V2GlowDraw>,
     pub time_sec: f32,
     pub overlay_dirty: bool,
@@ -59,6 +63,7 @@ pub struct KeyboardV2Display {
     last_bitmap: [u8; 32],
     last_input_ms: u64,
     last_state_mtime: Option<SystemTime>,
+    bridge_out_sub: Option<openflux_bus::Subscription>,
 }
 
 fn hash_f32<H: std::hash::Hasher>(h: &mut H, v: f32) {
@@ -195,6 +200,9 @@ impl KeyboardV2Display {
 
         let sdf_grid = KeySdfGrid::build(&geometry);
         let canvas = Canvas2D::new(DISPLAY_WIDTH_PX, DISPLAY_HEIGHT_PX, font_bytes);
+        let bridge_out_sub = broker
+            .subscribe("#", openflux_bus::SubscribeOptions { replay_retained: false, ..Default::default() })
+            .ok();
 
         Self {
             broker,
@@ -210,6 +218,10 @@ impl KeyboardV2Display {
             active_media_path: None,
             bg_dimming: 0.0,
             top_fade: 0.0,
+            dt_sec: 0.016,
+            background_shaders: Vec::new(),
+            distortion_shaders: Vec::new(),
+            under_key_shaders: Vec::new(),
             glows: Vec::with_capacity(256),
             time_sec: 0.0,
             overlay_dirty: true,
@@ -220,7 +232,39 @@ impl KeyboardV2Display {
             last_bitmap: [0u8; 32],
             last_input_ms: openflux_bus::now_unix_ms(),
             last_state_mtime,
+            bridge_out_sub,
         }
+    }
+
+    /// Drains keyboard-originated bus events ready to stream up to the host daemon (loop-free!).
+    pub fn drain_outgoing_bus_frames(&mut self) -> Vec<WireFrame> {
+        let Some(ref sub) = self.bridge_out_sub else {
+            return Vec::new();
+        };
+        let msgs = sub.drain();
+        let mut out = Vec::new();
+        for msg in msgs {
+            let orig = msg.origin.as_deref().unwrap_or("");
+            if orig.starts_with("bridge:host") || orig == "host" {
+                continue;
+            }
+            if msg.topic.starts_with("layout/")
+                || msg.topic == "keyboard/geometry"
+                || msg.topic == "keyboard/keymap"
+                || msg.topic.starts_with("keyboard/analog")
+                || msg.topic.starts_with("host/")
+            {
+                continue;
+            }
+            out.push(WireFrame::Publish {
+                topic: msg.topic,
+                payload: msg.payload,
+                retain: msg.retain,
+                ttl_ms: msg.expires_at_ms.map(|e| e.saturating_sub(msg.timestamp_ms)),
+                origin: Some(format!("bridge:keyboard:{orig}")),
+            });
+        }
+        out
     }
 
     /// Checks whether `modules_state.json` or any Lua module file changed on disk (e.g. after USB sync).
@@ -253,7 +297,7 @@ impl KeyboardV2Display {
             Some("bus_frame") => {
                 if let Some(frame_val) = val.get("frame") {
                     if let Ok(frame) = serde_json::from_value::<WireFrame>(frame_val.clone()) {
-                        let _ = apply_remote_frame(&self.broker, frame, "host");
+                        let _ = apply_remote_frame(&self.broker, frame, "bridge:host");
                     }
                 }
             }
@@ -561,6 +605,10 @@ impl KeyboardV2Display {
         self.active_media_path = scene.background_media.clone();
         self.bg_dimming = scene.bg_dimming;
         self.top_fade = scene.top_fade;
+        self.dt_sec = dt;
+        self.background_shaders = scene.background_shaders;
+        self.distortion_shaders = scene.distortion_shaders;
+        self.under_key_shaders = scene.under_key_shaders;
         self.wave_enabled = scene.distortion_enabled;
         self.wave_params = scene.wave_params.clone();
 

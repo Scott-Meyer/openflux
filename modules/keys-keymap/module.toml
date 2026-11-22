@@ -5,6 +5,7 @@ description = "Publishes base keycap legends with dynamic Shift case (a/A), shif
 author = "OpenFlux"
 category = "effect"
 tags = ["keys", "core", "keymap", "shift", "fn"]
+depends = [{ role = "keys_renderer" }]
 stages = ["under_key"]
 host_requirement = "none"
 slot_capable = false

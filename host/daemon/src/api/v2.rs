@@ -18,8 +18,7 @@ use openflux_bus::{
 };
 use openflux_compositor::{Compositor, CompositorOptions};
 use openflux_modules::{
-    inspect_module_dir, CuratedListDocument, CuratedListSubscription, HostProcessManager,
-    ModuleCategory, ModuleInstanceState, ModuleRegistry, ModuleRuntime, SetupPreset,
+    inspect_module_dir, CuratedListSubscription, HostProcessManager, ModuleCategory, ModuleInstanceState, ModuleRegistry, ModuleRuntime, SetupPreset,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -439,18 +438,23 @@ async fn list_modules(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     let saved = state.v2.registry.load_state();
     let statuses = state.v2.runtime.lock().unwrap().statuses();
     let status_map: BTreeMap<String, _> = statuses.into_iter().map(|s| (s.id.clone(), s)).collect();
+    let dep_issues = state.v2.registry.check_all_dependencies(&discovered, &saved);
 
     let items: Vec<Value> = discovered
         .into_iter()
         .map(|(id, dm)| {
             let inst = saved.modules.get(&id).cloned().unwrap_or_default();
             let rt_status = status_map.get(&id);
+            let origin = state.v2.registry.module_origin(&dm);
+            let issues = dep_issues.get(&id).cloned().unwrap_or_default();
             json!({
                 "id": id,
                 "manifest": dm.manifest,
                 "tier": dm.tier,
                 "path": dm.path,
                 "state": inst,
+                "origin": origin,
+                "dependency_issues": issues,
                 "healthy": rt_status.map(|s| s.healthy).unwrap_or(true),
                 "last_error": rt_status.and_then(|s| s.last_error.clone()),
             })
@@ -672,16 +676,38 @@ async fn fork_module(
 
 #[derive(Deserialize)]
 struct InspectInstallBody {
-    path: String,
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
     #[serde(default)]
     accept_disclosure: bool,
+}
+
+impl InspectInstallBody {
+    fn effective_source(&self) -> Result<&str, String> {
+        self.source
+            .as_deref()
+            .or(self.path.as_deref())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| "missing `source` or `path`".to_string())
+    }
 }
 
 async fn inspect_module_api(
     State(state): State<Arc<ApiState>>,
     Json(body): Json<InspectInstallBody>,
 ) -> impl IntoResponse {
-    match state.v2.registry.preview_install(std::path::Path::new(&body.path)) {
+    let src = match body.effective_source() {
+        Ok(s) => s.to_string(),
+        Err(e) => return err_resp(StatusCode::BAD_REQUEST, e),
+    };
+    let res = tokio::task::spawn_blocking(move || state.v2.registry.preview_install_source(&src))
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r);
+    match res {
         Ok(preview) => (StatusCode::OK, Json(json!({ "preview": preview }))),
         Err(e) => err_resp(StatusCode::BAD_REQUEST, e),
     }
@@ -691,31 +717,160 @@ async fn install_module_api(
     State(state): State<Arc<ApiState>>,
     Json(body): Json<InspectInstallBody>,
 ) -> impl IntoResponse {
-    let p = std::path::Path::new(&body.path);
-    let preview = match state.v2.registry.preview_install(p) {
-        Ok(pr) => pr,
+    let src = match body.effective_source() {
+        Ok(s) => s.to_string(),
         Err(e) => return err_resp(StatusCode::BAD_REQUEST, e),
     };
-    if !body.accept_disclosure {
-        return (
+    let accept = body.accept_disclosure;
+    let state_clone = state.clone();
+    let res = tokio::task::spawn_blocking(move || {
+        let preview = state_clone.v2.registry.preview_install_source(&src)?;
+        if !accept {
+            return Ok((false, None, preview));
+        }
+        let dm = state_clone.v2.registry.install_from_source(&src)?;
+        Ok::<_, String>((true, Some(dm), preview))
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+
+    match res {
+        Ok((false, _, preview)) => (
             StatusCode::PRECONDITION_REQUIRED,
             Json(json!({
                 "installed": false,
                 "requires_acceptance": true,
                 "preview": preview,
             })),
-        );
-    }
-    match state.v2.registry.install_from_dir(p) {
-        Ok(dm) => {
+        ),
+        Ok((true, Some(dm), preview)) => {
             state.v2.sync_all();
             (
                 StatusCode::OK,
                 Json(json!({ "installed": true, "module": dm, "preview": preview })),
             )
         }
+        Ok((true, None, _)) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, "install returned empty"),
         Err(e) => err_resp(StatusCode::BAD_REQUEST, e),
     }
+}
+
+async fn uninstall_module_api(
+    State(state): State<Arc<ApiState>>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match state.v2.registry.uninstall_module(&id) {
+        Ok(tier) => {
+            state.v2.broker.purge_origin(&format!("module:{id}"));
+            state.v2.sync_all();
+            (
+                StatusCode::OK,
+                Json(json!({ "uninstalled": true, "id": id, "removed_tier": tier })),
+            )
+        }
+        Err(e) => err_resp(StatusCode::BAD_REQUEST, e),
+    }
+}
+
+#[derive(Deserialize)]
+struct UpdateModuleBody {
+    #[serde(default)]
+    accept_disclosure: bool,
+}
+
+async fn update_module_api(
+    State(state): State<Arc<ApiState>>,
+    AxumPath(id): AxumPath<String>,
+    Json(body): Json<UpdateModuleBody>,
+) -> impl IntoResponse {
+    let accept = body.accept_disclosure;
+    let state_clone = state.clone();
+    let id_clone = id.clone();
+    let res = tokio::task::spawn_blocking(move || {
+        let (origin, preview) = state_clone.v2.registry.preview_update(&id_clone)?;
+        if !accept {
+            return Ok((false, None, origin, preview));
+        }
+        let dm = state_clone.v2.registry.update_module_from_source(&id_clone)?;
+        Ok::<_, String>((true, Some(dm), origin, preview))
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+
+    match res {
+        Ok((false, _, origin, preview)) => (
+            StatusCode::PRECONDITION_REQUIRED,
+            Json(json!({
+                "updated": false,
+                "requires_acceptance": true,
+                "origin": origin,
+                "preview": preview,
+            })),
+        ),
+        Ok((true, Some(dm), origin, preview)) => {
+            state.v2.sync_all();
+            (
+                StatusCode::OK,
+                Json(json!({ "updated": true, "module": dm, "origin": origin, "preview": preview })),
+            )
+        }
+        Ok((true, None, _, _)) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, "update returned empty"),
+        Err(e) => err_resp(StatusCode::BAD_REQUEST, e),
+    }
+}
+
+/// Lists video/image files in `~/.local/share/openflux/media` so Studio's `bg-media` picker can
+/// offer one-click selection across all imported seamless loops and stills!
+async fn list_media_library_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    // `~/.local/share/openflux/media` (sibling of `v2/` inside the user data directory)
+    let media_dir = state
+        .v2
+        .registry
+        .state_path
+        .parent()
+        .and_then(|v2_dir| v2_dir.parent())
+        .map(|data_dir| data_dir.join("media"))
+        .unwrap_or_else(|| std::path::PathBuf::from("media"));
+    let mut files = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&media_dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if !p.is_file() {
+                continue;
+            }
+            let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let lower = name.to_ascii_lowercase();
+            let is_media = lower.ends_with(".mp4")
+                || lower.ends_with(".mov")
+                || lower.ends_with(".mkv")
+                || lower.ends_with(".webm")
+                || lower.ends_with(".png")
+                || lower.ends_with(".jpg")
+                || lower.ends_with(".jpeg")
+                || lower.ends_with(".gif");
+            if is_media {
+                let bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                files.push(json!({
+                    "name": name,
+                    "path": p.to_string_lossy(),
+                    "bytes": bytes,
+                }));
+            }
+        }
+    }
+    files.sort_by(|a, b| {
+        a.get("name")
+            .and_then(|v| v.as_str())
+            .cmp(&b.get("name").and_then(|v| v.as_str()))
+    });
+    (
+        StatusCode::OK,
+        Json(json!({ "media_dir": media_dir, "files": files })),
+    )
 }
 
 #[derive(Deserialize)]
@@ -901,13 +1056,16 @@ struct BrowseListQuery {
 }
 
 async fn browse_curated_list(Query(q): Query<BrowseListQuery>) -> impl IntoResponse {
-    let text = match std::fs::read_to_string(&q.source) {
-        Ok(t) => t,
-        Err(e) => return err_resp(StatusCode::BAD_REQUEST, format!("read list: {e}")),
-    };
-    match serde_json::from_str::<CuratedListDocument>(&text) {
+    let src = q.source;
+    let res = tokio::task::spawn_blocking(move || {
+        openflux_modules::fetch_curated_list_document(&src)
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+    match res {
         Ok(doc) => (StatusCode::OK, Json(json!({ "list": doc }))),
-        Err(e) => err_resp(StatusCode::BAD_REQUEST, format!("invalid list JSON: {e}")),
+        Err(e) => err_resp(StatusCode::BAD_REQUEST, e),
     }
 }
 
@@ -934,12 +1092,16 @@ async fn import_preset_api(
     State(state): State<Arc<ApiState>>,
     Json(preset): Json<SetupPreset>,
 ) -> impl IntoResponse {
-    match state.v2.registry.import_preset(&preset) {
-        Ok(saved) => {
+    match state.v2.registry.import_preset_detailed(&preset) {
+        Ok(report) => {
             state.v2.sync_all();
             (
                 StatusCode::OK,
-                Json(json!({ "imported": preset.name, "modules": saved.modules.len() })),
+                Json(json!({
+                    "imported": preset.name,
+                    "modules": report.imported_count,
+                    "missing_modules": report.missing_modules,
+                })),
             )
         }
         Err(e) => err_resp(StatusCode::BAD_REQUEST, e),
@@ -1367,11 +1529,13 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/modules/fork", post(fork_module))
         .route("/v2/modules/inspect", post(inspect_module_api))
         .route("/v2/modules/install", post(install_module_api))
-        .route("/v2/modules/:id", get(get_module_detail))
+        .route("/v2/modules/:id", get(get_module_detail).delete(uninstall_module_api))
+        .route("/v2/modules/:id/update", post(update_module_api))
         .route("/v2/modules/:id/state", put(update_module_state))
         .route("/v2/modules/:id/action", post(trigger_module_action))
         .route("/v2/modules/:id/reload", post(reload_module_api))
         .route("/v2/modules/:id/logs", get(get_module_logs_api))
+        .route("/v2/media/library", get(list_media_library_api))
         .route("/v2/lists", get(list_curated_lists).post(add_curated_list))
         .route("/v2/lists/browse", get(browse_curated_list))
         .route("/v2/lists/:id", delete(remove_curated_list))

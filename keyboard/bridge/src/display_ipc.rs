@@ -5,11 +5,13 @@ use crate::protocol::{
 };
 use crate::simple_hdlc::SimpleHdlcDecoder;
 use crate::uart_bridge::{FirmwareUartState, UartBridge};
+use std::collections::VecDeque;
 use std::io::{self, Read, Write};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 
-const MAX_CLIENT_RX: usize = 512;
+const MAX_CLIENT_RX: usize = 16384;
+const MAX_HOST_OUTBOX: usize = 256;
 const MAX_LIVE_LEN: usize = 1024 * 1024;
 
 /// First byte of the 5-byte control frame that announces a live-data message length.
@@ -35,6 +37,7 @@ pub struct DisplayIpc {
     collecting_live: bool,
     expected_live_len: usize,
     live_buf: Vec<u8>,
+    host_outbox: VecDeque<serde_json::Value>,
 }
 
 impl Default for DisplayIpc {
@@ -59,7 +62,16 @@ impl DisplayIpc {
             collecting_live: false,
             expected_live_len: 0,
             live_buf: Vec::new(),
+            host_outbox: VecDeque::with_capacity(64),
         }
+    }
+
+    pub fn drain_host_bus_frames(&mut self) -> Vec<u8> {
+        if self.host_outbox.is_empty() {
+            return b"[]".to_vec();
+        }
+        let items: Vec<serde_json::Value> = self.host_outbox.drain(..).collect();
+        serde_json::to_vec(&items).unwrap_or_else(|_| b"[]".to_vec())
     }
 
     pub fn init(&mut self, sock_path: Option<&str>) -> Result<(), String> {
@@ -210,6 +222,10 @@ impl DisplayIpc {
                         if let Some(frame) = val.get("frame") {
                             let line = format!("{{\"type\":\"bus_frame\",\"frame\":{frame}}}\n");
                             self.broadcast_line(&line);
+                            if self.host_outbox.len() >= MAX_HOST_OUTBOX {
+                                self.host_outbox.pop_front();
+                            }
+                            self.host_outbox.push_back(frame.clone());
                         }
                     }
                     Some("get_state") => {

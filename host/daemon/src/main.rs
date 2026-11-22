@@ -13,7 +13,7 @@ use openfluxd::api::tls::{
 use openfluxd::api::worker::{reconcile_tick, UsbWorkerHandle};
 use openfluxd::bridges::create_platform_bridge;
 use openfluxd::codecs::keymap::decode_keymap_blob;
-use openfluxd::codecs::simple_hdlc::encode_live_json;
+use openfluxd::codecs::simple_hdlc::{encode_live_bus_frame, encode_live_json};
 use openfluxd::device_paths;
 use openfluxd::lifecycle::ExitKind;
 use openfluxd::tray::{TrayController, TrayMode};
@@ -635,6 +635,21 @@ impl DeviceSink for UsbDeviceSink {
         let client = self.client()?;
         let wire = encode_live_json(payload).map_err(|e| e.to_string())?;
         client.send_live_data(&wire).map_err(|e| e.to_string())
+    }
+
+    fn send_bus_frame(&self, frame: &openflux_bus::WireFrame) -> Result<(), String> {
+        let client = self.client()?;
+        let wire = encode_live_bus_frame(frame).map_err(|e| e.to_string())?;
+        client.send_live_data(&wire).map_err(|e| e.to_string())
+    }
+
+    fn poll_bus_frames(&self) -> Result<Vec<openflux_bus::WireFrame>, String> {
+        let client = self.client()?;
+        let raw = client.poll_bus_frames().map_err(|e| e.to_string())?;
+        if raw.is_empty() || raw == b"[]" {
+            return Ok(Vec::new());
+        }
+        serde_json::from_slice(&raw).map_err(|e| e.to_string())
     }
 
     fn set_system_time(&self, utc_timestamp: &str, zone: &str) -> Result<(), String> {

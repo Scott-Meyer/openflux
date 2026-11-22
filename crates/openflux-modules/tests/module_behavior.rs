@@ -129,3 +129,153 @@ fn fork_disclosure_diff_secret_stripping_and_pet_to_water_cross_module_compositi
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn roles_dependencies_lua_require_archive_install_update_uninstall_and_rich_presets() {
+    let tmp = std::env::temp_dir().join(format!("openflux-v2-audit-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let reg = ModuleRegistry::new(
+        repo_bundled_modules(),
+        tmp.join("installed"),
+        tmp.join("local"),
+        tmp.join("modules_state.json"),
+    );
+
+    // 1. Fork `keys-renderer` into a brand-new ID; it MUST still take over `has_custom_keys_renderer`
+    //    via `provides = ["keys_renderer"]` with zero hardcoded name check!
+    let forked = reg
+        .fork_module("keys-renderer", "my-custom-keys", Some("My Custom Keys"))
+        .expect("fork keys-renderer");
+    assert!(forked.manifest.provides.contains(&"keys_renderer".to_string()));
+
+    let broker = Broker::new("test");
+    let geom = KeyboardGeometry::build(FrameLayout::Ansi);
+    let mut rt = ModuleRuntime::new(broker.clone(), geom);
+    let discovered = reg.discover();
+    let mut states = BTreeMap::new();
+    states.insert(
+        "my-custom-keys".to_string(),
+        ModuleInstanceState {
+            enabled: true,
+            ..Default::default()
+        },
+    );
+    rt.sync_modules(&discovered, &states);
+    let scene = rt.step_frame(0.016, 16);
+    assert!(
+        scene.has_custom_keys_renderer,
+        "Forked renderer declaring provides = [\"keys_renderer\"] must own key rendering regardless of ID"
+    );
+
+    // 2. Dependency validation catches missing role when no keys_renderer is enabled
+    let mut missing_state = openflux_modules::ModulesStateFile::default();
+    missing_state.modules.insert(
+        "keys-keymap".into(),
+        ModuleInstanceState {
+            enabled: true,
+            ..Default::default()
+        },
+    );
+    let dep_issues = reg.check_all_dependencies(&discovered, &missing_state);
+    assert!(
+        dep_issues.contains_key("keys-keymap"),
+        "keys-keymap should report missing role keys_renderer when disabled"
+    );
+    missing_state.modules.insert(
+        "my-custom-keys".into(),
+        ModuleInstanceState {
+            enabled: true,
+            ..Default::default()
+        },
+    );
+    let dep_issues_ok = reg.check_all_dependencies(&discovered, &missing_state);
+    assert!(
+        !dep_issues_ok.contains_key("keys-keymap"),
+        "Forked provider my-custom-keys must satisfy role dependency keys_renderer"
+    );
+
+    // 3. Multi-file Lua `require("helpers")` works from inside a module's own folder
+    let mod_dir = tmp.join("pkg-src/multi-file-mod");
+    std::fs::create_dir_all(&mod_dir).unwrap();
+    std::fs::write(
+        mod_dir.join("module.toml"),
+        r#"
+id = "multi-file-mod"
+name = "Multi File Mod"
+version = "1.0.0"
+category = "effect"
+stages = ["under_key"]
+[entrypoints]
+script = "script.lua"
+"#,
+    )
+    .unwrap();
+    std::fs::write(mod_dir.join("helpers.lua"), "return { answer = 42 }\n").unwrap();
+    std::fs::write(
+        mod_dir.join("script.lua"),
+        r#"
+local h = require("helpers")
+function on_init()
+  bus.publish("modules/multi-file-mod/ready", { value = h.answer }, true)
+end
+"#,
+    )
+    .unwrap();
+
+    // 4. Pack as .tar.gz archive -> install via universal `install_from_source` -> update -> rich preset -> uninstall
+    let tar_path = tmp.join("multi-file-mod.tar.gz");
+    let status = std::process::Command::new("tar")
+        .args(["-czf"])
+        .arg(&tar_path)
+        .args(["-C"])
+        .arg(tmp.join("pkg-src"))
+        .arg("multi-file-mod")
+        .status()
+        .expect("tar archive");
+    assert!(status.success());
+
+    let installed = reg
+        .install_from_source(&tar_path.to_string_lossy())
+        .expect("install from tar.gz archive");
+    assert_eq!(installed.manifest.version, "1.0.0");
+    assert!(reg.module_origin(&installed).is_some());
+
+    // Run installed multi-file module and verify Lua `require("helpers")` published 42!
+    let discovered2 = reg.discover();
+    let mut st2 = BTreeMap::new();
+    st2.insert(
+        "multi-file-mod".into(),
+        ModuleInstanceState {
+            enabled: true,
+            ..Default::default()
+        },
+    );
+    rt.sync_modules(&discovered2, &st2);
+    let ready_msg = broker
+        .get_retained("modules/multi-file-mod/ready")
+        .expect("multi-file Lua require should publish ready");
+    assert_eq!(ready_msg.payload["value"], 42);
+
+    // Rich preset records source + version and reports missing module after uninstall
+    let mut state_file = reg.load_state();
+    state_file.modules.insert(
+        "multi-file-mod".into(),
+        ModuleInstanceState {
+            enabled: true,
+            ..Default::default()
+        },
+    );
+    reg.save_state(&state_file).unwrap();
+    let preset = reg.export_preset("Test", "Rich preset");
+    assert_eq!(preset.module_sources["multi-file-mod"].version, "1.0.0");
+    assert!(preset.module_sources["multi-file-mod"].source.is_some());
+
+    // Uninstall installed copy -> import preset -> missing_modules reports exact id, version, source!
+    reg.uninstall_module("multi-file-mod").expect("uninstall");
+    let report = reg.import_preset_detailed(&preset).expect("import preset");
+    assert_eq!(report.missing_modules.len(), 1);
+    assert_eq!(report.missing_modules[0].id, "multi-file-mod");
+    assert_eq!(report.missing_modules[0].version.as_deref(), Some("1.0.0"));
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}

@@ -118,6 +118,14 @@ pub trait DeviceSink: Send + Sync {
     fn is_connected(&self) -> (bool, bool);
     fn versions(&self) -> serde_json::Value;
     fn send_live_json(&self, payload: &serde_json::Value) -> Result<(), String>;
+    /// Sends one live `openflux_bus::WireFrame` directly to the keyboard over `LIVE_DATA_TYPE_BUS_FRAME`.
+    fn send_bus_frame(&self, _frame: &openflux_bus::WireFrame) -> Result<(), String> {
+        Err("Bus bridge unsupported on this sink".into())
+    }
+    /// Drains queued keyboard-originated `WireFrame`s from the keyboard bridge over USB.
+    fn poll_bus_frames(&self) -> Result<Vec<openflux_bus::WireFrame>, String> {
+        Ok(Vec::new())
+    }
     fn set_active_profile(&self, profile_idx: u32) -> Result<(), String>;
     fn set_language(&self, lang_code: u32) -> Result<(), String>;
     fn set_platform(&self, platform_code: u32) -> Result<(), String>;

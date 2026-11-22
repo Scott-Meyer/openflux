@@ -168,15 +168,25 @@ enum ModulesCmd {
         #[arg(long)]
         enable: bool,
     },
-    /// Inspect a module folder and print its disclosure report (and update diff if already installed).
-    Inspect { path: PathBuf },
-    /// Install or update a module from a local directory after reviewing disclosure.
+    /// Inspect any module source (local folder, Git/GitHub URL, archive, or curated list ID).
+    Inspect { source: String },
+    /// Install or update a module from a local folder, Git/GitHub URL, archive, or curated list ID.
     Install {
-        path: PathBuf,
+        source: String,
         /// Show disclosure/diff only without installing.
         #[arg(long)]
         inspect_only: bool,
         /// Non-interactively acknowledge the disclosure report and proceed with installation.
+        #[arg(long)]
+        accept_disclosure: bool,
+    },
+    /// Uninstall an installed or local module (bundled defaults are protected).
+    Uninstall { id: String },
+    /// Update an installed module from its recorded upstream source after reviewing disclosure diff.
+    Update {
+        id: String,
+        #[arg(long)]
+        inspect_only: bool,
         #[arg(long)]
         accept_disclosure: bool,
     },
@@ -243,7 +253,15 @@ enum PresetCmd {
         description: String,
     },
     /// Import a preset JSON file into local module state (preserving any local secret fields).
-    Import { path: PathBuf },
+    Import {
+        path: PathBuf,
+        /// Automatically install missing modules that include a source reference in the preset.
+        #[arg(long)]
+        install_missing: bool,
+        /// Acknowledge disclosure for any missing modules installed via --install-missing.
+        #[arg(long)]
+        accept_disclosure: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -924,8 +942,8 @@ fn handle_modules(
             );
             Ok(())
         }
-        ModulesCmd::Inspect { path } => {
-            let preview = reg.preview_install(path)?;
+        ModulesCmd::Inspect { source } => {
+            let preview = reg.preview_install_source(source)?;
             let val = serde_json::to_value(&preview).map_err(|e| e.to_string())?;
             let mut lines = preview.disclosure.summary_lines.clone();
             for w in &preview.disclosure.warnings {
@@ -939,11 +957,11 @@ fn handle_modules(
             Ok(())
         }
         ModulesCmd::Install {
-            path,
+            source,
             inspect_only,
             accept_disclosure,
         } => {
-            let preview = reg.preview_install(path)?;
+            let preview = reg.preview_install_source(source)?;
             if *inspect_only || !*accept_disclosure {
                 let val = json!({
                     "installed": false,
@@ -967,18 +985,28 @@ fn handle_modules(
                 return Ok(());
             }
             if let Some(base) = live {
-                let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
-                let body = json!({ "path": abs.to_string_lossy(), "accept_disclosure": true });
+                let resolved_src = {
+                    let p = PathBuf::from(source);
+                    if p.is_dir() || p.is_file() {
+                        std::fs::canonicalize(&p)
+                            .unwrap_or(p)
+                            .to_string_lossy()
+                            .into_owned()
+                    } else {
+                        source.clone()
+                    }
+                };
+                let body = json!({ "source": resolved_src, "accept_disclosure": true });
                 let val = daemon_json(
                     reqwest::Method::POST,
                     &format!("{base}/v2/modules/install"),
                     Some(&body),
-                    5000,
+                    60_000,
                 )?;
-                print_out(cli.json, &val, &format!("Installed module live from {}", abs.display()));
+                print_out(cli.json, &val, &format!("Installed module live from {resolved_src}"));
                 return Ok(());
             }
-            let dm = reg.install_from_dir(path)?;
+            let dm = reg.install_from_source(source)?;
             let val = json!({ "installed": true, "module": dm, "preview": preview });
             print_out(
                 cli.json,
@@ -989,6 +1017,68 @@ fn handle_modules(
                     dm.manifest.version,
                     dm.path.display()
                 ),
+            );
+            Ok(())
+        }
+        ModulesCmd::Uninstall { id } => {
+            if let Some(base) = live {
+                let val = daemon_json(
+                    reqwest::Method::DELETE,
+                    &format!("{base}/v2/modules/{id}"),
+                    None,
+                    5000,
+                )?;
+                print_out(cli.json, &val, &format!("Uninstalled module {id:?} (live)"));
+                return Ok(());
+            }
+            let tier = reg.uninstall_module(id)?;
+            print_out(
+                cli.json,
+                &json!({ "uninstalled": true, "id": id, "removed_tier": tier }),
+                &format!("Uninstalled module {id:?} (tier: {tier:?})"),
+            );
+            Ok(())
+        }
+        ModulesCmd::Update {
+            id,
+            inspect_only,
+            accept_disclosure,
+        } => {
+            let (origin, preview) = reg.preview_update(id)?;
+            if *inspect_only || !*accept_disclosure {
+                let val = json!({
+                    "updated": false,
+                    "requires_acceptance": !*inspect_only,
+                    "origin": origin,
+                    "preview": preview,
+                });
+                let mut lines = vec![format!("Updating {id} from {}", origin.source)];
+                lines.extend(preview.disclosure.summary_lines.clone());
+                if let Some(diff) = &preview.update_diff {
+                    lines.push("--- Update Diff ---".into());
+                    lines.extend(diff.summary_lines.clone());
+                }
+                if !*inspect_only {
+                    lines.push("\nPass --accept-disclosure to apply this update.".into());
+                }
+                print_out(cli.json, &val, &lines.join("\n"));
+                return Ok(());
+            }
+            if let Some(base) = live {
+                let val = daemon_json(
+                    reqwest::Method::POST,
+                    &format!("{base}/v2/modules/{id}/update"),
+                    Some(&json!({ "accept_disclosure": true })),
+                    60_000,
+                )?;
+                print_out(cli.json, &val, &format!("Updated module {id:?} live from {}", origin.source));
+                return Ok(());
+            }
+            let dm = reg.update_module_from_source(id)?;
+            print_out(
+                cli.json,
+                &json!({ "updated": true, "module": dm, "origin": origin }),
+                &format!("Updated {} -> v{}", dm.manifest.id, dm.manifest.version),
             );
             Ok(())
         }
@@ -1417,29 +1507,75 @@ fn handle_preset(
             );
             Ok(())
         }
-        PresetCmd::Import { path } => {
+        PresetCmd::Import {
+            path,
+            install_missing,
+            accept_disclosure,
+        } => {
             let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
             let preset: SetupPreset =
                 serde_json::from_str(&text).map_err(|e| format!("invalid preset JSON: {e}"))?;
+            let mut auto_installed = Vec::new();
+            if *install_missing && *accept_disclosure {
+                let discovered = reg.discover();
+                for (id, src_ref) in &preset.module_sources {
+                    if !discovered.contains_key(id) {
+                        if let Some(src) = &src_ref.source {
+                            if let Ok(dm) = reg.install_from_source(src) {
+                                auto_installed.push(dm.manifest.id);
+                            }
+                        }
+                    }
+                }
+            }
             if let Some(base) = live {
-                let val = daemon_json(
+                let mut val = daemon_json(
                     reqwest::Method::POST,
                     &format!("{base}/v2/preset/import"),
                     Some(&serde_json::to_value(&preset).unwrap()),
                     5000,
                 )?;
-                print_out(cli.json, &val, &format!("Imported preset {:?} (live)", preset.name));
+                if !auto_installed.is_empty() {
+                    val["auto_installed"] = json!(auto_installed);
+                }
+                let missing_cnt = val["missing_modules"].as_array().map(|a| a.len()).unwrap_or(0);
+                let mut msg = format!("Imported preset {:?} (live)", preset.name);
+                if missing_cnt > 0 {
+                    msg.push_str(&format!(
+                        " — {missing_cnt} missing module(s) reported (re-run with --install-missing --accept-disclosure to fetch from source)"
+                    ));
+                }
+                print_out(cli.json, &val, &msg);
                 return Ok(());
             }
-            let state = reg.import_preset(&preset)?;
+            let report = reg.import_preset_detailed(&preset)?;
+            let mut msg = format!(
+                "Imported preset {:?} ({} modules configured)",
+                preset.name, report.imported_count
+            );
+            if !report.missing_modules.is_empty() {
+                msg.push_str(&format!(
+                    "\nMissing {} module(s):",
+                    report.missing_modules.len()
+                ));
+                for m in &report.missing_modules {
+                    msg.push_str(&format!(
+                        "\n  - {} (v{}, source: {})",
+                        m.id,
+                        m.version.as_deref().unwrap_or("?"),
+                        m.source.as_deref().unwrap_or("none")
+                    ));
+                }
+            }
             print_out(
                 cli.json,
-                &json!({ "imported": preset.name, "modules": state.modules.len() }),
-                &format!(
-                    "Imported preset {:?} ({} modules configured)",
-                    preset.name,
-                    state.modules.len()
-                ),
+                &json!({
+                    "imported": preset.name,
+                    "modules": report.imported_count,
+                    "missing_modules": report.missing_modules,
+                    "auto_installed": auto_installed,
+                }),
+                &msg,
             );
             Ok(())
         }

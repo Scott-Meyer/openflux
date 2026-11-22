@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type CuratedListSubscription,
   type InstallPreview,
+  type MediaLibraryFile,
   type ModuleCategory,
   type ModuleLogEntry,
   type PreviewFrameTimings,
@@ -10,7 +11,8 @@ import {
   v2Client,
 } from "../api/v2Client";
 
-const PINNED_TAGS = ["keys", "top-bar", "visual", "background", "companion", "3d", "prusa", "gaming", "core"];
+// Clean primary functional tags shown by default; all extra descriptive tags expand via "More tags ▾"
+const PRIMARY_TAGS = ["key-press", "top-bar", "background", "keys", "companion", "shader"];
 
 function moduleAllTags(m: V2ModuleRecord): string[] {
   const set = new Set<string>(m.manifest.tags ?? []);
@@ -56,7 +58,13 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
   const [lists, setLists] = useState<CuratedListSubscription[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [showMoreTags, setShowMoreTags] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(focusedModuleId ?? null);
+  const [mediaLibrary, setMediaLibrary] = useState<MediaLibraryFile[]>([]);
+  const [browsingList, setBrowsingList] = useState<{
+    name: string;
+    entries: Array<{ id: string; name: string; version: string; description: string; source: string }>;
+  } | null>(null);
   const [autoSyncKeyboard, setAutoSyncKeyboard] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -94,10 +102,15 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
 
   const refresh = useCallback(async () => {
     try {
-      const [mRes, lRes] = await Promise.all([v2Client.listModules(), v2Client.listCuratedLists()]);
+      const [mRes, lRes, mediaRes] = await Promise.all([
+        v2Client.listModules(),
+        v2Client.listCuratedLists(),
+        v2Client.listMediaLibrary().catch(() => ({ media_dir: "", files: [] })),
+      ]);
       setModules(mRes.modules);
       onModulesChanged?.(mRes.modules);
       setLists(lRes.lists);
+      setMediaLibrary(mediaRes.files ?? []);
       if (typeof mRes.modules_rev === "number") {
         modulesRevRef.current = mRes.modules_rev;
       }
@@ -319,15 +332,42 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
     }
   };
 
-  // Single unified tag list (popular/core tags first, then alphabetical — no weird super-tags!)
-  const allTags = Array.from(new Set(modules.flatMap(moduleAllTags))).sort((a, b) => {
-    const ia = PINNED_TAGS.indexOf(a);
-    const ib = PINNED_TAGS.indexOf(b);
-    if (ia !== -1 && ib !== -1) return ia - ib;
-    if (ia !== -1) return -1;
-    if (ib !== -1) return 1;
-    return a.localeCompare(b);
-  });
+  const handleUninstall = async (mod: V2ModuleRecord) => {
+    try {
+      await v2Client.uninstallModule(mod.id);
+      setNotice(`Uninstalled ${mod.manifest.name}`);
+      await refresh();
+      scheduleKeyboardSync();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleUpdateFromSource = async (mod: V2ModuleRecord) => {
+    try {
+      const res = await v2Client.updateModule(mod.id, false).catch(() => null);
+      if (res && res.preview) {
+        setInstallPath(mod.origin?.source ?? mod.id);
+        setInstallPreview(res.preview);
+        return;
+      }
+      // Fallback: inspect recorded source directly
+      if (mod.origin?.source) {
+        const prev = await v2Client.inspectModule(mod.origin.source);
+        setInstallPath(mod.origin.source);
+        setInstallPreview(prev.preview);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  // Primary expected tags shown directly; remaining descriptive tags tuck cleanly under "More tags ▾"
+  const discoveredTagSet = new Set(modules.flatMap(moduleAllTags));
+  const primaryTags = PRIMARY_TAGS.filter((t) => discoveredTagSet.has(t));
+  const extraTags = Array.from(discoveredTagSet)
+    .filter((t) => !PRIMARY_TAGS.includes(t))
+    .sort((a, b) => a.localeCompare(b));
 
   const q = searchQuery.trim().toLowerCase();
   const filtered = modules.filter((m) => {
@@ -464,60 +504,104 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
         </div>
       )}
 
-      {/* Single Unified Tag Filter Bar + Search (hidden in focused single-module top tab) */}
+      {/* Clean Primary Tag Filter Bar + expandable "More tags ▾" + Search */}
       {!focusedModuleId && (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <button
-            type="button"
-            onClick={() => setActiveTag(null)}
-            style={{
-              fontSize: 12,
-              padding: "6px 12px",
-              borderRadius: 99,
-              border: activeTag === null ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.14)",
-              background: activeTag === null ? "rgba(77, 225, 255, 0.18)" : "rgba(20, 24, 34, 0.7)",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            All ({modules.length})
-          </button>
-          {allTags.map((tag) => {
-            const cnt = modules.filter((m) => moduleAllTags(m).includes(tag)).length;
-            return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={() => setActiveTag(null)}
+              style={{
+                fontSize: 12,
+                padding: "6px 12px",
+                borderRadius: 99,
+                border: activeTag === null ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.14)",
+                background: activeTag === null ? "rgba(77, 225, 255, 0.18)" : "rgba(20, 24, 34, 0.7)",
+                color: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              All ({modules.length})
+            </button>
+            {primaryTags.map((tag) => {
+              const cnt = modules.filter((m) => moduleAllTags(m).includes(tag)).length;
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                  style={{
+                    fontSize: 12,
+                    padding: "6px 11px",
+                    borderRadius: 99,
+                    border: activeTag === tag ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.12)",
+                    background: activeTag === tag ? "rgba(77, 225, 255, 0.18)" : "rgba(255,255,255,0.04)",
+                    color: "#dbe7f5",
+                    cursor: "pointer",
+                  }}
+                >
+                  #{tag} ({cnt})
+                </button>
+              );
+            })}
+            {extraTags.length > 0 && (
               <button
-                key={tag}
                 type="button"
-                onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                onClick={() => setShowMoreTags((v) => !v)}
                 style={{
                   fontSize: 12,
-                  padding: "6px 11px",
+                  padding: "6px 10px",
                   borderRadius: 99,
-                  border: activeTag === tag ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.12)",
-                  background: activeTag === tag ? "rgba(77, 225, 255, 0.18)" : "rgba(255,255,255,0.04)",
-                  color: "#dbe7f5",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: showMoreTags ? "rgba(255,255,255,0.10)" : "transparent",
+                  color: "#a8c5e5",
                   cursor: "pointer",
                 }}
               >
-                #{tag} ({cnt})
+                {showMoreTags ? "Less ▴" : `More tags (${extraTags.length}) ▾`}
               </button>
-            );
-          })}
-          <input
-            type="search"
-            placeholder="Search modules…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              marginLeft: "auto",
-              minWidth: 210,
-              padding: "7px 10px",
-              borderRadius: 8,
-              border: "1px solid rgba(255,255,255,0.16)",
-              background: "rgba(12, 16, 24, 0.85)",
-              color: "#fff",
-            }}
-          />
+            )}
+            <input
+              type="search"
+              placeholder="Search modules…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                marginLeft: "auto",
+                minWidth: 210,
+                padding: "7px 10px",
+                borderRadius: 8,
+                border: "1px solid rgba(255,255,255,0.16)",
+                background: "rgba(12, 16, 24, 0.85)",
+                color: "#fff",
+              }}
+            />
+          </div>
+          {showMoreTags && extraTags.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              {extraTags.map((tag) => {
+                const cnt = modules.filter((m) => moduleAllTags(m).includes(tag)).length;
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                    style={{
+                      fontSize: 11,
+                      padding: "4px 9px",
+                      borderRadius: 99,
+                      border: activeTag === tag ? "1px solid #4de1ff" : "1px solid rgba(255,255,255,0.10)",
+                      background: activeTag === tag ? "rgba(77, 225, 255, 0.18)" : "rgba(255,255,255,0.03)",
+                      color: "#b7cce4",
+                      cursor: "pointer",
+                    }}
+                  >
+                    #{tag} ({cnt})
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -616,8 +700,40 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
                   <button type="button" onClick={() => void v2Client.reloadModule(selected.id)}>
                     Hot Reload
                   </button>
+                  {selected.origin && (
+                    <button type="button" onClick={() => void handleUpdateFromSource(selected)}>
+                      Update
+                    </button>
+                  )}
+                  {selected.tier !== "bundled" && (
+                    <button
+                      type="button"
+                      onClick={() => void handleUninstall(selected)}
+                      style={{ color: "#ff9ca6" }}
+                    >
+                      Uninstall
+                    </button>
+                  )}
                 </div>
               </div>
+
+              {(selected.dependency_issues ?? []).length > 0 && (
+                <div
+                  style={{
+                    padding: 8,
+                    borderRadius: 8,
+                    background: "rgba(240, 170, 40, 0.15)",
+                    border: "1px solid rgba(240, 170, 40, 0.4)",
+                    fontSize: 12,
+                    color: "#ffd98a",
+                  }}
+                >
+                  <strong>Dependency notices:</strong>
+                  {(selected.dependency_issues ?? []).map((di, idx) => (
+                    <div key={idx}>• {di.reason}</div>
+                  ))}
+                </div>
+              )}
 
               {(selected.manifest.actions ?? []).length > 0 && (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -678,26 +794,50 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
                             ))}
                           </select>
                         ) : field.kind === "file" ? (
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <input
-                              type="text"
-                              value={String(cur)}
-                              onChange={(e) => void handleSettingChange(selected, field.key, e.target.value)}
-                              style={{ flex: 1 }}
-                            />
-                            {pickFile && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  const picked = await pickFile(`Select ${field.label}`);
-                                  if (picked) {
-                                    await handleSettingChange(selected, field.key, picked);
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {mediaLibrary.length > 0 && (
+                              <select
+                                aria-label={`Choose from media library for ${field.label}`}
+                                value={
+                                  mediaLibrary.some((f) => f.path === String(cur) || f.name === String(cur))
+                                    ? mediaLibrary.find((f) => f.path === String(cur) || f.name === String(cur))?.path ?? ""
+                                    : ""
+                                }
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    void handleSettingChange(selected, field.key, e.target.value);
                                   }
                                 }}
                               >
-                                Browse…
-                              </button>
+                                <option value="">Choose from Media Library ({mediaLibrary.length} files)…</option>
+                                {mediaLibrary.map((f) => (
+                                  <option key={f.path} value={f.path}>
+                                    {f.name} ({(f.bytes / (1024 * 1024)).toFixed(1)} MB)
+                                  </option>
+                                ))}
+                              </select>
                             )}
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <input
+                                type="text"
+                                value={String(cur)}
+                                onChange={(e) => void handleSettingChange(selected, field.key, e.target.value)}
+                                style={{ flex: 1 }}
+                              />
+                              {pickFile && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const picked = await pickFile(`Select ${field.label}`);
+                                    if (picked) {
+                                      await handleSettingChange(selected, field.key, picked);
+                                    }
+                                  }}
+                                >
+                                  Browse…
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ) : field.kind === "color" ? (
                           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -835,10 +975,10 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
             gap: 8,
           }}
         >
-          <strong>Install / Update Module Folder (Transparent Disclosure)</strong>
+          <strong>Install Module (Git / GitHub / URL Archive / Local Folder / List ID)</strong>
           <div style={{ display: "flex", gap: 8 }}>
             <input
-              placeholder="/path/to/module-folder"
+              placeholder="github:user/repo, https://…tar.gz, /path/to/mod, or list ID"
               value={installPath}
               onChange={(e) => setInstallPath(e.target.value)}
               style={{ flex: 1 }}
@@ -847,9 +987,81 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
               Inspect & Install
             </button>
           </div>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>
-            Subscribed Curated Lists: {lists.map((l) => l.name).join(", ") || "None"}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 12 }}>
+            <span style={{ opacity: 0.7 }}>Curated Lists:</span>
+            {lists.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                style={{ fontSize: 11, padding: "2px 8px" }}
+                onClick={async () => {
+                  try {
+                    const res = await v2Client.browseCuratedList(l.source);
+                    setBrowsingList(res.list);
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : String(e));
+                  }
+                }}
+              >
+                Browse {l.name}
+              </button>
+            ))}
           </div>
+          {browsingList && (
+            <div
+              style={{
+                marginTop: 6,
+                padding: 8,
+                borderRadius: 8,
+                background: "rgba(8, 12, 20, 0.85)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                maxHeight: 160,
+                overflowY: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                <strong>{browsingList.name}</strong>
+                <button type="button" style={{ fontSize: 10 }} onClick={() => setBrowsingList(null)}>
+                  Close
+                </button>
+              </div>
+              {browsingList.entries.map((entry) => (
+                <div
+                  key={entry.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 12,
+                  }}
+                >
+                  <div>
+                    <strong>{entry.name}</strong> <span style={{ opacity: 0.6 }}>v{entry.version}</span>
+                    <div style={{ fontSize: 11, opacity: 0.7 }}>{entry.description}</div>
+                  </div>
+                  <button
+                    type="button"
+                    style={{ fontSize: 11 }}
+                    onClick={async () => {
+                      setInstallPath(entry.source);
+                      try {
+                        const res = await v2Client.inspectModule(entry.source);
+                        setInstallPreview(res.preview);
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : String(e));
+                      }
+                    }}
+                  >
+                    Inspect & Install
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

@@ -44,7 +44,7 @@ const MAX_GLOW_INSTANCES: usize = 2048;
 struct CustomShaderUniforms {
     resolution: [f32; 2],
     time: f32,
-    _pad: f32,
+    dt: f32,
     params: [[f32; 4]; 4],
 }
 
@@ -78,6 +78,7 @@ struct GlowInstanceGpu {
 struct CachedCustomPipeline {
     mtime: Option<SystemTime>,
     pipeline: wgpu::RenderPipeline,
+    uses_scene_tex: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -112,9 +113,11 @@ pub struct Compositor {
 
     linear_sampler: wgpu::Sampler,
 
-    // Offscreen render targets
+    // Offscreen render targets (ping-pong pair for arbitrary chained module distortion shaders!)
     _scene_bg_tex: wgpu::Texture,
     scene_bg_view: wgpu::TextureView,
+    _scene_alt_tex: wgpu::Texture,
+    scene_alt_view: wgpu::TextureView,
     output_tex: wgpu::Texture,
     output_view: wgpu::TextureView,
 
@@ -135,8 +138,9 @@ pub struct Compositor {
     // Uniforms & instance storage
     custom_uniform_buf: wgpu::Buffer,
     custom_bgl: wgpu::BindGroupLayout,
+    custom_stage_bgl: wgpu::BindGroupLayout,
     custom_bg: wgpu::BindGroup,
-    custom_pipelines: HashMap<String, CachedCustomPipeline>,
+    custom_pipelines: HashMap<(String, bool), CachedCustomPipeline>,
 
     default_bg_pipeline: wgpu::RenderPipeline,
     blit_bgl: wgpu::BindGroupLayout,
@@ -255,6 +259,13 @@ impl Compositor {
             wgpu::TextureFormat::Rgba8Unorm,
             false,
         );
+        let (scene_alt_tex, scene_alt_view) = make_rt(
+            "scene-alt",
+            width,
+            height,
+            wgpu::TextureFormat::Rgba8Unorm,
+            false,
+        );
         let (output_tex, output_view) = make_rt(
             "output",
             width,
@@ -301,6 +312,14 @@ impl Compositor {
                 },
                 count: None,
             }],
+        });
+        let custom_stage_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("custom-stage-bgl"),
+            entries: &[
+                uniform_entry(0),
+                tex_entry(1, true),
+                sampler_entry(2),
+            ],
         });
         let custom_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("custom-bg"),
@@ -511,6 +530,8 @@ impl Compositor {
             linear_sampler,
             _scene_bg_tex: scene_bg_tex,
             scene_bg_view,
+            _scene_alt_tex: scene_alt_tex,
+            scene_alt_view,
             output_tex,
             output_view,
             wave_tex,
@@ -523,6 +544,7 @@ impl Compositor {
             canvas: Canvas2D::new(DISPLAY_WIDTH_PX, DISPLAY_HEIGHT_PX, font_bytes),
             custom_uniform_buf,
             custom_bgl,
+            custom_stage_bgl,
             custom_bg,
             custom_pipelines: HashMap::new(),
             default_bg_pipeline,
@@ -688,24 +710,60 @@ impl Compositor {
         self.bg_rgba_tex = Some((path.to_string(), tex, view));
     }
 
-    fn get_or_compile_custom_shader(&mut self, shader_path: &str) -> Option<&wgpu::RenderPipeline> {
+    fn get_or_compile_custom_shader(
+        &mut self,
+        shader_path: &str,
+        alpha_blend: bool,
+    ) -> Option<&CachedCustomPipeline> {
+        let key = (shader_path.to_string(), alpha_blend);
         let mtime = std::fs::metadata(shader_path).ok().and_then(|m| m.modified().ok());
-        let needs_build = match self.custom_pipelines.get(shader_path) {
+        let needs_build = match self.custom_pipelines.get(&key) {
             None => true,
             Some(c) => c.mtime != mtime,
         };
         if needs_build {
             let source = std::fs::read_to_string(shader_path).ok()?;
             let lower = shader_path.to_ascii_lowercase();
+            let is_glsl = lower.ends_with(".glsl") || lower.ends_with(".frag");
+
+            // Universal OpenFlux GLSL shaders implement `vec4 effect_main(vec2 uv)` and can
+            // call `sample_scene(vec2 uv)` identically on Metal/Vulkan/DX12 AND RK3566 GLES2!
+            let (wrapped_source, uses_scene_tex) = if is_glsl && source.contains("effect_main") {
+                let wrapped = format!(
+                    "#version 450\n\
+                     layout(location = 0) in vec2 v_uv;\n\
+                     layout(location = 0) out vec4 out_color;\n\
+                     layout(set = 0, binding = 0) uniform OpenFluxUniforms {{\n\
+                         vec2 u_resolution;\n\
+                         float u_time;\n\
+                         float u_dt;\n\
+                         vec4 u_params[4];\n\
+                     }};\n\
+                     layout(set = 0, binding = 1) uniform texture2D u_scene_tex;\n\
+                     layout(set = 0, binding = 2) uniform sampler u_scene_samp;\n\
+                     vec4 sample_scene(vec2 uv) {{\n\
+                         return texture(sampler2D(u_scene_tex, u_scene_samp), clamp(uv, vec2(0.001), vec2(0.999)));\n\
+                     }}\n\
+                     {source}\n\
+                     void main() {{\n\
+                         out_color = effect_main(v_uv);\n\
+                     }}\n"
+                );
+                (wrapped, true)
+            } else {
+                (source, false)
+            };
+
+            self.device.push_error_scope(wgpu::ErrorFilter::Validation);
             let fs_vert = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("custom-vs"),
                 source: wgpu::ShaderSource::Wgsl(FS_TRIANGLE_VERT.into()),
             });
-            let fs_mod = if lower.ends_with(".glsl") || lower.ends_with(".frag") {
+            let fs_mod = if is_glsl {
                 self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
                     label: Some(shader_path),
                     source: wgpu::ShaderSource::Glsl {
-                        shader: source.into(),
+                        shader: wrapped_source.into(),
                         stage: wgpu::naga::ShaderStage::Fragment,
                         defines: Default::default(),
                     },
@@ -713,19 +771,20 @@ impl Compositor {
             } else {
                 self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
                     label: Some(shader_path),
-                    source: wgpu::ShaderSource::Wgsl(source.into()),
+                    source: wgpu::ShaderSource::Wgsl(wrapped_source.into()),
                 })
             };
-            let entry = if lower.ends_with(".glsl") || lower.ends_with(".frag") {
-                "main"
+            let entry = if is_glsl { "main" } else { "fs_main" };
+            let bgl = if uses_scene_tex {
+                &self.custom_stage_bgl
             } else {
-                "fs_main"
+                &self.custom_bgl
             };
             let layout = self
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("custom-layout"),
-                    bind_group_layouts: &[&self.custom_bgl],
+                    bind_group_layouts: &[bgl],
                     push_constant_ranges: &[],
                 });
             let pipeline = self
@@ -744,7 +803,11 @@ impl Compositor {
                         entry_point: Some(entry),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: wgpu::TextureFormat::Rgba8Unorm,
-                            blend: None,
+                            blend: if alpha_blend {
+                                Some(wgpu::BlendState::ALPHA_BLENDING)
+                            } else {
+                                None
+                            },
                             write_mask: wgpu::ColorWrites::ALL,
                         })],
                         compilation_options: Default::default(),
@@ -755,10 +818,38 @@ impl Compositor {
                     multiview: None,
                     cache: None,
                 });
-            self.custom_pipelines
-                .insert(shader_path.to_string(), CachedCustomPipeline { mtime, pipeline });
+            let err = pollster::block_on(self.device.pop_error_scope());
+            if let Some(e) = err {
+                eprintln!("[openflux-compositor] shader compile error for {shader_path}: {e}");
+                return None;
+            }
+            self.custom_pipelines.insert(
+                key.clone(),
+                CachedCustomPipeline {
+                    mtime,
+                    pipeline,
+                    uses_scene_tex,
+                },
+            );
         }
-        self.custom_pipelines.get(shader_path).map(|c| &c.pipeline)
+        self.custom_pipelines.get(&key)
+    }
+
+    fn make_custom_pass_uniform_buf(&self, scene: &FrameScene, params: [[f32; 4]; 4]) -> wgpu::Buffer {
+        let u = CustomShaderUniforms {
+            resolution: [self.width as f32, self.height as f32],
+            time: scene.time_sec,
+            dt: scene.dt_sec.max(0.001),
+            params,
+        };
+        let buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("custom-pass-u"),
+            size: std::mem::size_of::<CustomShaderUniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.queue.write_buffer(&buf, 0, bytemuck::bytes_of(&u));
+        buf
     }
 
     /// Executes the complete 7-stage GPU pipeline for `scene` and updates `output_tex`.
@@ -778,21 +869,27 @@ impl Compositor {
             self.ensure_bg_image(bg_path);
         }
 
-        // Precompile custom background shader if requested.
-        let custom_bg_path = scene
-            .background_shaders
-            .last()
-            .map(|s| (s.shader_path.clone(), s.params));
-        if let Some((ref path, _)) = custom_bg_path {
-            let _ = self.get_or_compile_custom_shader(path);
+        // Precompile ALL active module shaders across background, distortion, and under_key stages!
+        for s in &scene.background_shaders {
+            let _ = self.get_or_compile_custom_shader(&s.shader_path, false);
+        }
+        for s in &scene.distortion_shaders {
+            let _ = self.get_or_compile_custom_shader(&s.shader_path, false);
+        }
+        for s in &scene.under_key_shaders {
+            let _ = self.get_or_compile_custom_shader(&s.shader_path, true);
         }
 
-        // Prepare uniforms
+        // Prepare default background uniforms
         let bg_uniforms = CustomShaderUniforms {
             resolution: [self.width as f32, self.height as f32],
             time: scene.time_sec,
-            _pad: 0.0,
-            params: custom_bg_path.as_ref().map(|(_, p)| *p).unwrap_or([[0.0; 4]; 4]),
+            dt: scene.dt_sec.max(0.001),
+            params: scene
+                .background_shaders
+                .first()
+                .map(|s| s.params)
+                .unwrap_or([[0.0; 4]; 4]),
         };
         self.queue
             .write_buffer(&self.custom_uniform_buf, 0, bytemuck::bytes_of(&bg_uniforms));
@@ -938,7 +1035,11 @@ impl Compositor {
                 label: Some("openflux-frame"),
             });
 
-        // Stage 0: Background -> scene_bg_view
+        // Ping-pong index: `cur_is_alt == false` means live scene sits in `scene_bg_view`,
+        // `cur_is_alt == true` means live scene sits in `scene_alt_view`.
+        let mut cur_is_alt = false;
+
+        // Stage 0: Background (NV12 video / RGBA image / fallback) -> scene_bg_view
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("stage-0-bg"),
@@ -995,16 +1096,6 @@ impl Compositor {
                 pass.set_pipeline(&self.blit_pipeline);
                 pass.set_bind_group(0, &bg, &[]);
                 pass.draw(0..3, 0..1);
-            } else if let Some((ref path, _)) = custom_bg_path {
-                if let Some(cached) = self.custom_pipelines.get(path) {
-                    pass.set_pipeline(&cached.pipeline);
-                    pass.set_bind_group(0, &self.custom_bg, &[]);
-                    pass.draw(0..3, 0..1);
-                } else {
-                    pass.set_pipeline(&self.default_bg_pipeline);
-                    pass.set_bind_group(0, &self.custom_bg, &[]);
-                    pass.draw(0..3, 0..1);
-                }
             } else {
                 pass.set_pipeline(&self.default_bg_pipeline);
                 pass.set_bind_group(0, &self.custom_bg, &[]);
@@ -1012,14 +1103,117 @@ impl Compositor {
             }
         }
 
-        // Stage 2 + 3 + 4..6: Refracted Background -> Under-Key Glows & Particles -> 2D Overlay
+        // Stage 0b: Execute ALL custom module `background` shaders in order (ping-ponged so later
+        // shaders can even sample earlier background layers via `sample_scene(uv)`!)
+        let has_media_bg = self.nv12_y_tex.is_some() || self.bg_rgba_tex.is_some();
+        if !has_media_bg {
+            for s in &scene.background_shaders {
+                let key = (s.shader_path.clone(), false);
+                let Some(cached) = self.custom_pipelines.get(&key) else { continue };
+                let u_buf = self.make_custom_pass_uniform_buf(scene, s.params);
+                let (src_view, dst_view) = if cur_is_alt {
+                    (&self.scene_alt_view, &self.scene_bg_view)
+                } else {
+                    (&self.scene_bg_view, &self.scene_alt_view)
+                };
+                let bg = if cached.uses_scene_tex {
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("custom-bg-stage"),
+                        layout: &self.custom_stage_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry { binding: 0, resource: u_buf.as_entire_binding() },
+                            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(src_view) },
+                            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.linear_sampler) },
+                        ],
+                    })
+                } else {
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("custom-bg-legacy"),
+                        layout: &self.custom_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry { binding: 0, resource: u_buf.as_entire_binding() },
+                        ],
+                    })
+                };
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("stage-0b-custom-bg"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: dst_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    ..Default::default()
+                });
+                pass.set_pipeline(&cached.pipeline);
+                pass.set_bind_group(0, &bg, &[]);
+                pass.draw(0..3, 0..1);
+                cur_is_alt = !cur_is_alt;
+            }
+        }
+
+        // Stage 1b: Execute ALL custom module `distortion` shaders in sequence (ping-ponging live video/bg!)
+        for s in &scene.distortion_shaders {
+            let key = (s.shader_path.clone(), false);
+            let Some(cached) = self.custom_pipelines.get(&key) else { continue };
+            let u_buf = self.make_custom_pass_uniform_buf(scene, s.params);
+            let (src_view, dst_view) = if cur_is_alt {
+                (&self.scene_alt_view, &self.scene_bg_view)
+            } else {
+                (&self.scene_bg_view, &self.scene_alt_view)
+            };
+            let bg = if cached.uses_scene_tex {
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("custom-dist-stage"),
+                    layout: &self.custom_stage_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry { binding: 0, resource: u_buf.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(src_view) },
+                        wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.linear_sampler) },
+                    ],
+                })
+            } else {
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("custom-dist-legacy"),
+                    layout: &self.custom_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry { binding: 0, resource: u_buf.as_entire_binding() },
+                    ],
+                })
+            };
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("stage-1b-custom-distortion"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: dst_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            pass.set_pipeline(&cached.pipeline);
+            pass.set_bind_group(0, &bg, &[]);
+            pass.draw(0..3, 0..1);
+            cur_is_alt = !cur_is_alt;
+        }
+
+        // Stage 2 + 3 + 4..6: Water Refraction (with bg_dimming + top_fade) -> Custom Under-Key Shaders -> Glows & Particles -> 2D Overlay
+        let final_scene_view = if cur_is_alt {
+            &self.scene_alt_view
+        } else {
+            &self.scene_bg_view
+        };
         let refract_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("refract-bg"),
             layout: &self.refract_bgl,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&self.scene_bg_view),
+                    resource: wgpu::BindingResource::TextureView(final_scene_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -1050,6 +1244,34 @@ impl Compositor {
             ],
         });
 
+        // Prepare bind groups for custom `under_key` shaders before starting the final render pass
+        let mut under_key_binds: Vec<((String, bool), wgpu::BindGroup)> = Vec::new();
+        for s in &scene.under_key_shaders {
+            let key = (s.shader_path.clone(), true);
+            let Some(cached) = self.custom_pipelines.get(&key) else { continue };
+            let u_buf = self.make_custom_pass_uniform_buf(scene, s.params);
+            let bg = if cached.uses_scene_tex {
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("custom-under-stage"),
+                    layout: &self.custom_stage_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry { binding: 0, resource: u_buf.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(final_scene_view) },
+                        wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.linear_sampler) },
+                    ],
+                })
+            } else {
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("custom-under-legacy"),
+                    layout: &self.custom_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry { binding: 0, resource: u_buf.as_entire_binding() },
+                    ],
+                })
+            };
+            under_key_binds.push((key, bg));
+        }
+
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("stage-2-to-6-final"),
@@ -1064,10 +1286,19 @@ impl Compositor {
                 ..Default::default()
             });
 
-            // Stage 2: Refracted & specular-lit background
+            // Stage 2: Refracted & specular-lit background (plus bg_dimming & top-bar shade)
             pass.set_pipeline(&self.refract_pipeline);
             pass.set_bind_group(0, &refract_bg, &[]);
             pass.draw(0..3, 0..1);
+
+            // Stage 2b: Custom module `under_key` shaders (alpha-blended cleanly under keys & glows!)
+            for (key, bg) in &under_key_binds {
+                if let Some(cached) = self.custom_pipelines.get(key) {
+                    pass.set_pipeline(&cached.pipeline);
+                    pass.set_bind_group(0, bg, &[]);
+                    pass.draw(0..3, 0..1);
+                }
+            }
 
             // Stage 3: Instanced Key Glows + SDF Bouncing/Refracting Particles
             if !instances.is_empty() {

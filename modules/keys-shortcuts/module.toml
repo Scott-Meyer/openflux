@@ -5,6 +5,7 @@ description = "Classic v1 dynamic shortcut icons (Copy, Paste, Cut, Undo, Save, 
 author = "OpenFlux"
 category = "effect"
 tags = ["keys", "shortcuts", "icons", "productivity"]
+depends = [{ role = "keys_renderer" }]
 stages = ["under_key"]
 host_requirement = "optional"
 slot_capable = false

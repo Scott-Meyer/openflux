@@ -101,6 +101,10 @@ impl<'a> CommandHooks for LoopHooks<'a> {
     fn on_live_data(&mut self, data: &[u8]) {
         self.ipc.feed_live_data(data);
     }
+
+    fn drain_bus_frames(&mut self) -> Vec<u8> {
+        self.ipc.drain_host_bus_frames()
+    }
 }
 
 /// Queues the next OUT-endpoint read. A vanished endpoint drops the transfers in flight in both

@@ -5,6 +5,7 @@ description = "Publishes live game abilities, sweeping cooldowns, charge counts,
 author = "OpenFlux"
 category = "effect"
 tags = ["gaming", "streamdeck", "abilities", "cooldowns", "keys"]
+depends = [{ role = "keys_renderer" }]
 stages = ["under_key"]
 host_requirement = "optional"
 slot_capable = false

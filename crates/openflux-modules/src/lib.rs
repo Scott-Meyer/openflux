@@ -3,6 +3,7 @@
 
 pub mod disclosure;
 pub mod host_process;
+pub mod installer;
 pub mod ir;
 pub mod lua_runtime;
 pub mod manifest;
@@ -13,6 +14,10 @@ pub use disclosure::{
     UpdateDisclosureDiff,
 };
 pub use host_process::HostProcessManager;
+pub use installer::{
+    check_module_dependencies, fetch_curated_list_document, stage_module_source, DependencyIssue,
+    ModuleOrigin, StagedModuleSource,
+};
 pub use ir::{
     DrawCommand, FrameScene, KeyGlowCmd, KeyGlowShape, ParticleSpawnCmd, ShaderPassCmd, TextAlign,
     WaveFieldParams, WaveImpulseCmd,
@@ -20,9 +25,11 @@ pub use ir::{
 pub use lua_runtime::{parse_hex_color, ModuleLogEntry, ModuleRuntime, RuntimeModuleStatus};
 pub use manifest::{
     ChannelDeclarations, CompositorStage, Entrypoints, HostRequirement, ManifestError,
-    ModuleActionField, ModuleCategory, ModuleManifest, ModuleUiSpec, SettingField, SettingKind,
+    ModuleActionField, ModuleCategory, ModuleDependency, ModuleManifest, ModuleUiSpec,
+    SettingField, SettingKind, TopBarSpec,
 };
 pub use registry::{
     CuratedListDocument, CuratedListEntry, CuratedListSubscription, DiscoveredModule,
-    InstallPreview, ModuleInstanceState, ModuleRegistry, ModuleTier, ModulesStateFile, SetupPreset,
+    InstallPreview, MissingPresetModule, ModuleInstanceState, ModuleRegistry, ModuleTier,
+    ModulesStateFile, PresetImportReport, PresetModuleRef, SetupPreset,
 };

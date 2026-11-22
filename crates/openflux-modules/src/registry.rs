@@ -2,10 +2,14 @@
 //! zero-upload local scaffolding, fork/duplicate protection, curated lists, and preset sharing.
 
 use crate::disclosure::{diff_disclosure, inspect_module_dir, DisclosureReport, UpdateDisclosureDiff};
+use crate::installer::{
+    check_module_dependencies, origin_from_staged, stage_module_source, DependencyIssue,
+    ModuleOrigin,
+};
 use crate::manifest::{ModuleCategory, ModuleManifest};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -86,13 +90,40 @@ pub struct CuratedListDocument {
     pub entries: Vec<CuratedListEntry>,
 }
 
-/// Shareable personal setup / preset with all secret fields stripped.
+/// Source & version reference embedded in a shareable `SetupPreset` so another user's Studio or
+/// CLI knows exactly where to fetch missing modules and which version was used.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PresetModuleRef {
+    pub version: String,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub tier: Option<ModuleTier>,
+}
+
+/// Shareable personal setup / preset with all secret fields stripped plus module source provenance.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SetupPreset {
     pub format_version: u32,
     pub name: String,
     pub description: String,
     pub modules: BTreeMap<String, ModuleInstanceState>,
+    #[serde(default)]
+    pub module_sources: BTreeMap<String, PresetModuleRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MissingPresetModule {
+    pub id: String,
+    pub version: Option<String>,
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresetImportReport {
+    pub state: ModulesStateFile,
+    pub imported_count: usize,
+    pub missing_modules: Vec<MissingPresetModule>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,16 +229,128 @@ impl ModuleRegistry {
     }
 
     /// Installs (or updates) a module from a local directory into `installed_dir`.
-    pub fn install_from_dir(&self, source_dir: &Path) -> Result<DiscoveredModule, String> {
+    /// Inspects ANY module source (local folder, Git/GitHub URL, HTTP/local archive, or curated
+    /// list entry ID) BEFORE installation, including an update diff if already installed.
+    pub fn preview_install_source(&self, source: &str) -> Result<InstallPreview, String> {
+        let state = self.load_state();
+        let staged = stage_module_source(source, &state.curated_lists, &self.bundled_dir)?;
+        self.preview_install(&staged.module_dir)
+    }
+
+    /// Installs (or updates) a module from ANY source (local dir, Git/GitHub URL, archive, or
+    /// curated list entry ID) into `installed_dir` and records `.openflux-source.json` provenance.
+    pub fn install_from_source(&self, source: &str) -> Result<DiscoveredModule, String> {
+        let state = self.load_state();
+        let staged = stage_module_source(source, &state.curated_lists, &self.bundled_dir)?;
         self.ensure_dirs().map_err(|e| e.to_string())?;
-        let manifest = ModuleManifest::load_from_dir(source_dir).map_err(|e| e.to_string())?;
+        let manifest = ModuleManifest::load_from_dir(&staged.module_dir).map_err(|e| e.to_string())?;
         let dest = self.installed_dir.join(&manifest.id);
-        copy_dir_atomic(source_dir, &dest)?;
+        copy_dir_atomic(&staged.module_dir, &dest)?;
+        let origin = origin_from_staged(&staged, &manifest);
+        let _ = origin.save(&dest);
         Ok(DiscoveredModule {
             manifest,
             tier: ModuleTier::Installed,
             path: dest,
         })
+    }
+
+    /// Installs (or updates) a module from a local directory into `installed_dir`.
+    pub fn install_from_dir(&self, source_dir: &Path) -> Result<DiscoveredModule, String> {
+        self.ensure_dirs().map_err(|e| e.to_string())?;
+        let manifest = ModuleManifest::load_from_dir(source_dir).map_err(|e| e.to_string())?;
+        let dest = self.installed_dir.join(&manifest.id);
+        copy_dir_atomic(source_dir, &dest)?;
+        let origin = ModuleOrigin {
+            source: source_dir.to_string_lossy().into_owned(),
+            kind: "local".into(),
+            subdir: None,
+            git_ref: None,
+            list_id: None,
+            installed_version: manifest.version.clone(),
+            installed_at_ms: crate::installer::now_ms(),
+        };
+        let _ = origin.save(&dest);
+        Ok(DiscoveredModule {
+            manifest,
+            tier: ModuleTier::Installed,
+            path: dest,
+        })
+    }
+
+    /// Uninstalls a user-installed or local module (bundled defaults are read-only and protected).
+    pub fn uninstall_module(&self, id: &str) -> Result<ModuleTier, String> {
+        let local_path = self.local_dir.join(id);
+        let installed_path = self.installed_dir.join(id);
+        let removed_tier = if local_path.is_dir() {
+            std::fs::remove_dir_all(&local_path).map_err(|e| e.to_string())?;
+            ModuleTier::Local
+        } else if installed_path.is_dir() {
+            std::fs::remove_dir_all(&installed_path).map_err(|e| e.to_string())?;
+            ModuleTier::Installed
+        } else if self.bundled_dir.join(id).is_dir() {
+            return Err(format!(
+                "module {id:?} is a bundled default and cannot be deleted (disable it instead)"
+            ));
+        } else {
+            return Err(format!("module {id:?} is not installed"));
+        };
+
+        // Remove persisted state entry only if no lower-tier fallback remains.
+        if !self.bundled_dir.join(id).is_dir() && !self.installed_dir.join(id).is_dir() {
+            let mut state = self.load_state();
+            state.modules.remove(id);
+            let _ = self.save_state(&state);
+        }
+        Ok(removed_tier)
+    }
+
+    /// Previews an update for an installed module from its recorded `.openflux-source.json`.
+    pub fn preview_update(&self, id: &str) -> Result<(ModuleOrigin, InstallPreview), String> {
+        let installed_path = self.installed_dir.join(id);
+        let origin = ModuleOrigin::load(&installed_path)
+            .ok_or_else(|| format!("module {id:?} has no recorded upstream source"))?;
+        let preview = self.preview_install_source(&origin.source)?;
+        Ok((origin, preview))
+    }
+
+    /// Updates an installed module in place from its recorded `.openflux-source.json` source.
+    /// Any local fork in `local_dir` remains untouched and continues to take priority.
+    pub fn update_module_from_source(&self, id: &str) -> Result<DiscoveredModule, String> {
+        let installed_path = self.installed_dir.join(id);
+        let origin = ModuleOrigin::load(&installed_path)
+            .ok_or_else(|| format!("module {id:?} has no recorded upstream source"))?;
+        self.install_from_source(&origin.source)
+    }
+
+    /// Reads recorded upstream origin metadata for a module, if installed from a source.
+    pub fn module_origin(&self, dm: &DiscoveredModule) -> Option<ModuleOrigin> {
+        ModuleOrigin::load(&dm.path)
+    }
+
+    /// Validates dependencies for all currently enabled modules.
+    pub fn check_all_dependencies(
+        &self,
+        discovered: &BTreeMap<String, DiscoveredModule>,
+        state: &ModulesStateFile,
+    ) -> BTreeMap<String, Vec<DependencyIssue>> {
+        let enabled_ids: BTreeSet<String> = state
+            .modules
+            .iter()
+            .filter(|(_, inst)| inst.enabled)
+            .map(|(id, _)| id.clone())
+            .collect();
+        let mut out = BTreeMap::new();
+        for (id, dm) in discovered {
+            if !enabled_ids.contains(id) {
+                continue;
+            }
+            let issues = check_module_dependencies(dm, discovered, &enabled_ids);
+            if !issues.is_empty() {
+                out.insert(id.clone(), issues);
+            }
+        }
+        out
     }
 
     /// Duplicates any bundled, installed, or local module into `local_dir/<new_id>` so the user
@@ -287,35 +430,57 @@ impl ModuleRegistry {
     }
 
     /// Exports the current setup as a shareable preset, automatically stripping any config keys
-    /// marked `secret = true` in each module's manifest.
+    /// marked `secret = true` in each module's manifest and embedding source+version provenance.
     pub fn export_preset(&self, name: &str, description: &str) -> SetupPreset {
         let state = self.load_state();
         let discovered = self.discover();
         let mut sanitized = BTreeMap::new();
+        let mut module_sources = BTreeMap::new();
 
         for (id, mut inst) in state.modules {
             if let Some(dm) = discovered.get(&id) {
                 for secret_key in dm.manifest.secret_keys() {
                     inst.config.remove(secret_key);
                 }
+                let origin_src = ModuleOrigin::load(&dm.path).map(|o| o.source);
+                module_sources.insert(
+                    id.clone(),
+                    PresetModuleRef {
+                        version: dm.manifest.version.clone(),
+                        source: origin_src,
+                        tier: Some(dm.tier),
+                    },
+                );
             }
             sanitized.insert(id, inst);
         }
 
         SetupPreset {
-            format_version: 2,
+            format_version: 3,
             name: name.to_string(),
             description: description.to_string(),
             modules: sanitized,
+            module_sources,
         }
     }
 
-    /// Imports a preset into the user's module state (preserving any existing local secret values).
-    pub fn import_preset(&self, preset: &SetupPreset) -> Result<ModulesStateFile, String> {
+    /// Imports a preset into the user's module state (preserving any existing local secret values)
+    /// and returns a detailed report listing any missing modules with their declared sources/versions.
+    pub fn import_preset_detailed(&self, preset: &SetupPreset) -> Result<PresetImportReport, String> {
         let mut current = self.load_state();
         let discovered = self.discover();
+        let mut missing_modules = Vec::new();
+        let mut imported_count = 0usize;
 
         for (id, incoming) in &preset.modules {
+            if !discovered.contains_key(id) {
+                let src_ref = preset.module_sources.get(id);
+                missing_modules.push(MissingPresetModule {
+                    id: id.clone(),
+                    version: src_ref.map(|r| r.version.clone()),
+                    source: src_ref.and_then(|r| r.source.clone()),
+                });
+            }
             let mut merged = incoming.clone();
             if let (Some(prev), Some(dm)) = (current.modules.get(id), discovered.get(id)) {
                 for secret_key in dm.manifest.secret_keys() {
@@ -327,9 +492,19 @@ impl ModuleRegistry {
                 }
             }
             current.modules.insert(id.clone(), merged);
+            imported_count += 1;
         }
         self.save_state(&current)?;
-        Ok(current)
+        Ok(PresetImportReport {
+            state: current,
+            imported_count,
+            missing_modules,
+        })
+    }
+
+    /// Imports a preset into the user's module state (preserving any existing local secret values).
+    pub fn import_preset(&self, preset: &SetupPreset) -> Result<ModulesStateFile, String> {
+        Ok(self.import_preset_detailed(preset)?.state)
     }
 }
 

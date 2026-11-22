@@ -641,6 +641,32 @@ impl LoadedLuaModule {
         }
         globals.set("keyboard", kb_tbl)?;
 
+        // Point Lua `require()` at this module's folder (and sibling `_shared` helpers)
+        // so modules can cleanly split logic across multiple `.lua` files and share libraries!
+        if let Ok(pkg) = globals.get::<Table>("package") {
+            let mod_root = self.discovered.path.to_string_lossy();
+            let shared_root = self
+                .discovered
+                .path
+                .parent()
+                .map(|p| p.join("_shared").to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let existing: String = pkg.get("path").unwrap_or_default();
+            let mut search = format!(
+                "{mod_root}/?.lua;{mod_root}/?/init.lua;{mod_root}/lib/?.lua"
+            );
+            if !shared_root.is_empty() {
+                search.push_str(&format!(
+                    ";{shared_root}/?.lua;{shared_root}/?/init.lua"
+                ));
+            }
+            if !existing.is_empty() {
+                search.push(';');
+                search.push_str(&existing);
+            }
+            let _ = pkg.set("path", search);
+        }
+
         // `module` table
         let mod_tbl = self.lua.create_table()?;
         let mod_id = self.discovered.manifest.id.clone();
@@ -831,6 +857,14 @@ impl ModuleRuntime {
         &self.geometry
     }
 
+    /// Returns true if any healthy loaded module declares the given capability role in `provides`.
+    pub fn has_role(&self, role: &str) -> bool {
+        self.modules.values().any(|m| {
+            m.healthy && m.discovered.manifest.provides.iter().any(|r| r == role)
+        })
+    }
+
+    /// Returns true if a specific module ID is currently loaded and healthy.
     pub fn has_module(&self, id: &str) -> bool {
         self.modules.get(id).is_some_and(|m| m.healthy)
     }
@@ -1040,8 +1074,8 @@ impl ModuleRuntime {
         let scene = Arc::new(Mutex::new(FrameScene {
             time_sec: self.elapsed_sec,
             dt_sec,
-            has_custom_keys_renderer: self.has_module("keys-renderer"),
-            has_custom_dock: self.has_module("dock-top-bar"),
+            has_custom_keys_renderer: self.has_role("keys_renderer"),
+            has_custom_dock: self.has_role("top_bar_dock"),
             ..Default::default()
         }));
 

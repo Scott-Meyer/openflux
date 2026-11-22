@@ -117,6 +117,16 @@ impl BridgeIpcClient {
         }
     }
 
+    pub fn send_bus_frame(&mut self, frame: &openflux_bus::WireFrame) {
+        let Some(ref mut s) = self.stream else {
+            return;
+        };
+        if let Ok(frame_val) = serde_json::to_value(frame) {
+            let line = format!("{{\"cmd\":\"bus_frame\",\"frame\":{frame_val}}}\n");
+            let _ = s.write_all(line.as_bytes());
+        }
+    }
+
     pub fn poll_lines(&mut self) -> Vec<String> {
         let Some(ref mut s) = self.stream else {
             return Vec::new();

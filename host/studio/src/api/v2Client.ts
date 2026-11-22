@@ -74,14 +74,41 @@ export interface ModuleInstanceState {
   config: Record<string, unknown>;
 }
 
+export interface ModuleOrigin {
+  source: string;
+  kind: string;
+  subdir?: string | null;
+  git_ref?: string | null;
+  list_id?: string | null;
+  installed_version: string;
+  installed_at_ms: number;
+}
+
+export interface DependencyIssue {
+  module_id: string;
+  required_id?: string | null;
+  required_role?: string | null;
+  min_version?: string | null;
+  optional: boolean;
+  reason: string;
+}
+
 export interface V2ModuleRecord {
   id: string;
   manifest: ModuleManifest;
   tier: ModuleTier;
   path: string;
   state: ModuleInstanceState;
+  origin?: ModuleOrigin | null;
+  dependency_issues?: DependencyIssue[];
   healthy: boolean;
   last_error?: string | null;
+}
+
+export interface MediaLibraryFile {
+  name: string;
+  path: string;
+  bytes: number;
 }
 
 export interface InspectedFile {
@@ -220,11 +247,37 @@ export const v2Client = {
     v2Call("POST", "/v2/modules/create", body),
   forkModule: (body: { source_id: string; new_id: string; name?: string; enable?: boolean }) =>
     v2Call("POST", "/v2/modules/fork", body),
-  inspectModule: (path: string) => v2Call<{ preview: InstallPreview }>("POST", "/v2/modules/inspect", { path }),
-  installModule: (path: string, accept_disclosure: boolean) =>
-    v2Call("POST", "/v2/modules/install", { path, accept_disclosure }),
+  inspectModule: (source: string) =>
+    v2Call<{ preview: InstallPreview }>("POST", "/v2/modules/inspect", { source }),
+  installModule: (source: string, accept_disclosure: boolean) =>
+    v2Call<{ installed: boolean; requires_acceptance?: boolean; preview: InstallPreview }>(
+      "POST",
+      "/v2/modules/install",
+      { source, accept_disclosure },
+    ),
+  uninstallModule: (id: string) =>
+    v2Call<{ uninstalled: boolean; id: string; removed_tier: string }>(
+      "DELETE",
+      `/v2/modules/${encodeURIComponent(id)}`,
+    ),
+  updateModule: (id: string, accept_disclosure: boolean) =>
+    v2Call<{ updated: boolean; requires_acceptance?: boolean; preview: InstallPreview }>(
+      "POST",
+      `/v2/modules/${encodeURIComponent(id)}/update`,
+      { accept_disclosure },
+    ),
   reloadModule: (id: string) => v2Call("POST", `/v2/modules/${encodeURIComponent(id)}/reload`, {}),
   listCuratedLists: () => v2Call<{ lists: CuratedListSubscription[] }>("GET", "/v2/lists"),
+  browseCuratedList: (source: string) =>
+    v2Call<{
+      list: {
+        name: string;
+        description: string;
+        entries: Array<{ id: string; name: string; version: string; description: string; source: string }>;
+      };
+    }>("GET", `/v2/lists/browse?source=${encodeURIComponent(source)}`),
+  listMediaLibrary: () =>
+    v2Call<{ media_dir: string; files: MediaLibraryFile[] }>("GET", "/v2/media/library"),
   addCuratedList: (sub: CuratedListSubscription) => v2Call("POST", "/v2/lists", sub),
   removeCuratedList: (id: string) => v2Call("DELETE", `/v2/lists/${encodeURIComponent(id)}`),
   exportPreset: (name: string, description: string) =>

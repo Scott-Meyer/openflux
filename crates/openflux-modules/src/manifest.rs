@@ -68,6 +68,60 @@ pub struct ChannelDeclarations {
     pub subscribes: Vec<String>,
     #[serde(default)]
     pub publishes: Vec<String>,
+    /// Optional semver of the message payload schemas this module publishes (e.g. `"1.0.0"`).
+    #[serde(default)]
+    pub schema_version: Option<String>,
+}
+
+/// Dependency declared by a module on another module ID or capability role (e.g. `keys_renderer`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ModuleDependency {
+    /// Short form: `"keys-renderer"` (required module ID) or `"role:keys_renderer"`.
+    Simple(String),
+    /// Structured form with optional role, minimum version, and optional flag.
+    Detailed {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(default)]
+        role: Option<String>,
+        #[serde(default)]
+        min_version: Option<String>,
+        #[serde(default)]
+        optional: bool,
+    },
+}
+
+impl ModuleDependency {
+    pub fn target_id(&self) -> Option<&str> {
+        match self {
+            Self::Simple(s) if !s.starts_with("role:") => Some(s.as_str()),
+            Self::Detailed { id: Some(i), .. } => Some(i.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn target_role(&self) -> Option<&str> {
+        match self {
+            Self::Simple(s) => s.strip_prefix("role:"),
+            Self::Detailed { role: Some(r), .. } => Some(r.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn min_version(&self) -> Option<&str> {
+        match self {
+            Self::Detailed { min_version, .. } => min_version.as_deref(),
+            Self::Simple(_) => None,
+        }
+    }
+
+    pub fn is_optional(&self) -> bool {
+        match self {
+            Self::Detailed { optional, .. } => *optional,
+            Self::Simple(_) => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,6 +221,13 @@ pub struct ModuleManifest {
     pub category: ModuleCategory,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Capability roles this module fulfills (e.g. `"keys_renderer"`, `"top_bar_dock"`).
+    /// Any fork or replacement declaring the same role seamlessly takes over without name checks.
+    #[serde(default)]
+    pub provides: Vec<String>,
+    /// Explicit dependencies on other module IDs or capability roles.
+    #[serde(default)]
+    pub depends: Vec<ModuleDependency>,
     #[serde(default)]
     pub stages: Vec<CompositorStage>,
     #[serde(default)]

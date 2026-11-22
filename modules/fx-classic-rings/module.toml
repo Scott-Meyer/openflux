@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Classic v1 expanding glowing rings radiating from pressed keys (now stackable)"
 author = "OpenFlux"
 category = "effect"
+tags = ["key-press", "classic", "rings", "visual"]
 stages = ["under_key"]
 host_requirement = "none"
 slot_capable = false

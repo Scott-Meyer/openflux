@@ -24,6 +24,7 @@ pub const BRIDGE_CMD_STAT_FILE: u8 = 105;
 pub const BRIDGE_CMD_SEND_LIVE_DATA: u8 = 200;
 pub const BRIDGE_CMD_GET_MEDIA_STATUS: u8 = 201;
 pub const BRIDGE_CMD_GET_SHORTCUT_CONTEXT: u8 = 202;
+pub const BRIDGE_CMD_POLL_BUS_FRAMES: u8 = 205;
 
 pub const FW_CMD_VERSION: u8 = 1;
 pub const FW_CMD_SEND_KEYMAP: u8 = 100;

@@ -5,6 +5,7 @@ description = "Core modular key-face compositor: resolves all `keys/providers/#`
 author = "OpenFlux"
 category = "effect"
 tags = ["keys", "core", "legends", "parallax"]
+provides = ["keys_renderer"]
 stages = ["under_key"]
 host_requirement = "none"
 slot_capable = false

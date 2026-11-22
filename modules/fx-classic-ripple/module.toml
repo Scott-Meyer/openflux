@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "Classic v1 expanding 2D line ripple across the keyboard (now stackable)"
 author = "OpenFlux"
 category = "effect"
+tags = ["key-press", "classic", "ripple", "visual"]
 stages = ["under_key"]
 host_requirement = "none"
 slot_capable = false

@@ -113,6 +113,86 @@ pub struct WorkerLoopState {
     pub clock_sync: Option<ClockSync>,
     /// Reads the host's clock zone; [`HostClock::current`] when unset.
     pub host_clock: Option<Box<dyn Fn() -> HostClock + Send>>,
+    /// Host broker subscription used for real-time Host -> Keyboard `WireFrame` streaming.
+    pub v2_bus_sub: Option<openflux_bus::Subscription>,
+    pub last_bus_poll_at: Option<Instant>,
+}
+
+/// Pumps bidirectional `openflux-bus` `WireFrame`s between the host daemon and the physical
+/// keyboard over USB (both one-off events and retained updates, strictly loop-free!).
+fn pump_v2_bus_bridge(
+    state: &Arc<ApiState>,
+    device: &dyn DeviceSink,
+    wstate: &mut WorkerLoopState,
+) {
+    let (has_bridge, _) = device.is_connected();
+    if !has_bridge {
+        return;
+    }
+    if state.check_keyboard_unreserved().is_err() {
+        return;
+    }
+
+    // Lazily attach a wildcard subscription on the host broker so EVERY one-off event & retained
+    // publish streams straight to the keyboard without waiting for the 5-second live_json snapshot.
+    if wstate.v2_bus_sub.is_none() {
+        wstate.v2_bus_sub = state
+            .v2
+            .broker
+            .subscribe(
+                "#",
+                openflux_bus::SubscribeOptions {
+                    replay_retained: false,
+                    ..Default::default()
+                },
+            )
+            .ok();
+    }
+
+    // 1. Host -> Keyboard: stream new host/module/CLI events immediately over LIVE_DATA_TYPE_BUS_FRAME
+    if let Some(ref sub) = wstate.v2_bus_sub {
+        for msg in sub.drain() {
+            let orig = msg.origin.as_deref().unwrap_or("");
+            if orig.starts_with("bridge:keyboard") {
+                continue;
+            }
+            if msg.topic.starts_with("layout/")
+                || msg.topic == "keyboard/geometry"
+                || msg.topic == "keyboard/keymap"
+                || msg.topic == openflux_bus::topics::HOST_SYSTEM_METRICS
+                || msg.topic == openflux_bus::topics::HOST_MEDIA_NOW_PLAYING
+                || msg.topic == openflux_bus::topics::HOST_WEATHER_CURRENT
+            {
+                continue;
+            }
+            let frame = openflux_bus::WireFrame::Publish {
+                topic: msg.topic,
+                payload: msg.payload,
+                retain: msg.retain,
+                ttl_ms: msg.expires_at_ms.map(|e| e.saturating_sub(msg.timestamp_ms)),
+                origin: Some(format!("bridge:host:{orig}")),
+            };
+            let _ = device.send_bus_frame(&frame);
+        }
+    }
+
+    // 2. Keyboard -> Host: poll queued keyboard-originated frames every ~50ms and apply locally
+    let poll_due = wstate
+        .last_bus_poll_at
+        .map(|t| t.elapsed() >= Duration::from_millis(50))
+        .unwrap_or(true);
+    if poll_due {
+        wstate.last_bus_poll_at = Some(Instant::now());
+        if let Ok(frames) = device.poll_bus_frames() {
+            for frame in frames {
+                let _ = openflux_bus::apply_remote_frame(
+                    &state.v2.broker,
+                    frame,
+                    "bridge:keyboard",
+                );
+            }
+        }
+    }
 }
 
 /// The host's time zone and UTC offset, which the keyboard's clock follows.
@@ -319,6 +399,7 @@ impl UsbWorkerHandle {
                     );
                     next_poll = Instant::now() + Duration::from_millis(250);
                 }
+                pump_v2_bus_bridge(&state_bg, &*device, &mut wstate);
                 thread::sleep(Duration::from_millis(20));
             }
             // Commands already queued still run before the worker exits.

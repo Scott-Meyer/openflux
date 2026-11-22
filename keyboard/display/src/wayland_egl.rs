@@ -837,23 +837,11 @@ vec3 sample_bg(vec2 uv) {
         return clamp(vec3(r, g, b), 0.0, 1.0);
     } else if (u_bg_mode == 2) {
         return texture2D(u_tex_rgba, suv).bgr;
+    } else if (u_bg_mode == 3) {
+        return texture2D(u_tex_rgba, suv).rgb;
     } else {
-        float t = u_time * 0.45;
-        vec2 p = vec2(suv.x * 1.777, suv.y);
-        float r1 = sin(p.x * 3.8 + t + sin(p.y * 4.2 - t * 0.6) * 0.9);
-        float r2 = sin(p.x * 6.5 - p.y * 3.2 - t * 1.15);
-        float r3 = cos((p.x + p.y) * 9.0 + t * 0.8);
-        float rib1 = smoothstep(-0.35, 0.95, r1 * 0.65 + r2 * 0.35);
-        float rib2 = smoothstep(0.1, 0.98, r2 * 0.55 + r3 * 0.45);
-        vec3 deep = vec3(0.025, 0.04, 0.09);
-        vec3 cyan = vec3(0.06, 0.42, 0.58);
-        vec3 emerald = vec3(0.07, 0.52, 0.44);
-        vec3 violet = vec3(0.36, 0.14, 0.56);
-        vec3 col = mix(deep, mix(cyan, emerald, suv.y), rib1 * 0.72);
-        col = mix(col, violet, rib2 * 0.42 * (0.35 + 0.65 * suv.x));
-        float gx = smoothstep(0.96, 1.0, abs(sin(suv.x * 34.0 + r1 * 0.35)));
-        float gy = smoothstep(0.96, 1.0, abs(sin(suv.y * 20.0 + r2 * 0.35)));
-        return clamp(col + vec3(0.16, 0.34, 0.48) * max(gx, gy) * 0.22, 0.0, 1.0);
+        // Neutral dark fallback when no background media or shader module is enabled
+        return vec3(0.025, 0.035, 0.06);
     }
 }
 
@@ -951,6 +939,11 @@ void main() {
 }
 "#;
 
+struct CachedV2Program {
+    mtime: Option<std::time::SystemTime>,
+    program: Option<u32>,
+}
+
 pub struct WaylandGpuPresenter {
     conn: Connection,
     queue: EventQueue<WlEglState>,
@@ -982,6 +975,9 @@ pub struct WaylandGpuPresenter {
     tex_v2_overlay: u32,
     v2_wave_uploaded: bool,
     v2_overlay_uploaded: bool,
+    v2_ping_fbo: [u32; 2],
+    v2_ping_tex: [u32; 2],
+    v2_custom_programs: std::collections::HashMap<String, CachedV2Program>,
     fbo_a: u32,
     tex_fbo_a: u32,
     fbo_b: u32,
@@ -1226,6 +1222,9 @@ impl WaylandGpuPresenter {
                 tex_v2_overlay,
                 v2_wave_uploaded: false,
                 v2_overlay_uploaded: false,
+                v2_ping_fbo: [0, 0],
+                v2_ping_tex: [0, 0],
+                v2_custom_programs: std::collections::HashMap::new(),
                 fbo_a: fbos[0],
                 tex_fbo_a,
                 fbo_b: fbos[1],
@@ -1672,11 +1671,153 @@ impl WaylandGpuPresenter {
         Ok(())
     }
 
+    unsafe fn ensure_v2_ping_fbos(&mut self) {
+        if self.v2_ping_fbo[0] != 0 {
+            return;
+        }
+        (self.gl.gl_gen_textures)(2, self.v2_ping_tex.as_mut_ptr());
+        (self.gl.gl_gen_framebuffers)(2, self.v2_ping_fbo.as_mut_ptr());
+        for i in 0..2 {
+            (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.v2_ping_tex[i]);
+            (self.gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR as i32);
+            (self.gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR as i32);
+            (self.gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE as i32);
+            (self.gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE as i32);
+            (self.gl.gl_tex_image_2d)(
+                GL_TEXTURE_2D,
+                0,
+                GL_RGBA as i32,
+                self.width,
+                self.height,
+                0,
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                std::ptr::null(),
+            );
+            (self.gl.gl_bind_framebuffer)(GL_FRAMEBUFFER, self.v2_ping_fbo[i]);
+            (self.gl.gl_framebuffer_texture_2d)(
+                GL_FRAMEBUFFER,
+                GL_COLOR_ATTACHMENT0,
+                GL_TEXTURE_2D,
+                self.v2_ping_tex[i],
+                0,
+            );
+        }
+        (self.gl.gl_bind_framebuffer)(GL_FRAMEBUFFER, 0);
+    }
+
+    unsafe fn get_or_compile_v2_program(&mut self, shader_path: &str) -> Option<u32> {
+        let mtime = std::fs::metadata(shader_path).ok().and_then(|m| m.modified().ok());
+        let needs_build = match self.v2_custom_programs.get(shader_path) {
+            None => true,
+            Some(c) => c.mtime != mtime,
+        };
+        if needs_build {
+            if let Some(old) = self.v2_custom_programs.remove(shader_path) {
+                if let Some(p) = old.program {
+                    (self.gl.gl_delete_program)(p);
+                }
+            }
+            let src = match std::fs::read_to_string(shader_path) {
+                Ok(s) => s,
+                Err(_) => {
+                    self.v2_custom_programs.insert(
+                        shader_path.to_string(),
+                        CachedV2Program { mtime, program: None },
+                    );
+                    return None;
+                }
+            };
+            let frag = if src.contains("effect_main") {
+                format!(
+                    "precision highp float;\n\
+                     varying vec2 v_uv;\n\
+                     uniform vec2 u_resolution;\n\
+                     uniform float u_time;\n\
+                     uniform float u_dt;\n\
+                     uniform vec4 u_params[4];\n\
+                     uniform sampler2D u_scene;\n\
+                     vec4 sample_scene(vec2 uv) {{\n\
+                         return texture2D(u_scene, clamp(uv, vec2(0.001), vec2(0.999)));\n\
+                     }}\n\
+                     {src}\n\
+                     void main() {{\n\
+                         gl_FragColor = effect_main(v_uv);\n\
+                     }}\n"
+                )
+            } else {
+                src
+            };
+            let compiled = match build_program(&self.gl, shader_path, VS_QUAD, &frag) {
+                Ok(prog) => Some(prog),
+                Err(e) => {
+                    eprintln!("[openflux-display] module shader compile error ({shader_path}): {e}");
+                    None
+                }
+            };
+            self.v2_custom_programs.insert(
+                shader_path.to_string(),
+                CachedV2Program {
+                    mtime,
+                    program: compiled,
+                },
+            );
+        }
+        self.v2_custom_programs.get(shader_path).and_then(|c| c.program)
+    }
+
+    unsafe fn run_v2_custom_shader(
+        &mut self,
+        cmd: &openflux_modules::ShaderPassCmd,
+        scene_tex: u32,
+        time_sec: f32,
+        dt_sec: f32,
+    ) -> bool {
+        let Some(prog) = self.get_or_compile_v2_program(&cmd.shader_path) else {
+            return false;
+        };
+        (self.gl.gl_use_program)(prog);
+        (self.gl.gl_active_texture)(GL_TEXTURE0);
+        (self.gl.gl_bind_texture)(GL_TEXTURE_2D, scene_tex);
+        let loc_scene = (self.gl.gl_get_uniform_location)(prog, c"u_scene".as_ptr());
+        if loc_scene >= 0 {
+            (self.gl.gl_uniform1i)(loc_scene, 0);
+        }
+        let loc_res = (self.gl.gl_get_uniform_location)(prog, c"u_resolution".as_ptr());
+        if loc_res >= 0 {
+            (self.gl.gl_uniform2f)(loc_res, self.width as f32, self.height as f32);
+        }
+        let loc_time = (self.gl.gl_get_uniform_location)(prog, c"u_time".as_ptr());
+        if loc_time >= 0 {
+            (self.gl.gl_uniform1f)(loc_time, time_sec);
+        }
+        let loc_dt = (self.gl.gl_get_uniform_location)(prog, c"u_dt".as_ptr());
+        if loc_dt >= 0 {
+            (self.gl.gl_uniform1f)(loc_dt, dt_sec);
+        }
+        let param_names = [
+            c"u_params[0]",
+            c"u_params[1]",
+            c"u_params[2]",
+            c"u_params[3]",
+        ];
+        for (i, cname) in param_names.iter().enumerate() {
+            let loc = (self.gl.gl_get_uniform_location)(prog, cname.as_ptr());
+            if loc >= 0 {
+                let p = cmd.params[i];
+                (self.gl.gl_uniform4f)(loc, p[0], p[1], p[2], p[3]);
+            }
+        }
+        self.draw_fullscreen_quad(prog);
+        true
+    }
+
     /// Renders the complete OpenFlux v2 frame natively on Mali-G52 GLES 2.0:
-    /// 1. Single-pass 3D chromatic water refraction + Fresnel specular over live `rkmpp` NV12 video
-    ///    (or RGBA image, or animated Aurora Velvet shader)
-    /// 2. Bounded-quad additive under-key glows (Analog Depth/Velocity + Classics) & SDF particles
-    /// 3. Straight-alpha 2D overlay (cached keycap legends + top-bar Lua widgets + roaming Idle Pet)
+    /// 1. Background (`rkmpp` NV12 video, RGBA image, or custom module `background` GLSL shaders)
+    /// 2. Arbitrary chained module `distortion` GLSL shaders + 3D water refraction over live video
+    /// 3. Alpha-blended custom module `under_key` GLSL shaders
+    /// 4. Bounded-quad additive under-key glows & Key-SDF particles
+    /// 5. Straight-alpha 2D overlay (key legends, top-bar widgets, companions)
     #[allow(clippy::too_many_arguments)]
     pub fn render_v2_and_swap(
         &mut self,
@@ -1684,6 +1825,7 @@ impl WaylandGpuPresenter {
         has_bg_media: bool,
         bg_dimming: f32,
         time_sec: f32,
+        dt_sec: f32,
         wave_enabled: bool,
         wave_w: i32,
         wave_h: i32,
@@ -1691,6 +1833,9 @@ impl WaylandGpuPresenter {
         refract_px: f32,
         specular: f32,
         tint: [f32; 4],
+        background_shaders: &[openflux_modules::ShaderPassCmd],
+        distortion_shaders: &[openflux_modules::ShaderPassCmd],
+        under_key_shaders: &[openflux_modules::ShaderPassCmd],
         glows: &[crate::v2_runtime::V2GlowDraw],
         overlay_rgba: &[u8],
         overlay_dirty: bool,
@@ -1736,7 +1881,71 @@ impl WaylandGpuPresenter {
                     }
                 }
 
-                // Pass 1: Background + 3D Water Refraction & Specular
+                // Pass 1: Background + Custom Module Shaders (`background`, `distortion`) + Water Refraction
+                let raw_bg_mode = if has_bg_media && self.bg_is_nv12 {
+                    1
+                } else if has_bg_media && self.bg_tex_dims.0 > 0 {
+                    2
+                } else {
+                    0
+                };
+                let run_bg_shaders = !has_bg_media && !background_shaders.is_empty();
+                let need_ping_pong = run_bg_shaders || !distortion_shaders.is_empty() || !under_key_shaders.is_empty();
+
+                let mut final_bg_mode = raw_bg_mode;
+                let mut final_rgba_tex = self.tex_bg_rgba;
+
+                if need_ping_pong {
+                    self.ensure_v2_ping_fbos();
+                    let mut cur: usize = 0;
+
+                    // Stage 1a: Render base media (or dark canvas) into v2_ping_fbo[0]
+                    (self.gl.gl_bind_framebuffer)(GL_FRAMEBUFFER, self.v2_ping_fbo[0]);
+                    (self.gl.gl_viewport)(0, 0, self.width, self.height);
+                    (self.gl.gl_disable)(GL_BLEND);
+                    (self.gl.gl_use_program)(self.prog_v2_refract);
+                    (self.gl.gl_active_texture)(GL_TEXTURE0);
+                    (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_y[self.nv12_idx]);
+                    (self.gl.gl_uniform1i)((self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tex_y".as_ptr()), 0);
+                    (self.gl.gl_active_texture)(GL_TEXTURE1);
+                    (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_uv[self.nv12_idx]);
+                    (self.gl.gl_uniform1i)((self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tex_uv".as_ptr()), 1);
+                    (self.gl.gl_active_texture)(GL_TEXTURE0 + 2);
+                    (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_bg_rgba);
+                    (self.gl.gl_uniform1i)((self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tex_rgba".as_ptr()), 2);
+                    (self.gl.gl_uniform1i)((self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_bg_mode".as_ptr()), raw_bg_mode);
+                    (self.gl.gl_uniform1f)((self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_wave_enabled".as_ptr()), 0.0);
+                    (self.gl.gl_uniform1f)((self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_bg_dim".as_ptr()), 0.0);
+                    (self.gl.gl_uniform4f)((self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tint".as_ptr()), 0.0, 0.0, 0.0, 0.0);
+                    self.draw_fullscreen_quad(self.prog_v2_refract);
+
+                    // Stage 1b: Custom module `background` shaders (when no media video/image overrides)
+                    if run_bg_shaders {
+                        for cmd in background_shaders {
+                            let next = 1 - cur;
+                            (self.gl.gl_bind_framebuffer)(GL_FRAMEBUFFER, self.v2_ping_fbo[next]);
+                            if self.run_v2_custom_shader(cmd, self.v2_ping_tex[cur], time_sec, dt_sec) {
+                                cur = next;
+                            }
+                        }
+                    }
+
+                    // Stage 1c: Custom module `distortion` shaders (bend live NV12 video or shaders!)
+                    for cmd in distortion_shaders {
+                        let next = 1 - cur;
+                        (self.gl.gl_bind_framebuffer)(GL_FRAMEBUFFER, self.v2_ping_fbo[next]);
+                        if self.run_v2_custom_shader(cmd, self.v2_ping_tex[cur], time_sec, dt_sec) {
+                            cur = next;
+                        }
+                    }
+
+                    (self.gl.gl_bind_framebuffer)(GL_FRAMEBUFFER, 0);
+                    (self.gl.gl_viewport)(0, 0, self.width, self.height);
+                    final_bg_mode = 3; // RGBA ping-pong texture
+                    final_rgba_tex = self.v2_ping_tex[cur];
+                }
+
+                // Final Background + 3D Water Refraction & Top-Bar Shade -> Backbuffer (0)
                 (self.gl.gl_disable)(GL_BLEND);
                 (self.gl.gl_use_program)(self.prog_v2_refract);
 
@@ -1753,7 +1962,7 @@ impl WaylandGpuPresenter {
                     1,
                 );
                 (self.gl.gl_active_texture)(GL_TEXTURE0 + 2);
-                (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_bg_rgba);
+                (self.gl.gl_bind_texture)(GL_TEXTURE_2D, final_rgba_tex);
                 (self.gl.gl_uniform1i)(
                     (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tex_rgba".as_ptr()),
                     2,
@@ -1764,17 +1973,9 @@ impl WaylandGpuPresenter {
                     (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tex_wave".as_ptr()),
                     3,
                 );
-
-                let bg_mode = if has_bg_media && self.bg_is_nv12 {
-                    1
-                } else if has_bg_media && self.bg_tex_dims.0 > 0 {
-                    2
-                } else {
-                    0
-                };
                 (self.gl.gl_uniform1i)(
                     (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_bg_mode".as_ptr()),
-                    bg_mode,
+                    final_bg_mode,
                 );
                 (self.gl.gl_uniform1f)(
                     (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_time".as_ptr()),
@@ -1809,6 +2010,20 @@ impl WaylandGpuPresenter {
                     tint[3],
                 );
                 self.draw_fullscreen_quad(self.prog_v2_refract);
+
+                // Pass 1d: Custom module `under_key` GLSL shaders (alpha-blended cleanly under keys!)
+                if !under_key_shaders.is_empty() {
+                    (self.gl.gl_enable)(GL_BLEND);
+                    (self.gl.gl_blend_func_separate)(
+                        GL_SRC_ALPHA,
+                        GL_ONE_MINUS_SRC_ALPHA,
+                        GL_ONE,
+                        GL_ONE_MINUS_SRC_ALPHA,
+                    );
+                    for cmd in under_key_shaders {
+                        let _ = self.run_v2_custom_shader(cmd, final_rgba_tex, time_sec, dt_sec);
+                    }
+                }
 
                 // Pass 2: Additive Under-Key Glows + SDF Bouncing/Refracting Particles
                 if !glows.is_empty() {
@@ -1978,6 +2193,15 @@ impl Drop for WaylandGpuPresenter {
             (self.gl.gl_delete_program)(self.prog_v2_refract);
             (self.gl.gl_delete_program)(self.prog_v2_glow);
             (self.gl.gl_delete_program)(self.prog_v2_overlay);
+            for c in self.v2_custom_programs.values() {
+                if let Some(p) = c.program {
+                    (self.gl.gl_delete_program)(p);
+                }
+            }
+            if self.v2_ping_fbo[0] != 0 {
+                (self.gl.gl_delete_framebuffers)(2, self.v2_ping_fbo.as_ptr());
+                (self.gl.gl_delete_textures)(2, self.v2_ping_tex.as_ptr());
+            }
             let fbos = [self.fbo_a, self.fbo_b];
             (self.gl.gl_delete_framebuffers)(2, fbos.as_ptr());
             let texs = [

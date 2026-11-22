@@ -6,7 +6,8 @@ use crate::usb::protocol::{
     build_named_payload, build_put_file_payload, build_set_time_payload, transact_io,
     UsbEndpointIo, UsbError, UsbTarget, BRIDGE_CMD_BRIDGE_VERSION, BRIDGE_CMD_DELETE_FILE,
     BRIDGE_CMD_DISPLAY_VERSION, BRIDGE_CMD_GET_FILE, BRIDGE_CMD_GET_FILE_LIST,
-    BRIDGE_CMD_OS_VERSION, BRIDGE_CMD_PUT_FILE, BRIDGE_CMD_SEND_LIVE_DATA,
+    BRIDGE_CMD_OS_VERSION, BRIDGE_CMD_POLL_BUS_FRAMES, BRIDGE_CMD_PUT_FILE,
+    BRIDGE_CMD_SEND_LIVE_DATA,
     BRIDGE_CMD_SET_SYSTEM_TIME, BRIDGE_CMD_STAT_FILE, BRIDGE_TARGET, FIRMWARE_TARGET,
     FW_CMD_FILE_FROM_HOST, FW_CMD_FILE_TO_HOST, FW_CMD_GET_KEYMAP, FW_CMD_GET_PRESS_REFINEMENT,
     FW_CMD_PRESS_REFINEMENT_STATUS, FW_CMD_PUT_PRESS_REFINEMENT, FW_CMD_SEND_KEYMAP,
@@ -190,6 +191,10 @@ impl KeyboardUsbClient {
     pub fn send_live_data(&self, hdlc_wire: &[u8]) -> Result<(), UsbError> {
         self.transact(BRIDGE_TARGET, BRIDGE_CMD_SEND_LIVE_DATA, hdlc_wire, 3000)?;
         Ok(())
+    }
+
+    pub fn poll_bus_frames(&self) -> Result<Vec<u8>, UsbError> {
+        self.transact(BRIDGE_TARGET, BRIDGE_CMD_POLL_BUS_FRAMES, &[], 1500)
     }
 
     pub fn get_file_list(&self, remote_dir: &str) -> Result<String, UsbError> {

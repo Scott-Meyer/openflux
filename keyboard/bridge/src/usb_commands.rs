@@ -6,7 +6,8 @@ use crate::ffs_aio::PendingTxStream;
 use crate::protocol::{
     BRIDGE_DISK_RESERVE_BYTES, BRIDGE_MAX_FILE_UPLOAD_BYTES, BRIDGE_PACKET_SIZE, BRIDGE_VERSION,
     CMD_DELETE_FILE, CMD_GET_FREE_DISK_SPACE, CMD_GET_LIST_OF_FILES, CMD_GET_MEDIA_STATUS,
-    CMD_GET_SHORTCUT_CONTEXT, CMD_REQUEST_BRIDGE_VERSION, CMD_REQUEST_DISPLAY_VERSION,
+    CMD_GET_SHORTCUT_CONTEXT, CMD_POLL_BUS_FRAMES, CMD_REQUEST_BRIDGE_VERSION,
+    CMD_REQUEST_DISPLAY_VERSION,
     CMD_REQUEST_OS_VERSION, CMD_SEND_FILE_FROM_HOST, CMD_SEND_FILE_TO_HOST, CMD_SEND_LIVE_DATA,
     CMD_SET_SYSTEM_TIME, CMD_STAT_FILE, DISPLAY_VERSION_FALLBACK, OS_VERSION_FALLBACK, RESP_ACK,
     RESP_NAK,
@@ -46,6 +47,9 @@ pub trait CommandHooks {
         }
     }
     fn on_live_data(&mut self, _data: &[u8]) {}
+    fn drain_bus_frames(&mut self) -> Vec<u8> {
+        b"[]".to_vec()
+    }
     fn clock_set(&mut self, utc_sec: i64) -> Result<(), String> {
         #[cfg(target_os = "linux")]
         {
@@ -717,6 +721,10 @@ pub fn bridge_handle_command(cmd: u8, payload: &[u8], hooks: &mut dyn CommandHoo
         CMD_GET_MEDIA_STATUS => send_text_file_or_default(hooks, &[MEDIA_STATUS_FILE], ""),
         CMD_GET_SHORTCUT_CONTEXT => {
             send_text_file_or_default(hooks, &[SHORTCUT_CONTEXT_FILE], "Unknown")
+        }
+        CMD_POLL_BUS_FRAMES => {
+            let payload = hooks.drain_bus_frames();
+            bridge_send_response(hooks, RESP_ACK, &payload);
         }
         _ => {
             bridge_send_response(hooks, RESP_NAK, &[]);
