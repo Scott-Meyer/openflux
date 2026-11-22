@@ -1136,16 +1136,11 @@ async fn keyboard_sideload(
     Json(body): Json<KeyboardSideloadBody>,
 ) -> impl IntoResponse {
     let ipk = body.ipk_path.clone();
-    let worker = state.worker.lock().unwrap().clone();
-    let res = if let Some(w) = worker {
-        w.sideload_ipk(ipk).await
-    } else {
-        let device = state.device.clone();
-        tokio::task::spawn_blocking(move || device.sideload_ipk(&ipk))
-            .await
-            .map_err(|e| e.to_string())
-            .and_then(|r| r)
-    };
+    let device = state.device.clone();
+    let res = tokio::task::spawn_blocking(move || device.sideload_ipk(&ipk))
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r);
     match res {
         Ok(msg) => (StatusCode::OK, Json(json!({ "ok": true, "message": msg }))),
         Err(e) => err_resp(StatusCode::BAD_GATEWAY, e),
@@ -1162,16 +1157,11 @@ async fn keyboard_flash_uf2(
     Json(body): Json<KeyboardFlashUf2Body>,
 ) -> impl IntoResponse {
     let uf2 = body.uf2_path.clone();
-    let worker = state.worker.lock().unwrap().clone();
-    let res = if let Some(w) = worker {
-        w.flash_uf2(uf2).await
-    } else {
-        let device = state.device.clone();
-        tokio::task::spawn_blocking(move || device.flash_uf2(&uf2))
-            .await
-            .map_err(|e| e.to_string())
-            .and_then(|r| r)
-    };
+    let device = state.device.clone();
+    let res = tokio::task::spawn_blocking(move || device.flash_uf2(&uf2))
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r);
     match res {
         Ok(msg) => (StatusCode::OK, Json(json!({ "ok": true, "message": msg }))),
         Err(e) => err_resp(StatusCode::BAD_GATEWAY, e),

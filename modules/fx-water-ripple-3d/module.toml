@@ -20,7 +20,7 @@ publishes = []
 key = "refraction"
 label = "Refraction Strength"
 kind = "number"
-default = 46.0
+default = 38.0
 min = 5.0
 max = 120.0
 
@@ -28,7 +28,7 @@ max = 120.0
 key = "specular"
 label = "3D Highlight"
 kind = "number"
-default = 0.72
+default = 0.55
 min = 0.0
 max = 1.5
 
@@ -36,17 +36,17 @@ max = 1.5
 key = "damping"
 label = "Wave Persistence"
 kind = "number"
-default = 0.986
-min = 0.92
+default = 0.935
+min = 0.88
 max = 0.996
 
 [[settings]]
 key = "speed"
 label = "Wave Speed"
 kind = "number"
-default = 0.44
+default = 0.76
 min = 0.15
-max = 0.75
+max = 0.85
 
 [[settings]]
 key = "tint"

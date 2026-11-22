@@ -392,7 +392,7 @@ impl KeyboardV2Display {
             for imp in &scene.wave_impulses {
                 self.wave.apply_impulse(imp);
             }
-            self.wave.step(&self.wave_params);
+            self.wave.step_dt(dt, &self.wave_params);
         }
 
         for sp in &scene.particle_spawns {

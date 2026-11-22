@@ -133,7 +133,8 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 "#;
 
 /// 3D Water Refraction & Fresnel Specular Composite pass:
-/// Warps `scene_bg` using heightfield gradients so any playing video/shader ripples in 3D!
+/// Reads the single-crest analytical `WaveField2D` normal/height texture (`RGBA8`: R=0.5+gx*0.5,
+/// G=0.5+gy*0.5, B=0.5+h*0.35) so Studio preview and the physical RK3566 keyboard match identically!
 pub const REFRACT_COMPOSITE_WGSL: &str = r#"
 struct RefractUniforms {
     texel: vec2<f32>,
@@ -156,16 +157,12 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
         return textureSample(bg_tex, samp, uv);
     }
 
-    let h_l = textureSample(wave_tex, samp, uv + vec2<f32>(-u.texel.x, 0.0)).r;
-    let h_r = textureSample(wave_tex, samp, uv + vec2<f32>( u.texel.x, 0.0)).r;
-    let h_u = textureSample(wave_tex, samp, uv + vec2<f32>(0.0, -u.texel.y)).r;
-    let h_d = textureSample(wave_tex, samp, uv + vec2<f32>(0.0,  u.texel.y)).r;
-    let h_c = textureSample(wave_tex, samp, uv).r;
-
-    let grad = vec2<f32>(h_r - h_l, h_d - h_u);
+    let w = textureSample(wave_tex, samp, uv);
+    let grad = (w.rg - vec2<f32>(0.5, 0.5)) * 2.0;
+    let h_c = (w.b - 0.5) / 0.35;
     let offset_uv = (grad * u.refraction_px) / u.resolution;
 
-    // Subtle RGB chromatic dispersion along steep wave slopes for crisp glass/water feel.
+    // Subtle RGB chromatic dispersion along the single outgoing crest for crisp glass/water feel.
     let uv_r = clamp(uv + offset_uv * 1.12, vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_g = clamp(uv + offset_uv,        vec2<f32>(0.001), vec2<f32>(0.999));
     let uv_b = clamp(uv + offset_uv * 0.88, vec2<f32>(0.001), vec2<f32>(0.999));
@@ -175,16 +172,13 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     let bg_b = textureSample(bg_tex, samp, uv_b).b;
     var col = vec3<f32>(bg_r, bg_g, bg_b);
 
-    // 3D surface normal & dual directional light specular + caustic glint.
     let n = normalize(vec3<f32>(-grad.x * 6.5, -grad.y * 6.5, 1.0));
     let light1 = normalize(vec3<f32>(-0.35, -0.55, 0.76));
     let light2 = normalize(vec3<f32>( 0.45,  0.30, 0.84));
     let view = vec3<f32>(0.0, 0.0, 1.0);
 
-    let h1 = normalize(light1 + view);
-    let h2 = normalize(light2 + view);
-    let spec1 = pow(max(dot(n, h1), 0.0), 42.0);
-    let spec2 = pow(max(dot(n, h2), 0.0), 28.0) * 0.45;
+    let spec1 = pow(max(dot(n, normalize(light1 + view)), 0.0), 42.0);
+    let spec2 = pow(max(dot(n, normalize(light2 + view)), 0.0), 28.0) * 0.45;
     let slope_mag = length(grad);
     let caustic = smoothstep(0.02, 0.25, slope_mag) * max(h_c, 0.0) * 0.35;
 

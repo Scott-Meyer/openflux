@@ -14,8 +14,9 @@ use crate::canvas2d::{Canvas2D, DEFAULT_ANSI_LABELS};
 use crate::particles::{KeySdfGrid, ParticleSystem};
 use crate::shaders::{
     BLIT_RGBA_WGSL, DEFAULT_BG_WGSL, FS_TRIANGLE_VERT, KEY_GLOW_WGSL, NV12_TO_RGBA_WGSL,
-    REFRACT_COMPOSITE_WGSL, WAVE_SIM_WGSL,
+    REFRACT_COMPOSITE_WGSL,
 };
+use crate::wave2d::{WaveField2D, WAVE2D_H, WAVE2D_W};
 use bytemuck::{Pod, Zeroable};
 use openflux_bus::{KeyboardGeometry, DISPLAY_HEIGHT_PX, DISPLAY_WIDTH_PX};
 use openflux_modules::{FrameScene, KeyGlowShape};
@@ -34,8 +35,8 @@ pub struct FrameTimings {
     pub wave_enabled: bool,
 }
 
-const WAVE_W: u32 = 480;
-const WAVE_H: u32 = 270;
+const WAVE_W: u32 = WAVE2D_W as u32;
+const WAVE_H: u32 = WAVE2D_H as u32;
 const MAX_GLOW_INSTANCES: usize = 2048;
 
 #[repr(C)]
@@ -45,25 +46,6 @@ struct CustomShaderUniforms {
     time: f32,
     _pad: f32,
     params: [[f32; 4]; 4],
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct WaveImpulseGpu {
-    pos_rad_force: [f32; 4],
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct WaveSimUniforms {
-    texel: [f32; 2],
-    damping: f32,
-    speed: f32,
-    aspect: f32,
-    impulse_count: u32,
-    _pad0: u32,
-    _pad1: u32,
-    impulses: [WaveImpulseGpu; 32],
 }
 
 #[repr(C)]
@@ -126,6 +108,7 @@ pub struct Compositor {
     geometry: KeyboardGeometry,
     sdf_grid: KeySdfGrid,
     particles: ParticleSystem,
+    wave: WaveField2D,
 
     linear_sampler: wgpu::Sampler,
 
@@ -135,10 +118,9 @@ pub struct Compositor {
     output_tex: wgpu::Texture,
     output_view: wgpu::TextureView,
 
-    // Wave simulation ping-pong textures
-    _wave_tex: [wgpu::Texture; 2],
-    wave_view: [wgpu::TextureView; 2],
-    wave_index: usize,
+    // Single-crest analytical 3D wave normal/height texture (384x216 RGBA8)
+    wave_tex: wgpu::Texture,
+    wave_view: wgpu::TextureView,
 
     // Background image / NV12 textures
     bg_rgba_tex: Option<(String, wgpu::Texture, wgpu::TextureView)>,
@@ -162,10 +144,6 @@ pub struct Compositor {
     alpha_blit_pipeline: wgpu::RenderPipeline,
     nv12_bgl: wgpu::BindGroupLayout,
     nv12_pipeline: wgpu::RenderPipeline,
-
-    wave_sim_uniform_buf: wgpu::Buffer,
-    wave_sim_bgl: wgpu::BindGroupLayout,
-    wave_sim_pipeline: wgpu::RenderPipeline,
 
     refract_uniform_buf: wgpu::Buffer,
     refract_bgl: wgpu::BindGroupLayout,
@@ -284,18 +262,11 @@ impl Compositor {
             wgpu::TextureFormat::Rgba8Unorm,
             true,
         );
-        let (wave_t0, wave_v0) = make_rt(
-            "wave-0",
+        let (wave_tex, wave_view) = make_rt(
+            "wave-2d",
             WAVE_W,
             WAVE_H,
-            wgpu::TextureFormat::Rgba16Float,
-            false,
-        );
-        let (wave_t1, wave_v1) = make_rt(
-            "wave-1",
-            WAVE_W,
-            WAVE_H,
-            wgpu::TextureFormat::Rgba16Float,
+            wgpu::TextureFormat::Rgba8Unorm,
             false,
         );
         let (overlay_tex, overlay_view) = make_rt(
@@ -392,31 +363,6 @@ impl Compositor {
             NV12_TO_RGBA_WGSL,
             &[&nv12_bgl],
             wgpu::TextureFormat::Rgba8Unorm,
-            None,
-        );
-
-        // Wave simulation pipeline
-        let wave_sim_uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("wave-sim-uniforms"),
-            size: std::mem::size_of::<WaveSimUniforms>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let wave_sim_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("wave-sim-bgl"),
-            entries: &[
-                tex_entry(0, true),
-                sampler_entry(1),
-                uniform_entry(2),
-            ],
-        });
-        let wave_sim_pipeline = build_fs_pipeline(
-            &device,
-            "wave-sim",
-            &fs_vert_mod,
-            WAVE_SIM_WGSL,
-            &[&wave_sim_bgl],
-            wgpu::TextureFormat::Rgba16Float,
             None,
         );
 
@@ -561,14 +507,14 @@ impl Compositor {
             geometry,
             sdf_grid,
             particles: ParticleSystem::default(),
+            wave: WaveField2D::new(),
             linear_sampler,
             _scene_bg_tex: scene_bg_tex,
             scene_bg_view,
             output_tex,
             output_view,
-            _wave_tex: [wave_t0, wave_t1],
-            wave_view: [wave_v0, wave_v1],
-            wave_index: 0,
+            wave_tex,
+            wave_view,
             bg_rgba_tex: None,
             nv12_y_tex: None,
             nv12_uv_tex: None,
@@ -585,9 +531,6 @@ impl Compositor {
             alpha_blit_pipeline,
             nv12_bgl,
             nv12_pipeline,
-            wave_sim_uniform_buf,
-            wave_sim_bgl,
-            wave_sim_pipeline,
             refract_uniform_buf,
             refract_bgl,
             refract_pipeline,
@@ -854,33 +797,32 @@ impl Compositor {
         self.queue
             .write_buffer(&self.custom_uniform_buf, 0, bytemuck::bytes_of(&bg_uniforms));
 
-        // Prepare wave simulation uniforms
-        let mut gpu_impulses = [WaveImpulseGpu {
-            pos_rad_force: [0.0; 4],
-        }; 32];
-        let imp_count = scene.wave_impulses.len().min(32);
-        for (i, imp) in scene.wave_impulses.iter().take(32).enumerate() {
-            gpu_impulses[i] = WaveImpulseGpu {
-                pos_rad_force: [
-                    imp.x / DISPLAY_WIDTH_PX as f32,
-                    imp.y / DISPLAY_HEIGHT_PX as f32,
-                    imp.radius / DISPLAY_HEIGHT_PX as f32,
-                    imp.force,
-                ],
-            };
+        // Step single-crest analytical 3D outgoing ripples & upload 384x216 normal/height map
+        if scene.distortion_enabled {
+            for imp in &scene.wave_impulses {
+                self.wave.apply_impulse(imp);
+            }
+            self.wave.step_dt(scene.dt_sec.max(0.001), &scene.wave_params);
+            self.queue.write_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &self.wave_tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &self.wave.rgba,
+                wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(WAVE_W * 4),
+                    rows_per_image: Some(WAVE_H),
+                },
+                wgpu::Extent3d {
+                    width: WAVE_W,
+                    height: WAVE_H,
+                    depth_or_array_layers: 1,
+                },
+            );
         }
-        let wave_u = WaveSimUniforms {
-            texel: [1.0 / WAVE_W as f32, 1.0 / WAVE_H as f32],
-            damping: scene.wave_params.damping,
-            speed: scene.wave_params.speed,
-            aspect: DISPLAY_WIDTH_PX as f32 / DISPLAY_HEIGHT_PX as f32,
-            impulse_count: imp_count as u32,
-            _pad0: 0,
-            _pad1: 0,
-            impulses: gpu_impulses,
-        };
-        self.queue
-            .write_buffer(&self.wave_sim_uniform_buf, 0, bytemuck::bytes_of(&wave_u));
 
         let refract_u = RefractUniforms {
             texel: [1.0 / WAVE_W as f32, 1.0 / WAVE_H as f32],
@@ -1061,46 +1003,6 @@ impl Compositor {
             }
         }
 
-        // Stage 1: Wave Heightfield Ping-Pong Simulation
-        let src_wave = self.wave_index;
-        let dst_wave = 1 - self.wave_index;
-        if scene.distortion_enabled {
-            let wave_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("wave-sim-bg"),
-                layout: &self.wave_sim_bgl,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&self.wave_view[src_wave]),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&self.linear_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: self.wave_sim_uniform_buf.as_entire_binding(),
-                    },
-                ],
-            });
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("stage-1-wave-sim"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.wave_view[dst_wave],
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-            pass.set_pipeline(&self.wave_sim_pipeline);
-            pass.set_bind_group(0, &wave_bg, &[]);
-            pass.draw(0..3, 0..1);
-            self.wave_index = dst_wave;
-        }
-
         // Stage 2 + 3 + 4..6: Refracted Background -> Under-Key Glows & Particles -> 2D Overlay
         let refract_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("refract-bg"),
@@ -1112,7 +1014,7 @@ impl Compositor {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&self.wave_view[self.wave_index]),
+                    resource: wgpu::BindingResource::TextureView(&self.wave_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
