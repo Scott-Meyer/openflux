@@ -13,9 +13,16 @@ struct CachedSensorTick {
     raw: Option<String>,
 }
 
+#[derive(Default, Clone)]
+struct CachedMediaControl {
+    at: Option<Instant>,
+    snap: MediaSnapshot,
+}
+
 pub struct MacOsBridge {
     last_hw: HardwareMetrics,
     cached_tick: CachedSensorTick,
+    cached_mc: CachedMediaControl,
     prev_cpu_ticks: Option<[u64; 4]>,
     art: ArtworkCache,
     /// The sensors helper to run; found next to the daemon when not set.
@@ -43,6 +50,7 @@ impl MacOsBridge {
                 net_up: "0 KB/s".into(),
             },
             cached_tick: CachedSensorTick::default(),
+            cached_mc: CachedMediaControl::default(),
             prev_cpu_ticks: None,
             art: ArtworkCache::default(),
             helper: None,
@@ -260,6 +268,112 @@ impl MacOsBridge {
         };
         raw
     }
+
+    /// Fallback for macOS 15.4+ / 26.x where Apple blocks direct `MediaRemote` calls from
+    /// third-party binaries: invokes `media-control get` (which uses Apple's signed perl bridge).
+    fn query_media_control(&mut self) -> Option<MediaSnapshot> {
+        if let Some(at) = self.cached_mc.at {
+            if at.elapsed() < Duration::from_millis(1200) {
+                return (!self.cached_mc.snap.title.is_empty()).then(|| self.cached_mc.snap.clone());
+            }
+        }
+        let bin = [
+            "/opt/homebrew/bin/media-control",
+            "/usr/local/bin/media-control",
+            "media-control",
+        ]
+        .into_iter()
+        .find(|p| !p.starts_with('/') || std::path::Path::new(p).is_file())?;
+
+        let out = output_with_timeout(Command::new(bin).arg("get"), Duration::from_millis(1500))
+            .filter(|o| o.status.success())?;
+        let txt = String::from_utf8_lossy(&out.stdout);
+        let v = serde_json::from_str::<serde_json::Value>(txt.trim()).ok()?;
+        let title = v
+            .get("title")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
+        if title.is_empty() {
+            self.cached_mc = CachedMediaControl {
+                at: Some(Instant::now()),
+                snap: MediaSnapshot::default(),
+            };
+            return None;
+        }
+        let playing = v
+            .get("playing")
+            .and_then(|x| x.as_bool())
+            .unwrap_or_else(|| {
+                v.get("playbackRate")
+                    .and_then(|x| x.as_f64())
+                    .unwrap_or(0.0)
+                    > 0.0
+            });
+        let duration = v
+            .get("duration")
+            .and_then(|x| x.as_f64())
+            .unwrap_or(0.0)
+            .max(0.0);
+        let mut elapsed = v
+            .get("elapsedTime")
+            .and_then(|x| x.as_f64())
+            .unwrap_or(0.0)
+            .max(0.0);
+        if playing {
+            if let Some(ts_str) = v.get("timestamp").and_then(|x| x.as_str()) {
+                if let Ok(ts) = time::OffsetDateTime::parse(
+                    ts_str,
+                    &time::format_description::well_known::Rfc3339,
+                ) {
+                    let now = time::OffsetDateTime::now_utc();
+                    let delta = (now - ts).as_seconds_f64().max(0.0);
+                    let rate = v
+                        .get("playbackRate")
+                        .and_then(|x| x.as_f64())
+                        .unwrap_or(1.0)
+                        .max(0.0);
+                    elapsed = (elapsed + delta * rate).min(duration.max(elapsed));
+                }
+            }
+        }
+        let art_id = v
+            .get("contentItemIdentifier")
+            .and_then(|x| x.as_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&title);
+        let art_b64 = v
+            .get("artworkData")
+            .and_then(|x| x.as_str())
+            .map(str::to_string);
+        let artwork = self.art.resolve(art_id, || {
+            art_b64
+                .as_deref()
+                .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
+        });
+        let snap = MediaSnapshot {
+            title,
+            artists: v
+                .get("artist")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
+            album: v
+                .get("album")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
+            length_s: duration.round() as u32,
+            played_s: elapsed.round() as u32,
+            playing,
+            artwork,
+        };
+        self.cached_mc = CachedMediaControl {
+            at: Some(Instant::now()),
+            snap: snap.clone(),
+        };
+        Some(snap)
+    }
 }
 
 impl OsSensorBridge for MacOsBridge {
@@ -412,12 +526,18 @@ end tell"#;
         if let Some(raw) = self.query_macos_sensors_helper() {
             let (_, _, media, _) = Self::parse_macos_sensors_json(&raw);
             if let Some(mut m) = media {
-                // The artwork is fetched once per id, by a second run of the helper.
-                let art_id = Self::parse_artwork_id(&raw);
-                let helper = &self.helper;
-                m.artwork = self
-                    .art
-                    .resolve(&art_id, || Self::query_artwork(&Self::helper_path(helper)));
+                if !m.title.is_empty() {
+                    let art_id = Self::parse_artwork_id(&raw);
+                    let helper = &self.helper;
+                    m.artwork = self
+                        .art
+                        .resolve(&art_id, || Self::query_artwork(&Self::helper_path(helper)));
+                    return m;
+                }
+            }
+        }
+        if self.helper.is_none() {
+            if let Some(m) = self.query_media_control() {
                 return m;
             }
         }
