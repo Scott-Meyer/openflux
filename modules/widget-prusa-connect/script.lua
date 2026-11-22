@@ -97,14 +97,17 @@ function on_render(ctx, stage)
     end
     local img_x, img_y, img_w, img_h = ox + 20, oy + 62, ow - 40, oh - 134
     ctx:round_rect(img_x, img_y, img_w, img_h, 14, { 0.07, 0.09, 0.14, 1.0 }, 1.0, { 1, 1, 1, 0.12 })
-    if #cam_path > 0 then
+    local cmode = tostring(status.camera_mode or "")
+    if #cam_path > 0 and cmode ~= "none" then
       ctx:image(img_x, img_y, img_w, img_h, cam_path, { 1, 1, 1, 1 })
     else
-      ctx:text(ox + ow * 0.5, oy + oh * 0.48, "Waiting for Prusa camera snapshot...", 28, { 0.78, 0.85, 0.95, 0.8 }, "center")
+      ctx:text(ox + ow * 0.5, oy + oh * 0.44, "No live camera URL configured yet", 28, { 0.88, 0.92, 0.98, 0.9 }, "center")
+      ctx:text(ox + ow * 0.5, oy + oh * 0.52, "Enable RTSP on your Buddy3D Camera and set Camera URL in Studio", 20, { 0.68, 0.78, 0.90, 0.78 }, "center")
     end
 
     -- Header + bottom live telemetry bar
-    ctx:text(ox + 28, oy + 18, "LIVE CAMERA  •  " .. tostring(status.name or "Prusa"), 24, orange, "left")
+    local hdr = (cmode == "live") and "LIVE CAMERA  •  " or "PRINT PREVIEW (enable Buddy3D RTSP for live cam)  •  "
+    ctx:text(ox + 28, oy + 18, hdr .. tostring(status.name or "Prusa"), 22, orange, "left")
     ctx:text(ox + ow - 28, oy + 20, "Release key to close", 18, { 0.75, 0.82, 0.92, 0.8 }, "right")
 
     local footer_y = oy + oh - 54

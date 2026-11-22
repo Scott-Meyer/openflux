@@ -38,7 +38,7 @@ secret = true
 
 [[settings]]
 key = "camera_url"
-label = "Optional Direct Camera Snapshot URL (JPEG)"
+label = "Camera URL (Buddy3D rtsp://... or HTTP JPEG)"
 kind = "string"
 default = ""
 

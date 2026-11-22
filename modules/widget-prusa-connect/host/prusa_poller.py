@@ -8,7 +8,9 @@ v2 bus and uploading the live camera JPEG to `/home/root/openflux/media/prusa_ca
 
 import json
 import os
+import shutil
 import ssl
+import subprocess
 import tempfile
 import time
 import urllib.error
@@ -97,9 +99,14 @@ def fetch_prusa_telemetry(base_url: str, token: str, uuid: str) -> dict:
     except Exception:
         pass
     job_name = "Ready"
+    thumb_url = ""
     try:
         jinfo = json.loads(http_get(f"{base}/api/v1/job", headers).decode("utf-8"))
-        job_name = (jinfo.get("file") or {}).get("display_name") or (jinfo.get("file") or {}).get("name") or job_name
+        fobj = jinfo.get("file") or {}
+        job_name = fobj.get("display_name") or fobj.get("name") or job_name
+        tpath = (fobj.get("refs") or {}).get("thumbnail") or (fobj.get("refs") or {}).get("icon") or ""
+        if tpath:
+            thumb_url = f"{base}{tpath}" if tpath.startswith("/") else tpath
     except Exception:
         pass
     cam_snap = ""
@@ -123,20 +130,47 @@ def fetch_prusa_telemetry(base_url: str, token: str, uuid: str) -> dict:
         "bed_target": float(printer.get("target_bed") or 0.0),
         "job_name": str(job_name),
         "default_cam_url": cam_snap,
+        "thumb_url": thumb_url,
         "cam_headers": headers,
     }
 
 
-def fetch_and_upload_snapshot(cam_url: str, headers: dict):
+def find_ffmpeg() -> str:
+    for cand in ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", shutil.which("ffmpeg") or ""]:
+        if cand and os.path.isfile(cand):
+            return cand
+    return ""
+
+
+def fetch_and_upload_snapshot(cam_url: str, headers: dict, is_live_cam: bool = True):
     if not cam_url:
         return False
     try:
-        jpg = http_get(cam_url, headers, timeout=4.0)
-        if not jpg or len(jpg) < 512:
-            return False
-        tmp = CAM_LOCAL_PATH + ".tmp"
-        with open(tmp, "wb") as f:
-            f.write(jpg)
+        tmp = CAM_LOCAL_PATH + ".tmp.jpg"
+        if cam_url.lower().startswith("rtsp://"):
+            ff = find_ffmpeg()
+            if not ff:
+                print("[prusa] ffmpeg not found for RTSP capture", flush=True)
+                return False
+            res = subprocess.run(
+                [
+                    ff, "-y", "-rtsp_transport", "tcp", "-i", cam_url,
+                    "-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "4", tmp,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                timeout=8.0,
+            )
+            if res.returncode != 0 or not os.path.isfile(tmp):
+                err_tail = res.stderr.decode("utf-8", "replace").strip().splitlines()[-1:]
+                print(f"[prusa] RTSP capture failed: {err_tail}", flush=True)
+                return False
+        else:
+            img_bytes = http_get(cam_url, headers, timeout=5.0)
+            if not img_bytes or len(img_bytes) < 256:
+                return False
+            with open(tmp, "wb") as f:
+                f.write(img_bytes)
         os.replace(tmp, CAM_LOCAL_PATH)
         bus_post(
             "/v2/keyboard/upload-media",
@@ -145,7 +179,7 @@ def fetch_and_upload_snapshot(cam_url: str, headers: dict):
         )
         return True
     except Exception as e:
-        print(f"[prusa] camera fetch failed: {e}", flush=True)
+        print(f"[prusa] {'camera' if is_live_cam else 'thumbnail'} fetch failed: {e}", flush=True)
         return False
 
 
@@ -160,6 +194,8 @@ def main():
     last_tel = 0.0
     last_cam = 0.0
     cam_url = custom_cam
+    thumb_url = ""
+    last_thumb_uploaded = ""
     cam_headers = {}
 
     while True:
@@ -187,6 +223,7 @@ def main():
                             "job_name": "Add API token in Studio",
                             "camera_path": "",
                             "camera_kb_path": "/home/root/openflux/media/prusa_cam_live.jpg",
+                            "camera_mode": "none",
                         },
                     },
                 )
@@ -198,9 +235,17 @@ def main():
             try:
                 tel = fetch_prusa_telemetry(printer_url, api_token, printer_uuid)
                 cam_url = custom_cam or tel.pop("default_cam_url", "")
+                thumb_url = tel.pop("thumb_url", "")
                 cam_headers = {} if custom_cam else tel.pop("cam_headers", {})
+                # If no live camera URL is set yet, upload the active print's thumbnail once so
+                # holding PRT shows the real print model instead of a blank frame!
+                if not cam_url and thumb_url and thumb_url != last_thumb_uploaded:
+                    if fetch_and_upload_snapshot(thumb_url, cam_headers, is_live_cam=False):
+                        last_thumb_uploaded = thumb_url
+                        print(f"[prusa] uploaded print preview thumbnail: {thumb_url}", flush=True)
                 tel["camera_path"] = CAM_LOCAL_PATH if os.path.isfile(CAM_LOCAL_PATH) else ""
                 tel["camera_kb_path"] = "/home/root/openflux/media/prusa_cam_live.jpg"
+                tel["camera_mode"] = "live" if cam_url else ("thumbnail" if last_thumb_uploaded else "none")
                 bus_post(
                     "/v2/bus/pub",
                     {
@@ -231,11 +276,11 @@ def main():
                     },
                 )
 
-        # Refresh camera rapidly (~2 fps) while holding the glance key, or every 20s idle
+        # Refresh live camera rapidly (~2 fps) while holding the glance key, or every 20s idle
         cam_interval = 0.55 if peeking else 20.0
         if cam_url and (now - last_cam >= cam_interval):
             last_cam = now
-            fetch_and_upload_snapshot(cam_url, cam_headers)
+            fetch_and_upload_snapshot(cam_url, cam_headers, is_live_cam=True)
 
         time.sleep(0.25 if peeking else 0.75)
 
