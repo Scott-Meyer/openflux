@@ -7,6 +7,7 @@ use openflux_bus::KeyboardGeometry;
 use openflux_modules::{DrawCommand, TextAlign};
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::SystemTime;
 
 pub struct Canvas2D {
     pub width: u32,
@@ -18,7 +19,7 @@ pub struct Canvas2D {
     clip: Option<(i32, i32, i32, i32)>,
     font: Option<Font>,
     glyph_cache: HashMap<(char, u16), (fontdue::Metrics, Vec<u8>)>,
-    image_cache: HashMap<String, RgbaImage>,
+    image_cache: HashMap<String, (Option<SystemTime>, RgbaImage)>,
 }
 
 impl Canvas2D {
@@ -564,14 +565,22 @@ impl Canvas2D {
         if w <= 0.0 || h <= 0.0 {
             return;
         }
-        if !self.image_cache.contains_key(path) {
+        let mtime = std::fs::metadata(Path::new(path))
+            .and_then(|m| m.modified())
+            .ok();
+        let needs_load = match self.image_cache.get(path) {
+            None => true,
+            Some((cached_m, _)) => *cached_m != mtime,
+        };
+        if needs_load {
             if let Ok(img) = image::open(Path::new(path)) {
-                self.image_cache.insert(path.to_string(), img.to_rgba8());
-            } else {
+                self.image_cache
+                    .insert(path.to_string(), (mtime, img.to_rgba8()));
+            } else if !self.image_cache.contains_key(path) {
                 return;
             }
         }
-        let Some(img) = self.image_cache.get(path).cloned() else {
+        let Some((_, img)) = self.image_cache.get(path).cloned() else {
             return;
         };
         let (x0, y0, x1, y1) = self.bounds(x, y, x + w, y + h);

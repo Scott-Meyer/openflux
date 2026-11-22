@@ -376,6 +376,15 @@ impl KeyboardV2Display {
                 PublishOptions::retained().with_ttl_ms(600_000),
             );
         }
+        if let Some(v2_ret) = p.get("v2Retained").and_then(|v| v.as_object()) {
+            for (topic, payload) in v2_ret {
+                let _ = self.broker.publish(
+                    topic.clone(),
+                    payload.clone(),
+                    PublishOptions::retained().with_origin("host"),
+                );
+            }
+        }
     }
 
     /// Steps Lua modules, 2D wave simulation, Key-SDF colliding/refracting particles, and 2D overlay.

@@ -23,8 +23,23 @@ export const V2ModulesHub: React.FC = () => {
   const [lists, setLists] = useState<CuratedListSubscription[]>([]);
   const [category, setCategory] = useState<ModuleCategory>("effect");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [autoSyncKeyboard, setAutoSyncKeyboard] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const syncTimerRef = useRef<number | null>(null);
+
+  const scheduleKeyboardSync = useCallback(() => {
+    if (!autoSyncKeyboard) return;
+    if (syncTimerRef.current !== null) {
+      window.clearTimeout(syncTimerRef.current);
+    }
+    syncTimerRef.current = window.setTimeout(() => {
+      syncTimerRef.current = null;
+      void v2Client.syncToKeyboard().catch(() => {
+        // Ignore if keyboard is unplugged
+      });
+    }, 280);
+  }, [autoSyncKeyboard]);
 
   // Live GPU preview + reactive sync state
   const [previewPng, setPreviewPng] = useState<string | null>(null);
@@ -152,6 +167,7 @@ export const V2ModulesHub: React.FC = () => {
     try {
       await v2Client.updateModuleState(mod.id, { enabled: !mod.state.enabled });
       await refresh();
+      scheduleKeyboardSync();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -162,15 +178,24 @@ export const V2ModulesHub: React.FC = () => {
       const slot = raw === "" ? null : Number(raw);
       await v2Client.updateModuleState(mod.id, { slot });
       await refresh();
+      scheduleKeyboardSync();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
 
   const handleSettingChange = async (mod: V2ModuleRecord, key: string, value: unknown) => {
+    // Immediate optimistic update so sliders & text inputs feel silky-smooth
+    setModules((prev) =>
+      prev.map((m) =>
+        m.id === mod.id
+          ? { ...m, state: { ...m.state, config: { ...m.state.config, [key]: value } } }
+          : m,
+      ),
+    );
     try {
       await v2Client.updateModuleState(mod.id, { config: { [key]: value } });
-      await refresh();
+      scheduleKeyboardSync();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -252,7 +277,8 @@ export const V2ModulesHub: React.FC = () => {
   };
 
   const filtered = modules.filter((m) => m.manifest.category === category);
-  const selected = modules.find((m) => m.id === selectedId) ?? filtered[0] ?? null;
+  // Scope selection to the active category so switching tabs always shows settings for a module in this tab!
+  const selected = filtered.find((m) => m.id === selectedId) ?? filtered[0] ?? null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: 16 }}>
@@ -301,6 +327,14 @@ export const V2ModulesHub: React.FC = () => {
             <button type="button" onClick={() => void handleExportPreset()}>
               Export Preset
             </button>
+            <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={autoSyncKeyboard}
+                onChange={(e) => setAutoSyncKeyboard(e.target.checked)}
+              />
+              Auto-Sync Keyboard
+            </label>
             <button
               type="button"
               style={{ background: "#1ea7d8", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6 }}
@@ -481,29 +515,42 @@ export const V2ModulesHub: React.FC = () => {
                   <strong>Settings</strong>
                   {selected.manifest.settings.map((field) => {
                     const cur = selected.state.config[field.key] ?? field.default ?? "";
+                    const maxVal = field.max ?? 100;
+                    const stepVal = maxVal <= 1.05 ? 0.002 : maxVal <= 5 ? 0.05 : 1;
                     return (
                       <label key={field.key} style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
                         <span>
                           {field.label} {field.secret && <em style={{ opacity: 0.6 }}>(secret — excluded from presets)</em>}
                         </span>
                         {field.kind === "color" ? (
-                          <input
-                            type="color"
-                            value={String(cur || "#4de1ff")}
-                            onChange={(e) => void handleSettingChange(selected, field.key, e.target.value)}
-                          />
+                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <input
+                              type="color"
+                              value={String(cur || "#4de1ff")}
+                              onChange={(e) => void handleSettingChange(selected, field.key, e.target.value)}
+                            />
+                            <code style={{ fontSize: 12 }}>{String(cur || "#4de1ff")}</code>
+                          </div>
                         ) : field.kind === "number" ? (
                           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                             <input
                               type="range"
                               min={field.min ?? 0}
-                              max={field.max ?? 100}
-                              step={(field.max ?? 100) <= 5 ? 0.01 : 1}
+                              max={maxVal}
+                              step={stepVal}
                               value={Number(cur) || 0}
                               onChange={(e) => void handleSettingChange(selected, field.key, Number(e.target.value))}
                               style={{ flex: 1 }}
                             />
-                            <span style={{ width: 48, textAlign: "right" }}>{Number(cur).toFixed(2)}</span>
+                            <input
+                              type="number"
+                              min={field.min ?? 0}
+                              max={maxVal}
+                              step={stepVal}
+                              value={Number(cur) || 0}
+                              onChange={(e) => void handleSettingChange(selected, field.key, Number(e.target.value))}
+                              style={{ width: 74, textAlign: "right" }}
+                            />
                           </div>
                         ) : (
                           <input

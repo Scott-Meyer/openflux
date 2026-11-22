@@ -1,0 +1,59 @@
+id = "widget-prusa-connect"
+name = "Prusa Connect"
+version = "2.0.0"
+description = "Shows live 3D printer telemetry (nozzle, bed, progress, ETA) in a top-bar slot and opens a live camera glance overlay while holding a key"
+author = "OpenFlux"
+category = "widget"
+stages = ["tile", "world_overlay"]
+host_requirement = "required"
+slot_capable = true
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+host = "host/prusa_poller.py"
+
+[channels]
+subscribes = ["modules/prusa-connect/#", "input/keys/event"]
+publishes = ["modules/prusa-connect/peek", "modules/prusa-connect/status"]
+
+[[settings]]
+key = "printer_url"
+label = "Prusa Connect / PrusaLink URL"
+kind = "string"
+default = "https://connect.prusa3d.com"
+
+[[settings]]
+key = "printer_uuid"
+label = "Printer UUID (for Prusa Connect Cloud)"
+kind = "string"
+default = ""
+
+[[settings]]
+key = "api_token"
+label = "API Token / Key"
+kind = "string"
+default = ""
+secret = true
+
+[[settings]]
+key = "camera_url"
+label = "Optional Direct Camera Snapshot URL (JPEG)"
+kind = "string"
+default = ""
+
+[[settings]]
+key = "peek_key_index"
+label = "Hold-to-Glance Key Index (13=PRT, 14=INS, 15=DEL)"
+kind = "number"
+default = 13
+min = 0
+max = 84
+
+[[settings]]
+key = "poll_seconds"
+label = "Telemetry Poll Interval (sec)"
+kind = "number"
+default = 5
+min = 2
+max = 60

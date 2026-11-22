@@ -1710,11 +1710,21 @@ pub fn reconcile_tick_with_state(
         g.cached_live_data_json = Some(cached_preview.to_string());
     }
 
-    if has_bridge
-        && state
-            .check_keyboard_write(&[crate::updates::Area::BridgeUsb])
-            .is_ok()
-    {
+    // Attach retained v2 host-module bus state (e.g. Prusa Connect telemetry, custom host services)
+    // so hybrid/host-driven v2 modules on the physical keyboard stay live over the existing USB pipe.
+    if let Ok(v2_msgs) = state.v2.broker.query_retained("modules/#") {
+        if !v2_msgs.is_empty() {
+            if let Some(obj) = live_json.as_object_mut() {
+                let mut map = serde_json::Map::new();
+                for m in v2_msgs {
+                    map.insert(m.topic, m.payload);
+                }
+                obj.insert("v2Retained".into(), serde_json::Value::Object(map));
+            }
+        }
+    }
+
+    if has_bridge {
         let changed = wstate.last_live_sent.as_ref() != Some(&live_json);
         let keepalive_due = wstate
             .last_live_sent_at
