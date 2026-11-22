@@ -14,8 +14,20 @@ script = "script.lua"
 host = "host/ability_sim.py"
 
 [channels]
-subscribes = ["input/keys/event", "modules/ability-deck/#"]
+subscribes = ["input/keys/event", "host/app/active", "host/profile/active", "modules/ability-deck/#"]
 publishes = ["modules/ability-deck/cast", "fx/surface/impulse"]
+
+[[settings]]
+key = "app_filter"
+label = "Only Show For Apps (comma-separated, blank = always)"
+kind = "string"
+default = ""
+
+[[settings]]
+key = "profile_filter"
+label = "Only Show For Profile (blank = any)"
+kind = "string"
+default = ""
 
 [[settings]]
 key = "opacity"

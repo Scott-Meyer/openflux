@@ -7,6 +7,31 @@ local layout = nil
 local shift_held = false
 local ctrl_held = false
 local anim_t = 0.0
+local active_app = { app_id = "", process_name = "", window_title = "", profile_name = "" }
+local active_profile = { index = 0, id = "", name = "" }
+
+local function matches_csv(haystack, csv)
+  if type(csv) ~= "string" then return true end
+  local trimmed = csv:match("^%s*(.-)%s*$")
+  if trimmed == "" then return true end
+  local hay = string.lower(tostring(haystack or ""))
+  for token in string.gmatch(trimmed, "[^,]+") do
+    local needle = string.lower(token:match("^%s*(.-)%s*$") or "")
+    if needle ~= "" and string.find(hay, needle, 1, true) then
+      return true
+    end
+  end
+  return false
+end
+
+local function is_context_visible()
+  local cfg = module.config()
+  local app_f = tostring(cfg.app_filter or "")
+  local prof_f = tostring(cfg.profile_filter or "")
+  local combined_app = tostring(active_app.process_name or "") .. " " .. tostring(active_app.app_id or "") .. " " .. tostring(active_app.window_title or "")
+  local prof_str = tostring(active_profile.name or "") .. " " .. tostring(active_profile.id or "") .. " " .. tostring(active_app.profile_name or "")
+  return matches_csv(combined_app, app_f) and matches_csv(prof_str, prof_f)
+end
 
 -- ANSI modifier key indices
 local KEY_LSHIFT, KEY_RSHIFT = 60, 71
@@ -76,7 +101,13 @@ local function parse_hex(hex)
 end
 
 function on_event(topic, payload)
-  if topic == "input/keys/event" and type(payload) == "table" then
+  if topic == "host/app/active" and type(payload) == "table" then
+    active_app = payload
+    return
+  elseif topic == "host/profile/active" and type(payload) == "table" then
+    active_profile = payload
+    return
+  elseif topic == "input/keys/event" and type(payload) == "table" then
     local ki = payload.key_index
     local down = (payload.kind == "press")
     if ki == KEY_LSHIFT or ki == KEY_RSHIFT then
@@ -87,7 +118,7 @@ function on_event(topic, payload)
       return
     end
 
-    if down then
+    if down and is_context_visible() then
       local dname = active_deck_name()
       local deck = decks[dname]
       local ab = deck and deck[ki]
@@ -218,6 +249,7 @@ end
 
 function on_render(ctx, stage)
   if stage ~= "world_overlay" or not layout or not layout.keys then return end
+  if not is_context_visible() then return end
   local opacity = tonumber(module.config().opacity) or 0.88
   local dname = active_deck_name()
   local deck = decks[dname]

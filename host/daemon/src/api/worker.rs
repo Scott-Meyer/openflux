@@ -1480,6 +1480,59 @@ pub fn reconcile_tick_with_state(
     } else {
         cur_desired_prof_id
     };
+    // Publish active foreground application and active profile onto the OpenFlux v2 pub/sub bus
+    // so any module (e.g. game-specific StreamDeck ability bars, IDE shortcuts, companion behavior)
+    // can react automatically when you switch apps or profiles!
+    let active_profile_name = {
+        let g = state.inner.lock().unwrap();
+        g.profiles
+            .get(desired_profile)
+            .map(|p| p.name.clone())
+            .unwrap_or_default()
+    };
+    let app_payload = serde_json::json!({
+        "app_id": win.as_ref().map(|w| w.app_id.as_str()).unwrap_or(""),
+        "process_name": override_proc
+            .as_deref()
+            .or_else(|| win.as_ref().map(|w| w.process_name.as_str()))
+            .unwrap_or(""),
+        "window_title": win.as_ref().map(|w| w.window_title.as_str()).unwrap_or(""),
+        "profile_index": desired_profile,
+        "profile_id": desired_profile_id.as_deref().unwrap_or(""),
+        "profile_name": active_profile_name,
+    });
+    let app_changed = state
+        .v2
+        .broker
+        .get_retained(openflux_bus::topics::HOST_APP_ACTIVE)
+        .map(|m| m.payload != app_payload)
+        .unwrap_or(true);
+    if app_changed {
+        let _ = state.v2.broker.publish(
+            openflux_bus::topics::HOST_APP_ACTIVE,
+            app_payload,
+            openflux_bus::PublishOptions::retained(),
+        );
+    }
+    let prof_payload = serde_json::json!({
+        "index": desired_profile,
+        "id": desired_profile_id.as_deref().unwrap_or(""),
+        "name": active_profile_name,
+    });
+    let prof_changed = state
+        .v2
+        .broker
+        .get_retained("host/profile/active")
+        .map(|m| m.payload != prof_payload)
+        .unwrap_or(true);
+    if prof_changed {
+        let _ = state.v2.broker.publish(
+            "host/profile/active",
+            prof_payload,
+            openflux_bus::PublishOptions::retained(),
+        );
+    }
+
     if let Some(ref pid) = desired_profile_id {
         let mut g = state.inner.lock().unwrap();
         let mut theme_rev_changed = false;
@@ -1710,17 +1763,20 @@ pub fn reconcile_tick_with_state(
         g.cached_live_data_json = Some(cached_preview.to_string());
     }
 
-    // Attach retained v2 host-module bus state (e.g. Prusa Connect telemetry, custom host services)
-    // so hybrid/host-driven v2 modules on the physical keyboard stay live over the existing USB pipe.
-    if let Ok(v2_msgs) = state.v2.broker.query_retained("modules/#") {
-        if !v2_msgs.is_empty() {
-            if let Some(obj) = live_json.as_object_mut() {
-                let mut map = serde_json::Map::new();
-                for m in v2_msgs {
-                    map.insert(m.topic, m.payload);
-                }
-                obj.insert("v2Retained".into(), serde_json::Value::Object(map));
+    // Attach retained v2 host-module & context bus state (`modules/#`, `host/app/active`,
+    // `host/profile/active`) so keyboard modules react live to foreground app/profile switches
+    // and host-driven telemetry over the existing USB pipe.
+    let mut v2_map = serde_json::Map::new();
+    for pat in ["modules/#", openflux_bus::topics::HOST_APP_ACTIVE, "host/profile/active"] {
+        if let Ok(msgs) = state.v2.broker.query_retained(pat) {
+            for m in msgs {
+                v2_map.insert(m.topic, m.payload);
             }
+        }
+    }
+    if !v2_map.is_empty() {
+        if let Some(obj) = live_json.as_object_mut() {
+            obj.insert("v2Retained".into(), serde_json::Value::Object(v2_map));
         }
     }
 
