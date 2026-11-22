@@ -220,8 +220,22 @@ impl DisplayIpc {
                     }
                     Some("bus_frame") => {
                         if let Some(frame) = val.get("frame") {
-                            let line = format!("{{\"type\":\"bus_frame\",\"frame\":{frame}}}\n");
-                            self.broadcast_line(&line);
+                            // Forward to any OTHER local IPC clients (never echo back to sender!),
+                            // and enqueue for host polling over USB (`CMD_POLL_BUS_FRAMES`).
+                            let out_line = format!("{{\"type\":\"bus_frame\",\"frame\":{frame}}}\n");
+                            let bytes = out_line.as_bytes();
+                            let mut c_idx = 0;
+                            while c_idx < self.clients.len() {
+                                if self.clients[c_idx].stream.as_raw_fd() == fd {
+                                    c_idx += 1;
+                                    continue;
+                                }
+                                if self.clients[c_idx].stream.write_all(bytes).is_err() {
+                                    self.clients.remove(c_idx);
+                                } else {
+                                    c_idx += 1;
+                                }
+                            }
                             if self.host_outbox.len() >= MAX_HOST_OUTBOX {
                                 self.host_outbox.pop_front();
                             }

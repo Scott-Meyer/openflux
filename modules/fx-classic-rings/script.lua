@@ -1,8 +1,20 @@
 local rings = {}
+local held = {}
+local MAX_RINGS = 16
 
 function on_event(topic, payload)
-  if topic == "input/keys/event" and payload.kind == "press" then
-    table.insert(rings, { x = payload.x_px, y = payload.y_px, w = payload.w_px, h = payload.h_px, age = 0 })
+  if topic == "input/keys/event" and type(payload) == "table" then
+    local idx = payload.key_index
+    if payload.kind == "release" then
+      if idx ~= nil then held[idx] = nil end
+      return
+    end
+    if payload.kind == "press" then
+      if idx ~= nil and held[idx] then return end
+      if idx ~= nil then held[idx] = true end
+      if #rings >= MAX_RINGS then table.remove(rings, 1) end
+      table.insert(rings, { x = payload.x_px, y = payload.y_px, w = payload.w_px, h = payload.h_px, age = 0 })
+    end
   end
 end
 

@@ -245,12 +245,14 @@ impl KeyboardV2Display {
         let mut out = Vec::new();
         for msg in msgs {
             let orig = msg.origin.as_deref().unwrap_or("");
-            if orig.starts_with("bridge:host") || orig == "host" {
+            // Never re-export any bridged or host-originated message (strictly loop-free!).
+            if orig.starts_with("bridge:") || orig == "host" {
                 continue;
             }
             if msg.topic.starts_with("layout/")
                 || msg.topic == "keyboard/geometry"
                 || msg.topic == "keyboard/keymap"
+                || msg.topic == openflux_bus::topics::INPUT_KEYS_ANALOG
                 || msg.topic.starts_with("keyboard/analog")
                 || msg.topic.starts_with("host/")
             {

@@ -153,12 +153,14 @@ fn pump_v2_bus_bridge(
     if let Some(ref sub) = wstate.v2_bus_sub {
         for msg in sub.drain() {
             let orig = msg.origin.as_deref().unwrap_or("");
-            if orig.starts_with("bridge:keyboard") {
+            // Never echo any bridged message back to the keyboard (strictly loop-free!).
+            if orig.starts_with("bridge:") {
                 continue;
             }
             if msg.topic.starts_with("layout/")
                 || msg.topic == "keyboard/geometry"
                 || msg.topic == "keyboard/keymap"
+                || msg.topic == openflux_bus::topics::INPUT_KEYS_ANALOG
                 || msg.topic == openflux_bus::topics::HOST_SYSTEM_METRICS
                 || msg.topic == openflux_bus::topics::HOST_MEDIA_NOW_PLAYING
                 || msg.topic == openflux_bus::topics::HOST_WEATHER_CURRENT
