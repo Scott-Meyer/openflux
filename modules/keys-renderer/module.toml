@@ -1,0 +1,29 @@
+id = "keys-renderer"
+name = "Key Legends & Icons Renderer"
+version = "2.0.0"
+description = "Core modular key-face compositor: resolves all `keys/providers/#` claims (keymap, Shift case, v1 shortcuts, game ability decks) in one atomic zero-flash frame with full parallax alignment"
+author = "OpenFlux"
+category = "effect"
+stages = ["under_key"]
+host_requirement = "none"
+slot_capable = false
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["keys/providers/#", "input/keys/event", "keyboard/state", "keyboard/geometry", "host/app/active", "host/profile/active"]
+publishes = ["layout/regions/keys", "layout/regions/slots"]
+
+[[settings]]
+key = "legend_color"
+label = "Default Legend Color"
+kind = "color"
+default = "#f2f7ff"
+
+[[settings]]
+key = "shortcut_color"
+label = "Shortcut Icon Accent"
+kind = "color"
+default = "#5ce1ff"

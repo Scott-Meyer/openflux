@@ -1736,6 +1736,15 @@ pub fn reconcile_tick_with_state(
             wstate.cached_pack_name = Some(cache_key);
             let pack_rows = crate::api::shortcuts::overlay_rows(state, &active_pack);
             wstate.cached_pack_overlays = shortcut_overlays(platform_code, &pack_rows);
+            let _ = state.v2.broker.publish(
+                openflux_bus::topics::HOST_APP_SHORTCUTS,
+                serde_json::json!({
+                    "pack": active_pack,
+                    "platform_code": platform_code,
+                    "overlays": wstate.cached_pack_overlays,
+                }),
+                openflux_bus::PublishOptions::retained(),
+            );
         }
         if let Some(obj) = live_json.as_object_mut() {
             obj.insert(

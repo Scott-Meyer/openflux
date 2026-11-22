@@ -1,0 +1,23 @@
+id = "keys-shortcuts"
+name = "App & OS Shortcuts"
+version = "2.0.0"
+description = "Classic v1 dynamic shortcut icons (Copy, Paste, Cut, Undo, Save, Find, plus active-app shortcut packs) when holding Cmd/Ctrl/Alt"
+author = "OpenFlux"
+category = "effect"
+stages = ["under_key"]
+host_requirement = "optional"
+slot_capable = false
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["host/app/shortcuts"]
+publishes = ["keys/providers/shortcuts"]
+
+[[settings]]
+key = "accent"
+label = "Shortcut Icon Color"
+kind = "color"
+default = "#5ce1ff"

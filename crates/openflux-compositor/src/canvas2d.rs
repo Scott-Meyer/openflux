@@ -192,10 +192,8 @@ impl Canvas2D {
         self.clip = None;
     }
 
-    /// Draws clean floating key legends (no heavy keycap boxes, matching v1's sleek frameless look)
-    /// and subtle vertical hairline separators between the 4 top-bar module slots.
-    pub fn draw_default_key_legends(&mut self, geom: &KeyboardGeometry, labels: &[&str]) {
-        // Subtle vertical hairline dividers centered in the gaps between the 4 top-bar slots.
+    /// Draws only the subtle vertical hairline dividers between the 4 top-bar module slots.
+    pub fn draw_top_bar_dividers(&mut self, geom: &KeyboardGeometry) {
         for i in 0..geom.slots.len().saturating_sub(1) {
             let a = &geom.slots[i].rect;
             let b = &geom.slots[i + 1].rect;
@@ -213,6 +211,12 @@ impl Canvas2D {
                 [0.0; 4],
             );
         }
+    }
+
+    /// Draws clean floating key legends (fallback only when `keys-renderer` module isn't loaded)
+    /// and subtle vertical hairline separators between the 4 top-bar module slots.
+    pub fn draw_default_key_legends(&mut self, geom: &KeyboardGeometry, labels: &[&str]) {
+        self.draw_top_bar_dividers(geom);
 
         for key in &geom.keys {
             if let Some(&label) = labels.get(key.key_index as usize) {

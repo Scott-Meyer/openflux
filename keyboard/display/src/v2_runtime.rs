@@ -421,6 +421,13 @@ impl KeyboardV2Display {
                 PublishOptions::retained().with_ttl_ms(600_000),
             );
         }
+        if let Some(sc) = p.get("shortcutOverlays") {
+            let _ = self.broker.publish(
+                topics::HOST_APP_SHORTCUTS,
+                serde_json::json!({ "overlays": sc }),
+                PublishOptions::retained().with_origin("host"),
+            );
+        }
         if let Some(v2_ret) = p.get("v2Retained").and_then(|v| v.as_object()) {
             for (topic, payload) in v2_ret {
                 let _ = self.broker.publish(
@@ -519,8 +526,12 @@ impl KeyboardV2Display {
             if !scene.under_key_draws.is_empty() {
                 self.canvas.execute(&scene.under_key_draws);
             }
-            self.canvas
-                .blit_cached_default_key_legends(&self.geometry, DEFAULT_ANSI_LABELS);
+            if scene.has_custom_keys_renderer {
+                self.canvas.draw_top_bar_dividers(&self.geometry);
+            } else {
+                self.canvas
+                    .blit_cached_default_key_legends(&self.geometry, DEFAULT_ANSI_LABELS);
+            }
             if !scene.tile_draws.is_empty() {
                 self.canvas.execute(&scene.tile_draws);
             }
@@ -531,5 +542,22 @@ impl KeyboardV2Display {
         } else {
             self.overlay_dirty = false;
         }
+    }
+
+    /// Updates every key's optical parallax offset (`visual_x`, `visual_y`, `parallax_dx`, `parallax_dy`)
+    /// from the keyboard's physical viewing settings and republishes `keyboard/geometry` onto the bus.
+    pub fn apply_parallax_settings(&mut self, settings: &crate::config::SettingsConfig) {
+        for k in &mut self.geometry.keys {
+            let (dx, dy) = crate::layout::compute_key_parallax(
+                settings,
+                k.center_x as f64,
+                k.center_y as f64,
+            );
+            k.parallax_dx = dx as f32;
+            k.parallax_dy = dy as f32;
+            k.visual_x = k.center_x + dx as f32;
+            k.visual_y = k.center_y + dy as f32;
+        }
+        self.runtime.update_geometry(self.geometry.clone());
     }
 }

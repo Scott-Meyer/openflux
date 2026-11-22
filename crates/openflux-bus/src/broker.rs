@@ -386,6 +386,38 @@ impl Broker {
         }
     }
 
+    /// Removes all retained messages owned by `origin` (Erlang Monitor / MQTT Last Will cleanup)
+    /// and notifies matching subscribers with a `null` payload tombstone so consumers drop stale
+    /// claims immediately when a module disables, crashes, or disconnects.
+    pub fn purge_origin(&self, origin: &str) -> usize {
+        let removed_topics: Vec<String> = {
+            let mut g = self.inner.lock().unwrap();
+            let topics: Vec<String> = g
+                .retained
+                .iter()
+                .filter(|(_, m)| m.origin.as_deref() == Some(origin))
+                .map(|(t, _)| t.clone())
+                .collect();
+            for t in &topics {
+                g.retained.remove(t);
+            }
+            topics
+        };
+        let count = removed_topics.len();
+        for topic in removed_topics {
+            let _ = self.publish(
+                topic,
+                Value::Null,
+                PublishOptions {
+                    retain: false,
+                    origin: Some(origin.to_string()),
+                    ..Default::default()
+                },
+            );
+        }
+        count
+    }
+
     /// Exports all unexpired retained messages (e.g. for disk persistence or initial bridge sync).
     pub fn snapshot_retained(&self) -> Vec<BusMessage> {
         let now = now_unix_ms();

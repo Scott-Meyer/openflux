@@ -1,0 +1,23 @@
+id = "keys-keymap"
+name = "Base Keymap Legends"
+version = "2.0.0"
+description = "Publishes base keycap legends with dynamic Shift case (a/A), shifted symbols (1/!), Caps Lock badge, and Fn layer media keys onto `keys/providers/keymap`"
+author = "OpenFlux"
+category = "effect"
+stages = ["under_key"]
+host_requirement = "none"
+slot_capable = false
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["keyboard/state"]
+publishes = ["keys/providers/keymap", "keys/providers/keymap-caps"]
+
+[[settings]]
+key = "lowercase_default"
+label = "Lowercase Letters When Unshifted"
+kind = "boolean"
+default = true

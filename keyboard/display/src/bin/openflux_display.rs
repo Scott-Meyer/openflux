@@ -643,14 +643,16 @@ fn main() {
                 } else {
                     openflux_bus::FrameLayout::Ansi
                 };
-                Some(openflux_display::v2_runtime::KeyboardV2Display::new(
+                let mut v2_init = openflux_display::v2_runtime::KeyboardV2Display::new(
                     std::path::PathBuf::from("/usr/lib/openflux/display/modules"),
                     std::path::PathBuf::from(&v2_root).join("modules"),
                     std::path::PathBuf::from(&v2_root).join("local"),
                     v2_state_path.clone(),
                     fl,
                     v2_font_bytes.as_deref(),
-                ))
+                );
+                v2_init.apply_parallax_settings(&cfg.settings);
+                Some(v2_init)
             } else {
                 None
             };
@@ -798,6 +800,9 @@ fn main() {
                     bg_dirty = true;
                 }
                 if reloader.poll_reload(&mut cfg) {
+                    if let Some(ref mut v2) = v2_display {
+                        v2.apply_parallax_settings(&cfg.settings);
+                    }
                     renderer.assets.invalidate();
                     ui_assets_dirty = true;
                     rkmpp_failed_path.clear();

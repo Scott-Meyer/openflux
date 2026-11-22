@@ -883,13 +883,15 @@ impl Compositor {
             );
         }
 
-        // Rasterize 2D overlay stages (under_key_draws -> cached key legends -> tiles -> world_overlay)
+        // Rasterize 2D overlay stages (under_key_draws -> fallback legends or top-bar dividers -> tiles -> world_overlay)
         let t_c2d = Instant::now();
         self.canvas.clear();
         if !scene.under_key_draws.is_empty() {
             self.canvas.execute(&scene.under_key_draws);
         }
-        if self.draw_default_legends {
+        if scene.has_custom_keys_renderer {
+            self.canvas.draw_top_bar_dividers(&self.geometry);
+        } else if self.draw_default_legends {
             self.canvas
                 .blit_cached_default_key_legends(&self.geometry, DEFAULT_ANSI_LABELS);
         }

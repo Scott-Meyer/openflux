@@ -69,6 +69,15 @@ pub struct KeyGeometry {
     pub rect: RectPx,
     pub center_x: f32,
     pub center_y: f32,
+    /// Parallax-shifted visual center in display pixels (defaults to `center_x`/`center_y`).
+    #[serde(default)]
+    pub visual_x: f32,
+    #[serde(default)]
+    pub visual_y: f32,
+    #[serde(default)]
+    pub parallax_dx: f32,
+    #[serde(default)]
+    pub parallax_dy: f32,
     /// Physical center in millimeters from top-left of the active display.
     pub center_mm_x: f32,
     pub center_mm_y: f32,
@@ -143,6 +152,10 @@ fn push_row_mm(
                 rect,
                 center_x: cx,
                 center_y: cy,
+                visual_x: cx,
+                visual_y: cy,
+                parallax_dx: 0.0,
+                parallax_dy: 0.0,
                 center_mm_x: cx / PX_PER_MM,
                 center_mm_y: cy / PX_PER_MM,
                 uv_x: cx / DISPLAY_WIDTH_PX as f32,
@@ -289,6 +302,42 @@ impl KeyboardGeometry {
 
     pub fn slot(&self, slot_index: u8) -> Option<&SlotGeometry> {
         self.slots.get(slot_index as usize)
+    }
+
+    /// Applies optical parallax offset (matching physical eye-to-keycap projection through the clear
+    /// keyframe) to every key's `visual_x`/`visual_y` and `parallax_dx`/`parallax_dy`, so any module
+    /// consuming `keyboard/geometry` automatically aligns legends, icons, and overlays to the viewer.
+    pub fn apply_parallax(
+        &mut self,
+        enabled: bool,
+        eye_x_mm: f32,
+        eye_y_mm: f32,
+        eye_z_mm: f32,
+        glass_gap_mm: f32,
+        global_dx_px: f32,
+        global_dy_px: f32,
+    ) {
+        let z = eye_z_mm.max(120.0);
+        let gap = glass_gap_mm.clamp(0.0, 20.0);
+        let screen_cx_mm = DISPLAY_WIDTH_MM * 0.5;
+        let screen_cy_mm = DISPLAY_HEIGHT_MM * 0.5;
+        for k in &mut self.keys {
+            if enabled {
+                let rel_x_mm = (k.center_mm_x - screen_cx_mm) - eye_x_mm;
+                let rel_y_mm = (k.center_mm_y - screen_cy_mm) - eye_y_mm;
+                let dx_px = (rel_x_mm * (gap / z) * PX_PER_MM).clamp(-24.0, 24.0) + global_dx_px;
+                let dy_px = (rel_y_mm * (gap / z) * PX_PER_MM).clamp(-24.0, 24.0) + global_dy_px;
+                k.parallax_dx = dx_px;
+                k.parallax_dy = dy_px;
+                k.visual_x = k.center_x + dx_px;
+                k.visual_y = k.center_y + dy_px;
+            } else {
+                k.parallax_dx = global_dx_px;
+                k.parallax_dy = global_dy_px;
+                k.visual_x = k.center_x + global_dx_px;
+                k.visual_y = k.center_y + global_dy_px;
+            }
+        }
     }
 
     /// Finds the keycap containing `(px, py)`, or the nearest keycap center if in a trench.

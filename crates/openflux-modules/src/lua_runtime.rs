@@ -756,18 +756,40 @@ impl ModuleRuntime {
         &self.geometry
     }
 
+    pub fn has_module(&self, id: &str) -> bool {
+        self.modules.get(id).is_some_and(|m| m.healthy)
+    }
+
+    pub fn update_geometry(&mut self, geometry: KeyboardGeometry) {
+        self.geometry = Arc::new(geometry);
+        let _ = self.broker.publish_typed(
+            openflux_bus::topics::KEYBOARD_GEOMETRY,
+            &*self.geometry,
+            PublishOptions::retained(),
+        );
+    }
+
     /// Synchronizes loaded modules with discovered manifests and desired enable/slot/config state.
     pub fn sync_modules(
         &mut self,
         discovered: &BTreeMap<String, DiscoveredModule>,
         states: &BTreeMap<String, ModuleInstanceState>,
     ) {
-        // Remove disabled or deleted modules.
+        // Remove disabled or deleted modules and purge their Erlang/MQTT LWT retained claims!
         let keep_ids: Vec<String> = discovered
             .keys()
             .filter(|id| states.get(*id).is_some_and(|s| s.enabled))
             .cloned()
             .collect();
+        let removed_ids: Vec<String> = self
+            .modules
+            .keys()
+            .filter(|id| !keep_ids.contains(id))
+            .cloned()
+            .collect();
+        for rid in &removed_ids {
+            self.broker.purge_origin(&format!("module:{rid}"));
+        }
         self.modules.retain(|id, _| keep_ids.contains(id));
 
         for id in keep_ids {
@@ -782,6 +804,7 @@ impl ModuleRuntime {
                 }
             };
             if should_reload {
+                self.broker.purge_origin(&format!("module:{id}"));
                 let loaded = LoadedLuaModule::load(
                     dm.clone(),
                     inst,
@@ -845,8 +868,9 @@ impl ModuleRuntime {
     pub fn step_frame(&mut self, dt_sec: f32, now_ms: u64) -> FrameScene {
         self.elapsed_sec += dt_sec;
 
-        // 1. Deliver queued pub/sub events to every healthy module.
-        for loaded in self.modules.values_mut() {
+        // 1. Deliver queued pub/sub events to every healthy module (and LWT-purge on crash!).
+        let mut newly_crashed = Vec::new();
+        for (id, loaded) in self.modules.iter_mut() {
             if !loaded.healthy {
                 continue;
             }
@@ -865,6 +889,7 @@ impl ModuleRuntime {
                             Ok(v) => v,
                             Err(e) => {
                                 loaded.record_error(format!("event serialize error: {e}"));
+                                newly_crashed.push(id.clone());
                                 break;
                             }
                         };
@@ -880,6 +905,7 @@ impl ModuleRuntime {
                         };
                         if let Err(e) = on_event.call::<()>((msg.topic, lua_payload, meta)) {
                             loaded.record_error(format!("on_event error: {e}"));
+                            newly_crashed.push(id.clone());
                             break;
                         }
                     }
@@ -888,21 +914,26 @@ impl ModuleRuntime {
         }
 
         // 2. Call `on_update(dt_sec, now_ms)` for every healthy module.
-        for loaded in self.modules.values_mut() {
+        for (id, loaded) in self.modules.iter_mut() {
             if !loaded.healthy {
                 continue;
             }
             if let Ok(on_update) = loaded.lua.globals().get::<Function>("on_update") {
                 if let Err(e) = on_update.call::<()>((dt_sec, now_ms)) {
                     loaded.record_error(format!("on_update error: {e}"));
+                    newly_crashed.push(id.clone());
                 }
             }
+        }
+        for cid in newly_crashed {
+            self.broker.purge_origin(&format!("module:{cid}"));
         }
 
         // 3. Collect render commands per stage in deterministic order.
         let scene = Arc::new(Mutex::new(FrameScene {
             time_sec: self.elapsed_sec,
             dt_sec,
+            has_custom_keys_renderer: self.has_module("keys-renderer"),
             ..Default::default()
         }));
 

@@ -1,10 +1,10 @@
 id = "fx-ability-deck"
 name = "StreamDeck Ability Bar"
 version = "2.0.0"
-description = "StreamDeck-style dynamic key tiles showing live abilities, sweeping cooldown timers, charge counters, and instant Shift/Ctrl layer switching"
+description = "Publishes live game abilities, sweeping cooldowns, charge counts, and Shift/Ctrl banks to `keys/providers/ability-deck` (100% transparent, zero-flash override)"
 author = "OpenFlux"
 category = "effect"
-stages = ["world_overlay"]
+stages = ["under_key"]
 host_requirement = "optional"
 slot_capable = false
 stackable = true
@@ -15,7 +15,7 @@ host = "host/ability_sim.py"
 
 [channels]
 subscribes = ["input/keys/event", "host/app/active", "host/profile/active", "modules/ability-deck/#"]
-publishes = ["modules/ability-deck/cast", "fx/surface/impulse"]
+publishes = ["keys/providers/ability-deck", "modules/ability-deck/cast", "fx/surface/impulse"]
 
 [[settings]]
 key = "app_filter"
@@ -30,12 +30,10 @@ kind = "string"
 default = ""
 
 [[settings]]
-key = "opacity"
-label = "Key Tile Opacity"
-kind = "number"
-default = 0.88
-min = 0.35
-max = 1.0
+key = "tile_bg"
+label = "Show Translucent Key Plate"
+kind = "boolean"
+default = true
 
 [[settings]]
 key = "demo_activity"

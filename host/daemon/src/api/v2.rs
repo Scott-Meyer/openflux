@@ -131,12 +131,15 @@ impl V2State {
         if state_file.modules.is_empty() && !discovered.is_empty() {
             let defaults = [
                 ("bg-aurora-shader", None),
+                ("keys-renderer", None),
+                ("keys-keymap", None),
+                ("keys-shortcuts", None),
                 ("fx-water-ripple-3d", None),
                 ("fx-analog-depth-glow", None),
                 ("fx-key-particles", None),
                 ("widget-clock", Some(0)),
                 ("widget-system-load", Some(1)),
-                ("widget-media", Some(2)),
+                ("widget-weather", Some(2)),
                 ("companion-idle-pet", Some(3)),
             ];
             for (id, slot) in defaults {
