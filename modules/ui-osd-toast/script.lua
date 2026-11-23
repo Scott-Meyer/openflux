@@ -5,6 +5,12 @@
 -- Publishing with the same `id` updates the pill smoothly in place and resets its fade timer!
 
 local toasts = {} -- ordered list of active toasts (id -> replaced in place)
+local attachments = nil
+
+function on_init()
+  local att = bus.get("keyboard/attachments")
+  if type(att) == "table" then attachments = att end
+end
 
 local function parse_hex(hex, fallback)
   if type(hex) ~= "string" then return fallback end
@@ -66,6 +72,10 @@ local function draw_osd_icon(ctx, icon, cx, cy, col)
 end
 
 function on_event(topic, payload)
+  if topic == "keyboard/attachments" and type(payload) == "table" then
+    attachments = payload
+    return
+  end
   if topic ~= "ui/toast" or type(payload) ~= "table" then return end
   local id = tostring(payload.id or ("toast-" .. tostring(#toasts + 1)))
   local dur = math.max(0.4, math.min(12.0, (tonumber(payload.duration_ms) or 1800) / 1000.0))
@@ -133,14 +143,53 @@ function on_render(ctx, stage)
   local pos = tostring(cfg.position or "top_bar")
   local def_col = module.color("default_accent", "#5ce1ff")
 
-  -- Default `top_bar`: centered both horizontally AND vertically inside the top-bar area (y=5..261, center y=133)!
+  -- Default `top_bar`: centered vertically & horizontally inside the top-bar area (y=5..261).
+  -- Attachment-aware: if a physical hardware attachment (e.g. Rotary Dial / Slider) blocks the
+  -- center top-bar bays, automatically relocate into the widest clear glass bay — or drop
+  -- gracefully to `top_center` (y=266) if all top bays are blocked!
   local base_y = 95
   local step_y = 88
+  local center_x = 960
+  local max_pw = 560
   if pos == "top_center" then
     base_y = 266
   elseif pos == "bottom_center" then
     base_y = 964
     step_y = -92
+  elseif pos == "top_bar" and type(attachments) == "table" then
+    local blocked = attachments.blocked_rects
+    local clear = attachments.clear_rects
+    local default_x0, default_x1 = 960 - 270, 960 + 270
+    local hits_blocked = false
+    if type(blocked) == "table" then
+      for _, br in ipairs(blocked) do
+        local bx0 = tonumber(br.x) or 0
+        local bx1 = bx0 + (tonumber(br.w) or 0)
+        if default_x0 < bx1 and default_x1 > bx0 then
+          hits_blocked = true
+          break
+        end
+      end
+    end
+    if hits_blocked then
+      local best_cx, best_w = nil, 0
+      if type(clear) == "table" then
+        for _, cr in ipairs(clear) do
+          local cw = tonumber(cr.w) or 0
+          local cx = (tonumber(cr.x) or 0) + cw * 0.5
+          if cw > best_w then
+            best_w = cw
+            best_cx = cx
+          end
+        end
+      end
+      if best_cx and best_w >= 400 then
+        center_x = best_cx
+        max_pw = math.min(520, math.floor(best_w - 28))
+      else
+        base_y = 266
+      end
+    end
   end
 
   for idx, t in ipairs(toasts) do
@@ -157,8 +206,8 @@ function on_render(ctx, stage)
 
       if t.has_level then
         -- macOS-grade Meter Pill (Volume, Brightness, Mic Gain)
-        local pw, ph = 520, 76
-        local px = (1920 - pw) * 0.5
+        local pw, ph = math.min(520, max_pw), 76
+        local px = center_x - pw * 0.5
         ctx:round_rect(px, py, pw, ph, 22, { 0.04, 0.06, 0.10, alpha * 0.90 }, 1.6, { c[1], c[2], c[3], alpha * 0.55 })
         draw_osd_icon(ctx, t.icon, px + 38, py + ph * 0.5, ac)
 
@@ -179,9 +228,9 @@ function on_render(ctx, stage)
       else
         -- Clean Status / Alert Pill (Caps, Layer, Pomodoro, Prusa, 3rd-party notifications)
         local has_msg = (#t.message > 0)
-        local pw = has_msg and 560 or 380
+        local pw = math.min(has_msg and 560 or 380, max_pw)
         local ph = has_msg and 78 or 64
-        local px = (1920 - pw) * 0.5
+        local px = center_x - pw * 0.5
         ctx:round_rect(px, py, pw, ph, 20, { 0.04, 0.06, 0.10, alpha * 0.90 }, 1.6, { c[1], c[2], c[3], alpha * 0.62 })
         draw_osd_icon(ctx, t.icon, px + 36, py + ph * 0.5, ac)
         if has_msg then

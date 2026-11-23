@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { v2Client, type V2ModuleRecord } from "../api/v2Client";
+import {
+  type AttachmentKind,
+  type HardwareAttachmentBay,
+  v2Client,
+  type V2ModuleRecord,
+} from "../api/v2Client";
+
+const ATTACHMENT_OPTIONS: Array<{ kind: AttachmentKind; label: string; opaque: boolean }> = [
+  { kind: "clear", label: "Clear Window (Glass)", opaque: false },
+  { kind: "dial", label: "Rotary Dial (Knob)", opaque: true },
+  { kind: "triple_dial", label: "Triple Dial Bar", opaque: true },
+  { kind: "slider", label: "Linear Slider", opaque: true },
+  { kind: "macro_4", label: "4-Key Macro Block", opaque: true },
+  { kind: "blank", label: "Opaque Cover", opaque: true },
+];
 
 function getSupportedSpans(m: V2ModuleRecord): number[] {
   const s = m.manifest.top_bar?.supported_spans;
@@ -48,11 +62,46 @@ export function TopBarDockTab({
   onModulesChanged?: (mods: V2ModuleRecord[]) => void;
 }) {
   const [modules, setModules] = useState<V2ModuleRecord[]>([]);
+  const [bays, setBays] = useState<HardwareAttachmentBay[]>([
+    { pos: 0, span: 1, kind: "clear", opaque: false, label: "Clear Window" },
+    { pos: 1, span: 1, kind: "clear", opaque: false, label: "Clear Window" },
+    { pos: 2, span: 1, kind: "clear", opaque: false, label: "Clear Window" },
+    { pos: 3, span: 1, kind: "clear", opaque: false, label: "Clear Window" },
+  ]);
   const [previewSrc, setPreviewSrc] = useState<string>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const syncTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    void v2Client
+      .getDisplayAttachments()
+      .then((res) => {
+        if (Array.isArray(res.bays) && res.bays.length === 4) {
+          setBays(res.bays);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleBayAttachmentChange = async (bayIndex: number, kind: AttachmentKind) => {
+    const opt = ATTACHMENT_OPTIONS.find((o) => o.kind === kind) ?? ATTACHMENT_OPTIONS[0];
+    const nextBays = bays.map((b, i) =>
+      i === bayIndex
+        ? { ...b, pos: i, span: 1, kind: opt.kind, opaque: opt.opaque, label: opt.label }
+        : b,
+    );
+    setBays(nextBays);
+    try {
+      await v2Client.putDisplayAttachments(nextBays);
+      setNotice(
+        `Updated Bay ${bayIndex + 1} → ${opt.label}. Published to keyboard/attachments so notifications & widgets adapt automatically.`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const refresh = useCallback(async () => {
     try {
@@ -305,6 +354,39 @@ export function TopBarDockTab({
           {notice}
         </div>
       )}
+
+      {/* Physical Top-Bar Hardware Attachments (Bays 1–4) */}
+      <div className="kg-calm-card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div>
+            <div className="kg-row-title">Physical Top-Bar Hardware Attachments</div>
+            <div className="kg-muted">
+              Tell KeyGlass which physical hardware attachments are snapped into Bays 1–4 — modules like OSD Notifications
+              automatically read <code>keyboard/attachments</code> and dodge physical dials or sliders.
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+          {[0, 1, 2, 3].map((idx) => {
+            const cur = bays[idx] ?? { pos: idx, span: 1, kind: "clear" as AttachmentKind, opaque: false };
+            return (
+              <label key={idx} className="kg-field-inline" style={{ minWidth: 0 }}>
+                <span>Bay {idx + 1}</span>
+                <select
+                  value={cur.kind}
+                  onChange={(e) => void handleBayAttachmentChange(idx, e.target.value as AttachmentKind)}
+                >
+                  {ATTACHMENT_OPTIONS.map((opt) => (
+                    <option key={opt.kind} value={opt.kind}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Live Preview */}
       {previewSrc && (

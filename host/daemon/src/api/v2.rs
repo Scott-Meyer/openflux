@@ -200,6 +200,8 @@ impl V2State {
         if let Some(pw) = prefs_doc.get("power") {
             let _ = broker.publish("display/power", pw.clone(), PublishOptions::retained());
         }
+        let att_payload = build_attachments_bus_payload(prefs_doc.get("attachments"));
+        let _ = broker.publish("keyboard/attachments", att_payload, PublishOptions::retained());
 
         // Run host-side display Lua modules ONLY inside the isolated `preview_broker` so they
         // never write onto the live keyboard-mirrored `broker` (no split-brain `keys/providers/*`,
@@ -439,6 +441,22 @@ impl V2State {
         }
         self.save_display_prefs(&prefs);
         let _ = self.broker.publish("display/power", payload, PublishOptions::retained());
+    }
+
+    /// Persists physical top-bar hardware attachments (Clear Window, Rotary Dial, Slider, Macro, etc.)
+    /// and publishes `keyboard/attachments` with precomputed `clear_rects` & `blocked_rects` so ANY
+    /// software module (like `ui-osd-toast` or `dock-top-bar`) can automatically dodge physical knobs!
+    pub fn publish_attachments(&self, raw: &serde_json::Value) -> serde_json::Value {
+        let payload = build_attachments_bus_payload(Some(raw));
+        let mut prefs = self.load_display_prefs();
+        if let Some(obj) = prefs.as_object_mut() {
+            obj.insert("attachments".into(), payload.clone());
+        }
+        self.save_display_prefs(&prefs);
+        let _ = self
+            .broker
+            .publish("keyboard/attachments", payload.clone(), PublishOptions::retained());
+        payload
     }
 
     /// Reconciles enabled modules' advertised `[[actions]]` into QMK slots (`0..63`) and publishes
@@ -2247,6 +2265,146 @@ async fn put_display_parallax(
     (StatusCode::OK, Json(json!({ "ok": true, "parallax": state.v2.load_display_prefs()["parallax"] })))
 }
 
+/// Normalizes physical top-bar hardware attachment slots (`0..4` bays) and computes exact
+/// 1920x1080 `clear_rects` (merged contiguous clear windows) and `blocked_rects` (physical knobs,
+/// sliders, macro blocks, or opaque covers) so any software module (`ui-osd-toast`, `dock-top-bar`)
+/// can automatically avoid opaque hardware attachments!
+fn build_attachments_bus_payload(raw: Option<&Value>) -> Value {
+    let default_bays = || -> Vec<Value> {
+        (0..4)
+            .map(|i| {
+                json!({
+                    "pos": i as f64,
+                    "span": 1.0,
+                    "kind": "clear",
+                    "opaque": false,
+                    "label": "Clear Window",
+                })
+            })
+            .collect()
+    };
+
+    let bays: Vec<Value> = raw
+        .and_then(|v| v.get("bays"))
+        .and_then(|v| v.as_array())
+        .filter(|arr| !arr.is_empty())
+        .map(|arr| {
+            arr.iter()
+                .map(|b| {
+                    let pos = b.get("pos").and_then(|v| v.as_f64()).unwrap_or(0.0).clamp(0.0, 3.5);
+                    let span = b.get("span").and_then(|v| v.as_f64()).unwrap_or(1.0).clamp(0.5, 4.0);
+                    let kind = b
+                        .get("kind")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("clear")
+                        .to_string();
+                    let opaque = b
+                        .get("opaque")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(kind != "clear");
+                    let label = b
+                        .get("label")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                        .unwrap_or_else(|| match kind.as_str() {
+                            "dial" => "Rotary Dial".into(),
+                            "triple_dial" => "Triple Dial".into(),
+                            "slider" => "Linear Slider".into(),
+                            "macro_4" => "4-Key Macro".into(),
+                            "blank" => "Opaque Cover".into(),
+                            _ => "Clear Window".into(),
+                        });
+                    json!({
+                        "pos": pos,
+                        "span": span,
+                        "kind": kind,
+                        "opaque": opaque,
+                        "label": label,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_else(default_bays);
+
+    // Map 4 bays cleanly across header_rect (x=12..1908, y=5..261, w=1896, h=256)
+    let hdr_x = 12.0_f64;
+    let hdr_y = 5.0_f64;
+    let hdr_w = 1896.0_f64;
+    let hdr_h = 256.0_f64;
+    let unit_w = hdr_w / 4.0;
+
+    let mut blocked_rects = Vec::new();
+    let mut blocked_halves = [false; 8];
+    for b in &bays {
+        let pos = b["pos"].as_f64().unwrap_or(0.0);
+        let span = b["span"].as_f64().unwrap_or(1.0);
+        let opaque = b["opaque"].as_bool().unwrap_or(false);
+        if opaque {
+            let x = hdr_x + pos * unit_w;
+            let w = (span * unit_w).min(hdr_x + hdr_w - x);
+            blocked_rects.push(json!({
+                "pos": pos,
+                "span": span,
+                "kind": b["kind"],
+                "label": b["label"],
+                "x": x,
+                "y": hdr_y,
+                "w": w,
+                "h": hdr_h,
+            }));
+            let h0 = ((pos * 2.0).round() as isize).clamp(0, 8) as usize;
+            let h1 = (((pos + span) * 2.0).round() as isize).clamp(0, 8) as usize;
+            for h in h0..h1 {
+                blocked_halves[h] = true;
+            }
+        }
+    }
+
+    // Merge contiguous clear half-bays into maximal `clear_rects`!
+    let mut clear_rects = Vec::new();
+    let mut i = 0usize;
+    while i < 8 {
+        if blocked_halves[i] {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < 8 && !blocked_halves[i] {
+            i += 1;
+        }
+        let pos = start as f64 / 2.0;
+        let span = (i - start) as f64 / 2.0;
+        clear_rects.push(json!({
+            "pos": pos,
+            "span": span,
+            "x": hdr_x + pos * unit_w,
+            "y": hdr_y,
+            "w": span * unit_w,
+            "h": hdr_h,
+        }));
+    }
+
+    json!({
+        "bays": bays,
+        "clear_rects": clear_rects,
+        "blocked_rects": blocked_rects,
+    })
+}
+
+async fn get_display_attachments(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let prefs = state.v2.load_display_prefs();
+    let payload = build_attachments_bus_payload(prefs.get("attachments"));
+    (StatusCode::OK, Json(payload))
+}
+
+async fn put_display_attachments(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<Value>,
+) -> impl IntoResponse {
+    let payload = state.v2.publish_attachments(&body);
+    (StatusCode::OK, Json(json!({ "ok": true, "attachments": payload })))
+}
+
 async fn put_display_power(
     State(state): State<Arc<ApiState>>,
     Json(body): Json<Value>,
@@ -2317,6 +2475,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/display/prefs", get(get_display_prefs))
         .route("/v2/display/parallax", put(put_display_parallax))
         .route("/v2/display/power", put(put_display_power))
+        .route("/v2/display/attachments", get(get_display_attachments).put(put_display_attachments))
         .route("/v2/logs", get(get_all_logs_api))
         .route("/v2/vial/status", get(vial_status_api))
         .route("/v2/vial/xfer", post(vial_xfer_api))

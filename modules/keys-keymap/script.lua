@@ -378,19 +378,38 @@ local function publish_keymap()
   end
 
   if #rules == 0 and vis == "all" then
-    -- Minimal fallback ANSI default when keyboard is unplugged
+    -- Complete 85-key ANSI QWERTY fallback when keyboard is unplugged so KeyGlass previews
+    -- always show crisp, realistic keycap legends!
     local fallback = {
       { 0, "Esc" }, { 1, "F1" }, { 2, "F2" }, { 3, "F3" }, { 4, "F4" }, { 5, "F5" }, { 6, "F6" },
       { 7, "F7" }, { 8, "F8" }, { 9, "F9" }, { 10, "F10" }, { 11, "F11" }, { 12, "F12" },
       { 13, "Prt" }, { 14, "Ins" }, { 15, "Del" },
-      { 29, "", "kbd_bksp" }, { 30, "", "kbd_home" }, { 31, "", "kbd_tab" }, { 45, "", "kbd_end" },
-      { 46, "", "kbd_caps" }, { 58, "", "kbd_enter" }, { 59, "", "kbd_pgup" },
-      { 60, "", "kbd_shift" }, { 71, "", "kbd_shift" }, { 72, "", "kbd_up" }, { 73, "", "kbd_pgdn" },
-      { 74, "", "kbd_cmd" }, { 75, "", "kbd_opt" }, { 76, "", "kbd_ctrl" }, { 77, "", "kbd_ctrl" },
+      { 16, "`", nil, "~" }, { 17, "1", nil, "!" }, { 18, "2", nil, "@" }, { 19, "3", nil, "#" },
+      { 20, "4", nil, "$" }, { 21, "5", nil, "%" }, { 22, "6", nil, "^" }, { 23, "7", nil, "&" },
+      { 24, "8", nil, "*" }, { 25, "9", nil, "(" }, { 26, "0", nil, ")" }, { 27, "-", nil, "_" },
+      { 28, "=", nil, "+" }, { 29, "Bksp", "kbd_bksp" }, { 30, "Home", "kbd_home" },
+      { 31, "Tab", "kbd_tab" },
+      { 32, "q" }, { 33, "w" }, { 34, "e" }, { 35, "r" }, { 36, "t" },
+      { 37, "y" }, { 38, "u" }, { 39, "i" }, { 40, "o" }, { 41, "p" },
+      { 42, "[", nil, "{" }, { 43, "]", nil, "}" }, { 44, "\\", nil, "|" }, { 45, "End", "kbd_end" },
+      { 46, "Caps", "kbd_caps" },
+      { 47, "a" }, { 48, "s" }, { 49, "d" }, { 50, "f" }, { 51, "g" },
+      { 52, "h" }, { 53, "j" }, { 54, "k" }, { 55, "l" }, { 56, ";", nil, ":" }, { 57, "'", nil, "\"" },
+      { 58, "Enter", "kbd_enter" }, { 59, "PgUp", "kbd_pgup" },
+      { 60, "Shift", "kbd_shift" },
+      { 61, "z" }, { 62, "x" }, { 63, "c" }, { 64, "v" }, { 65, "b" }, { 66, "n" }, { 67, "m" },
+      { 68, ",", nil, "<" }, { 69, ".", nil, ">" }, { 70, "/", nil, "?" },
+      { 71, "Shift", "kbd_shift" }, { 72, "", "kbd_up" }, { 73, "PgDn", "kbd_pgdn" },
+      { 74, "Cmd", "kbd_cmd" }, { 75, "Opt", "kbd_opt" }, { 76, "Ctrl", "kbd_ctrl" }, { 77, "Ctrl", "kbd_ctrl" },
       { 78, "", "kbd_space" }, { 79, "Fn", "kbd_layer" },
+      { 80, "Reset", "refresh" }, { 81, "Pomo", "play" },
       { 82, "", "kbd_left" }, { 83, "", "kbd_down" }, { 84, "", "kbd_right" },
     }
-    for _, f in ipairs(fallback) do table.insert(rules, { key = f[1], label = f[2], icon = f[3] }) end
+    for _, f in ipairs(fallback) do
+      local is_letter = (#f[2] == 1 and f[2] >= "a" and f[2] <= "z")
+      local lbl = is_letter and (lower_default and f[2] or string.upper(f[2])) or f[2]
+      table.insert(rules, { key = f[1], label = lbl, icon = f[3], shifted = f[4], shift_case = is_letter })
+    end
   end
 
   bus.publish("keys/providers/keymap", {

@@ -100,6 +100,22 @@ export type HostProcessStatus =
   | { state: "failed"; error: string }
   | { state: "exited"; code?: number | null; last_stderr?: string | null };
 
+export type AttachmentKind = "clear" | "dial" | "triple_dial" | "slider" | "macro_4" | "blank";
+
+export interface HardwareAttachmentBay {
+  pos: number;
+  span: number;
+  kind: AttachmentKind;
+  opaque?: boolean;
+  label?: string;
+}
+
+export interface KeyboardAttachmentsState {
+  bays: HardwareAttachmentBay[];
+  clear_rects: Array<{ pos: number; span: number; x: number; y: number; w: number; h: number }>;
+  blocked_rects: Array<{ pos: number; span: number; kind: string; label: string; x: number; y: number; w: number; h: number }>;
+}
+
 export interface V2ModuleRecord {
   id: string;
   manifest: ModuleManifest;
@@ -351,4 +367,7 @@ export const v2Client = {
     v2Call<{ ok: boolean }>("PUT", "/v2/display/parallax", parallax),
   putDisplayPower: (power: { brightness: number; timeoutSec: number }) =>
     v2Call<{ ok: boolean }>("PUT", "/v2/display/power", power),
+  getDisplayAttachments: () => v2Call<KeyboardAttachmentsState>("GET", "/v2/display/attachments"),
+  putDisplayAttachments: (bays: HardwareAttachmentBay[]) =>
+    v2Call<{ ok: boolean; attachments: KeyboardAttachmentsState }>("PUT", "/v2/display/attachments", { bays }),
 };
