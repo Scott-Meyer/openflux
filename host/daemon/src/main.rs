@@ -834,6 +834,9 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn get_file(&self, path: &str) -> Result<Vec<u8>, String> {
+        if let Some(m) = self.active_mux() {
+            return m.get_file(path);
+        }
         let client = self.client()?;
         client.get_file(path).map_err(|e| e.to_string())
     }
