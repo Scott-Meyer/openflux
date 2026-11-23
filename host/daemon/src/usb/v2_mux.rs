@@ -382,6 +382,7 @@ impl V2UsbMux {
             }
             let initial_replays = m.on_remote_frame(PeerBusFrame::Subscribe {
                 node: "keyboard".into(),
+                session_id: 0,
                 patterns: vec![
                     "host/#".into(),
                     "modules/#".into(),

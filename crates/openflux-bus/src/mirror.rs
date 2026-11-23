@@ -19,8 +19,12 @@ use std::collections::BTreeSet;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PeerBusFrame {
     /// Advertises the full set of topic patterns this peer wants mirrored from the remote broker.
+    /// Carries a per-process `session_id` so if either peer restarts independently in ANY order,
+    /// the surviving side automatically re-advertises its own subscriptions and replays retained state.
     Subscribe {
         node: String,
+        #[serde(default)]
+        session_id: u64,
         patterns: Vec<String>,
     },
     /// Mirrors a single published message (one-off event or retained state) to the remote broker.
@@ -68,6 +72,8 @@ pub struct BrokerMirror {
     local_node: String,
     remote_node: String,
     peer_origin_prefix: String,
+    session_id: u64,
+    last_remote_session_id: Option<u64>,
     local_sub: Subscription,
     remote_patterns: Vec<TopicPattern>,
     last_advertised_patterns: Vec<String>,
@@ -75,9 +81,12 @@ pub struct BrokerMirror {
 
 impl BrokerMirror {
     pub fn new(broker: Broker, remote_node: impl Into<String>) -> Self {
+        static NEXT_SID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let local_node = broker.node_id().to_string();
         let remote_node = remote_node.into();
         let peer_origin_prefix = format!("peer:{remote_node}");
+        let sid_seq = NEXT_SID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let session_id = (crate::broker::now_unix_ms() << 16) ^ sid_seq ^ (std::process::id() as u64);
         let local_sub = broker
             .subscribe(
                 "#",
@@ -94,6 +103,8 @@ impl BrokerMirror {
             local_node,
             remote_node,
             peer_origin_prefix,
+            session_id,
+            last_remote_session_id: None,
             local_sub,
             remote_patterns: Vec::new(),
             last_advertised_patterns: Vec::new(),
@@ -128,34 +139,55 @@ impl BrokerMirror {
         self.last_advertised_patterns = next.clone();
         Some(PeerBusFrame::Subscribe {
             node: self.local_node.clone(),
+            session_id: self.session_id,
             patterns: next,
         })
     }
 
     /// Handles an incoming `PeerBusFrame` from the remote peer, returning any immediate
-    /// response frames (such as retained snapshots for a newly subscribed pattern or `Pong`).
+    /// response frames (such as our own `Subscribe` if the peer has a new `session_id`,
+    /// retained snapshots for newly subscribed patterns, or `Pong`).
     pub fn on_remote_frame(&mut self, frame: PeerBusFrame) -> Vec<PeerBusFrame> {
         match frame {
-            PeerBusFrame::Subscribe { patterns, .. } => {
+            PeerBusFrame::Subscribe {
+                session_id,
+                patterns,
+                ..
+            } => {
                 self.remote_patterns = patterns
                     .iter()
                     .filter_map(|p| TopicPattern::parse(p).ok())
                     .collect();
+
+                let mut replies = Vec::new();
+                // Symmetric session convergence: if the remote peer is new or restarted
+                // (new `session_id`), automatically send our own `Subscribe` back so BOTH
+                // directions converge in 1 RTT regardless of boot/restart order!
+                if session_id != 0 && self.last_remote_session_id != Some(session_id) {
+                    self.last_remote_session_id = Some(session_id);
+                    if !self.last_advertised_patterns.is_empty() {
+                        replies.push(PeerBusFrame::Subscribe {
+                            node: self.local_node.clone(),
+                            session_id: self.session_id,
+                            patterns: self.last_advertised_patterns.clone(),
+                        });
+                    }
+                }
+
                 // Replay all unexpired retained messages matching the peer's requested patterns!
-                let mut replayed = Vec::new();
                 let mut seen_topics = BTreeSet::new();
                 for pat in &patterns {
                     if let Ok(msgs) = self.broker.query_retained(pat) {
                         for msg in msgs {
                             if seen_topics.insert(msg.topic.clone()) {
                                 if let Some(pf) = self.maybe_outgoing_frame(&msg) {
-                                    replayed.push(pf);
+                                    replies.push(pf);
                                 }
                             }
                         }
                     }
                 }
-                replayed
+                replies
             }
             PeerBusFrame::Publish {
                 source_node,
@@ -231,6 +263,7 @@ impl BrokerMirror {
     pub fn on_disconnect(&mut self) {
         self.remote_patterns.clear();
         self.last_advertised_patterns.clear();
+        self.last_remote_session_id = None;
         let _ = self.broker.purge_origin(&self.peer_origin_prefix);
         let _ = self.broker.publish_typed(
             crate::schema::topics::HOST_CONNECTION,

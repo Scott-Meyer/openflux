@@ -181,4 +181,45 @@ fn mux_framing_and_subscription_driven_broker_mirroring() {
     // Disconnect purges peer-owned retained state cleanly (LWT)
     kb_mirror.on_disconnect();
     assert!(kb.get_retained("host/app/active").is_none());
+
+    // 3. Independent peer restart mid-session: keyboard crashes & creates a brand-new BrokerMirror
+    //    while host stays running. Keyboard sends its Subscribe(new session_id) -> host MUST
+    //    automatically reply with its own Subscribe + retained replay (zero ping-pong, full bidirectional recovery!).
+    let kb2 = Broker::new("keyboard");
+    let _kb2_sub = kb2
+        .subscribe("host/app/#", SubscribeOptions::default())
+        .unwrap();
+    let mut kb2_mirror = BrokerMirror::new(kb2.clone(), "host");
+    let kb2_sub_f = kb2_mirror.build_subscribe_if_changed(&[], true).unwrap();
+
+    let host_replies = host_mirror.on_remote_frame(kb2_sub_f);
+    // Must contain BOTH host's own Subscribe back AND the retained host/app/active replay!
+    assert!(
+        host_replies.iter().any(|f| matches!(f, openflux_bus::PeerBusFrame::Subscribe { .. })),
+        "host must re-advertise its own subscriptions when a peer restarts with a new session_id"
+    );
+    let mut kb2_followups = Vec::new();
+    for rf in host_replies {
+        kb2_followups.extend(kb2_mirror.on_remote_frame(rf));
+    }
+    assert_eq!(
+        kb2.get_retained("host/app/active").unwrap().payload["app_id"],
+        "com.tinyspeck.slackmacgap"
+    );
+    // Feed followups back to host and confirm convergence terminates (no infinite Subscribe ping-pong!)
+    for f in kb2_followups {
+        let more = host_mirror.on_remote_frame(f);
+        assert!(
+            !more.iter().any(|x| matches!(x, openflux_bus::PeerBusFrame::Subscribe { .. })),
+            "Subscribe exchange must converge cleanly in 1 RTT without ping-pong"
+        );
+    }
+    // Verify keyboard -> host direction is ALREADY restored after keyboard-only restart!
+    kb2.publish("input/keys/event", json!({"key_index": 74}), PublishOptions::default())
+        .unwrap();
+    assert_eq!(
+        kb2_mirror.drain_outgoing().len(),
+        1,
+        "restarted keyboard must immediately mirror host-subscribed topics back to host"
+    );
 }
