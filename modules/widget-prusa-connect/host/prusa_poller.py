@@ -315,6 +315,18 @@ class RtspFrameGrabber:
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0
                 )
                 self._proc = proc
+
+                # Wait for the FIRST real H.264 chunk BEFORE opening POST /v2/streams/prusa-cam!
+                # If the RTSP camera is offline/unreachable, ffmpeg exits with 0 bytes and we
+                # never trigger a false `active: true` flash on the keyboard!
+                out_fd = proc.stdout.fileno()
+                first_chunk = os.read(out_fd, 16384)
+                if not first_chunk:
+                    proc.wait(timeout=2.0)
+                    if not self._stop.is_set():
+                        time.sleep(8.0)
+                    continue
+
                 conn = (
                     http.client.HTTPSConnection(parsed.hostname, parsed.port, context=SSL_CTX, timeout=15)
                     if parsed.scheme == "https"
@@ -325,7 +337,10 @@ class RtspFrameGrabber:
                 conn.putheader("Transfer-Encoding", "chunked")
                 conn.endheaders()
 
-                out_fd = proc.stdout.fileno()
+                hdr = f"{len(first_chunk):x}\r\n".encode("ascii")
+                conn.send(hdr + first_chunk + b"\r\n")
+                self.frames_uploaded += 1
+
                 while not self._stop.is_set():
                     chunk = os.read(out_fd, 16384)
                     if not chunk:
@@ -347,9 +362,9 @@ class RtspFrameGrabber:
                         conn.close()
                     except Exception:
                         pass
-                self._close_stream()
+                    self._close_stream()
             if not self._stop.is_set():
-                time.sleep(3.0)
+                time.sleep(6.0)
 
 
 def main():

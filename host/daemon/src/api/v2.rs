@@ -1644,15 +1644,21 @@ async fn ingest_media_stream(
     }
 
     // Continuous streaming H.264 Annex-B body!
-    let _ = state.v2.broker.publish(
-        format!("modules/streams/{name}"),
-        json!({ "active": true, "codec": "h264", "name": name }),
-        PublishOptions::retained().with_origin("host-stream"),
-    );
+    // Only advertise `active: true` once real video bytes actually arrive (prevents flashing
+    // when an upstream RTSP/YouTube source is offline and ffmpeg exits with 0 bytes!).
+    let mut announced_live = false;
 
     while let Some(item) = data_stream.next().await {
         match item {
             Ok(chunk) if !chunk.is_empty() => {
+                if !announced_live {
+                    announced_live = true;
+                    let _ = state.v2.broker.publish(
+                        format!("modules/streams/{name}"),
+                        json!({ "active": true, "codec": "h264", "name": name }),
+                        PublishOptions::retained().with_origin("host-stream"),
+                    );
+                }
                 total_bytes += chunk.len() as u64;
                 chunks += 1;
                 // Slice large chunks cleanly to <= 64 KB so P0 CH_BUS preempts freely!
@@ -1665,18 +1671,20 @@ async fn ingest_media_stream(
         }
     }
 
-    // Stream ended or closed -> notify keyboard immediately so module turns 100% transparent!
-    let _ = state.device.send_media_frame(
-        &name,
-        codec,
-        &[],
-        openflux_bus::FLAG_STREAM_CLOSE,
-    );
-    let _ = state.v2.broker.publish(
-        format!("modules/streams/{name}"),
-        json!({ "active": false, "codec": "closed", "name": name }),
-        PublishOptions::retained().with_origin("host-stream"),
-    );
+    // Stream ended or closed -> only send close if we ever actually went live!
+    if announced_live {
+        let _ = state.device.send_media_frame(
+            &name,
+            codec,
+            &[],
+            openflux_bus::FLAG_STREAM_CLOSE,
+        );
+        let _ = state.v2.broker.publish(
+            format!("modules/streams/{name}"),
+            json!({ "active": false, "codec": "closed", "name": name }),
+            PublishOptions::retained().with_origin("host-stream"),
+        );
+    }
 
     (
         StatusCode::OK,
