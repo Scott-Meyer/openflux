@@ -91,36 +91,51 @@ void main() {
   if (reg > 0.90) {
     // 1. Clear Acrylic Top Display Strip
     vec3 scr = sample_screen(v_uv);
-    // Subtle overhead acrylic glass reflection across the top display strip
-    float sheen = smoothstep(0.18, 0.0, v_uv.y) * 0.075;
-    // Crisp frosted acrylic horizontal ridge separating Top Strip from Keycap Deck
+    float sheen = smoothstep(0.16, 0.0, v_uv.y) * 0.065;
     float ridge = smoothstep(0.0045, 0.0, abs(v_uv.y - 0.244));
-    col = scr + vec3(0.82, 0.89, 1.0) * (sheen + ridge * 0.22);
+    col = scr + vec3(0.84, 0.90, 1.0) * (sheen + ridge * 0.22);
   } else if (reg < 0.18) {
-    // 2. Translucent Clear Acrylic Keyframe Trench (continuous IPS glow visible between keys,
-    // softly darkened by the 9mm acrylic keyframe wall shadow just like the real Flux board!)
-    vec3 scr = sample_screen(v_uv);
-    col = scr * 0.56 + vec3(0.012, 0.016, 0.024);
+    // 2. Narrow Physical Keyframe Gap & Perimeter Acrylic Frame
+    // Outside the keycap array keep normal brightness; inside the narrow inter-key gap,
+    // thick keyframe + keycap wall total-internal-reflection obscures direct sightlines cleanly!
+    vec3 refr_a = sample_screen(v_uv + vec2(0.018, -0.014));
+    vec3 refr_b = sample_screen(v_uv + vec2(-0.016, 0.016));
+    vec3 scrambled = (refr_a + refr_b) * 0.5;
+    col = scrambled * 0.22 + vec3(0.012, 0.014, 0.020);
   } else if (reg < 0.58) {
-    // 3. Steep Sloped 3D Acrylic Keycap Bevel Wall (IOR = 1.51 Snell refraction + prism dispersion!)
-    vec2 refr = nxy * 0.022;
-    float r_ch = sample_screen(v_uv + refr * 1.15).r;
-    float g_ch = sample_screen(v_uv + refr * 1.00).g;
-    float b_ch = sample_screen(v_uv + refr * 0.85).b;
-    vec3 refr_col = vec3(r_ch, g_ch, b_ch);
+    // 3. Thick Vertical Acrylic Keycap Walls (Total Internal Reflection + Heavily Scrambled Optics)
+    // You cannot read cleanly through the thick vertical keycap edges — instead they trap
+    // heavily refracted, blurred multi-bounce color from the glowing screen + sharp specular rim!
+    vec2 perp = vec2(-nxy.y, nxy.x);
+    vec2 r1 = nxy * 0.036 + perp * 0.012;
+    vec2 r2 = -nxy * 0.028 - perp * 0.014;
+    vec2 r3 = nxy * 0.020 + vec2(0.0, 0.018);
+    vec3 s1 = vec3(
+      sample_screen(v_uv + r1 * 1.18).r,
+      sample_screen(v_uv + r1).g,
+      sample_screen(v_uv + r1 * 0.82).b
+    );
+    vec3 s2 = sample_screen(v_uv + r2);
+    vec3 s3 = sample_screen(v_uv + r3);
+    vec3 trapped_glass = (s1 * 0.45 + s2 * 0.30 + s3 * 0.25);
 
-    float edge_rim = smoothstep(0.12, 0.88, h);
-    vec3 glass_tint = vec3(0.86, 0.93, 1.0);
-    col = refr_col * (0.94 + 0.18 * edge_rim);
-    col += glass_tint * (fresnel * 0.36 + spec1 * 0.62 + spec2 * 0.24);
-    col *= mix(0.76, 1.06, smoothstep(0.0, 0.45, h));
+    // Thick translucent acrylic wall: dark optical absorption at outer edge + crisp bright glass rim
+    float wall_t = smoothstep(0.05, 0.92, h);
+    vec3 glass_rim = vec3(0.86, 0.93, 1.0) * (fresnel * 0.34 + spec1 * 0.58 + spec2 * 0.22);
+    col = trapped_glass * mix(0.28, 0.68, wall_t) + glass_rim;
   } else {
-    // 4. Sculpted Crystal-Clear Keycap Top Face (gentle spherical dish magnification!)
-    vec2 lens_uv = v_uv + nxy * 0.0055;
-    vec3 scr = sample_screen(lens_uv);
-    float dish_sheen = spec1 * 0.18 + spec2 * 0.08 + fresnel * 0.09;
-    float inner_lip = smoothstep(0.88, 0.82, h) * 0.16;
-    col = scr * 1.08 + vec3(0.88, 0.94, 1.0) * (dish_sheen + inner_lip);
+    // 4. Convex-Bottom Fisheye Acrylic Keycap Lens + Subtle 9mm Seated Viewing Parallax!
+    // Each keycap's bottom convex lens pulls in ~7% extra surrounding image (fisheye) so your
+    // brain stitches a complete continuous ocean across the whole board even across the blocked walls!
+    float r2 = dot(nxy, nxy);
+    vec2 parallax_9mm = vec2((v_uv.x - 0.5) * 0.005, 0.0045);
+    vec2 fisheye_uv = v_uv + parallax_9mm - nxy * (0.016 + 0.038 * r2);
+    vec3 scr = sample_screen(fisheye_uv);
+
+    // Crystal-clear optical transmission with crisp internal bevel catch-light
+    float dish_sheen = spec1 * 0.14 + spec2 * 0.06 + fresnel * 0.06;
+    float inner_lip = smoothstep(0.89, 0.83, h) * 0.18;
+    col = scr * 1.06 + vec3(0.88, 0.94, 1.0) * (dish_sheen + inner_lip);
   }
 
   // Interactive 3D internal acrylic edge glow on Hovered / Selected key
@@ -150,39 +165,34 @@ function buildGlassNormalMap(keys: SurfaceKeyGeom[]): Uint8Array {
   const sx = MAP_W / DISPLAY_W;
   const sy = MAP_H / DISPLAY_H;
 
-  // Initialize everything to trench (nx=0, ny=0, h=0, reg=0)
+  // Initialize everything to clear glass apron (nx=0, ny=0, h=255, reg=1.0) so areas OUTSIDE
+  // the keycap array stay 100% bright & clear — only keycap walls & narrow inter-key gaps obscure!
   for (let i = 0; i < MAP_W * MAP_H; i++) {
     const o = i * 4;
     data[o] = 128;
     data[o + 1] = 128;
-    data[o + 2] = 0;
-    data[o + 3] = 0;
+    data[o + 2] = 255;
+    data[o + 3] = 255;
   }
 
-  // Top Clear Display Strip (y = 0..264 in 1080p)
   const topH = Math.round(264 * sy);
-  for (let y = 0; y < topH; y++) {
-    for (let x = 0; x < MAP_W; x++) {
-      const o = (y * MAP_W + x) * 4;
-      data[o] = 128;
-      data[o + 1] = 128;
-      data[o + 2] = 255;
-      data[o + 3] = 255; // reg = 1.0 (top strip)
-    }
-  }
 
-  // Rasterize each of the 85 sculpted acrylic keycaps with realistic sloped bevels + subtle dish
+  // Rasterize each of the 85 sculpted acrylic keycaps:
+  // - Tight 3px dark optical perimeter frame (`reg = 0`) right around each keycap (the keyframe gap)
+  // - Thick vertical acrylic bevel walls (`reg = 0.40`, heavily scrambled total-internal-reflection!)
+  // - Convex-bottom fisheye crystal top face (`reg = 0.75`, gently pulls in extra surrounding screen!)
   for (const k of keys) {
-    const x0 = Math.max(0, Math.floor((k.rect.x + 2) * sx));
-    const y0 = Math.max(topH, Math.floor((k.rect.y + 2) * sy));
-    const x1 = Math.min(MAP_W - 1, Math.ceil((k.rect.x + k.rect.w - 2) * sx));
-    const y1 = Math.min(MAP_H - 1, Math.ceil((k.rect.y + k.rect.h - 2) * sy));
-    const cx = (x0 + x1) * 0.5;
-    const cy = (y0 + y1) * 0.5;
-    const hw = Math.max(4, (x1 - x0) * 0.5);
-    const hh = Math.max(4, (y1 - y0) * 0.5);
-    const cornerR = 4.5;
-    const bevelW = 6.2; // crisp sloped acrylic wall width in map pixels
+    const padOut = 3;
+    const x0 = Math.max(0, Math.floor(k.rect.x * sx) - padOut);
+    const y0 = Math.max(topH, Math.floor(k.rect.y * sy) - padOut);
+    const x1 = Math.min(MAP_W - 1, Math.ceil((k.rect.x + k.rect.w) * sx) + padOut);
+    const y1 = Math.min(MAP_H - 1, Math.ceil((k.rect.y + k.rect.h) * sy) + padOut);
+    const cx = (k.rect.x + k.rect.w * 0.5) * sx;
+    const cy = (k.rect.y + k.rect.h * 0.5) * sy;
+    const hw = Math.max(4, (k.rect.w * 0.5 - 2) * sx);
+    const hh = Math.max(4, (k.rect.h * 0.5 - 2) * sy);
+    const cornerR = 4.0;
+    const bevelW = 6.5;
 
     for (let py = y0; py <= y1; py++) {
       for (let px = x0; px <= x1; px++) {
@@ -192,14 +202,20 @@ function buildGlassNormalMap(keys: SurfaceKeyGeom[]): Uint8Array {
         const oy = Math.max(dy, 0);
         const outside = Math.hypot(ox, oy);
         const inside = Math.min(Math.max(dx, dy), 0);
-        const sdf = outside + inside - cornerR; // < 0 inside keycap
+        const sdf = outside + inside - cornerR;
 
-        if (sdf > 0) continue; // recessed dark trench
+        if (sdf > 2.2) continue; // outside this keycap's mechanical gap -> stay clear apron!
+        const o = (py * MAP_W + px) * 4;
+        if (sdf > 0) {
+          // Narrow mechanical gap directly around the keycap wall
+          data[o] = 128;
+          data[o + 1] = 128;
+          data[o + 2] = 0;
+          data[o + 3] = 0; // reg = 0.0 (gap)
+          continue;
+        }
 
         const distIn = -sdf;
-        const o = (py * MAP_W + px) * 4;
-
-        // Outward normal direction from SDF
         let gx = 0;
         let gy = 0;
         if (outside > 0.001) {
@@ -212,26 +228,25 @@ function buildGlassNormalMap(keys: SurfaceKeyGeom[]): Uint8Array {
         }
 
         if (distIn < bevelW) {
-          // Steep sloped 3D acrylic side wall!
-          const t = distIn / bevelW; // 0 at base -> 1 at top lip
-          const slope = 0.82 * (1.0 - t * 0.35);
+          const t = distIn / bevelW;
+          const slope = 0.86 * (1.0 - t * 0.30);
           const nx = gx * slope;
           const ny = gy * slope;
           data[o] = Math.round((nx * 0.5 + 0.5) * 255);
           data[o + 1] = Math.round((ny * 0.5 + 0.5) * 255);
           data[o + 2] = Math.round(t * 210);
-          data[o + 3] = 102; // reg ~ 0.40 (bevel wall)
+          data[o + 3] = 102; // reg ~ 0.40 (thick scrambled acrylic wall)
         } else {
-          // Slightly concave cylindrical-dish clear crystal top face!
+          // Convex-bottom fisheye lens normal pointing radially outward from keycap center
           const u = (px - cx) / hw;
           const v = (py - cy) / hh;
-          const nx = -u * 0.16;
-          const ny = -v * 0.14;
+          const nx = -u * 0.24;
+          const ny = -v * 0.22;
           const lipFactor = Math.min(1.0, (distIn - bevelW) / 3.0);
           data[o] = Math.round((nx * 0.5 + 0.5) * 255);
           data[o + 1] = Math.round((ny * 0.5 + 0.5) * 255);
           data[o + 2] = Math.round(212 + lipFactor * 43);
-          data[o + 3] = 192; // reg ~ 0.75 (clear top face)
+          data[o + 3] = 192; // reg ~ 0.75 (fisheye crystal face)
         }
       }
     }

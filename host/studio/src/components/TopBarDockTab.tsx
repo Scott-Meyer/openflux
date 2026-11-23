@@ -5,13 +5,14 @@ import {
   v2Client,
   type V2ModuleRecord,
 } from "../api/v2Client";
+import { KeyboardSurface, type SurfaceKeyGeom } from "./KeyboardSurface";
 
 const ATTACHMENT_OPTIONS: Array<{ kind: AttachmentKind; label: string; opaque: boolean }> = [
-  { kind: "clear", label: "Clear Window (Glass)", opaque: false },
-  { kind: "dial", label: "Rotary Dial (Knob)", opaque: true },
+  { kind: "clear", label: "Clear Window", opaque: false },
+  { kind: "dial", label: "Rotary Dial", opaque: true },
   { kind: "triple_dial", label: "Triple Dial Bar", opaque: true },
   { kind: "slider", label: "Linear Slider", opaque: true },
-  { kind: "macro_4", label: "4-Key Macro Block", opaque: true },
+  { kind: "macro_4", label: "4-Key Macro", opaque: true },
   { kind: "blank", label: "Opaque Cover", opaque: true },
 ];
 
@@ -57,8 +58,10 @@ type TrackSegment =
   | { kind: "empty"; startHalf: number; spanHalf: number };
 
 export function TopBarDockTab({
+  keys = [],
   onModulesChanged,
 }: {
+  keys?: SurfaceKeyGeom[];
   onModulesChanged?: (mods: V2ModuleRecord[]) => void;
 }) {
   const [modules, setModules] = useState<V2ModuleRecord[]>([]);
@@ -355,14 +358,14 @@ export function TopBarDockTab({
         </div>
       )}
 
-      {/* Physical Top-Bar Hardware Attachments (Bays 1–4) */}
+      {/* Physical Top Attachments (Bays 1–4) */}
       <div className="kg-calm-card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <div>
-            <div className="kg-row-title">Physical Top-Bar Hardware Attachments</div>
+            <div className="kg-row-title">Physical Top Attachments (Bays 1–4)</div>
             <div className="kg-muted">
-              Tell KeyGlass which physical hardware attachments are snapped into Bays 1–4 — modules like OSD Notifications
-              automatically read <code>keyboard/attachments</code> and dodge physical dials or sliders.
+              Select which physical hardware attachments are snapped into Bays 1–4 — modules like Notifications
+              automatically read <code>keyboard/attachments</code> and dodge opaque dials or sliders.
             </div>
           </div>
         </div>
@@ -388,8 +391,15 @@ export function TopBarDockTab({
         </div>
       </div>
 
-      {/* Live Preview */}
-      {previewSrc && (
+      {/* Live 60 FPS WebGL2 Preview with Real Physical Top Attachments */}
+      {keys.length > 0 && (
+        <div className="kg-surface-wrap kg-surface-compact">
+          <KeyboardSurface keys={keys} selectedKey={null} showLivePreview attachments={bays} />
+        </div>
+      )}
+
+      {/* Legacy static preview fallback if keys not passed */}
+      {keys.length === 0 && previewSrc && (
         <div
           style={{
             borderRadius: 12,

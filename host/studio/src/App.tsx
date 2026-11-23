@@ -179,7 +179,7 @@ function sidebarLabel(m: V2ModuleRecord): string {
   const clean: Record<string, string> = {
     "keys-keymap": "QMK Keymap",
     "keys-custom": "Keycap Visuals",
-    "dock-top-bar": "Top Bar & Bays",
+    "dock-top-bar": "Top Bar & Attachments",
     "keys-shortcuts": "Shortcuts",
     "analog-gamepad": "Analog Gamepad",
     "widget-prusa-connect": "Prusa Printer",
@@ -443,11 +443,11 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
           <div className="kg-module-page">
             <div className="kg-page-header">
               <div className="kg-page-title-row">
-                <h1>Top Bar Dock</h1>
-                <span className="kg-pill-subtle">Module · Layout</span>
+                <h1>Top Bar &amp; Attachments</h1>
+                <span className="kg-pill-subtle">Module · Physical Bays &amp; Widgets</span>
               </div>
             </div>
-            <TopBarDockTab onModulesChanged={setModules} />
+            <TopBarDockTab keys={geomKeys} onModulesChanged={setModules} />
           </div>
         )}
 
@@ -489,7 +489,8 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
               keys={geomKeys}
               pickFile={(title) => client.pickFile(title)}
               onUpdated={refreshModules}
-              onOpenKeymap={() => openModule("keys-keymap")}
+              onOpenKeymap={(k) => openModule("keys-keymap", k)}
+              onUninstalled={() => setView({ kind: "home" })}
             />
           )}
 

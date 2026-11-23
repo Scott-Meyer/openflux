@@ -269,22 +269,32 @@ impl ModuleRegistry {
         self.preview_install(&staged.module_dir)
     }
 
-    /// Installs (or updates) a module from ANY source (local dir, Git/GitHub URL, archive, or
-    /// curated list entry ID) into `installed_dir` and records `.openflux-source.json` provenance.
-    pub fn install_from_source(&self, source: &str) -> Result<DiscoveredModule, String> {
-        let state = self.load_state();
-        let staged = stage_module_source(source, &state.curated_lists, &self.bundled_dir)?;
+    /// Installs (or updates) a module directly from an already-staged, already-inspected
+    /// [`StagedModuleSource`] without re-fetching from the network (prevents disclosure TOCTOU!).
+    pub fn install_from_staged(
+        &self,
+        staged: &crate::installer::StagedModuleSource,
+    ) -> Result<DiscoveredModule, String> {
         self.ensure_dirs().map_err(|e| e.to_string())?;
-        let manifest = ModuleManifest::load_from_dir(&staged.module_dir).map_err(|e| e.to_string())?;
+        let manifest =
+            ModuleManifest::load_from_dir(&staged.module_dir).map_err(|e| e.to_string())?;
         let dest = safe_child_dir(&self.installed_dir, &manifest.id)?;
         copy_dir_atomic(&staged.module_dir, &dest)?;
-        let origin = origin_from_staged(&staged, &manifest);
+        let origin = origin_from_staged(staged, &manifest);
         let _ = origin.save(&dest);
         Ok(DiscoveredModule {
             manifest,
             tier: ModuleTier::Installed,
             path: dest,
         })
+    }
+
+    /// Installs (or updates) a module from ANY source (local dir, Git/GitHub URL, archive, or
+    /// curated list entry ID) into `installed_dir` and records `.openflux-source.json` provenance.
+    pub fn install_from_source(&self, source: &str) -> Result<DiscoveredModule, String> {
+        let state = self.load_state();
+        let staged = stage_module_source(source, &state.curated_lists, &self.bundled_dir)?;
+        self.install_from_staged(&staged)
     }
 
     /// Installs (or updates) a module from a local directory into `installed_dir`.

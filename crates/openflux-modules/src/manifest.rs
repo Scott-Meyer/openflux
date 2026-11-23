@@ -237,6 +237,14 @@ pub struct ModuleManifest {
     pub description: String,
     #[serde(default)]
     pub author: String,
+    #[serde(default)]
+    pub license: Option<String>,
+    #[serde(default)]
+    pub homepage: Option<String>,
+    #[serde(default)]
+    pub repository: Option<String>,
+    #[serde(default)]
+    pub issues_url: Option<String>,
     pub category: ModuleCategory,
     #[serde(default)]
     pub tags: Vec<String>,

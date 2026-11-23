@@ -31,6 +31,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
+struct StagedInstallTicket {
+    staged: openflux_modules::StagedModuleSource,
+    preview: openflux_modules::InstallPreview,
+    created_at: std::time::Instant,
+}
+
 pub struct V2State {
     /// Authoritative live host bus mirrored cleanly with the keyboard over OFV2.
     pub broker: Broker,
@@ -52,6 +58,7 @@ pub struct V2State {
     pub vial_relay: VialHidRelay,
     pub vial_actions: Mutex<ModuleActionsMap>,
     vial_actions_path: PathBuf,
+    staged_installs: Mutex<BTreeMap<String, StagedInstallTicket>>,
 }
 
 fn resolve_bundled_modules_dir() -> PathBuf {
@@ -291,6 +298,7 @@ impl V2State {
             vial_relay: VialHidRelay::new(),
             vial_actions: Mutex::new(vial_actions),
             vial_actions_path,
+            staged_installs: Mutex::new(BTreeMap::new()),
         });
 
         // Background watcher: detects direct edits to script.lua / module.toml / new local
@@ -815,6 +823,15 @@ async fn get_module_detail(
     let disclosure = inspect_module_dir(&dm.path).ok();
     let mut logs = state.v2.runtime.lock().unwrap().module_logs(&id);
     logs.extend(state.v2.host_procs.lock().unwrap().logs(&id));
+    let readme = std::fs::read_to_string(dm.path.join("README.md"))
+        .ok()
+        .map(|s| s.chars().take(32_768).collect::<String>());
+    let host_status = state
+        .v2
+        .host_procs
+        .lock()
+        .unwrap()
+        .status(&id, dm.manifest.entrypoints.host.is_some());
     (
         StatusCode::OK,
         Json(json!({
@@ -823,7 +840,9 @@ async fn get_module_detail(
             "tier": dm.tier,
             "path": dm.path,
             "state": saved.modules.get(&id).cloned().unwrap_or_default(),
+            "host_status": host_status,
             "disclosure": disclosure,
+            "readme": readme,
             "logs": logs,
         })),
     )
@@ -1014,6 +1033,8 @@ struct InspectInstallBody {
     #[serde(default)]
     source: Option<String>,
     #[serde(default)]
+    inspect_token: Option<String>,
+    #[serde(default)]
     accept_disclosure: bool,
 }
 
@@ -1036,12 +1057,37 @@ async fn inspect_module_api(
         Ok(s) => s.to_string(),
         Err(e) => return err_resp(StatusCode::BAD_REQUEST, e),
     };
-    let res = tokio::task::spawn_blocking(move || state.v2.registry.preview_install_source(&src))
-        .await
-        .map_err(|e| e.to_string())
-        .and_then(|r| r);
+    let state_clone = state.clone();
+    let res = tokio::task::spawn_blocking(move || {
+        let saved = state_clone.v2.registry.load_state();
+        let staged = openflux_modules::stage_module_source(
+            &src,
+            &saved.curated_lists,
+            &state_clone.v2.registry.bundled_dir,
+        )?;
+        let preview = state_clone.v2.registry.preview_install(&staged.module_dir)?;
+        let token = format!("stg_{}", openflux_bus::now_unix_ms());
+        let mut map = state_clone.v2.staged_installs.lock().unwrap();
+        // Prune expired inspection tickets (> 10 minutes old)
+        map.retain(|_, t| t.created_at.elapsed() < std::time::Duration::from_secs(600));
+        map.insert(
+            token.clone(),
+            StagedInstallTicket {
+                staged,
+                preview: preview.clone(),
+                created_at: std::time::Instant::now(),
+            },
+        );
+        Ok::<_, String>((token, preview))
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
     match res {
-        Ok(preview) => (StatusCode::OK, Json(json!({ "preview": preview }))),
+        Ok((inspect_token, preview)) => (
+            StatusCode::OK,
+            Json(json!({ "preview": preview, "inspect_token": inspect_token })),
+        ),
         Err(e) => err_resp(StatusCode::BAD_REQUEST, e),
     }
 }
@@ -1050,18 +1096,38 @@ async fn install_module_api(
     State(state): State<Arc<ApiState>>,
     Json(body): Json<InspectInstallBody>,
 ) -> impl IntoResponse {
-    let src = match body.effective_source() {
-        Ok(s) => s.to_string(),
-        Err(e) => return err_resp(StatusCode::BAD_REQUEST, e),
-    };
     let accept = body.accept_disclosure;
+    let token_opt = body.inspect_token.clone().filter(|t| !t.trim().is_empty());
+    let src_opt = body.effective_source().ok().map(str::to_string);
+    if token_opt.is_none() && src_opt.is_none() {
+        return err_resp(StatusCode::BAD_REQUEST, "missing `inspect_token`, `source`, or `path`");
+    }
     let state_clone = state.clone();
     let res = tokio::task::spawn_blocking(move || {
-        let preview = state_clone.v2.registry.preview_install_source(&src)?;
+        // Prefer TOCTOU-free staged ticket from `/v2/modules/inspect` (installs the exact bytes disclosed!)
+        if let Some(tok) = token_opt {
+            let ticket = state_clone.v2.staged_installs.lock().unwrap().remove(&tok);
+            let Some(ticket) = ticket else {
+                return Err("inspect_token expired or invalid; please re-inspect before installing".into());
+            };
+            if !accept {
+                return Ok((false, None, ticket.preview));
+            }
+            let dm = state_clone.v2.registry.install_from_staged(&ticket.staged)?;
+            return Ok::<_, String>((true, Some(dm), ticket.preview));
+        }
+        let src = src_opt.unwrap();
+        let saved = state_clone.v2.registry.load_state();
+        let staged = openflux_modules::stage_module_source(
+            &src,
+            &saved.curated_lists,
+            &state_clone.v2.registry.bundled_dir,
+        )?;
+        let preview = state_clone.v2.registry.preview_install(&staged.module_dir)?;
         if !accept {
             return Ok((false, None, preview));
         }
-        let dm = state_clone.v2.registry.install_from_source(&src)?;
+        let dm = state_clone.v2.registry.install_from_staged(&staged)?;
         Ok::<_, String>((true, Some(dm), preview))
     })
     .await

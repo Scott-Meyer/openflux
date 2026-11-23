@@ -43,6 +43,10 @@ export interface ModuleManifest {
   version: string;
   description: string;
   author: string;
+  license?: string | null;
+  homepage?: string | null;
+  repository?: string | null;
+  issues_url?: string | null;
   category: ModuleCategory;
   tags?: string[];
   provides?: string[];
@@ -248,7 +252,9 @@ export const v2Client = {
     v2Call<{
       id: string;
       manifest: ModuleManifest;
+      host_status?: HostProcessStatus;
       disclosure?: DisclosureReport;
+      readme?: string | null;
       logs: ModuleLogEntry[];
     }>("GET", `/v2/modules/${encodeURIComponent(id)}`),
   getModuleLogs: (id: string) =>
@@ -276,12 +282,12 @@ export const v2Client = {
   forkModule: (body: { source_id: string; new_id: string; name?: string; enable?: boolean }) =>
     v2Call("POST", "/v2/modules/fork", body),
   inspectModule: (source: string) =>
-    v2Call<{ preview: InstallPreview }>("POST", "/v2/modules/inspect", { source }),
-  installModule: (source: string, accept_disclosure: boolean) =>
+    v2Call<{ preview: InstallPreview; inspect_token: string }>("POST", "/v2/modules/inspect", { source }),
+  installModule: (source: string, accept_disclosure: boolean, inspect_token?: string) =>
     v2Call<{ installed: boolean; requires_acceptance?: boolean; preview: InstallPreview }>(
       "POST",
       "/v2/modules/install",
-      { source, accept_disclosure },
+      { source, accept_disclosure, ...(inspect_token ? { inspect_token } : {}) },
     ),
   uninstallModule: (id: string) =>
     v2Call<{ uninstalled: boolean; id: string; removed_tier: string }>(

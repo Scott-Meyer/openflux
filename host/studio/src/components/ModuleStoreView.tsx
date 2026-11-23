@@ -8,16 +8,27 @@ interface ModuleStoreViewProps {
   onOpenModule: (moduleId: string) => void;
 }
 
+const CATEGORY_TABS = [
+  { id: "all", label: "All" },
+  { id: "keys", label: "Keymaps & Visuals" },
+  { id: "widget", label: "Top Bar Widgets" },
+  { id: "background", label: "Backgrounds" },
+  { id: "effect", label: "Effects" },
+  { id: "host_service", label: "Integrations" },
+] as const;
+
 export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
   modules,
   onUpdated,
   onOpenModule,
 }) => {
   const [search, setSearch] = useState("");
+  const [catFilter, setCatFilter] = useState<string>("all");
   const [sourceInput, setSourceInput] = useState("");
   const [inspecting, setInspecting] = useState(false);
   const [pendingDisclosure, setPendingDisclosure] = useState<{
     source: string;
+    inspectToken: string;
     disclosure: DisclosureReport;
   } | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -26,6 +37,11 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
     const q = search.trim().toLowerCase();
     return modules
       .filter((m) => {
+        if (catFilter === "keys") {
+          if (!m.id.startsWith("keys-") && !(m.manifest.tags ?? []).includes("keys")) return false;
+        } else if (catFilter !== "all" && m.manifest.category !== catFilter) {
+          return false;
+        }
         if (!q) return true;
         return (
           m.manifest.name.toLowerCase().includes(q) ||
@@ -34,8 +50,12 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
           (m.manifest.tags ?? []).some((t) => t.toLowerCase().includes(q))
         );
       })
-      .sort((a, b) => Number(a.state.enabled) - Number(b.state.enabled) || a.manifest.name.localeCompare(b.manifest.name));
-  }, [modules, search]);
+      .sort(
+        (a, b) =>
+          Number(a.state.enabled) - Number(b.state.enabled) ||
+          a.manifest.name.localeCompare(b.manifest.name),
+      );
+  }, [modules, search, catFilter]);
 
   const handleToggle = async (mod: V2ModuleRecord) => {
     try {
@@ -52,7 +72,11 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
     setStatusMsg(null);
     try {
       const res = await v2Client.inspectModule(sourceInput.trim());
-      setPendingDisclosure({ source: sourceInput.trim(), disclosure: res.preview.disclosure });
+      setPendingDisclosure({
+        source: sourceInput.trim(),
+        inspectToken: res.inspect_token,
+        disclosure: res.preview.disclosure,
+      });
     } catch (err) {
       setStatusMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -63,7 +87,12 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
   const handleApproveInstall = async () => {
     if (!pendingDisclosure) return;
     try {
-      const res = await v2Client.installModule(pendingDisclosure.source, true);
+      // TOCTOU-free: installs directly from the exact verified staged snapshot via `inspect_token`!
+      const res = await v2Client.installModule(
+        pendingDisclosure.source,
+        true,
+        pendingDisclosure.inspectToken,
+      );
       setPendingDisclosure(null);
       setSourceInput("");
       await onUpdated();
@@ -82,7 +111,7 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
         </div>
       </div>
 
-      {/* Install External Module (GitHub / URL / Local Folder) */}
+      {/* Install External Module (TOCTOU-free verified staging) */}
       <div className="kg-calm-card">
         <div className="kg-row-title" style={{ marginBottom: 6 }}>
           Install from GitHub, URL, Archive, or Local Folder
@@ -115,12 +144,16 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
               <strong>
                 {pendingDisclosure.disclosure.runs_host_process
                   ? `YES (${pendingDisclosure.disclosure.host_entrypoint}) — runs on your computer with your user permissions`
-                  : "None (sandboxed Lua only)"}
+                  : "None (sandboxed Lua only — no shell or filesystem write access)"}
               </strong>
             </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <div className="kg-muted" style={{ fontSize: 11 }}>
+              Verified staged snapshot ({pendingDisclosure.disclosure.files?.length ?? 0} files · installs exact
+              inspected bytes, no second download).
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <button type="button" className="kg-btn-primary" onClick={() => void handleApproveInstall()}>
-                Approve &amp; Install
+                Approve &amp; Install Exact Snapshot
               </button>
               <button type="button" className="kg-btn-ghost" onClick={() => setPendingDisclosure(null)}>
                 Cancel
@@ -131,11 +164,23 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
         {statusMsg && <div className="kg-muted" style={{ marginTop: 8 }}>{statusMsg}</div>}
       </div>
 
-      {/* Search & Browse Installed / Bundled Modules */}
-      <div style={{ display: "flex", gap: 8 }}>
+      {/* Category Pills + Search */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="kg-segmented">
+          {CATEGORY_TABS.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className={`kg-seg-btn ${catFilter === c.id ? "is-active" : ""}`}
+              onClick={() => setCatFilter(c.id)}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
         <input
           type="text"
-          style={{ flex: 1 }}
+          style={{ flex: 1, minWidth: 200 }}
           placeholder="Search modules by name, description, or tag…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
