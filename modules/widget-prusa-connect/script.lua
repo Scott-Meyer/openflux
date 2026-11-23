@@ -69,7 +69,7 @@ local function publish_peek_key()
     bus.publish("keys/providers/prusa-peek", nil, true)
     return
   end
-  local col = module.color("accent", "#fa6831")
+  local col = tostring(module.config().accent or "#fa6831")
   bus.publish("keys/providers/prusa-peek", {
     priority = 36,
     mode = "replace",
@@ -149,7 +149,7 @@ function on_tick(dt)
 end
 
 function on_render(ctx, stage)
-  local orange = ctx:hex(module.color("accent", "#fa6831"), 1.0)
+  local orange = module.color("accent", "#fa6831")
   local vmode = active_video_mode()
 
   if stage == "background" then
@@ -158,7 +158,7 @@ function on_render(ctx, stage)
     end
     return
   elseif stage == "tile" then
-    local r = ctx:slot_rect()
+    local r = module.slot_rect()
     if not r then return end
 
     local st = string.upper(tostring(status.state or "OFFLINE"))
