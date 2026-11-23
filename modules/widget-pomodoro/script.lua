@@ -10,8 +10,24 @@ end
 
 function on_event(topic, payload)
   if topic == "modules/widget-pomodoro/command" and type(payload) == "table" then
-    if payload.action == "toggle" then running = not running
-    elseif payload.action == "reset" then remaining_sec = total_sec
+    if payload.action == "toggle" then
+      running = not running
+      bus.publish("ui/toast", {
+        id = "pomodoro",
+        icon = "play",
+        title = running and "Pomodoro Started" or "Pomodoro Paused",
+        color = "#ff6b6b",
+        duration_ms = 1400,
+      }, false)
+    elseif payload.action == "reset" then
+      remaining_sec = total_sec
+      bus.publish("ui/toast", {
+        id = "pomodoro",
+        icon = "bell",
+        title = "Pomodoro Reset",
+        color = "#ff6b6b",
+        duration_ms = 1400,
+      }, false)
     elseif payload.action == "finish" then remaining_sec = 0.05 end
   end
 end
@@ -23,6 +39,14 @@ function on_update(dt)
     if remaining_sec == 0 then
       running = false
       bus.publish("modules/widget-pomodoro/state", { status = "completed", remaining_sec = 0 }, true)
+      bus.publish("ui/toast", {
+        id = "pomodoro",
+        icon = "check",
+        title = "Pomodoro Complete!",
+        message = "Time for a quick break",
+        color = "#58f29c",
+        duration_ms = 4000,
+      }, false)
       bus.publish("fx/surface/impulse", { x = 960, y = 540, radius = 140, force = 1.6, kind = "shockwave", source = "module:widget-pomodoro" }, false)
     end
   end

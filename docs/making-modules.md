@@ -380,6 +380,7 @@ Your script can publish to the bus (`POST /v2/bus/pub`), subscribe to keyboard e
 | `fx/surface/impulse` | No | `{ x, y, radius, force, kind, source }` (shared by ripples, pets, timers) |
 | `keys/providers/<id>` | Yes | `{ priority, mode, when?, rules: [...] }` |
 | `modules/streams/<name>` | Yes | `{ active: true\|false, codec, name }` |
+| `ui/toast` | No | `{ id, icon?, title, message?, level?, value_text?, color?, duration_ms? }` (renders via `ui-osd-toast`) |
 
 ---
 

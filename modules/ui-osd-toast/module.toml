@@ -1,0 +1,44 @@
+id = "ui-osd-toast"
+name = "OSD Toast & Volume HUD"
+version = "2.0.0"
+description = "macOS-style frosted glass HUD pill for volume, brightness, alerts, and notifications published to `ui/toast` (fork or replace via role `osd_toast`!)"
+author = "OpenFlux"
+category = "companion"
+tags = ["core", "osd", "toast", "hud", "volume", "notifications"]
+provides = ["osd_toast"]
+stages = ["world_overlay"]
+host_requirement = "none"
+slot_capable = false
+stackable = false
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["ui/toast"]
+publishes = []
+
+[[settings]]
+key = "position"
+label = "HUD Position"
+kind = "select"
+default = "top_center"
+options = ["top_center", "top_bar", "bottom_center"]
+
+[[settings]]
+key = "default_accent"
+label = "Default Accent Color"
+kind = "color"
+default = "#5ce1ff"
+
+[[actions]]
+id = "test_volume"
+label = "Preview Volume HUD"
+topic = "ui/toast"
+payload = { id = "volume", icon = "volume", title = "Volume", level = 0.65, value_text = "65%", duration_ms = 1800 }
+
+[[actions]]
+id = "test_alert"
+label = "Preview Alert Toast"
+topic = "ui/toast"
+payload = { id = "demo", icon = "check", title = "Prusa CORE One", message = "Print finished! (plate_01)", color = "#ff6a30", duration_ms = 3200 }

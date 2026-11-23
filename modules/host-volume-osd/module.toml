@@ -1,0 +1,33 @@
+id = "host-volume-osd"
+name = "macOS Volume HUD"
+version = "2.0.0"
+description = "Watches macOS system volume and mute in real time via CoreAudio (zero subprocess overhead) and shows a live meter pill via `ui/toast`"
+author = "OpenFlux"
+category = "host_service"
+tags = ["host-service", "audio", "volume", "osd", "toast"]
+depends = [{ role = "osd_toast" }]
+stages = []
+host_requirement = "required"
+slot_capable = false
+stackable = true
+
+[entrypoints]
+host = "host/volume_watcher.py"
+
+[channels]
+subscribes = []
+publishes = ["ui/toast", "host/audio/volume"]
+
+[[settings]]
+key = "accent"
+label = "Volume Bar Color"
+kind = "color"
+default = "#5ce1ff"
+
+[[settings]]
+key = "duration_ms"
+label = "Display Duration (ms)"
+kind = "number"
+default = 1400
+min = 500
+max = 4000

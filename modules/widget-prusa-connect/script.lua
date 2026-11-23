@@ -19,6 +19,7 @@ local status = {
 local peeking = false
 local stream_live = false
 local anim_t = 0.0
+local prev_printer_state = ""
 
 function on_update(dt)
   anim_t = anim_t + dt
@@ -26,6 +27,18 @@ end
 
 function on_event(topic, payload)
   if topic == "modules/prusa-connect/status" and type(payload) == "table" then
+    local next_state = tostring(payload.state or "")
+    if prev_printer_state == "PRINTING" and (next_state == "FINISHED" or next_state == "IDLE") then
+      bus.publish("ui/toast", {
+        id = "prusa-done",
+        icon = "check",
+        title = tostring(payload.name or "Prusa") .. " Complete!",
+        message = tostring(payload.job_name or "Print finished"),
+        color = "#ff6a30",
+        duration_ms = 5000,
+      }, false)
+    end
+    if #next_state > 0 then prev_printer_state = next_state end
     for k, v in pairs(payload) do
       status[k] = v
     end
