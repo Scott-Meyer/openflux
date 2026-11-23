@@ -1,15 +1,17 @@
-# OpenFlux
+# Keyglass
 
-![The Flux keyboard's display running OpenFlux: a clock, system load, weather and a Pomodoro timer above a label on every key](docs/images/display-emerald.png)
+**Keyglass is an independent project, not affiliated with or endorsed by Flux.**
 
-OpenFlux is open-source software for the [Flux keyboard](https://fluxkeyboard.com), a Hall-effect
+![The Flux keyboard's display running Keyglass: a clock, system load, weather and a Pomodoro timer above a label on every key](docs/images/display-emerald.png)
+
+Keyglass is open-source software for the [Flux keyboard](https://fluxkeyboard.com), a Hall-effect
 keyboard with a 1920×1080 display under its keycaps. It is for owners of the
 keyboard who want software they can read, change and build themselves, and it
 covers the whole keyboard: the firmware of the key scanner, the programs that
 run on the keyboard's built-in Linux computer and draw the display, and the
 desktop software that configures the keyboard and feeds it live information.
 
-With OpenFlux you can:
+With Keyglass you can:
 
 - design themes: backgrounds (images, videos and animated shaders), fonts,
   key effects and a label or icon on every key;
@@ -28,7 +30,7 @@ track:
 
 ![The keyboard's display with a blue and violet background, a flip clock, the playing track, weather and a Pomodoro timer](docs/images/display-aurora.png)
 
-OpenFlux Studio, the desktop app, edits the keymap of every layer:
+The desktop app (still called OpenFlux Studio in v1) edits the keymap of every layer:
 
 ![OpenFlux Studio's Keymap page: the keyboard's keys, with the selected key's action, label, icon and colors](docs/images/studio-keymap.png)
 
@@ -46,7 +48,7 @@ and shows what the keyboard runs, with its updates:
 
 ## First five minutes
 
-1. Install OpenFlux for macOS, Windows or Linux:
+1. Install the current release for macOS, Windows or Linux:
    [docs/installing.md](docs/installing.md).
 2. Open OpenFlux Studio and connect the keyboard. The top bar shows
    **Connected**.
@@ -73,7 +75,7 @@ details.
 
 ## Installing
 
-OpenFlux runs on macOS 13 or later (Apple silicon or Intel), 64-bit
+Keyglass runs on macOS 13 or later (Apple silicon or Intel), 64-bit
 Windows 10 or later, and Linux on x86_64 or aarch64 with the C library of
 Ubuntu 22.04 or newer.
 
@@ -85,7 +87,7 @@ software, and Studio fetches newer keyboard releases itself.
 
 ## Components
 
-OpenFlux has four components, each versioned and released on its own:
+Keyglass has four components, each versioned and released on its own:
 
 | Component | What it is | Release tag | Source |
 |---|---|---|---|
@@ -131,7 +133,7 @@ build the firmware image and the keyboard packages.
 
 ## License
 
-OpenFlux is licensed under either of the [MIT License](LICENSE-MIT) or the
+Keyglass is licensed under either of the [MIT License](LICENSE-MIT) or the
 [Apache License, Version 2.0](LICENSE-APACHE), at your option. Third-party
 components keep their own licenses; [NOTICE](NOTICE) lists them, and
 [assets/LICENSE_MANIFEST.md](assets/LICENSE_MANIFEST.md) lists the fonts and
@@ -139,6 +141,3 @@ icons. The FFmpeg tools bundled with the host installers are licensed under
 the GPL ([releasing.md](docs/releasing.md#published-files)).
 
 Weather data is by [Open-Meteo.com](https://open-meteo.com/), under CC BY 4.0.
-
-OpenFlux is an independent project, not affiliated with or endorsed by the makers of the Flux
-keyboard. "Flux" is used only to identify the hardware OpenFlux runs on.
