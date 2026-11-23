@@ -23,13 +23,49 @@ use openflux_compositor::{Compositor, CompositorOptions};
 use openflux_modules::{
     inspect_module_dir, CuratedListSubscription, HostProcessManager, ModuleCategory, ModuleInstanceState, ModuleRegistry, ModuleRuntime, SetupPreset,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextTopBarSlot {
+    pub module_id: String,
+    pub pos: f32,
+    #[serde(default = "default_ctx_span")]
+    pub span: f32,
+}
+
+fn default_ctx_span() -> f32 {
+    1.0
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextRule {
+    pub id: String,
+    pub name: String,
+    #[serde(default = "default_ctx_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub match_apps: Vec<String>,
+    #[serde(default)]
+    pub qmk_layer: Option<u8>,
+    #[serde(default)]
+    pub top_bar_slots: Option<Vec<ContextTopBarSlot>>,
+}
+
+fn default_ctx_enabled() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ContextRulesFile {
+    #[serde(default)]
+    pub rules: Vec<ContextRule>,
+}
 
 struct StagedInstallTicket {
     staged: openflux_modules::StagedModuleSource,
@@ -59,6 +95,7 @@ pub struct V2State {
     pub vial_actions: Mutex<ModuleActionsMap>,
     vial_actions_path: PathBuf,
     staged_installs: Mutex<BTreeMap<String, StagedInstallTicket>>,
+    last_context_sig: Mutex<String>,
 }
 
 fn resolve_bundled_modules_dir() -> PathBuf {
@@ -299,6 +336,7 @@ impl V2State {
             vial_actions: Mutex::new(vial_actions),
             vial_actions_path,
             staged_installs: Mutex::new(BTreeMap::new()),
+            last_context_sig: Mutex::new(String::new()),
         });
 
         // Background watcher: detects direct edits to script.lua / module.toml / new local
@@ -374,6 +412,154 @@ impl V2State {
     /// Stops all supervised host helper processes cleanly on daemon shutdown (zero orphans!).
     pub fn shutdown(&self) {
         self.host_procs.lock().unwrap().stop_all();
+    }
+
+    pub fn context_rules_path(&self) -> PathBuf {
+        self.registry
+            .state_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("context_rules.json")
+    }
+
+    pub fn load_context_rules(&self) -> ContextRulesFile {
+        std::fs::read_to_string(self.context_rules_path())
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save_context_rules(&self, doc: &ContextRulesFile) -> Result<(), String> {
+        let p = self.context_rules_path();
+        if let Some(parent) = p.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let txt = serde_json::to_string_pretty(doc).map_err(|e| e.to_string())?;
+        std::fs::write(&p, txt).map_err(|e| e.to_string())?;
+        *self.last_context_sig.lock().unwrap() = String::new();
+        self.evaluate_context_rules();
+        Ok(())
+    }
+
+    /// Evaluates active `host/app/active` against saved Per-App Context Rules and atomically
+    /// publishes `system/context/active`, `keyboard/layer_override` (triggering RP2040 `0x75`),
+    /// and `layout/top_bar/context_override` (Apple Touch Bar per-app widget swaps!).
+    pub fn evaluate_context_rules(&self) {
+        let saved_mods = self.registry.load_state();
+        let ctx_enabled = saved_mods
+            .modules
+            .get("app-context")
+            .map(|m| m.enabled)
+            .unwrap_or(true);
+        let rules_doc = self.load_context_rules();
+        let app_msg = self.broker.get_retained("host/app/active");
+        let hay = app_msg
+            .as_ref()
+            .map(|m| {
+                format!(
+                    "{} {} {}",
+                    m.payload.get("process_name").and_then(|v| v.as_str()).unwrap_or(""),
+                    m.payload.get("app_id").and_then(|v| v.as_str()).unwrap_or(""),
+                    m.payload.get("window_title").and_then(|v| v.as_str()).unwrap_or(""),
+                )
+                .to_ascii_lowercase()
+            })
+            .unwrap_or_default();
+        let app_display = app_msg
+            .as_ref()
+            .and_then(|m| m.payload.get("process_name").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string();
+
+        let matched = if ctx_enabled && !hay.trim().is_empty() {
+            rules_doc.rules.iter().find(|r| {
+                r.enabled
+                    && r.match_apps.iter().any(|tok| {
+                        let t = tok.trim().to_ascii_lowercase();
+                        !t.is_empty() && hay.contains(&t)
+                    })
+            })
+        } else {
+            None
+        };
+
+        let sig = match matched {
+            Some(r) => format!(
+                "match:{}:{}:{:?}:{}",
+                r.id,
+                app_display,
+                r.qmk_layer,
+                serde_json::to_string(&r.top_bar_slots).unwrap_or_default()
+            ),
+            None => format!("none:{app_display}"),
+        };
+        {
+            let mut prev = self.last_context_sig.lock().unwrap();
+            if *prev == sig {
+                return;
+            }
+            *prev = sig;
+        }
+
+        if let Some(rule) = matched {
+            let _ = self.broker.publish(
+                "system/context/active",
+                json!({
+                    "active": true,
+                    "rule_id": rule.id,
+                    "rule_name": rule.name,
+                    "app_name": app_display,
+                    "qmk_layer": rule.qmk_layer,
+                    "has_top_bar_override": rule.top_bar_slots.is_some(),
+                }),
+                PublishOptions::retained(),
+            );
+            if let Some(lyr) = rule.qmk_layer {
+                let _ = self.broker.publish(
+                    "keyboard/layer_override",
+                    json!({ "layer": lyr, "reason": rule.name }),
+                    PublishOptions::retained(),
+                );
+            } else {
+                let _ = self.broker.publish(
+                    "keyboard/layer_override",
+                    json!({ "layer": Value::Null }),
+                    PublishOptions::retained(),
+                );
+            }
+            if let Some(ref slots) = rule.top_bar_slots {
+                let _ = self.broker.publish(
+                    "layout/top_bar/context_override",
+                    json!({ "active": true, "rule_name": rule.name, "slots": slots }),
+                    PublishOptions::retained(),
+                );
+            } else {
+                let _ = self.broker.publish(
+                    "layout/top_bar/context_override",
+                    json!({ "active": false }),
+                    PublishOptions::retained(),
+                );
+            }
+        } else {
+            let _ = self.broker.publish(
+                "system/context/active",
+                json!({ "active": false, "app_name": app_display }),
+                PublishOptions::retained(),
+            );
+            // Clear context overrides cleanly only when rules existed
+            if !rules_doc.rules.is_empty() {
+                let _ = self.broker.publish(
+                    "keyboard/layer_override",
+                    json!({ "layer": Value::Null }),
+                    PublishOptions::retained(),
+                );
+                let _ = self.broker.publish(
+                    "layout/top_bar/context_override",
+                    json!({ "active": false }),
+                    PublishOptions::retained(),
+                );
+            }
+        }
     }
 
     pub fn display_prefs_path(&self) -> PathBuf {
@@ -593,6 +779,8 @@ impl V2State {
             let _ = hrt.check_hot_reload();
             let _ = hrt.step_frame(0.35, openflux_bus::now_unix_ms());
         }
+        // Evaluate Per-App Context Rules (Touch Bar top-bar swaps + Per-App QMK layer overrides!)
+        self.evaluate_context_rules();
         let reloaded = self.runtime.lock().unwrap().check_hot_reload();
         if !reloaded.is_empty() {
             for id in &reloaded {
@@ -1299,7 +1487,7 @@ async fn serve_media_file_api(
     let Some(path) = candidates.into_iter().find(|p| p.is_file()) else {
         return err_resp(StatusCode::NOT_FOUND, format!("media not found: {fname}")).into_response();
     };
-    let Ok(bytes) = tokio::fs::read(&path).await else {
+    let Ok(bytes) = std::fs::read(&path) else {
         return err_resp(StatusCode::INTERNAL_SERVER_ERROR, "failed to read media").into_response();
     };
     let lower = fname.to_ascii_lowercase();
@@ -2443,6 +2631,100 @@ async fn vial_sync_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse 
     }
 }
 
+async fn get_context_rules(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let doc = state.v2.load_context_rules();
+    let active = state
+        .v2
+        .broker
+        .get_retained("system/context/active")
+        .map(|m| m.payload)
+        .unwrap_or_else(|| json!({ "active": false }));
+    let current_app = state
+        .v2
+        .broker
+        .get_retained("host/app/active")
+        .map(|m| m.payload);
+    (
+        StatusCode::OK,
+        Json(json!({
+            "rules": doc.rules,
+            "active_context": active,
+            "current_app": current_app,
+        })),
+    )
+}
+
+async fn put_context_rules(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<ContextRulesFile>,
+) -> impl IntoResponse {
+    match state.v2.save_context_rules(&body) {
+        Ok(()) => (StatusCode::OK, Json(json!({ "ok": true, "rules": body.rules }))),
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn get_keyboard_software_status(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let (has_bridge, has_firmware) = state.device.is_connected();
+    let is_v2 = state.device.is_v2_mux_active();
+    let versions = state.device.versions();
+    let bridge_ver = versions
+        .get("bridge")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let display_ver = versions
+        .get("display")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let fw_ver = versions
+        .get("firmware")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let mode = if !has_bridge && !has_firmware {
+        "offline"
+    } else if is_v2
+        || bridge_ver.contains("openflux")
+        || display_ver.contains("openflux")
+        || fw_ver.contains("openflux")
+    {
+        "keyglass"
+    } else {
+        "stock"
+    };
+    (
+        StatusCode::OK,
+        Json(json!({
+            "mode": mode,
+            "connected": has_bridge || has_firmware,
+            "ofv2": is_v2,
+            "versions": versions,
+        })),
+    )
+}
+
+async fn return_keyboard_to_stock(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let svc_opt = state.updates.lock().unwrap().clone();
+    let Some(svc) = svc_opt else {
+        return err_resp(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Factory restore index service is not initialized on this daemon.",
+        );
+    };
+    let res = tokio::task::spawn_blocking(move || svc.restore(true)).await;
+    match res {
+        Ok(Ok(job)) => (
+            StatusCode::OK,
+            Json(json!({
+                "ok": true,
+                "message": "Signed factory software restore started — keep the keyboard plugged in while it returns to Stock.",
+                "job": job,
+            })),
+        ),
+        Ok(Err(e)) => err_resp(StatusCode::CONFLICT, format!("{e:?}")),
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
 async fn get_display_prefs(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     (StatusCode::OK, Json(state.v2.load_display_prefs()))
 }
@@ -2666,6 +2948,9 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/display/parallax", put(put_display_parallax))
         .route("/v2/display/power", put(put_display_power))
         .route("/v2/display/attachments", get(get_display_attachments).put(put_display_attachments))
+        .route("/v2/context/rules", get(get_context_rules).put(put_context_rules))
+        .route("/v2/keyboard/software-status", get(get_keyboard_software_status))
+        .route("/v2/keyboard/return-to-stock", post(return_keyboard_to_stock))
         .route("/v2/logs", get(get_all_logs_api))
         .route("/v2/vial/status", get(vial_status_api))
         .route("/v2/vial/xfer", post(vial_xfer_api))

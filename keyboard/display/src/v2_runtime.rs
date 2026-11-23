@@ -447,6 +447,7 @@ impl KeyboardV2Display {
             "modules/#".to_string(),
             "system/actions".to_string(),
             "keyboard/attachments".to_string(),
+            "layout/#".to_string(),
             "display/parallax".to_string(),
             "display/power".to_string(),
             "fx/surface/impulse".to_string(),

@@ -120,6 +120,21 @@ export interface KeyboardAttachmentsState {
   blocked_rects: Array<{ pos: number; span: number; kind: string; label: string; x: number; y: number; w: number; h: number }>;
 }
 
+export interface ContextTopBarSlot {
+  module_id: string;
+  pos: number;
+  span: number;
+}
+
+export interface ContextRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  match_apps: string[];
+  qmk_layer?: number | null;
+  top_bar_slots?: ContextTopBarSlot[] | null;
+}
+
 export interface V2ModuleRecord {
   id: string;
   manifest: ModuleManifest;
@@ -380,4 +395,21 @@ export const v2Client = {
   getDisplayAttachments: () => v2Call<KeyboardAttachmentsState>("GET", "/v2/display/attachments"),
   putDisplayAttachments: (bays: HardwareAttachmentBay[]) =>
     v2Call<{ ok: boolean; attachments: KeyboardAttachmentsState }>("PUT", "/v2/display/attachments", { bays }),
+  getContextRules: () =>
+    v2Call<{
+      rules: ContextRule[];
+      active_context?: { active: boolean; rule_id?: string; rule_name?: string; app_name?: string; qmk_layer?: number | null };
+      current_app?: { process_name?: string; app_id?: string; window_title?: string } | null;
+    }>("GET", "/v2/context/rules"),
+  putContextRules: (rules: ContextRule[]) =>
+    v2Call<{ ok: boolean; rules: ContextRule[] }>("PUT", "/v2/context/rules", { rules }),
+  getKeyboardSoftwareStatus: () =>
+    v2Call<{
+      mode: "offline" | "stock" | "keyglass";
+      connected: boolean;
+      ofv2: boolean;
+      versions: Record<string, unknown>;
+    }>("GET", "/v2/keyboard/software-status"),
+  returnKeyboardToStock: () =>
+    v2Call<{ ok: boolean; message: string }>("POST", "/v2/keyboard/return-to-stock", {}),
 };

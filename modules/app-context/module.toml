@@ -1,0 +1,20 @@
+id = "app-context"
+name = "App Context (Touch Bar & Per-App Layers)"
+version = "2.0.0"
+description = "Automatically switches Top Bar widgets (Apple Touch Bar style) and active QMK keybinding layers in <1ms based on whichever application is focused"
+author = "KeyGlass"
+license = "MIT"
+category = "host_service"
+tags = ["context", "apps", "touch-bar", "layers", "automation"]
+stages = []
+host_requirement = "none"
+slot_capable = false
+stackable = true
+
+[ui]
+top_tab = false
+builtin_view = "context"
+
+[channels]
+subscribes = ["host/app/active"]
+publishes = ["system/context/active", "keyboard/layer_override", "layout/top_bar/context_override"]

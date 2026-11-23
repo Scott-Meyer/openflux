@@ -796,15 +796,51 @@ impl LoadedLuaModule {
         mod_tbl.set("slot_span", self.lua.create_function(move |_, ()| Ok(slot_span))?)?;
         {
             let broker_slot = broker.clone();
+            let my_mod_id = self.discovered.manifest.id.clone();
             mod_tbl.set(
                 "slot_rect",
                 self.lua.create_function(move |lua, ()| {
+                    // Per-App "Touch Bar" Context Override: if an active App Context rule specifies
+                    // custom top-bar slots on `layout/top_bar/context_override`, follow it cleanly
+                    // (showing widgets placed by that rule and hiding others) with zero widget changes!
+                    let (eff_pos, eff_span) = if let Some(ov_msg) =
+                        broker_slot.get_retained("layout/top_bar/context_override")
+                    {
+                        if ov_msg.payload.get("active").and_then(|v| v.as_bool()) == Some(true) {
+                            let found = ov_msg
+                                .payload
+                                .get("slots")
+                                .and_then(|v| v.as_array())
+                                .and_then(|arr| {
+                                    arr.iter().find_map(|entry| {
+                                        let eid = entry.get("module_id").and_then(|v| v.as_str())?;
+                                        if eid == my_mod_id {
+                                            let p = entry.get("pos").and_then(|v| v.as_f64())? as f32;
+                                            let sp = entry
+                                                .get("span")
+                                                .and_then(|v| v.as_f64())
+                                                .unwrap_or(1.0)
+                                                .clamp(0.5, 4.0) as f32;
+                                            Some((Some(p), sp))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                });
+                            found.unwrap_or((None, slot_span))
+                        } else {
+                            (slot_pos, slot_span)
+                        }
+                    } else {
+                        (slot_pos, slot_span)
+                    };
+
                     // Exact pixel rect from `dock-top-bar`'s `layout/slots/top-bar`,
                     // supporting half-slot positioning (`0.0, 0.5, 1.0, ...`) and `0.5..4.0` spans!
-                    if let Some(pos) = slot_pos {
+                    if let Some(pos) = eff_pos {
                         let compute_rect = |hx: f32, hy: f32, hw: f32, hh: f32, count: f32, gap: f32, sw: f32| -> openflux_bus::RectPx {
                             let start = pos.clamp(0.0, (count - 0.5).max(0.0));
-                            let end = (start + slot_span).min(count);
+                            let end = (start + eff_span).min(count);
                             let span = (end - start).max(0.5);
                             let edge_x = |u: f32, is_right: bool| -> f32 {
                                 let whole = u.floor();

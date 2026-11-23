@@ -89,53 +89,53 @@ void main() {
   vec3 col;
 
   if (reg > 0.90) {
-    // 1. Clear Acrylic Top Display Strip
+    // 1. Clear Acrylic Top Display Strip (photo-calibrated: crisp luminous transmission,
+    // subtle acrylic bottom-edge total-internal-reflection lip, and bright metallic divider bar!)
     vec3 scr = sample_screen(v_uv);
-    float sheen = smoothstep(0.16, 0.0, v_uv.y) * 0.065;
-    float ridge = smoothstep(0.0045, 0.0, abs(v_uv.y - 0.244));
-    col = scr + vec3(0.84, 0.90, 1.0) * (sheen + ridge * 0.22);
+    float top_sheen = smoothstep(0.14, 0.0, v_uv.y) * 0.06;
+    // Glossy horizontal refraction glint along the lower edge of the clear top acrylic block
+    float lower_acrylic_lip = smoothstep(0.016, 0.0, abs(v_uv.y - 0.228)) * 0.14;
+    // Crisp bright metallic/silver horizontal divider rail between Top Strip and Keycap Deck
+    float bar_dark = smoothstep(0.007, 0.002, abs(v_uv.y - 0.244));
+    float bar_chrome = smoothstep(0.0026, 0.0, abs(v_uv.y - 0.244));
+    col = scr * (1.06 - bar_dark * 0.72) + vec3(0.88, 0.93, 1.0) * (top_sheen + lower_acrylic_lip);
+    col = mix(col, vec3(0.76, 0.79, 0.84), bar_chrome * 0.85);
   } else if (reg < 0.18) {
-    // 2. Narrow Physical Keyframe Gap & Perimeter Acrylic Frame
-    // Outside the keycap array keep normal brightness; inside the narrow inter-key gap,
-    // thick keyframe + keycap wall total-internal-reflection obscures direct sightlines cleanly!
-    vec3 refr_a = sample_screen(v_uv + vec2(0.018, -0.014));
-    vec3 refr_b = sample_screen(v_uv + vec2(-0.016, 0.016));
-    vec3 scrambled = (refr_a + refr_b) * 0.5;
-    col = scrambled * 0.22 + vec3(0.012, 0.014, 0.020);
+    // 2. Razor-thin structural keyframe seam between crystal keycaps
+    vec3 refr_a = sample_screen(v_uv + vec2(0.014, -0.012));
+    vec3 refr_b = sample_screen(v_uv + vec2(-0.012, 0.014));
+    col = (refr_a + refr_b) * 0.16 + vec3(0.03, 0.035, 0.045);
   } else if (reg < 0.58) {
-    // 3. Thick Vertical Acrylic Keycap Walls (Total Internal Reflection + Heavily Scrambled Optics)
-    // You cannot read cleanly through the thick vertical keycap edges — instead they trap
-    // heavily refracted, blurred multi-bounce color from the glowing screen + sharp specular rim!
+    // 3. Luminous Crystal-Clear Acrylic Keycap Bevel Walls (calibrated from real overhead photo!)
+    // Thick vertical clear acrylic walls trap bright internal-reflection light from the glowing IPS
+    // display underneath, creating glistening silver-tinted crystal rims around every keycap!
     vec2 perp = vec2(-nxy.y, nxy.x);
-    vec2 r1 = nxy * 0.036 + perp * 0.012;
-    vec2 r2 = -nxy * 0.028 - perp * 0.014;
-    vec2 r3 = nxy * 0.020 + vec2(0.0, 0.018);
+    vec2 r1 = nxy * 0.032 + perp * 0.010;
+    vec2 r2 = -nxy * 0.024 - perp * 0.010;
     vec3 s1 = vec3(
-      sample_screen(v_uv + r1 * 1.18).r,
+      sample_screen(v_uv + r1 * 1.14).r,
       sample_screen(v_uv + r1).g,
-      sample_screen(v_uv + r1 * 0.82).b
+      sample_screen(v_uv + r1 * 0.86).b
     );
     vec3 s2 = sample_screen(v_uv + r2);
-    vec3 s3 = sample_screen(v_uv + r3);
-    vec3 trapped_glass = (s1 * 0.45 + s2 * 0.30 + s3 * 0.25);
-
-    // Thick translucent acrylic wall: dark optical absorption at outer edge + crisp bright glass rim
-    float wall_t = smoothstep(0.05, 0.92, h);
-    vec3 glass_rim = vec3(0.86, 0.93, 1.0) * (fresnel * 0.34 + spec1 * 0.58 + spec2 * 0.22);
-    col = trapped_glass * mix(0.28, 0.68, wall_t) + glass_rim;
+    vec3 internal_glow = (s1 * 0.55 + s2 * 0.45);
+    // Bright luminous crystal total-internal-reflection (high luma, never muddy dark grey!)
+    float wall_t = smoothstep(0.04, 0.95, h);
+    float tir_band = smoothstep(0.18, 0.52, h) * smoothstep(0.96, 0.62, h);
+    vec3 crystal_rim = vec3(0.90, 0.95, 1.0) * (fresnel * 0.42 + spec1 * 0.65 + spec2 * 0.28 + tir_band * 0.22);
+    col = internal_glow * mix(0.62, 1.15, wall_t) + crystal_rim;
   } else {
-    // 4. Convex-Bottom Fisheye Acrylic Keycap Lens + Subtle 9mm Seated Viewing Parallax!
-    // Each keycap's bottom convex lens pulls in ~7% extra surrounding image (fisheye) so your
-    // brain stitches a complete continuous ocean across the whole board even across the blocked walls!
+    // 4. Uniform Middle-Key Convex-Bottom Fisheye Crystal Top Face!
+    // Pulls in ~6% extra surrounding screen uniformly across every key (no harsh edge distortion)
+    // so the whole board stitches into one luminous, vivid, jewel-like continuous image!
     float r2 = dot(nxy, nxy);
-    vec2 parallax_9mm = vec2((v_uv.x - 0.5) * 0.005, 0.0045);
-    vec2 fisheye_uv = v_uv + parallax_9mm - nxy * (0.016 + 0.038 * r2);
+    vec2 fisheye_uv = v_uv + vec2(0.0, 0.0025) - nxy * (0.014 + 0.028 * r2);
     vec3 scr = sample_screen(fisheye_uv);
 
-    // Crystal-clear optical transmission with crisp internal bevel catch-light
-    float dish_sheen = spec1 * 0.14 + spec2 * 0.06 + fresnel * 0.06;
-    float inner_lip = smoothstep(0.89, 0.83, h) * 0.18;
-    col = scr * 1.06 + vec3(0.88, 0.94, 1.0) * (dish_sheen + inner_lip);
+    // Subtle crisp inner acrylic lip where flat top meets vertical crystal wall
+    float inner_lip = smoothstep(0.89, 0.83, h) * 0.22;
+    float dish_sheen = spec1 * 0.14 + spec2 * 0.06 + fresnel * 0.07;
+    col = scr * 1.12 + vec3(0.90, 0.95, 1.0) * (dish_sheen + inner_lip);
   }
 
   // Interactive 3D internal acrylic edge glow on Hovered / Selected key

@@ -49,6 +49,8 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
   const lastFreshAtRef = React.useRef<number>(0);
   const [brightness, setBrightness] = useState<number>(80);
   const [v2Timeout, setV2Timeout] = useState<number>(settings?.timeout ?? 300);
+  const [swMode, setSwMode] = useState<"offline" | "stock" | "keyglass">("offline");
+  const [switchingSw, setSwitchingSw] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -58,6 +60,12 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
         if (!active) return;
         if (typeof prefs?.power?.brightness === "number") setBrightness(prefs.power.brightness);
         if (typeof prefs?.power?.timeoutSec === "number") setV2Timeout(prefs.power.timeoutSec);
+      })
+      .catch(() => {});
+    void v2Client
+      .getKeyboardSoftwareStatus()
+      .then((st) => {
+        if (active) setSwMode(st.mode);
       })
       .catch(() => {});
     return () => {
@@ -352,6 +360,56 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
               }}
             >
               Install Key Scanner Firmware from File…
+            </button>
+
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={switchingSw}
+              onClick={async () => {
+                const ok = window.confirm(
+                  "Switch a Stock keyboard to KeyGlass?\n\nThis installs KeyGlass packages cleanly (factory Hall-effect calibration is preserved; stock profiles & settings are NOT migrated).",
+                );
+                if (!ok) return;
+                setSwitchingSw(true);
+                try {
+                  const pkg = await client.pickFile("Select KeyGlass Keyboard Package (.ipk or .uf2)", ["ipk", "uf2"]);
+                  if (!pkg?.trim()) return;
+                  const res = pkg.toLowerCase().endsWith(".uf2")
+                    ? await client.flashFirmwareUf2(pkg.trim())
+                    : await client.sideloadIpk(pkg.trim());
+                  setLog(res.message);
+                } catch (e) {
+                  setLog(String(e));
+                } finally {
+                  setSwitchingSw(false);
+                }
+              }}
+            >
+              Switch Stock → KeyGlass… (Current: {swMode === "keyglass" ? "KeyGlass" : swMode === "stock" ? "Stock" : "Offline"})
+            </button>
+
+            <button
+              type="button"
+              className="btn-danger"
+              disabled={switchingSw}
+              onClick={async () => {
+                const ok = window.confirm(
+                  "Return this keyboard to Stock Factory software?\n\nRestores signed factory bridge, display, and firmware (preserving calibration; KeyGlass modules & settings will not carry over).",
+                );
+                if (!ok) return;
+                setSwitchingSw(true);
+                try {
+                  const res = await v2Client.returnKeyboardToStock();
+                  setLog(res.message);
+                } catch (e) {
+                  setLog(String(e));
+                } finally {
+                  setSwitchingSw(false);
+                }
+              }}
+            >
+              Return Keyboard → Stock Factory Software…
             </button>
 
             <button
