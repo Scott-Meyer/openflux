@@ -405,10 +405,16 @@ fn resolve_bundled_dir(cli_dir: Option<&PathBuf>) -> PathBuf {
 
 fn load_bundled_font() -> Option<Vec<u8>> {
     let mut candidates = vec![
+        PathBuf::from("assets/bundled_fonts/Montserrat-Medium.ttf"),
         PathBuf::from("assets/bundled_fonts/Montserrat-VariableFont_wght.ttf"),
+        PathBuf::from("dist/assets/fonts/Montserrat-Medium.ttf"),
         PathBuf::from("dist/assets/fonts/Montserrat-VariableFont_wght.ttf"),
     ];
     if let Ok(home) = std::env::var("HOME") {
+        candidates.push(
+            PathBuf::from(&home)
+                .join("Applications/OpenFlux Studio.app/Contents/Resources/assets/bundled_fonts/Montserrat-Medium.ttf"),
+        );
         candidates.push(
             PathBuf::from(&home)
                 .join("Applications/OpenFlux Studio.app/Contents/Resources/assets/bundled_fonts/Montserrat-VariableFont_wght.ttf"),

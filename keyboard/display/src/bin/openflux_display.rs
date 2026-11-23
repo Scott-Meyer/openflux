@@ -629,6 +629,9 @@ fn main() {
             .unwrap_or_else(|_| "/home/root/openflux/v2".to_string());
         let v2_state_path = std::path::PathBuf::from(&v2_root).join("modules_state.json");
         let v2_font_bytes: Option<Vec<u8>> = [
+            "/usr/lib/openflux/display/assets/fonts/Montserrat-Medium.ttf",
+            "/usr/lib/openflux/display/fonts/Montserrat-Medium.ttf",
+            "/home/root/openflux/v2/Montserrat-Medium.ttf",
             "/usr/lib/openflux/display/assets/fonts/Montserrat-VariableFont_wght.ttf",
             "/usr/lib/openflux/display/fonts/Montserrat-VariableFont_wght.ttf",
             "/home/root/openflux/v2/Montserrat-VariableFont_wght.ttf",
