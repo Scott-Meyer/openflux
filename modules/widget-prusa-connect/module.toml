@@ -5,7 +5,7 @@ description = "Shows live 3D printer telemetry (nozzle, bed, progress, ETA) in a
 author = "OpenFlux"
 category = "widget"
 tags = ["3d-printer", "prusa", "camera", "telemetry", "rtsp", "top-bar"]
-stages = ["tile", "world_overlay"]
+stages = ["background", "tile", "world_overlay"]
 host_requirement = "required"
 slot_capable = true
 stackable = true
@@ -20,7 +20,7 @@ script = "script.lua"
 host = "host/prusa_poller.py"
 
 [channels]
-subscribes = ["modules/prusa-connect/#", "input/keys/event"]
+subscribes = ["modules/prusa-connect/#", "modules/streams/prusa-cam", "input/keys/event"]
 publishes = ["modules/prusa-connect/peek", "modules/prusa-connect/status"]
 
 [[settings]]

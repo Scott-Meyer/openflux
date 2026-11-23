@@ -367,7 +367,9 @@ impl V2UsbMux {
             }
         }
 
-        // Immediately advertise host's active subscriptions to keyboard!
+        // Immediately advertise host's active subscriptions to keyboard AND seed default
+        // keyboard-side patterns (`host/#`, `modules/#`, `fx/surface/impulse`) + replay retained
+        // host metrics/weather/media/app immediately so widgets hydrate with zero startup race!
         {
             let mut m = mirror.lock().unwrap();
             let extra = vec![
@@ -377,6 +379,19 @@ impl V2UsbMux {
             ];
             if let Some(sub_f) = m.build_subscribe_if_changed(&extra, true) {
                 self.enqueue_bus(&sub_f);
+            }
+            let initial_replays = m.on_remote_frame(PeerBusFrame::Subscribe {
+                node: "keyboard".into(),
+                patterns: vec![
+                    "host/#".into(),
+                    "modules/#".into(),
+                    "fx/surface/impulse".into(),
+                    "keys/providers/ability-deck".into(),
+                    "keys/providers/streamdeck".into(),
+                ],
+            });
+            for r in initial_replays {
+                self.enqueue_bus(&r);
             }
         }
 

@@ -133,6 +133,9 @@ impl V2BridgeMux {
                 self.usb_decoder.clear();
                 self.tx_bus.clear();
                 self.tx_bulk.clear();
+                // Bounce any pre-existing display v2 clients so openflux-display immediately
+                // reconnects and sends a fresh `PeerBusFrame::Subscribe` now that OFV2 is active!
+                self.clients.clear();
                 self.tx_bus.push_back(V2_UPGRADE_ACK.to_vec());
                 if chunk.len() > 4 {
                     self.feed_v2_bytes(&chunk[4..]);

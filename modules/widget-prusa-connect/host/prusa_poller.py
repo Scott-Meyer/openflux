@@ -185,8 +185,9 @@ def fetch_and_upload_snapshot(cam_url: str, headers: dict, is_live_cam: bool = T
 
 
 class RtspFrameGrabber:
-    """Keeps a single persistent low-latency ffmpeg RTSP connection while printing so holding
-    PRT shows smooth ~2.5 FPS live video on the keyboard with zero RTSP reconnect delay."""
+    """Streams live Buddy3D RTSP video directly over OpenFlux v2's `OFV2 CH_MEDIA` hardware
+    H.264 pipeline (`POST /v2/streams/prusa-cam`, -bf 0, -flush_packets 1, unbuffered os.read)
+    with ZERO temp files and ZERO disk writes!"""
 
     def __init__(self):
         self._proc = None
@@ -206,6 +207,23 @@ class RtspFrameGrabber:
         self._thread = threading.Thread(target=self._run, args=(url,), daemon=True)
         self._thread.start()
 
+    def _close_stream(self):
+        import http.client
+        from urllib.parse import urlparse
+        parsed = urlparse(BUS_URL)
+        try:
+            conn = (
+                http.client.HTTPSConnection(parsed.hostname, parsed.port, context=SSL_CTX, timeout=3)
+                if parsed.scheme == "https"
+                else http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3)
+            )
+            headers = {"Authorization": f"Bearer {DESKTOP_TOKEN}"} if DESKTOP_TOKEN else {}
+            conn.request("DELETE", "/v2/streams/prusa-cam", headers=headers)
+            conn.getresponse().read()
+            conn.close()
+        except Exception:
+            pass
+
     def stop(self):
         self._stop.set()
         if self._proc is not None:
@@ -218,62 +236,96 @@ class RtspFrameGrabber:
                 except Exception:
                     pass
             self._proc = None
+        self._close_stream()
         self._url = ""
 
     def _run(self, url: str):
+        import http.client
+        from urllib.parse import urlparse
+
         ff = find_ffmpeg()
         if not ff:
-            print("[prusa] ffmpeg not found for persistent RTSP stream", flush=True)
+            print("[prusa] ffmpeg not found for live H.264 RTSP stream", flush=True)
             return
-        print(f"[prusa] starting live RTSP stream grabber ({url})", flush=True)
+        parsed = urlparse(BUS_URL)
+        print(f"[prusa] starting live OFV2 H.264 RTSP streamer ({url}) -> /v2/streams/prusa-cam", flush=True)
+        vcodec = (
+            [
+                "-c:v", "h264_videotoolbox",
+                "-realtime", "true",
+                "-bf", "0",
+                "-b:v", "2400k",
+                "-maxrate", "3200k",
+                "-bufsize", "4000k",
+                "-g", "20",
+            ]
+            if os.uname().sysname == "Darwin"
+            else [
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-tune", "zerolatency",
+                "-bf", "0",
+                "-b:v", "2400k",
+                "-g", "20",
+            ]
+        )
         while not self._stop.is_set():
+            conn = None
             try:
                 cmd = [
-                    ff, "-loglevel", "error",
+                    ff, "-hide_banner", "-loglevel", "error",
                     "-rtsp_transport", "tcp",
+                    "-fflags", "nobuffer",
+                    "-flags", "low_delay",
                     "-i", url,
-                    "-vf", "fps=2.5,scale=800:-2",
-                    "-f", "image2pipe",
-                    "-vcodec", "mjpeg",
-                    "-q:v", "6",
+                    "-an",
+                    "-vf", "fps=20,scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,format=yuv420p",
+                    *vcodec,
+                    "-flush_packets", "1",
+                    "-f", "h264",
                     "pipe:1",
                 ]
-                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                proc = subprocess.Popen(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0
+                )
                 self._proc = proc
-                buf = bytearray()
-                while not self._stop.is_set() and proc.stdout:
-                    chunk = proc.stdout.read(16384)
+                conn = (
+                    http.client.HTTPSConnection(parsed.hostname, parsed.port, context=SSL_CTX, timeout=15)
+                    if parsed.scheme == "https"
+                    else http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=15)
+                )
+                conn.putrequest("POST", "/v2/streams/prusa-cam")
+                conn.putheader("Content-Type", "video/h264")
+                conn.putheader("Transfer-Encoding", "chunked")
+                if DESKTOP_TOKEN:
+                    conn.putheader("Authorization", f"Bearer {DESKTOP_TOKEN}")
+                conn.endheaders()
+
+                out_fd = proc.stdout.fileno()
+                while not self._stop.is_set():
+                    chunk = os.read(out_fd, 16384)
                     if not chunk:
                         break
-                    buf.extend(chunk)
-                    while True:
-                        soi = buf.find(b"\xff\xd8")
-                        if soi < 0:
-                            buf.clear()
-                            break
-                        if soi > 0:
-                            del buf[:soi]
-                        eoi = buf.find(b"\xff\xd9", 2)
-                        if eoi < 0:
-                            break
-                        jpg = bytes(buf[: eoi + 2])
-                        del buf[: eoi + 2]
-                        if len(jpg) >= 1024:
-                            tmp = CAM_LOCAL_PATH + ".tmp.jpg"
-                            with open(tmp, "wb") as f:
-                                f.write(jpg)
-                            os.replace(tmp, CAM_LOCAL_PATH)
-                            bus_post(
-                                "/v2/keyboard/upload-media",
-                                {"local_path": CAM_LOCAL_PATH, "remote_name": "prusa_cam_live.jpg"},
-                                timeout=3.0,
-                            )
-                            self.frames_uploaded += 1
+                    hdr = f"{len(chunk):x}\r\n".encode("ascii")
+                    conn.send(hdr + chunk + b"\r\n")
+                    self.frames_uploaded += 1
+                conn.send(b"0\r\n\r\n")
+                try:
+                    conn.getresponse().read()
+                except Exception:
+                    pass
                 proc.wait(timeout=2.0)
             except Exception as e:
-                print(f"[prusa] RTSP stream reconnect after error: {e}", flush=True)
+                print(f"[prusa] RTSP H.264 stream reconnect: {e}", flush=True)
+            finally:
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                self._close_stream()
             if not self._stop.is_set():
-                time.sleep(2.0)
+                time.sleep(3.0)
 
 
 def main():

@@ -17,6 +17,7 @@ local status = {
 }
 
 local peeking = false
+local stream_live = false
 local anim_t = 0.0
 
 function on_update(dt)
@@ -28,6 +29,8 @@ function on_event(topic, payload)
     for k, v in pairs(payload) do
       status[k] = v
     end
+  elseif topic == "modules/streams/prusa-cam" and type(payload) == "table" then
+    stream_live = (payload.active == true)
   elseif topic == "input/keys/event" and type(payload) == "table" then
     local target_key = math.floor(tonumber(module.config().peek_key_index) or 13)
     if payload.key_index == target_key then
@@ -58,7 +61,13 @@ function on_render(ctx, stage)
   local badge_col = is_printing and { 0.34, 0.95, 0.58, 1.0 }
     or (state_str == "ERROR" and { 1.0, 0.35, 0.38, 1.0 } or orange)
 
-  if stage == "tile" then
+  if stage == "background" then
+    -- While holding the Prusa Glance key, stream full-screen hardware-decoded H.264 camera video!
+    if peeking and stream_live then
+      ctx:stream_background("prusa-cam")
+    end
+    return
+  elseif stage == "tile" then
     local sr = module.slot_rect()
     if not sr then return end
     ctx:clip(sr.x, sr.y, sr.w, sr.h)
@@ -109,11 +118,38 @@ function on_render(ctx, stage)
     ctx:text(sr.x + sr.w - 18, sr.y + 109, string.format("%d%%", math.floor(prog + 0.5)), 20, { 1, 1, 1, 0.95 }, "right")
     ctx:clear_clip()
   elseif stage == "world_overlay" and peeking then
-    -- Live Camera Glance overlay shown ONLY while holding the configured button!
-    local ox, oy, ow, oh = 360, 225, 1200, 740
-    ctx:round_rect(ox, oy, ow, oh, 24, { 0.03, 0.05, 0.09, 0.94 }, 2.5, orange)
+    local noz = math.floor((tonumber(status.nozzle_temp) or 0) + 0.5)
+    local noz_t = math.floor((tonumber(status.nozzle_target) or 0) + 0.5)
+    local bed = math.floor((tonumber(status.bed_temp) or 0) + 0.5)
+    local bed_t = math.floor((tonumber(status.bed_target) or 0) + 0.5)
+    local prog = math.floor((tonumber(status.progress) or 0) + 0.5)
 
-    -- Render latest camera snapshot JPEG (keyboard path on Linux, local host path on Mac preview)
+    if stream_live then
+      -- Full-screen hardware H.264 camera is playing right on the background!
+      -- Show a sleek floating translucent HUD pill at the bottom so the print bed stays unobstructed.
+      local hx, hy, hw, hh = 260, 968, 1400, 74
+      ctx:round_rect(hx, hy, hw, hh, 18, { 0.02, 0.04, 0.08, 0.78 }, 1.8, orange)
+      local pulse = (math.floor(anim_t * 3.0) % 2 == 0) and 1.0 or 0.45
+      ctx:circle(hx + 30, hy + 37, 7, { 1.0, 0.24, 0.26, pulse })
+      ctx:text(hx + 48, hy + 24, "LIVE  •  " .. tostring(status.name or "Prusa"), 22, orange, "left")
+      ctx:text(
+        hx + hw - 24,
+        hy + 25,
+        string.format(
+          "%s   |   NOZ %d/%dC   |   BED %d/%dC   |   %d%% (%s)",
+          tostring(status.state or "IDLE"), noz, noz_t, bed, bed_t, prog, fmt_eta(status.time_remaining_min)
+        ),
+        20,
+        { 0.96, 0.98, 1.0, 0.96 },
+        "right"
+      )
+      return
+    end
+
+    -- Fallback card while RTSP stream connects or when showing static PrusaLink thumbnail
+    local ox, oy, ow, oh = 360, 225, 1200, 740
+    ctx:round_rect(ox, oy, ow, oh, 24, { 0.03, 0.05, 0.09, 0.92 }, 2.5, orange)
+
     local cam_path = tostring(status.camera_kb_path or "")
     if type(status.camera_path) == "string" and #status.camera_path > 0 and string.sub(module.dir(), 1, 5) ~= "/usr/" and string.sub(module.dir(), 1, 6) ~= "/home/" then
       cam_path = status.camera_path
@@ -121,30 +157,20 @@ function on_render(ctx, stage)
     local img_x, img_y, img_w, img_h = ox + 20, oy + 62, ow - 40, oh - 134
     ctx:round_rect(img_x, img_y, img_w, img_h, 14, { 0.07, 0.09, 0.14, 1.0 }, 1.0, { 1, 1, 1, 0.12 })
     local cmode = tostring(status.camera_mode or "")
-    if #cam_path > 0 and cmode ~= "none" then
+    if cmode == "live" then
+      ctx:text(ox + ow * 0.5, oy + oh * 0.46, "Connecting to Buddy3D H.264 live stream…", 28, { 0.92, 0.96, 1.0, 0.95 }, "center")
+      ctx:text(ox + ow * 0.5, oy + oh * 0.54, "Streaming directly over OFV2 CH_MEDIA (hardware rkmpp)", 18, { 0.68, 0.78, 0.90, 0.8 }, "center")
+    elseif #cam_path > 0 and cmode ~= "none" then
       ctx:image(img_x, img_y, img_w, img_h, cam_path, { 1, 1, 1, 1 })
     else
       ctx:text(ox + ow * 0.5, oy + oh * 0.44, "No live camera URL configured yet", 28, { 0.88, 0.92, 0.98, 0.9 }, "center")
       ctx:text(ox + ow * 0.5, oy + oh * 0.52, "Enable RTSP on your Buddy3D Camera and set Camera URL in Studio", 20, { 0.68, 0.78, 0.90, 0.78 }, "center")
     end
 
-    -- Header + pulsing LIVE dot (also triggers smooth ~3 FPS live frame refresh while holding PRT!)
-    local hdr = (cmode == "live") and "LIVE CAMERA  •  " or "PRINT PREVIEW  •  "
-    if cmode == "live" then
-      local pulse = (math.floor(anim_t * 3.0) % 2 == 0) and 1.0 or 0.45
-      ctx:circle(ox + 34, oy + 29, 7, { 1.0, 0.24, 0.26, pulse })
-      ctx:text(ox + 50, oy + 18, hdr .. tostring(status.name or "Prusa"), 22, orange, "left")
-    else
-      ctx:text(ox + 28, oy + 18, hdr .. tostring(status.name or "Prusa"), 22, orange, "left")
-    end
+    ctx:text(ox + 28, oy + 18, "PRINT CAMERA  •  " .. tostring(status.name or "Prusa"), 22, orange, "left")
     ctx:text(ox + ow - 28, oy + 20, "Release key to close", 18, { 0.75, 0.82, 0.92, 0.8 }, "right")
 
     local footer_y = oy + oh - 54
-    local noz = math.floor((tonumber(status.nozzle_temp) or 0) + 0.5)
-    local noz_t = math.floor((tonumber(status.nozzle_target) or 0) + 0.5)
-    local bed = math.floor((tonumber(status.bed_temp) or 0) + 0.5)
-    local bed_t = math.floor((tonumber(status.bed_target) or 0) + 0.5)
-    local prog = math.floor((tonumber(status.progress) or 0) + 0.5)
     ctx:text(
       ox + 28,
       footer_y,
