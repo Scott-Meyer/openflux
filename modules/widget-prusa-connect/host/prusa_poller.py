@@ -217,8 +217,7 @@ class RtspFrameGrabber:
                 if parsed.scheme == "https"
                 else http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3)
             )
-            headers = {"Authorization": f"Bearer {DESKTOP_TOKEN}"} if DESKTOP_TOKEN else {}
-            conn.request("DELETE", "/v2/streams/prusa-cam", headers=headers)
+            conn.request("DELETE", "/v2/streams/prusa-cam")
             conn.getresponse().read()
             conn.close()
         except Exception:
@@ -272,6 +271,33 @@ class RtspFrameGrabber:
         while not self._stop.is_set():
             conn = None
             try:
+                # Grab one fast preview snapshot first so quick clicks on PRT immediately show a picture!
+                try:
+                    snap_tmp = CAM_LOCAL_PATH + ".snap.jpg"
+                    snap_res = subprocess.run(
+                        [
+                            ff, "-hide_banner", "-loglevel", "error",
+                            "-rtsp_transport", "tcp",
+                            "-i", url,
+                            "-frames:v", "1",
+                            "-vf", "scale=960:-2",
+                            "-q:v", "5",
+                            "-y", snap_tmp,
+                        ],
+                        timeout=8,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    if snap_res.returncode == 0 and os.path.isfile(snap_tmp) and os.path.getsize(snap_tmp) >= 1024:
+                        os.replace(snap_tmp, CAM_LOCAL_PATH)
+                        bus_post(
+                            "/v2/keyboard/upload-media",
+                            {"local_path": CAM_LOCAL_PATH, "remote_name": "prusa_cam_live.jpg"},
+                            timeout=4.0,
+                        )
+                except Exception:
+                    pass
+
                 cmd = [
                     ff, "-hide_banner", "-loglevel", "error",
                     "-rtsp_transport", "tcp",
@@ -297,8 +323,6 @@ class RtspFrameGrabber:
                 conn.putrequest("POST", "/v2/streams/prusa-cam")
                 conn.putheader("Content-Type", "video/h264")
                 conn.putheader("Transfer-Encoding", "chunked")
-                if DESKTOP_TOKEN:
-                    conn.putheader("Authorization", f"Bearer {DESKTOP_TOKEN}")
                 conn.endheaders()
 
                 out_fd = proc.stdout.fileno()

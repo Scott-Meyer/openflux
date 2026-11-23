@@ -374,7 +374,6 @@ impl V2UsbMux {
             let mut m = mirror.lock().unwrap();
             let extra = vec![
                 "modules/#".to_string(),
-                "input/keys/event".to_string(),
                 "fx/surface/impulse".to_string(),
             ];
             if let Some(sub_f) = m.build_subscribe_if_changed(&extra, true) {
@@ -476,7 +475,6 @@ impl V2UsbMux {
                         let mut m = mir_ref.lock().unwrap();
                         let extra = vec![
                             "modules/#".to_string(),
-                            "input/keys/event".to_string(),
                             "fx/surface/impulse".to_string(),
                         ];
                         if let Some(sf) = m.build_subscribe_if_changed(&extra, false) {

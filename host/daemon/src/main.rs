@@ -13,7 +13,6 @@ use openfluxd::api::tls::{
 use openfluxd::api::worker::{reconcile_tick, UsbWorkerHandle};
 use openfluxd::bridges::create_platform_bridge;
 use openfluxd::codecs::keymap::decode_keymap_blob;
-use openfluxd::codecs::simple_hdlc::{encode_live_bus_frame, encode_live_json};
 use openfluxd::device_paths;
 use openfluxd::lifecycle::ExitKind;
 use openfluxd::tray::{TrayController, TrayMode};
@@ -1183,6 +1182,23 @@ fn run_daemon(args: &[String]) -> i32 {
                     third_party::start_without_discovery(&state_for_server);
                 }
             }
+            // Plain loopback HTTP listener (`http://127.0.0.1:52324`) for `/v2/*` so 3rd-party
+            // host scripts (Python/Node/curl/Go) work cleanly without self-signed TLS workarounds!
+            let v2_plain_router = openfluxd::api::v2::router(state_for_server.clone());
+            let v2_plain_running = running_flag.clone();
+            tokio::spawn(async move {
+                if let Ok(plain_listener) =
+                    tokio::net::TcpListener::bind("127.0.0.1:52324").await
+                {
+                    let _ = axum::serve(plain_listener, v2_plain_router)
+                        .with_graceful_shutdown(async move {
+                            while v2_plain_running.load(Ordering::Relaxed) {
+                                tokio::time::sleep(Duration::from_millis(200)).await;
+                            }
+                        })
+                        .await;
+                }
+            });
             serve_tls_router(listener, bundle.acceptor, api_router, running_flag).await;
             third_party::stop(&state_for_server);
         }

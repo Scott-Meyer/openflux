@@ -571,7 +571,13 @@ fn main() {
             let _ = std::fs::write(lp, "");
         }
         let io_worker = IoWorker::spawn();
-        let ui_worker = if presenter.is_gpu() {
+        let v2_boot_active = std::env::var("OPENFLUX_V2_ROOT")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|r| Path::new(&r).join("modules_state.json").is_file())
+            .unwrap_or_else(|| Path::new("/home/root/openflux/v2/modules_state.json").is_file());
+        // In pure v2 mode, skip spawning the legacy 16 MB v1 UiOverlayWorker thread!
+        let ui_worker = if presenter.is_gpu() && !v2_boot_active {
             Some(UiOverlayWorker::spawn(width, height))
         } else {
             None

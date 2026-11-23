@@ -215,6 +215,58 @@ local function load_all_packs(accent)
     end
   end
 
+  -- Also load any user-customized shortcut packs edited in Studio's Shortcuts tab!
+  local custom_paths = { "/home/root/openflux/v2/custom_shortcuts.json" }
+  local home = os.getenv("HOME")
+  if home and #home > 0 then
+    table.insert(custom_paths, home .. "/.local/share/openflux/config/custom_shortcuts.json")
+  end
+  for _, cp in ipairs(custom_paths) do
+    local cf = io.open(cp, "r")
+    if cf then
+      local raw = cf:read("*a")
+      cf:close()
+      local ok, cdoc = pcall(json.decode, raw)
+      if ok and type(cdoc) == "table" and type(cdoc.packs) == "table" then
+        for _, pack in ipairs(cdoc.packs) do
+          if type(pack) == "table" and type(pack.rows) == "table" then
+            local tokens = {}
+            if type(pack.apps) == "table" and type(pack.apps.macos) == "table" then
+              for _, a in ipairs(pack.apps.macos) do
+                if type(a) == "string" and #a > 0 then table.insert(tokens, a) end
+              end
+            end
+            local when_tbl = (#tokens > 0) and { app = table.concat(tokens, ",") } or nil
+            for _, r in ipairs(pack.rows) do
+              if type(r) == "table" and not r.hidden then
+                local kc, mods = nil, 0
+                if type(r.macKeyCode) == "string" and tonumber(r.macModifiers) and not r.macHasSecondKey then
+                  kc = r.macKeyCode
+                  mods = tonumber(r.macModifiers)
+                elseif type(r.mac) == "string" then
+                  kc, mods = parse_combo(r.mac)
+                end
+                local lbl = tostring(r.label or r.name or "")
+                if type(kc) == "string" and #kc > 0 and mods > 0 and #lbl > 0 then
+                  table.insert(rules, {
+                    key = kc,
+                    mods = mods,
+                    priority = 38,
+                    when = when_tbl,
+                    label = lbl,
+                    icon = pick_icon(lbl, r.icon),
+                    color = accent,
+                  })
+                end
+              end
+            end
+          end
+        end
+      end
+      break
+    end
+  end
+
   return rules
 end
 

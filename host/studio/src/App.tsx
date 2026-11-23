@@ -4,7 +4,7 @@ import type { DaemonClient } from "./api/daemonClient";
 import { createDaemonClient } from "./api/daemonClient";
 import { HostUpdateFlow } from "./api/hostUpdateFlow";
 import { createStudioServices, type StudioServices } from "./api/services";
-import { COMPONENT_LABELS, type UpdatesStatus, updatesNeedAttention } from "./api/updates";
+import { COMPONENT_LABELS, type UpdatesStatus } from "./api/updates";
 import { ActuationPanel } from "./components/ActuationPanel";
 import { AutoProfileLockButton } from "./components/AutoProfileLockButton";
 import { DevicePanel } from "./components/DevicePanel";
@@ -19,24 +19,23 @@ import { ThemeBackgroundPanel } from "./components/ThemeBackgroundPanel";
 import { ThirdPartyAppsPage } from "./components/ThirdPartyAppsPage";
 import { TopBarDockTab } from "./components/TopBarDockTab";
 import { V2ModulesHub } from "./components/V2ModulesHub";
+import { VialKeymapTab } from "./components/VialKeymapTab";
 import { UpdatesPage } from "./components/updates/UpdatesPage";
 import { type V2ModuleRecord, v2Client } from "./api/v2Client";
 import type { AssetCatalog, DeviceStatus, OpenFluxConfig, PreviewKeyRect } from "./types/openflux";
 import { isKeyboardConnected, keymapSyncNotice, PLACEHOLDER_CONFIG } from "./types/openflux";
 
-/** Core Studio pages (Modules hub + RP2040/hardware core tabs). Software modules opt into their own dynamic top tabs! */
+/** Core Studio pages (Modules hub + RP2040/Vial hardware tabs). Software modules opt into their own dynamic top tabs! */
 const CORE_NAV = [
   { id: "v2", label: "Modules" },
   { id: "named_profiles", label: "Profiles" },
   { id: "actuation", label: "Actuation" },
   { id: "keymap", label: "Keymap" },
   { id: "firmware", label: "Device" },
-  { id: "updates", label: "Updates" },
-  { id: "apps", label: "Apps" },
 ] as const;
 
 export type CoreStudioTab = (typeof CORE_NAV)[number]["id"];
-export type StudioTab = CoreStudioTab | `mod:${string}` | "themes" | "profiles" | "mosaic";
+export type StudioTab = CoreStudioTab | `mod:${string}` | "themes" | "profiles" | "mosaic" | "updates" | "apps";
 
 const isStudioTab = (page: string): page is StudioTab =>
   CORE_NAV.some((n) => n.id === page) ||
@@ -53,10 +52,6 @@ interface AppProps {
   /** `macos`, `windows`, `linux`: adjusts platform-specific explanations. */
   platform?: string;
 }
-
-/** Badge polling: updates change rarely, app registrations wait for an answer. */
-const UPDATES_BADGE_POLL_MS = 5 * 60_000;
-const APPS_BADGE_POLL_MS = 10_000;
 
 export const App: React.FC<AppProps> = ({
   client: injectedClient,
@@ -93,8 +88,6 @@ export const App: React.FC<AppProps> = ({
     .filter((m) => m.state.enabled && (m.state.pin_tab ?? Boolean(m.manifest.ui?.top_tab)))
     .sort((a, b) => (a.manifest.ui?.top_tab_order ?? 50) - (b.manifest.ui?.top_tab_order ?? 50));
   const [updatesStatus, setUpdatesStatus] = useState<UpdatesStatus | null>(null);
-  const [updatesBadge, setUpdatesBadge] = useState(false);
-  const [pendingApps, setPendingApps] = useState(0);
   const [config, setConfig] = useState<OpenFluxConfig>(initialConfig ?? PLACEHOLDER_CONFIG);
   const latestServerConfigRef = useRef<OpenFluxConfig>(initialConfig ?? PLACEHOLDER_CONFIG);
   const [status, setStatus] = useState<DeviceStatus | null>(null);
@@ -370,33 +363,8 @@ export const App: React.FC<AppProps> = ({
     };
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: keyboardConnected triggers an immediate update/conversion check when a keyboard is plugged in.
-  useEffect(() => {
-    let cancelled = false;
-    const pollUpdates = () =>
-      void services.updates
-        .getUpdates()
-        .then((s) => {
-          if (cancelled) return;
-          setUpdatesStatus(s);
-          setUpdatesBadge(updatesNeedAttention(s));
-        })
-        .catch(() => {});
-    const pollApps = () =>
-      void services.thirdParty
-        .getRegistrations()
-        .then((r) => !cancelled && setPendingApps(r.pending.length))
-        .catch(() => {});
-    pollUpdates();
-    pollApps();
-    const u = window.setInterval(pollUpdates, needsConversion ? 10_000 : UPDATES_BADGE_POLL_MS);
-    const a = window.setInterval(pollApps, APPS_BADGE_POLL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(u);
-      window.clearInterval(a);
-    };
-  }, [services, keyboardConnected, needsConversion]);
+  // Pure v2 mode: v1 `/v1/updates` and `/v1/third-party` background badge polling removed!
+  void setUpdatesStatus;
 
   const lastLayoutRef = useRef(config.keymap.selectedFrameLayoutType);
 
@@ -572,25 +540,15 @@ export const App: React.FC<AppProps> = ({
   };
 
   const handleSaveToKeyboard = () => {
-    const saveTargetRev = pendingRevRef.current;
-    flushChainRef.current = flushChainRef.current
-      .catch(() => {})
-      .then(async () => {
-        if (failedSectionsRef.current.size > 0) {
-          setBanner("Cannot save: earlier config update failed");
-          return;
-        }
-        try {
-          const res = await client.saveToKeyboard();
-          setBanner(res.message);
-          if (pendingRevRef.current === saveTargetRev && failedSectionsRef.current.size === 0) {
-            setDirty(false);
-          }
-        } catch (err) {
-          setBanner(String(err));
-        }
+    void v2Client
+      .syncToKeyboard()
+      .then((res) => {
+        setDirty(false);
+        setBanner(`Synced to keyboard over OFV2 (${res.uploaded_files.length} files, ${res.uploaded_bytes} B)`);
+      })
+      .catch((err) => {
+        setBanner(err instanceof Error ? err.message : String(err));
       });
-    return flushChainRef.current;
   };
 
   const exportBundleSerialized = (outPath: string): Promise<{ message: string; outPath: string }> => {
@@ -731,30 +689,16 @@ export const App: React.FC<AppProps> = ({
               </button>
             );
           })}
-          {CORE_NAV.filter((n) => n.id !== "v2").map(({ id, label }) => {
-            const badge =
-              id === "updates" && updatesBadge
-                ? "Updates available"
-                : id === "apps" && pendingApps > 0
-                  ? `${pendingApps} waiting for approval`
-                  : null;
-            return (
-              <button
-                key={id}
-                type="button"
-                className={`nav-btn ${tab === id ? "active" : ""}`}
-                onClick={() => setTab(id)}
-                aria-label={badge ? `${label} (${badge})` : undefined}
-              >
-                {label}
-                {badge && (
-                  <span className="nav-badge" aria-hidden="true">
-                    {id === "apps" ? pendingApps : ""}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          {CORE_NAV.filter((n) => n.id !== "v2").map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              className={`nav-btn ${tab === id ? "active" : ""}`}
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </button>
+          ))}
         </nav>
 
         <div className="topbar-right">
@@ -766,7 +710,7 @@ export const App: React.FC<AppProps> = ({
                 : "Offline"}
           </div>
           <button type="button" className={`btn-primary ${dirty ? "" : "is-clean"}`} onClick={handleSaveToKeyboard}>
-            {dirty ? "Save Changes to Keyboard" : "Save to Keyboard"}
+            Sync to Keyboard
           </button>
         </div>
       </header>
@@ -913,21 +857,27 @@ export const App: React.FC<AppProps> = ({
             onPatchDefaultTheme={patchActiveThemePartial}
           />
         )}
-        {tab === "keymap" && keymapBanner("Loading the keymap from the keyboard. You can edit it once it has loaded.")}
         {tab === "keymap" && (
-          <KeymapStylemapEditor
-            client={client}
-            catalog={catalog}
-            previewRects={previewRects}
-            config={config}
-            activeLayer={activeLayer}
-            selectedKeyIndex={selectedKeyIndex}
-            keymapBlocked={keymapLocked}
-            onSelectLayer={setActiveLayer}
-            onSelectKey={setSelectedKeyIndex}
-            onChangeAppearance={applyActiveTheme}
-            onChangeKeymap={(keymap) => void pushConfigPatch({ keymap })}
-            onApplyConfigEdit={(patch) => void pushConfigPatch(patch)}
+          <VialKeymapTab
+            stylingView={
+              <>
+                {keymapBanner("Loading the keymap from the keyboard. You can edit it once it has loaded.")}
+                <KeymapStylemapEditor
+                  client={client}
+                  catalog={catalog}
+                  previewRects={previewRects}
+                  config={config}
+                  activeLayer={activeLayer}
+                  selectedKeyIndex={selectedKeyIndex}
+                  keymapBlocked={keymapLocked}
+                  onSelectLayer={setActiveLayer}
+                  onSelectKey={setSelectedKeyIndex}
+                  onChangeAppearance={applyActiveTheme}
+                  onChangeKeymap={(keymap) => void pushConfigPatch({ keymap })}
+                  onApplyConfigEdit={(patch) => void pushConfigPatch(patch)}
+                />
+              </>
+            }
           />
         )}
         {tab === "actuation" && keymapBanner("Loading actuation modes and key legends from the keyboard…")}
@@ -996,7 +946,6 @@ export const App: React.FC<AppProps> = ({
             pickFolder={(title) => client.pickFolder(title)}
             onStatus={(s) => {
               setUpdatesStatus(s);
-              setUpdatesBadge(updatesNeedAttention(s));
             }}
             onKeyboardChanged={() => {
               void refreshFromDaemon();
@@ -1005,7 +954,7 @@ export const App: React.FC<AppProps> = ({
           />
         )}
         {tab === "apps" && (
-          <ThirdPartyAppsPage client={services.thirdParty} onPendingCount={setPendingApps} platform={platform} />
+          <ThirdPartyAppsPage client={services.thirdParty} onPendingCount={() => {}} platform={platform} />
         )}
       </main>
     </div>

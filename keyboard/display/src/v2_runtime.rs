@@ -6,9 +6,10 @@
 //! OpenGL ES 2.0 presentation with zero-copy `rkmpp` 1080p NV12 video refraction.
 
 use openflux_bus::{
-    apply_remote_frame, topics, AnalogKeyFrame, AnalogKeySample, Broker, FrameLayout,
-    HostConnectionState, KeyEvent, KeyEventKind, KeyboardGeometry, KeyboardState, MediaNowPlaying,
-    PublishOptions, SystemMetrics, WeatherState, WireFrame, DISPLAY_HEIGHT_PX, DISPLAY_WIDTH_PX,
+    apply_remote_frame, topics, AnalogKeyFrame, AnalogKeySample, Broker, FluxActionEvent,
+    FrameLayout, HostConnectionState, KeyEvent, KeyEventKind, KeyboardGeometry, KeyboardState,
+    MediaNowPlaying, PublishOptions, ResolvedKeyEntry, ResolvedKeysState, SystemMetrics,
+    WeatherState, WireFrame, DISPLAY_HEIGHT_PX, DISPLAY_WIDTH_PX,
 };
 use openflux_compositor::{
     Canvas2D, KeySdfGrid, ParticleSystem, WaveField2D, DEFAULT_ANSI_LABELS, WAVE2D_H, WAVE2D_W,
@@ -63,6 +64,8 @@ pub struct KeyboardV2Display {
     last_world_hash: u64,
     last_tiles_ms: u64,
     last_bitmap: [u8; 32],
+    last_key_seq: Option<u32>,
+    last_key_press_ms: [u64; 256],
     last_input_ms: u64,
     last_state_mtime: Option<SystemTime>,
     pub mirror: openflux_bus::BrokerMirror,
@@ -232,6 +235,8 @@ impl KeyboardV2Display {
             last_world_hash: 0,
             last_tiles_ms: 0,
             last_bitmap: [0u8; 32],
+            last_key_seq: None,
+            last_key_press_ms: [0u64; 256],
             last_input_ms: openflux_bus::now_unix_ms(),
             last_state_mtime,
             mirror,
@@ -300,6 +305,8 @@ impl KeyboardV2Display {
         match val.get("type").and_then(|v| v.as_str()) {
             Some("key_state") => self.handle_key_state(&val, now_ms),
             Some("key_analog") => self.handle_key_analog(&val, now_ms),
+            Some("flux_action") => self.handle_flux_action(&val),
+            Some("resolved_keys") => self.handle_resolved_keys(&val),
             Some("bus_frame") => {
                 if let Some(frame_val) = val.get("frame") {
                     if let Ok(frame) = serde_json::from_value::<WireFrame>(frame_val.clone()) {
@@ -313,19 +320,42 @@ impl KeyboardV2Display {
     }
 
     fn handle_key_state(&mut self, val: &Value, now_ms: u64) {
+        // Ignore stale or duplicate UART key_state packets (prevents phantom double-triggers!)
+        if let Some(seq) = val.get("seq").and_then(|v| v.as_u64()).map(|v| v as u32) {
+            if let Some(prev_seq) = self.last_key_seq {
+                if seq == prev_seq {
+                    return;
+                }
+            }
+            self.last_key_seq = Some(seq);
+        }
         if let Some(hex) = val.get("key_bitmap").and_then(|v| v.as_str()) {
+            // Strict 64-hex-char validation so a truncated/malformed line NEVER zeroes key_bitmap!
+            if hex.len() != 64 {
+                return;
+            }
             let mut next = [0u8; 32];
             for i in 0..32 {
-                if let Some(pair) = hex.get(i * 2..i * 2 + 2) {
-                    if let Ok(b) = u8::from_str_radix(pair, 16) {
-                        next[i] = b;
-                    }
-                }
+                let Some(pair) = hex.get(i * 2..i * 2 + 2) else {
+                    return;
+                };
+                let Ok(b) = u8::from_str_radix(pair, 16) else {
+                    return;
+                };
+                next[i] = b;
             }
             for k in 0..self.geometry.keys.len().min(256) {
                 let was = (self.last_bitmap[k >> 3] & (1 << (k & 7))) != 0;
                 let now = (next[k >> 3] & (1 << (k & 7))) != 0;
                 if was != now {
+                    // 35ms per-key re-press refractory guard prevents micro-bounce double/triple rings
+                    // when a Hall-effect key hovers near the actuation edge.
+                    if now && now_ms.saturating_sub(self.last_key_press_ms[k]) < 35 {
+                        continue;
+                    }
+                    if now {
+                        self.last_key_press_ms[k] = now_ms;
+                    }
                     self.last_input_ms = now_ms;
                     if let Some(key) = self.geometry.key(k as u16) {
                         let ev = KeyEvent {
@@ -389,10 +419,116 @@ impl KeyboardV2Display {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(true),
             idle_ms: now_ms.saturating_sub(self.last_input_ms),
+            qmk_state_valid: val
+                .get("qmk_state_valid")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            effective_mods: val
+                .get("effective_mods")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u8,
+            oneshot_mods: val
+                .get("oneshot_mods")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u8,
+            oneshot_layer: val
+                .get("oneshot_layer")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0xFF) as u8,
+            caps_word_active: val
+                .get("caps_word_active")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            default_layer_bitfield: val
+                .get("default_layer_bitfield")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1) as u32,
+            keymap_revision: val
+                .get("keymap_revision")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32,
         };
         let _ = self.broker.publish_typed(
             topics::KEYBOARD_STATE,
             &ks,
+            PublishOptions::retained(),
+        );
+    }
+
+    fn resolve_action_id(&self, slot: u16) -> Option<String> {
+        if let Some(dir) = self.registry.state_path.parent() {
+            let map_path = dir.join("module_actions.json");
+            if let Ok(raw) = std::fs::read_to_string(&map_path) {
+                if let Ok(json) = serde_json::from_str::<Value>(&raw) {
+                    if let Some(id) = json
+                        .get("slots")
+                        .and_then(|s| s.get(&slot.to_string()))
+                        .and_then(|v| v.as_str())
+                    {
+                        return Some(id.to_string());
+                    }
+                }
+            }
+        }
+        const BUILTINS: [&str; 14] = [
+            "openflux.brightness_up",
+            "openflux.brightness_down",
+            "openflux.profile_next",
+            "openflux.profile_prev",
+            "openflux.actuation_next",
+            "openflux.actuation_prev",
+            "openflux.platform_linux",
+            "openflux.platform_macos",
+            "openflux.platform_windows",
+            "openflux.auto_profile_lock",
+            "widget-pomodoro.toggle",
+            "widget-pomodoro.reset",
+            "openflux.theme_next",
+            "openflux.theme_prev",
+        ];
+        BUILTINS.get(slot as usize).map(|s| (*s).to_string())
+    }
+
+    fn handle_flux_action(&mut self, val: &Value) {
+        let slot = val.get("slot").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
+        let ev = FluxActionEvent {
+            slot,
+            action_id: self.resolve_action_id(slot),
+            pressed: val.get("pressed").and_then(|v| v.as_bool()).unwrap_or(false),
+            mods: val.get("mods").and_then(|v| v.as_u64()).unwrap_or(0) as u8,
+            layer: val.get("layer").and_then(|v| v.as_u64()).unwrap_or(0) as u8,
+            profile: val.get("profile").and_then(|v| v.as_u64()).unwrap_or(0) as u8,
+        };
+        let _ = self
+            .broker
+            .publish_typed(topics::INPUT_FLUX_ACTION, &ev, PublishOptions::default());
+    }
+
+    fn handle_resolved_keys(&mut self, val: &Value) {
+        let Some(arr) = val.get("keys").and_then(|v| v.as_array()) else {
+            return;
+        };
+        let mut keys = Vec::with_capacity(arr.len());
+        for item in arr {
+            if let Some(pair) = item.as_array() {
+                if pair.len() >= 2 {
+                    keys.push(ResolvedKeyEntry {
+                        keycode: pair[0].as_u64().unwrap_or(0) as u16,
+                        source_layer: pair[1].as_u64().unwrap_or(0) as u8,
+                    });
+                }
+            }
+        }
+        let state = ResolvedKeysState {
+            keymap_revision: val
+                .get("keymap_revision")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32,
+            keys,
+        };
+        let _ = self.broker.publish_typed(
+            topics::KEYBOARD_RESOLVED_KEYS,
+            &state,
             PublishOptions::retained(),
         );
     }

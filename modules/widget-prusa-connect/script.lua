@@ -157,11 +157,16 @@ function on_render(ctx, stage)
     local img_x, img_y, img_w, img_h = ox + 20, oy + 62, ow - 40, oh - 134
     ctx:round_rect(img_x, img_y, img_w, img_h, 14, { 0.07, 0.09, 0.14, 1.0 }, 1.0, { 1, 1, 1, 0.12 })
     local cmode = tostring(status.camera_mode or "")
-    if cmode == "live" then
+    if #cam_path > 0 and cmode ~= "none" then
+      -- Always show the cached camera snapshot/thumbnail immediately for instant quick clicks!
+      ctx:image(img_x, img_y, img_w, img_h, cam_path, { 1, 1, 1, 1 })
+      if cmode == "live" then
+        ctx:round_rect(ox + ow - 340, oy + 76, 304, 34, 10, { 0.02, 0.04, 0.08, 0.78 }, 1.2, orange)
+        ctx:text(ox + ow - 188, oy + 84, "Loading 20 FPS live video…", 15, { 0.95, 0.97, 1.0, 0.92 }, "center")
+      end
+    elseif cmode == "live" then
       ctx:text(ox + ow * 0.5, oy + oh * 0.46, "Connecting to Buddy3D H.264 live stream…", 28, { 0.92, 0.96, 1.0, 0.95 }, "center")
       ctx:text(ox + ow * 0.5, oy + oh * 0.54, "Streaming directly over OFV2 CH_MEDIA (hardware rkmpp)", 18, { 0.68, 0.78, 0.90, 0.8 }, "center")
-    elseif #cam_path > 0 and cmode ~= "none" then
-      ctx:image(img_x, img_y, img_w, img_h, cam_path, { 1, 1, 1, 1 })
     else
       ctx:text(ox + ow * 0.5, oy + oh * 0.44, "No live camera URL configured yet", 28, { 0.88, 0.92, 0.98, 0.9 }, "center")
       ctx:text(ox + ow * 0.5, oy + oh * 0.52, "Enable RTSP on your Buddy3D Camera and set Camera URL in Studio", 20, { 0.68, 0.78, 0.90, 0.78 }, "center")

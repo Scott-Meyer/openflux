@@ -183,7 +183,7 @@ impl V2State {
 
         runtime.sync_modules(&discovered, &state_file.modules);
 
-        let mut host_procs = HostProcessManager::new("https://127.0.0.1:52323");
+        let mut host_procs = HostProcessManager::new("http://127.0.0.1:52324");
         for (id, dm) in &discovered {
             if let Some(inst) = state_file.modules.get(id) {
                 if inst.enabled && dm.manifest.entrypoints.host.is_some() {
@@ -1476,6 +1476,7 @@ async fn keyboard_flash_uf2(
 async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     let discovered = state.v2.registry.discover();
     let mut kb_state = state.v2.registry.load_state();
+    let kb_state_path = state.v2.registry.state_path.clone();
     let device = state.device.clone();
 
     let res = tokio::task::spawn_blocking(move || {
@@ -1551,6 +1552,23 @@ async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespon
                         }
                         inst.config.insert(field.key.clone(), json!(fname));
                     }
+                }
+            }
+        }
+
+        // Sync user-edited custom shortcuts (from Studio's Shortcuts tab) if present
+        if let Some(cfg_dir) = kb_state_path
+            .parent()
+            .and_then(|v2_dir| v2_dir.parent())
+            .map(|data_dir| data_dir.join("config"))
+        {
+            let cs = cfg_dir.join("custom_shortcuts.json");
+            if cs.is_file() {
+                if let Ok(bytes) = std::fs::read(&cs) {
+                    let remote_cs = "/home/root/openflux/v2/custom_shortcuts.json";
+                    uploaded_bytes += bytes.len();
+                    let _ = device.put_file(remote_cs, &bytes);
+                    uploaded_files.push(remote_cs.to_string());
                 }
             }
         }
