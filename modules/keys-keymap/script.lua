@@ -31,22 +31,22 @@ local HID_MAP = {
   [0xE4] = { "Ctrl" }, [0xE5] = { "Shift" }, [0xE6] = { "Opt" }, [0xE7] = { "Cmd" },
 }
 
--- Built-in Flux QK_KB_0..13 actions (`0x7E00..0x7E0D`)
+-- Built-in Flux QK_KB_0..13 actions (`0x7E00..0x7E0D`, matching fw_qmk_keymap.c / vial.rs)
 local QK_KB_LABELS = {
   [0]  = { "Bright", nil, "brightness" },
   [1]  = { "Dim", nil, "brightness" },
   [2]  = { "Prof+", nil, "star" },
   [3]  = { "Prof-", nil, "star" },
-  [4]  = { "Theme+", nil, "star" },
-  [5]  = { "Theme-", nil, "star" },
-  [6]  = { "Sleep", nil, "power" },
-  [7]  = { "Mode" },
-  [8]  = { "Lang" },
-  [9]  = { "OS" },
+  [4]  = { "Act+" },
+  [5]  = { "Act-" },
+  [6]  = { "Linux" },
+  [7]  = { "macOS" },
+  [8]  = { "Win" },
+  [9]  = { "Lock", nil, "power" },
   [10] = { "Pomo", nil, "play" },
   [11] = { "Reset", nil, "refresh" },
-  [12] = { "Act+" },
-  [13] = { "Act-" },
+  [12] = { "Theme+", nil, "star" },
+  [13] = { "Theme-", nil, "star" },
 }
 
 local function mod_short(m)
