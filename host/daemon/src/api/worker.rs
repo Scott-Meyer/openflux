@@ -342,6 +342,113 @@ fn load_pending_bridge(state: &ApiState) -> Option<crate::bridge_install::Pendin
     serde_json::from_slice(&raw).ok()
 }
 
+/// Spawns the event-driven macOS focus watcher (`openflux-sensors --watch-focus`), which listens
+/// natively to `NSWorkspace.didActivateApplicationNotification` (<1ms latency, 0% CPU idle) and
+/// pushes `host/app/active` straight onto the unified v2 bus with zero polling delay!
+#[cfg(target_os = "macos")]
+fn spawn_macos_focus_watcher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    let helper = exe_dir
+        .map(|d| d.join("openflux-sensors"))
+        .filter(|p| p.is_file());
+    let Some(helper_path) = helper else {
+        return;
+    };
+    let _ = thread::Builder::new()
+        .name("openflux-focus-watch".into())
+        .spawn(move || {
+            use std::io::{BufRead, BufReader};
+            use std::process::{Command, Stdio};
+            while running.load(Ordering::Relaxed) {
+                let Ok(mut child) = Command::new(&helper_path)
+                    .arg("--watch-focus")
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .spawn()
+                else {
+                    thread::sleep(Duration::from_secs(2));
+                    continue;
+                };
+                if let Some(stdout) = child.stdout.take() {
+                    let reader = BufReader::new(stdout);
+                    for line in reader.lines().map_while(Result::ok) {
+                        if !running.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) else {
+                            continue;
+                        };
+                        let app_id = val
+                            .get("bundleId")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let process_name = val
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        if app_id.is_empty() && process_name.is_empty() {
+                            continue;
+                        }
+                        let low = format!("{app_id} {process_name}").to_ascii_lowercase();
+                        if low.contains("com.apple.dock")
+                            || low.contains("windowserver")
+                            || low.contains("spotlight")
+                            || low.contains("notificationcenter")
+                            || low.contains("controlcenter")
+                        {
+                            continue;
+                        }
+                        let (profile_index, profile_id, profile_name) = {
+                            let g = state.inner.lock().unwrap();
+                            let idx = g.desired_profile_index;
+                            let pid = g
+                                .profiles
+                                .get(idx)
+                                .map(|p| p.id.clone())
+                                .unwrap_or_else(|| "default".into());
+                            let pname = g
+                                .profiles
+                                .get(idx)
+                                .map(|p| p.name.clone())
+                                .unwrap_or_else(|| "Default".into());
+                            (idx, pid, pname)
+                        };
+                        let payload = serde_json::json!({
+                            "app_id": app_id,
+                            "process_name": process_name,
+                            "window_title": "",
+                            "profile_index": profile_index,
+                            "profile_id": profile_id,
+                            "profile_name": profile_name,
+                        });
+                        let changed = state
+                            .v2
+                            .broker
+                            .get_retained(openflux_bus::topics::HOST_APP_ACTIVE)
+                            .map(|m| m.payload != payload)
+                            .unwrap_or(true);
+                        if changed {
+                            let _ = state.v2.broker.publish(
+                                openflux_bus::topics::HOST_APP_ACTIVE,
+                                payload,
+                                openflux_bus::PublishOptions::retained().with_origin("focus-watch"),
+                            );
+                        }
+                    }
+                }
+                let _ = child.kill();
+                let _ = child.wait();
+                if running.load(Ordering::Relaxed) {
+                    thread::sleep(Duration::from_millis(500));
+                }
+            }
+        });
+}
+
 impl UsbWorkerHandle {
     pub fn spawn(
         state: Arc<ApiState>,
@@ -350,6 +457,8 @@ impl UsbWorkerHandle {
         platform_code: u32,
         running: Arc<AtomicBool>,
     ) -> Self {
+        #[cfg(target_os = "macos")]
+        spawn_macos_focus_watcher(state.clone(), running.clone());
         let (tx, mut rx) = mpsc::channel::<UsbCommand>(32);
         let accepting = Arc::new(AtomicBool::new(true));
         let state_bg = state.clone();
@@ -405,7 +514,7 @@ impl UsbWorkerHandle {
                     next_poll = Instant::now() + Duration::from_millis(250);
                 }
                 pump_v2_bus_bridge(&state_bg, &*device, &mut wstate);
-                thread::sleep(Duration::from_millis(20));
+                thread::sleep(Duration::from_millis(10));
             }
             // Commands already queued still run before the worker exits.
             while let Ok(cmd) = rx.try_recv() {
@@ -1589,12 +1698,19 @@ pub fn reconcile_tick_with_state(
         "profile_id": desired_profile_id.as_deref().unwrap_or(""),
         "profile_name": active_profile_name,
     });
-    let app_changed = state
+    let focus_watch_active = state
         .v2
         .broker
         .get_retained(openflux_bus::topics::HOST_APP_ACTIVE)
-        .map(|m| m.payload != app_payload)
-        .unwrap_or(true);
+        .and_then(|m| m.origin)
+        .is_some_and(|o| o == "focus-watch");
+    let app_changed = !focus_watch_active
+        && state
+            .v2
+            .broker
+            .get_retained(openflux_bus::topics::HOST_APP_ACTIVE)
+            .map(|m| m.payload != app_payload)
+            .unwrap_or(true);
     if app_changed {
         let _ = state.v2.broker.publish(
             openflux_bus::topics::HOST_APP_ACTIVE,

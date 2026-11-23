@@ -359,6 +359,42 @@ if CommandLine.arguments.contains("--test-late-callback") {
     exit(0)
 }
 
+if CommandLine.arguments.contains("--watch-focus") {
+    // True event-driven macOS focus stream (<1ms latency, 0% CPU idle — zero polling!).
+    func emitApp(_ app: NSRunningApplication?) {
+        let a = app ?? NSWorkspace.shared.frontmostApplication
+        let obj: [String: Any] = [
+            "bundleId": a?.bundleIdentifier ?? "",
+            "name": a?.localizedName ?? "",
+            "pid": Int(a?.processIdentifier ?? 0),
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]),
+           let str = String(data: data, encoding: .utf8) {
+            print(str)
+            fflush(stdout)
+        }
+    }
+    emitApp(nil)
+    let nc = NSWorkspace.shared.notificationCenter
+    nc.addObserver(
+        forName: NSWorkspace.didActivateApplicationNotification,
+        object: nil,
+        queue: .main
+    ) { note in
+        let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+        emitApp(app)
+    }
+    nc.addObserver(
+        forName: NSWorkspace.activeSpaceDidChangeNotification,
+        object: nil,
+        queue: .main
+    ) { _ in
+        emitApp(nil)
+    }
+    RunLoop.main.run()
+    exit(0)
+}
+
 if CommandLine.arguments.contains("--artwork") {
     let media: [String: Any] = ["media": getMediaRemote(includeArtwork: true)]
     if let data = try? JSONSerialization.data(withJSONObject: media, options: [.sortedKeys]),

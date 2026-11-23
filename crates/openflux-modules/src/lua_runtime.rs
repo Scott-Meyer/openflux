@@ -805,6 +805,45 @@ impl LoadedLuaModule {
         }
         globals.set("module", mod_tbl)?;
 
+        // `json` + `fs.list_dir` helpers so Lua modules can read declarative data/packs directly!
+        let json_tbl = self.lua.create_table()?;
+        json_tbl.set(
+            "decode",
+            self.lua.create_function(|lua, text: String| {
+                let val: serde_json::Value =
+                    serde_json::from_str(&text).map_err(mlua::Error::external)?;
+                lua.to_value(&val)
+            })?,
+        )?;
+        json_tbl.set(
+            "encode",
+            self.lua.create_function(|lua, val: LuaValue| {
+                let jv: serde_json::Value = lua.from_value(val)?;
+                serde_json::to_string(&jv).map_err(mlua::Error::external)
+            })?,
+        )?;
+        globals.set("json", json_tbl)?;
+
+        let fs_tbl = self.lua.create_table()?;
+        fs_tbl.set(
+            "list_dir",
+            self.lua.create_function(|lua, dir: String| {
+                let t = lua.create_table()?;
+                if let Ok(rd) = std::fs::read_dir(&dir) {
+                    let mut names: Vec<String> = rd
+                        .flatten()
+                        .filter_map(|e| e.file_name().into_string().ok())
+                        .collect();
+                    names.sort();
+                    for (i, n) in names.into_iter().enumerate() {
+                        t.set(i + 1, n)?;
+                    }
+                }
+                Ok(t)
+            })?,
+        )?;
+        globals.set("fs", fs_tbl)?;
+
         Ok(())
     }
 

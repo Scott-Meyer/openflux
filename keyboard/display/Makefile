@@ -60,6 +60,8 @@ ipk: $(BUILD_DIR)/openflux-display
 	fi
 	@cp $(ROOT_DIR)/assets/weather_icons/* $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/display/weather_icons/
 	@cp $(ROOT_DIR)/assets/bundled_fonts/* $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/display/fonts/
+	@mkdir -p $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/display/shortcuts
+	@cp $(ROOT_DIR)/assets/shortcuts/*.json $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/display/shortcuts/
 	@cp -R $(ROOT_DIR)/assets/default_backgrounds/. $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/display/default_backgrounds/
 	@mkdir -p $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/display/modules
 	@cp -R $(ROOT_DIR)/modules/. $(BUILD_DIR)/_ipk_stage/data/usr/lib/openflux/display/modules/
