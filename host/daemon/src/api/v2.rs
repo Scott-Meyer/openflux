@@ -1197,6 +1197,103 @@ async fn import_media_file_api(
     )
 }
 
+#[derive(Deserialize)]
+struct MediaFileQuery {
+    name: String,
+}
+
+/// Streams a media file (MP4/MOV/PNG/JPG) from `~/.local/share/openflux/media` or bundled
+/// `modules/bg-media` with HTTP 206 byte-range support for silky 60 FPS WKWebView `<video>` playback!
+async fn serve_media_file_api(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<MediaFileQuery>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let fname = q.name.trim();
+    if fname.is_empty()
+        || fname.contains('/')
+        || fname.contains('\\')
+        || fname.contains("..")
+        || fname.contains('\0')
+    {
+        return err_resp(StatusCode::BAD_REQUEST, "invalid media filename").into_response();
+    }
+    let media_dir = state
+        .v2
+        .registry
+        .state_path
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("media"))
+        .unwrap_or_else(|| default_data_dir().join("media"));
+    let candidates = [
+        media_dir.join(fname),
+        state.v2.registry.bundled_dir.join("bg-media").join(fname),
+    ];
+    let Some(path) = candidates.into_iter().find(|p| p.is_file()) else {
+        return err_resp(StatusCode::NOT_FOUND, format!("media not found: {fname}")).into_response();
+    };
+    let Ok(bytes) = tokio::fs::read(&path).await else {
+        return err_resp(StatusCode::INTERNAL_SERVER_ERROR, "failed to read media").into_response();
+    };
+    let lower = fname.to_ascii_lowercase();
+    let mime = if lower.ends_with(".mp4") {
+        "video/mp4"
+    } else if lower.ends_with(".mov") {
+        "video/quicktime"
+    } else if lower.ends_with(".webm") {
+        "video/webm"
+    } else if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else {
+        "application/octet-stream"
+    };
+    let total = bytes.len();
+    let allow_origin = headers
+        .get("origin")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("tauri://localhost");
+
+    if let Some(range_hdr) = headers.get("range").and_then(|v| v.to_str().ok()) {
+        if let Some(spec) = range_hdr.strip_prefix("bytes=") {
+            let mut parts = spec.split('-');
+            let start = parts
+                .next()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0)
+                .min(total.saturating_sub(1));
+            let end = parts
+                .next()
+                .and_then(|s| s.parse::<usize>().ok())
+                .map(|e| e.min(total.saturating_sub(1)))
+                .unwrap_or_else(|| total.saturating_sub(1));
+            if start <= end && total > 0 {
+                let slice = bytes[start..=end].to_vec();
+                return axum::http::Response::builder()
+                    .status(StatusCode::PARTIAL_CONTENT)
+                    .header("Content-Type", mime)
+                    .header("Accept-Ranges", "bytes")
+                    .header("Content-Length", slice.len().to_string())
+                    .header("Content-Range", format!("bytes {start}-{end}/{total}"))
+                    .header("Access-Control-Allow-Origin", allow_origin)
+                    .body(axum::body::Body::from(slice))
+                    .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
+            }
+        }
+    }
+
+    axum::http::Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", mime)
+        .header("Accept-Ranges", "bytes")
+        .header("Content-Length", total.to_string())
+        .header("Access-Control-Allow-Origin", allow_origin)
+        .body(axum::body::Body::from(bytes))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
 async fn list_media_library_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     // `~/.local/share/openflux/media` (sibling of `v2/` inside the user data directory)
     let media_dir = state
@@ -1626,6 +1723,8 @@ struct PreviewFrameBody {
     width: u32,
     #[serde(default = "default_ph")]
     height: u32,
+    #[serde(default)]
+    overlay_only: bool,
 }
 fn default_step_ms() -> f32 {
     16.667
@@ -1669,36 +1768,61 @@ async fn render_preview_frame(
     let now_ms = openflux_bus::now_unix_ms();
     let mut lua_ms = 0.0_f32;
     let mut last_timings = openflux_compositor::FrameTimings::default();
+    let mut last_bg_name: Option<String> = None;
+    let mut last_bg_dim: f32 = 0.0;
+    let mut last_top_fade: f32 = 0.0;
     for s in 0..steps {
         let t_lua = std::time::Instant::now();
         let scene = rt.step_frame(dt_sec, now_ms + (s as f32 * body.step_ms) as u64);
         lua_ms = t_lua.elapsed().as_secs_f32() * 1000.0;
+        last_bg_name = scene
+            .background_media
+            .as_deref()
+            .and_then(|p| std::path::Path::new(p).file_name().and_then(|n| n.to_str()))
+            .map(str::to_string);
+        last_bg_dim = scene.bg_dimming;
+        last_top_fade = scene.top_fade;
         last_timings = comp.render_scene(&scene);
     }
-    let rgba = match comp.readback_rgba() {
-        Ok(b) => b,
-        Err(e) => return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e),
-    };
-    let w = body.width.clamp(320, 1920);
-    let h = body.height.clamp(180, 1080);
     let mut png_bytes = Vec::new();
-    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba) {
-        let mut cursor = std::io::Cursor::new(&mut png_bytes);
-        if let Err(e) = img.write_to(&mut cursor, image::ImageFormat::Png) {
-            return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+    let (out_w, out_h) = if body.overlay_only {
+        let (ow, oh, slice) = comp.overlay_rgba();
+        if let Some(img) = image::RgbaImage::from_raw(ow, oh, slice.to_vec()) {
+            let mut cursor = std::io::Cursor::new(&mut png_bytes);
+            if let Err(e) = img.write_to(&mut cursor, image::ImageFormat::Png) {
+                return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+            }
         }
-    }
+        (ow, oh)
+    } else {
+        let rgba = match comp.readback_rgba() {
+            Ok(b) => b,
+            Err(e) => return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e),
+        };
+        let w = body.width.clamp(320, 1920);
+        let h = body.height.clamp(180, 1080);
+        if let Some(img) = image::RgbaImage::from_raw(w, h, rgba) {
+            let mut cursor = std::io::Cursor::new(&mut png_bytes);
+            if let Err(e) = img.write_to(&mut cursor, image::ImageFormat::Png) {
+                return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+            }
+        }
+        (w, h)
+    };
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
     let statuses = rt.statuses();
     let adapter = comp.adapter_summary();
     (
         StatusCode::OK,
         Json(json!({
-            "width": w,
-            "height": h,
+            "width": out_w,
+            "height": out_h,
             "gpu_adapter": adapter,
             "modules_rev": state.v2.modules_rev.load(Ordering::SeqCst),
             "png_base64": b64,
+            "background_media_name": last_bg_name,
+            "bg_dimming": last_bg_dim,
+            "top_fade": last_top_fade,
             "modules": statuses,
             "timings": {
                 "lua_ms": lua_ms,
@@ -2498,6 +2622,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/modules/:id/logs", get(get_module_logs_api))
         .route("/v2/media/library", get(list_media_library_api))
         .route("/v2/media/import", post(import_media_file_api))
+        .route("/v2/media/file", get(serve_media_file_api))
         .route("/v2/streams/:name", post(ingest_media_stream).delete(close_media_stream))
         .route("/v2/lists", get(list_curated_lists).post(add_curated_list))
         .route("/v2/lists/browse", get(browse_curated_list))

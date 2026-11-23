@@ -489,6 +489,25 @@ pub async fn v2_request(
     }
 }
 
+/// Returns an authenticated loopback media streaming URL (`http://127.0.0.1:52324/v2/media/file`)
+/// so KeyGlass's WebGL2 optical glass preview can play hardware-decoded 60 FPS `<video>` cleanly!
+#[tauri::command]
+pub async fn v2_media_url(st: State<'_, DesktopState>, name: String) -> Result<String, CommandError> {
+    let fname = name.trim();
+    if fname.is_empty() || fname.contains('/') || fname.contains('\\') || fname.contains("..") {
+        return Err(CommandError::local("invalid media filename"));
+    }
+    let tok_path = st.data_dir.join("config/desktop_token.txt");
+    let tok = std::fs::read_to_string(&tok_path)
+        .map_err(|e| CommandError::local(format!("failed to read daemon token: {e}")))?;
+    let url = reqwest::Url::parse_with_params(
+        "http://127.0.0.1:52324/v2/media/file",
+        &[("name", fname), ("token", tok.trim())],
+    )
+    .map_err(|e| CommandError::local(e.to_string()))?;
+    Ok(url.to_string())
+}
+
 /// The link `open_url` hands to the browser: a well-formed `https` URL with a host, in its
 /// normalized form, so the opener receives no spaces, quotes or other raw text.
 fn browser_link(url: &str) -> Result<String, CommandError> {

@@ -1,6 +1,7 @@
 import type React from "react";
 import { useEffect, useState } from "react";
 import { type HardwareAttachmentBay, v2Client } from "../api/v2Client";
+import { GlassKeyboardCanvas } from "./GlassKeyboardCanvas";
 
 export interface SurfaceKeyGeom {
   index: number;
@@ -122,7 +123,7 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
   topBarSummary,
   attachments: propAttachments,
 }) => {
-  const [frameSrc, setFrameSrc] = useState<string | null>(null);
+  const [hoveredKey, setHoveredKey] = useState<number | null>(null);
   const [loadedBays, setLoadedBays] = useState<HardwareAttachmentBay[]>(DEFAULT_BAYS);
 
   useEffect(() => {
@@ -140,27 +141,6 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
       alive = false;
     };
   }, [propAttachments, previewTick]);
-
-  useEffect(() => {
-    if (!showLivePreview) return;
-    let alive = true;
-    const capture = () => {
-      void v2Client
-        .renderPreviewFrame(2, 16.667, 960, 540)
-        .then((res) => {
-          if (alive && res.png_base64) {
-            setFrameSrc(`data:image/png;base64,${res.png_base64}`);
-          }
-        })
-        .catch(() => {});
-    };
-    capture();
-    const id = window.setInterval(capture, 2500);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-    };
-  }, [showLivePreview, previewTick]);
 
   const bays = propAttachments ?? loadedBays;
 
@@ -180,12 +160,12 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
         className="kb-surface-canvas"
         style={{ aspectRatio: `${DISPLAY_W} / ${DISPLAY_H}` }}
       >
-        {showLivePreview && frameSrc && (
-          <img
-            src={frameSrc}
-            alt="Live KeyGlass Keyboard Display"
-            className="kb-surface-preview-img"
-            draggable={false}
+        {showLivePreview && (
+          <GlassKeyboardCanvas
+            keys={keys}
+            selectedKey={selectedKey}
+            hoveredKey={hoveredKey}
+            previewTick={previewTick}
           />
         )}
 
@@ -225,8 +205,10 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
               key={k.index}
               type="button"
               onClick={() => onSelectKey?.(k.index)}
+              onMouseEnter={() => setHoveredKey(k.index)}
+              onMouseLeave={() => setHoveredKey((prev) => (prev === k.index ? null : prev))}
               title={vis?.title ?? `Key ${k.index} (R${k.row} C${k.col})`}
-              className={`kb-key ${isSel ? "is-selected" : ""} ${showLivePreview ? "is-glass-cap" : ""} ${vis?.muted ? "is-muted" : ""}`}
+              className={`kb-key ${isSel ? "is-selected" : ""} ${showLivePreview ? "is-webgl-hit" : ""} ${vis?.muted ? "is-muted" : ""}`}
               style={{
                 left: `calc(${leftPct}% + 2px)`,
                 top: `calc(${topPct}% + 2px)`,
@@ -237,7 +219,6 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
                 borderColor: isSel ? undefined : vis?.border,
               }}
             >
-              {showLivePreview && <span className="kb-glass-lens" aria-hidden="true" />}
               {vis?.dotColor && (
                 <span
                   className="kb-key-dot"

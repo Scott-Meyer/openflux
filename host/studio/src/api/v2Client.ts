@@ -203,6 +203,9 @@ export interface PreviewFrameResponse {
   gpu_adapter: string;
   modules_rev: number;
   png_base64: string;
+  background_media_name?: string | null;
+  bg_dimming?: number;
+  top_fade?: number;
   modules: Array<{ id: string; healthy: boolean; last_error?: string | null }>;
   timings?: PreviewFrameTimings;
 }
@@ -329,8 +332,9 @@ export const v2Client = {
   simulateBurst: () => v2Call("POST", "/v2/simulate/burst", {}),
   syncToKeyboard: () =>
     v2Call<{ ok: boolean; uploaded_files: string[]; uploaded_bytes: number }>("POST", "/v2/keyboard/sync", {}),
-  renderPreviewFrame: (steps = 2, step_ms = 16.667, width = 960, height = 540) =>
-    v2Call<PreviewFrameResponse>("POST", "/v2/preview/frame", { steps, step_ms, width, height }),
+  renderPreviewFrame: (steps = 2, step_ms = 16.667, width = 960, height = 540, overlay_only = false) =>
+    v2Call<PreviewFrameResponse>("POST", "/v2/preview/frame", { steps, step_ms, width, height, overlay_only }),
+  getMediaUrl: (name: string) => invoke<string>("v2_media_url", { name }),
   vialStatus: () =>
     v2Call<{ connected: boolean; product_name: string; vendor_id: number; product_id: number }>(
       "GET",

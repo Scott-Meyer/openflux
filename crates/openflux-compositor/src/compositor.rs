@@ -1411,6 +1411,12 @@ impl Compositor {
         }
     }
 
+    /// Exposes the crisp 1920x1080 transparent 2D overlay buffer (key legends, top bar widgets,
+    /// and OSD toasts) so host WebGL2 previews can composite it cleanly over live 60 FPS video!
+    pub fn overlay_rgba(&self) -> (u32, u32, &[u8]) {
+        (self.canvas.width, self.canvas.height, &self.canvas.rgba)
+    }
+
     /// Reads back the last rendered frame as tightly-packed RGBA8 (`width * height * 4`).
     pub fn readback_rgba(&self) -> Result<Vec<u8>, String> {
         let mut encoder = self
