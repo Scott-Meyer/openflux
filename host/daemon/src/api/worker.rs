@@ -118,86 +118,106 @@ pub struct WorkerLoopState {
     pub last_bus_poll_at: Option<Instant>,
 }
 
-/// Pumps bidirectional `openflux-bus` `WireFrame`s between the host daemon and the physical
-/// keyboard over USB (both one-off events and retained updates, strictly loop-free!).
-fn pump_v2_bus_bridge(
-    state: &Arc<ApiState>,
-    device: &dyn DeviceSink,
-    wstate: &mut WorkerLoopState,
+/// Dedicated low-latency bidirectional USB bus bridge thread (`openflux-bus-bridge`).
+/// Completely decoupled from slow 1 Hz OS sensor subprocess polling (`openflux-sensors` / `media-control`),
+/// waking via condvar (`sub.recv_timeout`) in <0.1ms whenever `focus-watch` publishes `host/app/active`
+/// or a module/CLI emits a live event, and streaming it over USB in ~2ms!
+fn spawn_v2_bus_bridge_thread(
+    state: Arc<ApiState>,
+    device: Arc<dyn DeviceSink>,
+    running: Arc<AtomicBool>,
 ) {
-    let (has_bridge, _) = device.is_connected();
-    if !has_bridge {
-        return;
-    }
-    if state.check_keyboard_unreserved().is_err() {
-        return;
-    }
-
-    // Lazily attach a wildcard subscription on the host broker so EVERY one-off event & retained
-    // publish streams straight to the keyboard without waiting for the 5-second live_json snapshot.
-    if wstate.v2_bus_sub.is_none() {
-        wstate.v2_bus_sub = state
-            .v2
-            .broker
-            .subscribe(
+    let _ = thread::Builder::new()
+        .name("openflux-bus-bridge".into())
+        .spawn(move || {
+            let Ok(sub) = state.v2.broker.subscribe(
                 "#",
                 openflux_bus::SubscribeOptions {
                     replay_retained: false,
                     ..Default::default()
                 },
-            )
-            .ok();
-    }
-
-    // 1. Host -> Keyboard: stream new host/module/CLI events immediately over LIVE_DATA_TYPE_BUS_FRAME
-    if let Some(ref sub) = wstate.v2_bus_sub {
-        for msg in sub.drain() {
-            let orig = msg.origin.as_deref().unwrap_or("");
-            // Never echo any bridged message back to the keyboard (strictly loop-free!).
-            if orig.starts_with("bridge:") {
-                continue;
-            }
-            if msg.topic.starts_with("layout/")
-                || msg.topic == "keyboard/geometry"
-                || msg.topic == "keyboard/keymap"
-                || msg.topic == "keys/providers/keymap"
-                || msg.topic == "keys/providers/keymap-caps"
-                || msg.topic == "keys/providers/shortcuts"
-                || msg.topic == openflux_bus::topics::INPUT_KEYS_ANALOG
-                || msg.topic == openflux_bus::topics::HOST_SYSTEM_METRICS
-                || msg.topic == openflux_bus::topics::HOST_MEDIA_NOW_PLAYING
-                || msg.topic == openflux_bus::topics::HOST_WEATHER_CURRENT
-            {
-                continue;
-            }
-            let frame = openflux_bus::WireFrame::Publish {
-                topic: msg.topic,
-                payload: msg.payload,
-                retain: msg.retain,
-                ttl_ms: msg.expires_at_ms.map(|e| e.saturating_sub(msg.timestamp_ms)),
-                origin: Some(format!("bridge:host:{orig}")),
+            ) else {
+                return;
             };
-            let _ = device.send_bus_frame(&frame);
-        }
-    }
+            let mut was_connected = false;
+            let mut last_poll_at = Instant::now() - Duration::from_secs(1);
 
-    // 2. Keyboard -> Host: poll queued keyboard-originated frames every ~50ms and apply locally
-    let poll_due = wstate
-        .last_bus_poll_at
-        .map(|t| t.elapsed() >= Duration::from_millis(50))
-        .unwrap_or(true);
-    if poll_due {
-        wstate.last_bus_poll_at = Some(Instant::now());
-        if let Ok(frames) = device.poll_bus_frames() {
-            for frame in frames {
-                let _ = openflux_bus::apply_remote_frame(
-                    &state.v2.broker,
-                    frame,
-                    "bridge:keyboard",
-                );
+            let forward_msg = |device: &dyn DeviceSink, msg: openflux_bus::BusMessage| {
+                let orig = msg.origin.as_deref().unwrap_or("");
+                if orig.starts_with("bridge:") {
+                    return;
+                }
+                if msg.topic.starts_with("layout/")
+                    || msg.topic == "keyboard/geometry"
+                    || msg.topic == "keyboard/keymap"
+                    || msg.topic == "keys/providers/keymap"
+                    || msg.topic == "keys/providers/keymap-caps"
+                    || msg.topic == "keys/providers/shortcuts"
+                    || msg.topic == openflux_bus::topics::INPUT_KEYS_ANALOG
+                    || msg.topic == openflux_bus::topics::HOST_SYSTEM_METRICS
+                    || msg.topic == openflux_bus::topics::HOST_MEDIA_NOW_PLAYING
+                    || msg.topic == openflux_bus::topics::HOST_WEATHER_CURRENT
+                    || msg.topic == openflux_bus::topics::HOST_APP_SHORTCUTS
+                {
+                    return;
+                }
+                let frame = openflux_bus::WireFrame::Publish {
+                    topic: msg.topic,
+                    payload: msg.payload,
+                    retain: msg.retain,
+                    ttl_ms: msg.expires_at_ms.map(|e| e.saturating_sub(msg.timestamp_ms)),
+                    origin: Some(format!("bridge:host:{orig}")),
+                };
+                let _ = device.send_bus_frame(&frame);
+            };
+
+            while running.load(Ordering::Relaxed) {
+                let (has_bridge, _) = device.is_connected();
+                if !has_bridge || state.check_keyboard_unreserved().is_err() {
+                    was_connected = false;
+                    let _ = sub.recv_timeout(Duration::from_millis(100));
+                    continue;
+                }
+
+                // On fresh USB connect, replay key retained context once so keyboard is immediately in sync.
+                if !was_connected {
+                    was_connected = true;
+                    for pat in [
+                        openflux_bus::topics::HOST_APP_ACTIVE,
+                        "host/profile/active",
+                        "modules/#",
+                    ] {
+                        if let Ok(msgs) = state.v2.broker.query_retained(pat) {
+                            for m in msgs {
+                                forward_msg(&*device, m);
+                            }
+                        }
+                    }
+                }
+
+                // Wait up to 40ms on condvar — wakes IMMEDIATELY (<0.1ms!) on `host/app/active` or any bus publish!
+                if let Some(first) = sub.recv_timeout(Duration::from_millis(40)) {
+                    forward_msg(&*device, first);
+                    for extra in sub.drain() {
+                        forward_msg(&*device, extra);
+                    }
+                }
+
+                // Poll keyboard -> host queued frames every ~50ms
+                if last_poll_at.elapsed() >= Duration::from_millis(50) {
+                    last_poll_at = Instant::now();
+                    if let Ok(frames) = device.poll_bus_frames() {
+                        for frame in frames {
+                            let _ = openflux_bus::apply_remote_frame(
+                                &state.v2.broker,
+                                frame,
+                                "bridge:keyboard",
+                            );
+                        }
+                    }
+                }
             }
-        }
-    }
+        });
 }
 
 /// The host's time zone and UTC offset, which the keyboard's clock follows.
@@ -459,6 +479,7 @@ impl UsbWorkerHandle {
     ) -> Self {
         #[cfg(target_os = "macos")]
         spawn_macos_focus_watcher(state.clone(), running.clone());
+        spawn_v2_bus_bridge_thread(state.clone(), device.clone(), running.clone());
         let (tx, mut rx) = mpsc::channel::<UsbCommand>(32);
         let accepting = Arc::new(AtomicBool::new(true));
         let state_bg = state.clone();
@@ -511,10 +532,9 @@ impl UsbWorkerHandle {
                         platform_code,
                         &mut wstate,
                     );
-                    next_poll = Instant::now() + Duration::from_millis(250);
+                    next_poll = Instant::now() + Duration::from_millis(1000);
                 }
-                pump_v2_bus_bridge(&state_bg, &*device, &mut wstate);
-                thread::sleep(Duration::from_millis(10));
+                thread::sleep(Duration::from_millis(20));
             }
             // Commands already queued still run before the worker exits.
             while let Ok(cmd) = rx.try_recv() {
@@ -2117,11 +2137,11 @@ pub fn reconcile_tick_with_state(
         g.cached_live_data_json = Some(cached_preview.to_string());
     }
 
-    // Attach retained v2 host-module & context bus state (`modules/#`, `host/app/active`,
-    // `host/profile/active`) so keyboard modules react live to foreground app/profile switches
-    // and host-driven telemetry over the existing USB pipe.
+    // Attach retained v2 host-module state (`modules/#`, `host/profile/active`) for legacy keepalive;
+    // `host/app/active` is owned exclusively by the real-time `openflux-bus-bridge` push thread so
+    // slow 1 Hz sensor snapshots can NEVER overwrite a newer focus change with a stale app!
     let mut v2_map = serde_json::Map::new();
-    for pat in ["modules/#", openflux_bus::topics::HOST_APP_ACTIVE, "host/profile/active"] {
+    for pat in ["modules/#", "host/profile/active"] {
         if let Ok(msgs) = state.v2.broker.query_retained(pat) {
             for m in msgs {
                 v2_map.insert(m.topic, m.payload);
