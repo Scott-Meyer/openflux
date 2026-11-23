@@ -848,9 +848,54 @@ pub fn overlay_rows(state: &ApiState, id: &str) -> Vec<Value> {
         return Vec::new();
     }
     let roots = crate::api::assets::resolve_asset_roots(state);
-    load_pack(&roots, &read_custom(state), id)
+    let custom = read_custom(state);
+    load_pack(&roots, &custom, id)
+        .or_else(|| {
+            if !id.ends_with(".json") {
+                load_pack(&roots, &custom, &format!("{id}.json"))
+            } else {
+                None
+            }
+        })
         .map(|p| p.visible_rows())
         .unwrap_or_default()
+}
+
+/// Finds the best matching shortcut pack (built-in or user custom) whose `apps` metadata matches
+/// the foreground application's bundle ID / process name for the current OS platform.
+pub fn match_pack_for_app(
+    state: &ApiState,
+    app_id: &str,
+    process_name: &str,
+    platform_code: u32,
+) -> Option<String> {
+    let app_l = app_id.trim().to_ascii_lowercase();
+    let proc_l = process_name.trim().to_ascii_lowercase();
+    if app_l.is_empty() && proc_l.is_empty() {
+        return None;
+    }
+    let roots = crate::api::assets::resolve_asset_roots(state);
+    let custom = read_custom(state);
+    let packs = all_packs(&roots, &custom);
+    for pack in packs {
+        let targets: &[String] = match platform_code {
+            2 => &pack.apps.macos,
+            1 => &pack.apps.windows,
+            _ => &pack.apps.linux,
+        };
+        for target in targets {
+            let t = target.trim().to_ascii_lowercase();
+            if t.is_empty() {
+                continue;
+            }
+            if (!app_l.is_empty() && (app_l == t || app_l.contains(&t)))
+                || (!proc_l.is_empty() && (proc_l == t || proc_l.contains(&t)))
+            {
+                return Some(pack.id);
+            }
+        }
+    }
+    None
 }
 
 fn err(code: StatusCode, message: &str) -> axum::response::Response {

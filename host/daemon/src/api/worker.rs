@@ -1836,43 +1836,52 @@ pub fn reconcile_tick_with_state(
                 .and_then(|p| p.shortcut_pack.clone())
                 .unwrap_or_default()
         };
-        // Auto-select a matching v1 shortcut pack for the foreground app when the profile leaves it blank!
+        // Auto-select a matching v1/custom shortcut pack for the foreground app when the profile leaves it blank!
         if active_pack.is_empty() {
-            let fg_l = format!(
-                "{} {}",
-                win.as_ref().map(|w| w.app_id.as_str()).unwrap_or(""),
-                win.as_ref().map(|w| w.process_name.as_str()).unwrap_or("")
-            )
-            .to_ascii_lowercase();
-            active_pack = if fg_l.contains("chrome") {
-                "chrome".into()
-            } else if fg_l.contains("safari") {
-                "safari".into()
-            } else if fg_l.contains("firefox") {
-                "firefox".into()
-            } else if fg_l.contains("vscode") || fg_l.contains("visual studio code") || fg_l.contains("cursor") {
-                "vscode".into()
-            } else if fg_l.contains("finder") {
-                "finder".into()
-            } else if fg_l.contains("slack") {
-                "slack".into()
-            } else if fg_l.contains("discord") {
-                "discord".into()
-            } else if fg_l.contains("figma") {
-                "figma".into()
-            } else if fg_l.contains("zoom") {
-                "zoom".into()
-            } else if fg_l.contains("blender") {
-                "blender".into()
-            } else if fg_l.contains("photoshop") {
-                "photoshop".into()
-            } else if fg_l.contains("terminal") || fg_l.contains("iterm") || fg_l.contains("flightdeck") {
-                "macos-terminal".into()
-            } else if platform_code == 2 {
-                "macos".into()
+            let fg_app = win.as_ref().map(|w| w.app_id.as_str()).unwrap_or("");
+            let fg_proc = win.as_ref().map(|w| w.process_name.as_str()).unwrap_or("");
+            if let Some(matched) =
+                crate::api::shortcuts::match_pack_for_app(state, fg_app, fg_proc, platform_code)
+            {
+                active_pack = matched;
             } else {
-                "windows".into()
-            };
+                let fg_l = format!("{fg_app} {fg_proc}").to_ascii_lowercase();
+                active_pack = if fg_l.contains("chrome") {
+                    "chrome.json".into()
+                } else if fg_l.contains("safari") {
+                    "safari.json".into()
+                } else if fg_l.contains("firefox") {
+                    "firefox.json".into()
+                } else if fg_l.contains("vscode")
+                    || fg_l.contains("visual studio code")
+                    || fg_l.contains("cursor")
+                {
+                    "vscode.json".into()
+                } else if fg_l.contains("finder") {
+                    "finder.json".into()
+                } else if fg_l.contains("slack") {
+                    "slack.json".into()
+                } else if fg_l.contains("discord") {
+                    "discord.json".into()
+                } else if fg_l.contains("figma") {
+                    "figma.json".into()
+                } else if fg_l.contains("zoom") {
+                    "zoom.json".into()
+                } else if fg_l.contains("blender") {
+                    "blender.json".into()
+                } else if fg_l.contains("photoshop") {
+                    "photoshop.json".into()
+                } else if fg_l.contains("terminal")
+                    || fg_l.contains("iterm")
+                    || fg_l.contains("flightdeck")
+                {
+                    "macos-terminal.json".into()
+                } else if platform_code == 2 {
+                    "macos.json".into()
+                } else {
+                    "windows.json".into()
+                };
+            }
         }
         let cache_key = format!("{active_pack}:{platform_code}");
         if wstate.cached_pack_name.as_deref() != Some(cache_key.as_str()) {

@@ -443,10 +443,25 @@ function on_render(ctx, stage)
           ctx:text(vx, ry + r.h - 23, label, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.94 }, "center")
         end
       elseif #label > 0 then
-        local lsz = (#label <= 1) and 30 or ((#label <= 2) and 27 or ((#label <= 5) and 19 or 14))
-        local ly = vy - lsz * 0.44
-        ctx:text(vx + 1.5, ly + 1.5, label, lsz, { 0, 0, 0, 0.75 }, "center")
-        ctx:text(vx, ly, label, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.96 }, "center")
+        local sp = (#label > 7) and string.find(label, " ") or nil
+        if sp then
+          local l1 = string.sub(label, 1, sp - 1)
+          local l2 = string.sub(label, sp + 1)
+          if #l1 > 9 then l1 = string.sub(l1, 1, 8) .. "." end
+          if #l2 > 9 then l2 = string.sub(l2, 1, 8) .. "." end
+          local lsz = 13
+          local a = on_cd and 0.50 or 0.96
+          ctx:text(vx + 1, vy - 15 + 1, l1, lsz, { 0, 0, 0, 0.78 }, "center")
+          ctx:text(vx, vy - 15, l1, lsz, { col[1], col[2], col[3], a }, "center")
+          ctx:text(vx + 1, vy + 2 + 1, l2, lsz, { 0, 0, 0, 0.78 }, "center")
+          ctx:text(vx, vy + 2, l2, lsz, { col[1], col[2], col[3], a }, "center")
+        else
+          local disp = (#label > 9) and (string.sub(label, 1, 8) .. ".") or label
+          local lsz = (#disp <= 1) and 30 or ((#disp <= 2) and 27 or ((#disp <= 5) and 19 or 14))
+          local ly = vy - lsz * 0.44
+          ctx:text(vx + 1.5, ly + 1.5, disp, lsz, { 0, 0, 0, 0.75 }, "center")
+          ctx:text(vx, ly, disp, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.96 }, "center")
+        end
       end
 
       -- Sweeping cooldown curtain + countdown timer (for game decks / timers)
