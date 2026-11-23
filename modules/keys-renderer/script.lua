@@ -423,6 +423,7 @@ function on_render(ctx, stage)
         )
       end
 
+      local cfg = module.config()
       local legend_style = tostring(cfg.legend_style or "dual_shift")
       local bold_leg = cfg.bold_legends ~= false
 
