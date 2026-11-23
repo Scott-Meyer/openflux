@@ -43,12 +43,10 @@ def find_bin(name: str) -> str | None:
     return None
 
 
-def resolve_stream_url(raw_url: str) -> tuple[str | None, str]:
+def is_direct_stream(raw_url: str) -> bool:
     u = raw_url.strip()
-    if not u:
-        return None, "empty"
     low = u.lower()
-    if (
+    return (
         low.startswith("rtsp://")
         or low.startswith("rtmp://")
         or low.startswith("udp://")
@@ -58,37 +56,7 @@ def resolve_stream_url(raw_url: str) -> tuple[str | None, str]:
         or low.endswith(".webm")
         or ".m3u8?" in low
         or os.path.isfile(u)
-    ):
-        return u, "direct"
-
-    ytdlp = find_bin("yt-dlp")
-    if not ytdlp:
-        print("[bg-stream] yt-dlp not found (brew install yt-dlp)", flush=True)
-        return None, "missing_yt_dlp"
-    try:
-        res = subprocess.run(
-            [
-                ytdlp,
-                "-g",
-                "--no-warnings",
-                "--no-playlist",
-                "-f",
-                "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/best[height<=1080][vcodec!=none]/best",
-                u,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
-        if res.returncode != 0:
-            err = (res.stderr or "").strip().splitlines()
-            print(f"[bg-stream] yt-dlp failed: {err[-1] if err else res.returncode}", flush=True)
-            return None, "offline_or_error"
-        lines = [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
-        return (lines[0], "yt-dlp") if lines else (None, "no_url")
-    except Exception as e:
-        print(f"[bg-stream] yt-dlp error: {e}", flush=True)
-        return None, "error"
+    )
 
 
 def close_remote_stream():
@@ -131,13 +99,14 @@ def main():
             time.sleep(10)
 
     parsed = urlparse(BUS_URL)
+    ytdlp = find_bin("yt-dlp")
 
     while True:
-        print(f"[bg-stream] resolving: {raw_url}", flush=True)
-        resolved, how = resolve_stream_url(raw_url)
-        if not resolved:
+        direct = is_direct_stream(raw_url)
+        if not direct and not ytdlp:
+            print("[bg-stream] yt-dlp not found (brew install yt-dlp)", flush=True)
             close_remote_stream()
-            time.sleep(8)
+            time.sleep(10)
             continue
 
         # Hardware Apple VideoToolbox H.264 on macOS (<1% CPU!), fallback to ultrafast libx264
@@ -146,31 +115,55 @@ def main():
             if os.uname().sysname == "Darwin"
             else ["-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-b:v", "4500k", "-g", str(fps)]
         )
-        cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-re"]
-        if resolved.lower().startswith("rtsp://"):
-            cmd += ["-rtsp_transport", "tcp"]
-        elif resolved.lower().startswith("http://") or resolved.lower().startswith("https://"):
-            cmd += ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
+        cmd = [ffmpeg, "-hide_banner", "-loglevel", "warning", "-re"]
+        yt_proc = None
+        if direct:
+            if raw_url.lower().startswith("rtsp://"):
+                cmd += ["-rtsp_transport", "tcp"]
+            elif raw_url.lower().startswith("http://") or raw_url.lower().startswith("https://"):
+                cmd += ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
+            cmd += ["-i", raw_url]
+            how = "direct"
+        else:
+            # Pipe `yt-dlp -o -` directly into ffmpeg stdin so YouTube/Twitch auth, TLS
+            # fingerprint, and HLS segment headers never hit 403 Forbidden!
+            yt_cmd = [
+                ytdlp,
+                "--no-warnings",
+                "--no-playlist",
+                "-f",
+                "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/best[height<=1080][vcodec!=none]/best",
+                "-o",
+                "-",
+                raw_url,
+            ]
+            yt_proc = subprocess.Popen(yt_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            cmd += ["-i", "pipe:0"]
+            how = "yt-dlp pipe"
 
         cmd += [
-            "-i",
-            resolved,
             "-an",
             "-vf",
             f"fps={fps},scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,format=yuv420p",
             *vcodec,
-            "-bsf:v",
-            "h264_mp4toannexb",
             "-f",
             "h264",
             "-",
         ]
 
-        print(f"[bg-stream] streaming live 1080p@{fps}fps H.264 Annex-B ({how}) -> /v2/streams/{STREAM_NAME}", flush=True)
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print(f"[bg-stream] streaming live 1080p@{fps}fps H.264 ({how}) -> /v2/streams/{STREAM_NAME}", flush=True)
+        proc = subprocess.Popen(
+            cmd,
+            stdin=yt_proc.stdout if yt_proc is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if yt_proc is not None and yt_proc.stdout is not None:
+            yt_proc.stdout.close()
 
         tok = load_token()
         conn = None
+        bytes_sent = 0
         try:
             conn = (
                 http.client.HTTPSConnection(parsed.hostname, parsed.port, context=SSL_CTX, timeout=15)
@@ -188,6 +181,7 @@ def main():
                 chunk = proc.stdout.read(32768)
                 if not chunk:
                     break
+                bytes_sent += len(chunk)
                 header = f"{len(chunk):x}\r\n".encode("ascii")
                 conn.send(header + chunk + b"\r\n")
             conn.send(b"0\r\n\r\n")
@@ -196,23 +190,33 @@ def main():
             except Exception:
                 pass
         except Exception as e:
-            print(f"[bg-stream] stream pipe ended: {e}", flush=True)
+            print(f"[bg-stream] stream pipe ended after {bytes_sent} B: {e}", flush=True)
         finally:
             if conn is not None:
                 try:
                     conn.close()
                 except Exception:
                     pass
-            try:
-                proc.terminate()
-                proc.wait(timeout=2)
-            except Exception:
+            for p in (proc, yt_proc):
+                if p is not None:
+                    try:
+                        p.terminate()
+                        p.wait(timeout=2)
+                    except Exception:
+                        try:
+                            p.kill()
+                        except Exception:
+                            pass
+            if bytes_sent == 0:
+                err_txt = ""
                 try:
-                    proc.kill()
+                    err_txt = (proc.stderr.read() or b"").decode("utf-8", "ignore").strip()
                 except Exception:
                     pass
+                if err_txt:
+                    print(f"[bg-stream] ffmpeg stderr: {err_txt.splitlines()[-1]}", flush=True)
             close_remote_stream()
-            print("[bg-stream] stream closed — returning to 100% transparent", flush=True)
+            print(f"[bg-stream] stream closed ({bytes_sent} B sent) — returning to 100% transparent", flush=True)
         time.sleep(4)
 
 
