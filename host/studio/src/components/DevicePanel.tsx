@@ -374,6 +374,15 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
           </div>
         </div>
         {log && <p className="status-msg">{log}</p>}
+
+        <div className="rail-divider" style={{ margin: "18px 0 12px" }} />
+        <div className="kg-about-disclaimer">
+          <strong>About KeyGlass</strong>
+          <p className="muted" style={{ margin: "6px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+            KeyGlass is an independent, community-driven open-source modular keyboard software project. It is not
+            affiliated with, endorsed by, sponsored by, or an official product of Flux.
+          </p>
+        </div>
       </div>
     </div>
   );
