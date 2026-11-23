@@ -204,7 +204,7 @@ export const KEYCODE_CATEGORIES: KeycodeCategory[] = [
     ],
   },
   {
-    label: "OpenFlux",
+    label: "Keyglass",
     keys: [
       k("KC_OF_BRIGHTNESS_UP", "KBRI+", "Keyboard screen brightness up"),
       k("KC_OF_BRIGHTNESS_DOWN", "KBRI-", "Keyboard screen brightness down"),

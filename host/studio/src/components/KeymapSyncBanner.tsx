@@ -53,7 +53,7 @@ export const KeymapSyncBanner: React.FC<KeymapSyncBannerProps> = ({ notice, sync
       <strong>
         {notice.state === "mismatch"
           ? withReason("The keyboard's keymap file and its firmware keymap don't match", notice.reason)
-          : withReason("OpenFlux couldn't load the keyboard's keymap", notice.reason)}
+          : withReason("Keyglass couldn't load the keyboard's keymap", notice.reason)}
       </strong>
       <p>
         Keymap editing stays locked until this is resolved. Using the firmware keymap rebuilds the keymap file from what

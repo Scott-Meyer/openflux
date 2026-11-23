@@ -120,7 +120,7 @@ describe("host update", () => {
       kind: "unreachable",
       code: "daemonStateUnknown",
       message:
-        "OpenFlux couldn't confirm whether the background service is still running: 127.0.0.1:5 refuses connections, but a daemon process still holds the instance lock",
+        "Keyglass couldn't confirm whether the background service is still running: 127.0.0.1:5 refuses connections, but a daemon process still holds the instance lock",
     });
     const updater = mockHostUpdater(daemon);
     const service = mockDaemonService(daemon);
@@ -213,7 +213,7 @@ describe("host update", () => {
       await done;
     });
     expect(updater.install).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Restarting OpenFlux Studio…")).toBeTruthy();
+    expect(screen.getByText("Restarting Keyglass Studio…")).toBeTruthy();
   });
 
   it("links to the release on installations that update through the package manager", async () => {

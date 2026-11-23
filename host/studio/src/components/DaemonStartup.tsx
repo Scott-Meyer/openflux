@@ -44,14 +44,14 @@ export function registrationLabel(s: ServiceInspection): string {
   if (s.manager === "runKey") return s.registration === "enabled" ? "Starts at sign-in" : "Not set to start at sign-in";
   if (s.manager === "systemdUser")
     return s.registration === "enabled" ? "systemd user service: enabled" : "systemd user service: disabled";
-  return "Started by OpenFlux Studio";
+  return "Started by Keyglass Studio";
 }
 
 // Documents/flux/config is where apps written for the Flux keyboard's third-party API look for it.
 const DocumentsNote: React.FC = () => (
   <p className="muted">
-    The first time the background service runs, macOS may ask whether OpenFlux can access your Documents folder.
-    OpenFlux keeps a small file in Documents/flux/config so other apps on this computer can find it. Allow access, or
+    The first time the background service runs, macOS may ask whether Keyglass can access your Documents folder.
+    Keyglass keeps a small file in Documents/flux/config so other apps on this computer can find it. Allow access, or
     those apps can't connect to the keyboard.
   </p>
 );
@@ -192,13 +192,13 @@ export const DaemonStartup: React.FC<{
       <div className="card startup-card">
         <div className="brand">
           <OpenFluxLogo size={28} />
-          <strong>OpenFlux Studio</strong>
+          <strong>Keyglass Studio</strong>
         </div>
-        {p.phase === "probing" && <p aria-live="polite">Connecting to the OpenFlux background service…</p>}
-        {p.phase === "waiting" && <p aria-live="polite">Waiting for the OpenFlux background service to answer…</p>}
+        {p.phase === "probing" && <p aria-live="polite">Connecting to the Keyglass background service…</p>}
+        {p.phase === "waiting" && <p aria-live="polite">Waiting for the Keyglass background service to answer…</p>}
         {p.phase === "starting" && (
           <>
-            <p aria-live="polite">Starting the OpenFlux background service…</p>
+            <p aria-live="polite">Starting the Keyglass background service…</p>
             <div className="progress-track indeterminate" role="progressbar" aria-label="Starting">
               <div className="progress-fill" style={{ width: "35%" }} />
             </div>
@@ -210,8 +210,9 @@ export const DaemonStartup: React.FC<{
         {p.phase === "needsApproval" && (
           <>
             <p>
-              The OpenFlux background service is turned off in System Settings. Turn on OpenFlux Studio under General
-              &gt; Login Items &gt; Allow in the Background. Studio continues as soon as it's allowed.
+              The Keyglass background service is turned off in System Settings. Turn on Keyglass Studio (may appear as
+              OpenFlux Studio) under General &gt; Login Items &gt; Allow in the Background. Studio continues as soon as
+              it's allowed.
             </p>
             <div className="btn-group">
               <button
@@ -233,8 +234,8 @@ export const DaemonStartup: React.FC<{
             <div className="notice notice-error" role="alert">
               <strong>
                 {p.notRunning
-                  ? "The OpenFlux background service isn't running."
-                  : "Couldn't connect to the OpenFlux background service."}
+                  ? "The Keyglass background service isn't running."
+                  : "Couldn't connect to the Keyglass background service."}
               </strong>
               <p>{p.reason}</p>
             </div>

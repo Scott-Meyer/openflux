@@ -1,4 +1,4 @@
-# Builds and uploads a host release (host-vX.Y.Z[-beta.N]): OpenFlux Studio
+# Builds and uploads a host release (host-vX.Y.Z[-beta.N]): Keyglass Studio
 # with openfluxd, its helpers and the FFmpeg tools, for macOS (universal),
 # Windows x64 (NSIS setup program) and Linux x86_64 and aarch64 (AppImage and
 # .deb).
@@ -29,7 +29,7 @@
 #
 # Platform signing (Developer ID and notarization on macOS, SignPath on
 # Windows) happens here and uses the release-build environment. When its
-# secrets are absent the build continues unsigned and says so. The OpenFlux
+# secrets are absent the build continues unsigned and says so. The Keyglass
 # release key and the updater key are never available to these jobs; the
 # artifacts and the Tauri update feed are signed by publish-index.yml, after
 # the platform signing, so the updater signature covers the signed files.
@@ -644,7 +644,9 @@ jobs:
             {
               cat <<'EOF'
           <!-- openflux-studio-download-note -->
-          **Download OpenFlux Studio for your computer below** (macOS `.dmg`, Windows `-setup.exe`, or Linux `.AppImage` / `.deb`). Keyboard firmware, bridge, and display software are bundled inside the installer and updated automatically inside Studio.
+          **Download Keyglass Studio for your computer below** (macOS `.dmg`, Windows `-setup.exe`, or Linux `.AppImage` / `.deb`). Keyboard firmware, bridge, and display software are bundled inside the installer and updated automatically inside Studio.
+
+          Keyglass Studio is the new name for OpenFlux Studio. Existing installations can update in place; keyboard software and saved settings do not need to be replaced.
 
           EOF
               cat notes.md
@@ -658,11 +660,11 @@ jobs:
           $marker
           ### Bundled FFmpeg (GPL)
 
-          The installers include \`openflux-ffmpeg\` and \`openflux-ffprobe\`, built from FFmpeg ${FFMPEG_VER} with libx264 under the [GPL-2.0-or-later](${PAGES_URL}/source/openflux-ffmpeg-COPYING.GPLv2.txt) license. Complete corresponding source: [\`openflux-ffmpeg-source-${FFMPEG_VER}.tar.xz\`](${PAGES_URL}/source/openflux-ffmpeg-source-${FFMPEG_VER}.tar.xz) ([build info](${PAGES_URL}/source/openflux-ffmpeg-buildinfo.txt)). OpenFlux itself is MIT OR Apache-2.0.
+          The installers include \`openflux-ffmpeg\` and \`openflux-ffprobe\`, built from FFmpeg ${FFMPEG_VER} with libx264 under the [GPL-2.0-or-later](${PAGES_URL}/source/openflux-ffmpeg-COPYING.GPLv2.txt) license. Complete corresponding source: [\`openflux-ffmpeg-source-${FFMPEG_VER}.tar.xz\`](${PAGES_URL}/source/openflux-ffmpeg-source-${FFMPEG_VER}.tar.xz) ([build info](${PAGES_URL}/source/openflux-ffmpeg-buildinfo.txt)). Keyglass itself is MIT OR Apache-2.0.
           EOF
             changed=1
           fi
-          edit_args=(--title "OpenFlux Studio v${VERSION}")
+          edit_args=(--title "Keyglass Studio v${VERSION}")
           if [ "$CHANNEL" = stable ]; then
             edit_args+=(--latest)
           else

@@ -272,7 +272,7 @@ fn spawn_detached(binary: &Path) -> Result<(), String> {
 
 fn start_bundled() -> Result<(), String> {
     let bin = bundled_daemon()
-        .ok_or_else(|| "This installation of OpenFlux Studio has no openfluxd".to_string())?;
+        .ok_or_else(|| "This installation of Keyglass Studio has no openfluxd".to_string())?;
     spawn_detached(&bin)
 }
 

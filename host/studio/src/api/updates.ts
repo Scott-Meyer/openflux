@@ -134,7 +134,7 @@ export interface ConversionStatus {
   job: Job | null;
 }
 
-/** `convert`: install OpenFlux on the whole keyboard. `restore`: reinstall the factory software. */
+/** `convert`: install Keyglass on the whole keyboard. `restore`: reinstall the factory software. */
 export type ConversionStep = "convert" | "restore";
 
 /** `POST /v1/daemon/lifecycle`. `not-running` means no daemon answered. */

@@ -409,7 +409,7 @@ export const ThemeBackgroundPanel: React.FC<ThemeBackgroundPanelProps> = ({
               {bgSourceTab !== "shaders" && (
                 <p className="muted" style={{ fontSize: 11 }}>
                   Videos keep their full length. To fit the keyboard's {KEYBOARD_MEDIA_LIMIT_MIB} MiB media limit,
-                  OpenFlux lowers the bitrate or resolution; a video that can't fit at acceptable quality isn't
+                  Keyglass lowers the bitrate or resolution; a video that can't fit at acceptable quality isn't
                   imported.
                 </p>
               )}

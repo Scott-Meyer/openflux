@@ -82,7 +82,7 @@ export interface PressRefinementStatus {
 export interface PressRefinementInstall extends PressRefinementStatus {
   /** The keyboard already had exactly this data. */
   alreadyInstalled: boolean;
-  /** The data came from the copy OpenFlux keeps rather than a download. */
+  /** The data came from the copy Keyglass keeps rather than a download. */
   fromCache: boolean;
 }
 

@@ -32,9 +32,9 @@ export function componentStateLabel(c: ComponentStatus): string {
     case "updateAvailable":
       return c.latest ? `Update available: ${c.latest}` : "Update available";
     case "needsNewerHost":
-      return "Needs a newer OpenFlux first";
+      return "Needs a newer Keyglass first";
     case "newerThanHost":
-      return "Keyboard newer than this OpenFlux";
+      return "Keyboard newer than this Keyglass";
     case "conversionRequired":
       return "Conversion required";
     case "blocked":
@@ -86,7 +86,7 @@ const ComponentTable: React.FC<{ components: ComponentStatus[]; onOpenUrl: (url:
   </table>
 );
 
-/** Keyboard updates of a keyboard that runs OpenFlux: the plan, a confirmation, and the install. */
+/** Keyboard updates of a keyboard that runs Keyglass: the plan, a confirmation, and the install. */
 const KeyboardUpdates: React.FC<{
   updates: UpdatesClient;
   keyboard: KeyboardStatus;
@@ -148,7 +148,7 @@ const KeyboardUpdates: React.FC<{
   if (notIndexed && !keyboard.plan) {
     return (
       <p className="muted">
-        The version on this keyboard isn't in the release index, so OpenFlux can't plan updates for it. Check for
+        The version on this keyboard isn't in the release index, so Keyglass can't plan updates for it. Check for
         updates to fetch the newest release information.
       </p>
     );
@@ -215,7 +215,7 @@ const KeyboardUpdates: React.FC<{
           </li>
         ))}
       </ol>
-      {!allSelected && <p className="muted">OpenFlux adds any other component your selection needs.</p>}
+      {!allSelected && <p className="muted">Keyglass adds any other component your selection needs.</p>}
       {activePlan?.reason && <p className="muted">{activePlan.reason}</p>}
       <button
         type="button"
@@ -242,11 +242,11 @@ const KeyboardUpdates: React.FC<{
           </ol>
           <p>
             While the update installs, the keyboard can't type, and its display may go dark or restart. It usually takes
-            a few minutes. Keep the keyboard connected until OpenFlux says it's done, and use another keyboard if you
+            a few minutes. Keep the keyboard connected until Keyglass says it's done, and use another keyboard if you
             need to type in the meantime.
           </p>
           <p className="muted">
-            OpenFlux saves the keyboard's settings, calibration and current software first, so a step that fails is
+            Keyglass saves the keyboard's settings, calibration and current software first, so a step that fails is
             rolled back.
           </p>
         </ConfirmDialog>
@@ -285,7 +285,7 @@ const LocalKeyboardUpdates: React.FC<{
   if (!localBuilds) {
     return (
       <p className="muted">
-        Choose a local build folder above (e.g. an OpenFlux checkout or output directory) to scan for local{" "}
+        Choose a local build folder above (e.g. a Keyglass checkout or output directory) to scan for local{" "}
         <code>.uf2</code> and <code>.ipk</code> builds.
       </p>
     );
@@ -387,7 +387,7 @@ const LocalKeyboardUpdates: React.FC<{
   );
 };
 
-/** The Updates page: OpenFlux itself, and the keyboard's software. */
+/** The Updates page: Keyglass itself, and the keyboard's software. */
 export const UpdatesPage: React.FC<{
   updates: UpdatesClient;
   hostFlow: HostUpdateFlow;
@@ -458,7 +458,7 @@ export const UpdatesPage: React.FC<{
     return () => window.clearTimeout(t);
   }, [status, checkPollError, updates, accept, pollMs]);
 
-  // When the daemon knows of an OpenFlux update, ask the updater too so it can be installed.
+  // When the daemon knows of a Keyglass update, ask the updater too so it can be installed.
   const hostAvailable = status?.host.state === "updateAvailable";
   const channel = status?.channel;
   useEffect(() => {
@@ -503,7 +503,7 @@ export const UpdatesPage: React.FC<{
 
   const browseLocalDir = async () => {
     if (!pickFolder) return;
-    const picked = await pickFolder("Choose local OpenFlux build folder");
+    const picked = await pickFolder("Choose local Keyglass build folder");
     if (picked) {
       setLocalDirInput(picked);
       await saveSettings({ localDir: picked });
@@ -574,7 +574,7 @@ export const UpdatesPage: React.FC<{
                 type="text"
                 aria-label="Local build folder"
                 value={localDirInput}
-                placeholder="Path to OpenFlux checkout or build folder…"
+                placeholder="Path to Keyglass checkout or build folder…"
                 onChange={(e) => setLocalDirInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void saveSettings({ localDir: localDirInput });
@@ -633,7 +633,7 @@ export const UpdatesPage: React.FC<{
             <JobProgress job={jobRunning ? job : finishedJob} unreachable={unreachable} />
             {finishedJob?.state === "succeeded" && finishedJob.kind === "convert" && (
               <>
-                <p>The keyboard runs OpenFlux, and your settings were imported.</p>
+                <p>The keyboard runs Keyglass, and your settings were imported.</p>
                 <PressRefinementOutcome outcome={finishedJob.pressRefinement} />
               </>
             )}

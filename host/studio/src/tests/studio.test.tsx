@@ -167,7 +167,7 @@ function createMockClient(initial: OpenFluxConfig = structuredClone(TEST_CONFIG)
   return { client, calls, state, keyboard };
 }
 
-describe("OpenFlux Studio", () => {
+describe("Keyglass Studio", () => {
   it("shows the daemon's config, renders the live preview, and closes the preview on unmount", async () => {
     const { client, calls } = createMockClient();
     const { unmount } = render(<App client={client} initialTab="themes" />);
@@ -533,7 +533,7 @@ describe("OpenFlux Studio", () => {
     expect(screen.getByDisplayValue("ImportedThemeFromRefresh")).toBeTruthy();
   });
 
-  it("imports a .flux file as well as an OpenFlux bundle", async () => {
+  it("imports a .flux file as well as a Keyglass bundle", async () => {
     const { client, calls } = createMockClient();
     render(<App client={client} />);
     fireEvent.click(await screen.findByRole("button", { name: "Shortcuts" }));
@@ -927,7 +927,7 @@ describe("OpenFlux Studio", () => {
       expect(updates.some((u) => u.keymap?.keymaps.ansi.layers[0].keyActions[2].keyCode === "KC_S")).toBe(true),
     );
 
-    fireEvent.click(screen.getByText("Export OpenFlux Bundle..."));
+    fireEvent.click(screen.getByText("Export Keyglass Bundle..."));
     await waitFor(() => expect(client.exportBundle).toHaveBeenCalled());
   });
 
@@ -1017,7 +1017,7 @@ describe("OpenFlux Studio", () => {
     // Export waits for the pending write.
     fireEvent.change(screen.getByDisplayValue("Test Theme"), { target: { value: "ExportSynced" } });
     fireEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
-    fireEvent.click(screen.getByText("Export OpenFlux Bundle..."));
+    fireEvent.click(screen.getByText("Export Keyglass Bundle..."));
     await waitFor(() => expect(releasePut).toBeDefined());
     expect(client.exportBundle).not.toHaveBeenCalled();
     releasePut();
@@ -1029,7 +1029,7 @@ describe("OpenFlux Studio", () => {
     fireEvent.click(screen.getByRole("button", { name: "Themes" }));
     fireEvent.change(screen.getByDisplayValue("ExportSynced"), { target: { value: "WillFail" } });
     fireEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
-    fireEvent.click(screen.getByText("Export OpenFlux Bundle..."));
+    fireEvent.click(screen.getByText("Export Keyglass Bundle..."));
     await waitFor(() => expect(screen.getByText(/Cannot export: earlier config update/i)).toBeTruthy());
     expect(client.exportBundle).toHaveBeenCalledTimes(1);
   });
@@ -1562,7 +1562,7 @@ describe("OpenFlux Studio", () => {
   });
 
   describe("when the keyboard's keymap can't be loaded", () => {
-    const MISMATCH_REASON = "layer 1 key 20 uses KC_FF_PROFILE_CYCLE_NEXT, which OpenFlux doesn't know";
+    const MISMATCH_REASON = "layer 1 key 20 uses KC_FF_PROFILE_CYCLE_NEXT, which Keyglass doesn't know";
 
     /** A daemon that loaded everything but the keymap, with the given keymap sync state. */
     function keymapStuck(keymapSync: NonNullable<DeviceStatus["keymapSync"]>) {
@@ -1630,7 +1630,7 @@ describe("OpenFlux Studio", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Keymap" }));
       expect(
-        await screen.findByText("OpenFlux couldn't load the keyboard's keymap: keymap.json couldn't be read"),
+        await screen.findByText("Keyglass couldn't load the keyboard's keymap: keymap.json couldn't be read"),
       ).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Use the keyboard's firmware keymap" }));
       await waitFor(() =>
@@ -1702,7 +1702,7 @@ describe("OpenFlux Studio", () => {
     await waitFor(() => expect(calls).toContain("getConfig"));
 
     // Brand is shown; parallax lives on the Device tab, not Themes.
-    expect(screen.getByText("OpenFlux Studio")).toBeTruthy();
+    expect(screen.getByText("Keyglass Studio")).toBeTruthy();
     expect(screen.queryByRole("tab", { name: /Parallax/i })).toBeNull();
 
     // Modules: one Clock card whose style switcher changes the tile type (12 -> 10 for Analog).
@@ -1861,10 +1861,10 @@ describe("OpenFlux Studio", () => {
     const { client } = createMockClient();
     const daemon = new MockDaemon(FACTORY_KEYBOARD);
     render(<App client={client} services={mockServices(daemon)} />);
-    const callout = await screen.findByLabelText("Convert keyboard to OpenFlux");
+    const callout = await screen.findByLabelText("Convert keyboard to Keyglass");
     expect(callout.textContent).toContain("Factory Flux keyboard detected");
     expect(screen.getByText("Setup Required")).toBeTruthy();
-    fireEvent.click(within(callout).getByRole("button", { name: "Convert to OpenFlux…" }));
+    fireEvent.click(within(callout).getByRole("button", { name: "Convert to Keyglass…" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Updates" })).toBeTruthy());
   });
 });

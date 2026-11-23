@@ -48,7 +48,11 @@ for os in macos windows linux; do
     fi
     expect "$out" "${os}: updater artifacts are signed at publication, not at build" '.bundle.createUpdaterArtifacts == false'
 done
+expect "${repo}/host/studio/src-tauri/tauri.conf.json" "existing installer identity and branded window" \
+    '.identifier == "org.openflux.studio" and .productName == "OpenFlux Studio" and .app.windows[0].title == "Keyglass Studio"'
 expect "${work}/macos.json" "macos: app and disk image" '.bundle.targets == ["app", "dmg"]'
+expect "${work}/macos.json" "macos: display name override" \
+    '.bundle.macOS.infoPlist | endswith("studio-display-name.plist")'
 expect "${work}/macos.json" "macos: helpers are sidecars" \
     '[.bundle.externalBin[] | split("/") | last] | index("openflux-tray") != null and index("openflux-sensors") != null'
 expect "${work}/macos.json" "macos: LaunchAgent in Contents/Library/LaunchAgents" \
@@ -58,6 +62,8 @@ expect "${work}/windows.json" "windows: installer hooks" '.bundle.windows.nsis.i
 expect "${work}/linux.json" "linux: AppImage and .deb" '.bundle.targets == ["appimage", "deb"]'
 expect "${work}/linux.json" "linux: .deb installs the udev rules and the user unit" \
     '.bundle.linux.deb.files | has("/usr/lib/udev/rules.d/70-openflux.rules") and has("/usr/lib/systemd/user/openfluxd.service")'
+expect "${work}/linux.json" "linux: desktop display name override" \
+    '.bundle.linux.deb.desktopTemplate | endswith("studio.desktop")'
 expect "${work}/linux.json" "linux: .deb maintainer scripts" \
     '.bundle.linux.deb | (.postInstallScript | endswith("postinst")) and (.preRemoveScript | endswith("prerm")) and (.postRemoveScript | endswith("postrm"))'
 

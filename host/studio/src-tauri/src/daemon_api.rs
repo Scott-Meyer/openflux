@@ -235,7 +235,7 @@ fn lifecycle_failure(
             status: None,
             code: Some("daemonStateUnknown".into()),
             message: format!(
-                "OpenFlux couldn't confirm whether the background service is still running: {reason}"
+                "Keyglass couldn't confirm whether the background service is still running: {reason}"
             ),
             recovery: Some(
                 "Wait a moment and try again. If this keeps happening, restart the computer.".into(),

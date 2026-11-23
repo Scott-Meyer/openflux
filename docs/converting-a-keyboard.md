@@ -1,10 +1,10 @@
-# Converting a keyboard to OpenFlux
+# Converting a keyboard to Keyglass
 
-A keyboard runs either OpenFlux on all of its parts or other software. When
-OpenFlux Studio finds a keyboard that is not fully running OpenFlux, such as
+A keyboard runs either Keyglass on all of its parts or other software. When
+Keyglass Studio finds a keyboard that is not fully running Keyglass, such as
 one with the keyboard's factory software, it shows **Conversion required**
 and offers one action for the keyboard: converting it. Converting installs
-OpenFlux on every part of the keyboard at once.
+Keyglass on every part of the keyboard at once.
 
 You can return the keyboard to its factory software at any time with
 **Reset to factory software**.
@@ -15,13 +15,13 @@ stateDiagram-v2
     state "Factory software" as Factory
     state "Mixed software" as Mixed
     state "Converting" as Converting
-    state "OpenFlux" as OpenFlux
+    state "Keyglass" as Keyglass
     state "Resetting" as Resetting
-    Factory --> Converting: Convert to OpenFlux
-    Mixed --> Converting: Convert to OpenFlux
-    Converting --> OpenFlux: finished
+    Factory --> Converting: Convert to Keyglass
+    Mixed --> Converting: Convert to Keyglass
+    Converting --> Keyglass: finished
     Converting --> Mixed: interrupted
-    OpenFlux --> Resetting: Reset to factory software
+    Keyglass --> Resetting: Reset to factory software
     Resetting --> Factory: finished
 ```
 
@@ -29,8 +29,8 @@ Studio shows both factory and mixed software as **Conversion required**.
 
 ## Before you start
 
-- Install OpenFlux on your computer ([installing.md](installing.md)) and open
-  OpenFlux Studio.
+- Install Keyglass on your computer ([installing.md](installing.md)) and open
+  Keyglass Studio.
 - Quit any other program that configures the keyboard, including the
   keyboard's factory desktop app. Only one program can talk to the keyboard
   at a time. Closing a program's window doesn't always quit it: if it has an
@@ -42,20 +42,20 @@ Studio shows both factory and mixed software as **Conversion required**.
 
 ## Converting
 
-![Studio's Updates page showing Conversion required for each part of the keyboard, and the Convert to OpenFlux button](images/studio-updates.png)
+![Studio's Updates page showing Conversion required for each part of the keyboard, and the Convert to Keyglass button](images/studio-updates.png)
 
-1. In OpenFlux Studio, open **Updates**. Under **Keyboard**, Studio shows
+1. In Keyglass Studio, open **Updates**. Under **Keyboard**, Studio shows
    **Conversion required**, what each part of the keyboard runs, and what
    converting installs: the firmware for the key scanner, and the bridge and
    display for the keyboard's computer, with their versions.
-2. Choose **Convert to OpenFlux…** and confirm.
+2. Choose **Convert to Keyglass…** and confirm.
 3. Studio installs each part, imports your settings and shows its progress.
    The keyboard can't type until the conversion has finished, and its screen
    goes blank while the display is replaced. While the firmware is being
    written, your computer may show a drive named `RPI-RP2`; leave it alone.
    This takes a few minutes; use another keyboard if you need to type in the
    meantime.
-4. When every part runs OpenFlux, Studio says so, and you can use the
+4. When every part runs Keyglass, Studio says so, and you can use the
    keyboard as before.
 
 The installers carry the keyboard software that matches them, so converting
@@ -70,7 +70,7 @@ data later from Studio's **Device** page.
 ### What is kept
 
 - **Your keyboard settings.** Themes, keymaps, profiles, the Mosaic modules
-  and your backgrounds are carried over and appear in OpenFlux Studio.
+  and your backgrounds are carried over and appear in Keyglass Studio.
 - **Calibration.** Each keyboard is calibrated individually at the factory.
   The calibration stays where it is on the keyboard and is never rewritten.
 
@@ -78,7 +78,7 @@ data later from Studio's **Device** page.
 
 If the keyboard is unplugged or the computer sleeps during the conversion,
 reconnect the keyboard. Studio shows it as **Conversion required** again,
-because some parts don't run OpenFlux yet, and you can start the conversion
+because some parts don't run Keyglass yet, and you can start the conversion
 again from the beginning.
 
 If the screen stays blank but the keyboard types, leave it connected for a
@@ -86,14 +86,14 @@ minute; the keyboard restarts its display by itself. If it doesn't
 recover, unplug the keyboard, plug it in again and repeat the conversion.
 
 If writing the firmware fails and the keyboard doesn't come back, Studio
-says so. Copy the firmware `.uf2` file from the OpenFlux release onto the
+says so. Copy the firmware `.uf2` file from the Keyglass release onto the
 `RPI-RP2` drive, then check for updates in Studio.
 
 ## Reset to factory software
 
 To return the keyboard to its factory software:
 
-1. In OpenFlux Studio, open **Updates**, expand **Advanced** under
+1. In Keyglass Studio, open **Updates**, expand **Advanced** under
    **Keyboard**, and choose **Reset to factory software…**.
 2. Confirm twice. Studio downloads the keyboard's factory software from its
    official source, checks the download against the signed update index,
@@ -102,8 +102,8 @@ To return the keyboard to its factory software:
 
 Resetting needs an internet connection unless your computer already has a
 verified copy of the factory software from an earlier reset. Afterwards the
-keyboard works with its factory desktop app, and OpenFlux Studio shows it as
-**Conversion required** until you convert it again. You can remove OpenFlux
+keyboard works with its factory desktop app, and Keyglass Studio shows it as
+**Conversion required** until you convert it again. You can remove Keyglass
 from your computer as described in [installing.md](installing.md).
 
 What the reset keeps:
@@ -112,7 +112,7 @@ What the reset keeps:
 - **The keymap** stays: the factory firmware gets the keymap the keyboard
   has now. A media key the factory firmware can't express goes back to that
   key's default.
-- **Other changes you made in OpenFlux Studio** don't carry over to the
+- **Other changes you made in Keyglass Studio** don't carry over to the
   factory software. The conversion only read the factory software's own
   settings and left them in place.
 

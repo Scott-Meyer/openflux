@@ -11,8 +11,8 @@
 # installed binary.
 
 [Unit]
-Description=OpenFlux keyboard daemon
-Documentation=https://github.com/Scott-Meyer/openflux
+Description=Keyglass keyboard daemon
+Documentation=https://github.com/keyglass-dev/keyglass
 
 [Service]
 Type=simple

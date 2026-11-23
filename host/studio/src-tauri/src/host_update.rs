@@ -1,4 +1,4 @@
-//! Updates of OpenFlux itself (Studio, the daemon and helpers ship as one bundle), through the
+//! Updates of Keyglass itself (Studio, the daemon and helpers ship as one bundle), through the
 //! Tauri updater.
 //!
 //! The commands are single steps: check, download (which verifies the signature), install and
@@ -14,7 +14,7 @@ use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 /// Feed used when the configuration names none.
-pub const DEFAULT_FEED: &str = "https://scott-meyer.github.io/openflux/updates/stable/latest.json";
+pub const DEFAULT_FEED: &str = "https://keyglass-dev.github.io/keyglass/updates/stable/latest.json";
 
 #[derive(Default)]
 pub struct HostUpdateState {
@@ -64,7 +64,7 @@ pub fn support_for(os: &str, appimage: bool) -> Support {
         "linux" if !appimage => Support {
             mode: "notify",
             reason: Some(
-                "OpenFlux was installed with the system package manager. Install the updated package from the release page."
+                "Keyglass was installed with the system package manager. Install the updated package from the release page."
                     .into(),
             ),
             installer_exits_app: false,
@@ -228,7 +228,7 @@ mod tests {
     fn the_beta_feed_sits_next_to_the_configured_stable_feed() {
         assert_eq!(
             feed_url(DEFAULT_FEED, "beta"),
-            "https://scott-meyer.github.io/openflux/updates/beta/latest.json"
+            "https://keyglass-dev.github.io/keyglass/updates/beta/latest.json"
         );
         assert_eq!(feed_url(DEFAULT_FEED, "stable"), DEFAULT_FEED);
         assert_eq!(

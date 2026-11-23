@@ -26,8 +26,8 @@ export const BackgroundServiceCard: React.FC<{ service: DaemonServiceClient }> =
       {svc.registration === "requiresApproval" && (
         <>
           <p className="muted">
-            It won't start at login until OpenFlux Studio is allowed under System Settings &gt; General &gt; Login
-            Items.
+            It won't start at login until Keyglass Studio (may appear as OpenFlux Studio) is allowed under System
+            Settings &gt; General &gt; Login Items.
           </p>
           <button type="button" className="btn-secondary" onClick={() => void service.openLoginItems().catch(() => {})}>
             Open Login Items

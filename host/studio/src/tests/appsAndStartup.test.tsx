@@ -61,13 +61,13 @@ describe("Apps page", () => {
     tp.discoveryFailures = ["/home/u/Documents/flux/config/keys.json: permission denied"];
     const client = tp.client();
     render(<ThirdPartyAppsPage client={client} platform="macos" />);
-    await waitFor(() => screen.getByLabelText("Allow apps to use the OpenFlux API"));
+    await waitFor(() => screen.getByLabelText("Allow apps to use the Keyglass API"));
     fireEvent.click(screen.getByLabelText(/Switch profiles/));
     await waitFor(() => expect(client.putSettings).toHaveBeenCalledWith({ profileChange: false }));
     expect(await screen.findByText(/permission denied/)).toBeTruthy();
-    expect(screen.getByText(/macOS asks whether OpenFlux may access the Documents folder/)).toBeTruthy();
+    expect(screen.getByText(/macOS asks whether Keyglass may access the Documents folder/)).toBeTruthy();
 
-    fireEvent.click(screen.getByLabelText("Allow apps to use the OpenFlux API"));
+    fireEvent.click(screen.getByLabelText("Allow apps to use the Keyglass API"));
     await waitFor(() => expect(client.putSettings).toHaveBeenCalledWith({ apiActive: false }));
     await waitFor(() =>
       expect((screen.getByLabelText(/Save to the keyboard/) as HTMLInputElement).closest("fieldset")?.disabled).toBe(
@@ -90,7 +90,7 @@ describe("Apps page", () => {
     const box = screen.getByLabelText(/Import settings/) as HTMLInputElement;
     fireEvent.click(box);
     await waitFor(() => expect(box.closest("fieldset")?.disabled).toBe(true));
-    expect((screen.getByLabelText("Allow apps to use the OpenFlux API") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Allow apps to use the Keyglass API") as HTMLInputElement).disabled).toBe(true);
     await act(async () => release());
     await waitFor(() => expect(box.closest("fieldset")?.disabled).toBe(false));
     expect(client.putSettings).toHaveBeenCalledTimes(1);
@@ -154,7 +154,7 @@ describe("First launch", () => {
     });
     const onReady = vi.fn();
     render(<DaemonStartup service={service} onReady={onReady} pollMs={5} />);
-    await waitFor(() => screen.getByText("Starting the OpenFlux background service…"));
+    await waitFor(() => screen.getByText("Starting the Keyglass background service…"));
     expect(screen.getByRole("progressbar")).toBeTruthy();
     await act(async () => {
       release();
@@ -223,7 +223,7 @@ describe("First launch", () => {
     });
     const onReady = vi.fn();
     render(<DaemonStartup service={service} onReady={onReady} pollMs={5} timeoutMs={30} />);
-    await waitFor(() => screen.getByText("The OpenFlux background service isn't running."));
+    await waitFor(() => screen.getByText("The Keyglass background service isn't running."));
     expect(screen.getByText(/Starting the background service: Failed to connect to bus/)).toBeTruthy();
     expect(screen.queryByText(/Documents folder/)).toBeNull();
     fireEvent.click(screen.getByText("Try again"));
@@ -238,8 +238,8 @@ describe("First launch", () => {
       status: vi.fn(async () => ({ ...statusOf(false, inspection({ registration: "enabled" })), notRunning: false })),
     });
     render(<DaemonStartup service={service} onReady={() => {}} pollMs={5} timeoutMs={30} />);
-    await waitFor(() => screen.getByText("Waiting for the OpenFlux background service to answer…"));
-    await waitFor(() => screen.getByText("Couldn't connect to the OpenFlux background service."));
+    await waitFor(() => screen.getByText("Waiting for the Keyglass background service to answer…"));
+    await waitFor(() => screen.getByText("Couldn't connect to the Keyglass background service."));
     expect(service.start).not.toHaveBeenCalled();
   });
 
@@ -253,7 +253,7 @@ describe("First launch", () => {
       }),
     });
     render(<DaemonStartup service={service} onReady={() => {}} pollMs={5} timeoutMs={30} />);
-    await waitFor(() => screen.getByText("Couldn't connect to the OpenFlux background service."));
+    await waitFor(() => screen.getByText("Couldn't connect to the Keyglass background service."));
     expect(screen.getByText("the shell stopped answering")).toBeTruthy();
     expect(screen.getByText("Try again")).toBeTruthy();
   });
@@ -268,7 +268,7 @@ describe("First launch", () => {
     render(<DaemonStartup service={service} onReady={() => {}} pollMs={5} timeoutMs={30} />);
     await waitFor(() => screen.getByText("Open Login Items"));
     approved = true;
-    await waitFor(() => screen.getByText("The OpenFlux background service isn't running."));
+    await waitFor(() => screen.getByText("The Keyglass background service isn't running."));
     expect(screen.queryByText("Open Login Items")).toBeNull();
   });
 });

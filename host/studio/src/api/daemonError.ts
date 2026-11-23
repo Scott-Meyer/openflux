@@ -55,19 +55,19 @@ export interface ErrorExplanation {
 
 const EXPLANATIONS: Record<string, ErrorExplanation> = {
   offline: {
-    message: "OpenFlux couldn't reach the update server.",
+    message: "Keyglass couldn't reach the update server.",
     recovery: "Check the internet connection and try again.",
   },
   untrusted: {
-    message: "The update information failed its signature check, so OpenFlux didn't use it.",
-    recovery: "Try again later. If it keeps happening, download OpenFlux from the project's release page.",
+    message: "The update information failed its signature check, so Keyglass didn't use it.",
+    recovery: "Try again later. If it keeps happening, download Keyglass from the project's release page.",
   },
   expired: {
     message: "The update information has expired.",
     recovery: "Check that this computer's date and time are correct, then check again.",
   },
   replayed: {
-    message: "The update server sent older update information than OpenFlux has already seen, so it was ignored.",
+    message: "The update server sent older update information than Keyglass has already seen, so it was ignored.",
     recovery: "Try again later.",
   },
   malformed: {
@@ -84,15 +84,15 @@ const EXPLANATIONS: Record<string, ErrorExplanation> = {
   },
   keyboardDisconnected: {
     message: "The keyboard was disconnected.",
-    recovery: "Reconnect the keyboard. OpenFlux resumes or restores the interrupted step when it's back.",
+    recovery: "Reconnect the keyboard. Keyglass resumes or restores the interrupted step when it's back.",
   },
   interrupted: {
     message: "The operation stopped before it finished.",
     recovery:
-      "Keep the keyboard connected and leave OpenFlux running. It resumes or restores the interrupted step on its own.",
+      "Keep the keyboard connected and leave Keyglass running. It resumes or restores the interrupted step on its own.",
   },
   busy: {
-    message: "OpenFlux is already working on the keyboard.",
+    message: "Keyglass is already working on the keyboard.",
     recovery: "Wait for the current operation to finish, then try again.",
   },
 };

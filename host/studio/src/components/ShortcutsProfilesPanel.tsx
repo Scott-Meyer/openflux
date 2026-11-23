@@ -350,7 +350,7 @@ export const ShortcutsProfilesPanel: React.FC<ShortcutsProfilesPanelProps> = ({
             className="btn-secondary"
             style={{ width: "100%" }}
             onClick={async () => {
-              const outPath = await client.pickSaveFile("Export OpenFlux Bundle", "openflux-profile.openflux", [
+              const outPath = await client.pickSaveFile("Export Keyglass Bundle", "openflux-profile.openflux", [
                 "openflux",
               ]);
               if (!outPath?.trim()) return;
@@ -362,7 +362,7 @@ export const ShortcutsProfilesPanel: React.FC<ShortcutsProfilesPanelProps> = ({
               }
             }}
           >
-            Export OpenFlux Bundle...
+            Export Keyglass Bundle...
           </button>
 
           <button
@@ -370,7 +370,7 @@ export const ShortcutsProfilesPanel: React.FC<ShortcutsProfilesPanelProps> = ({
             className="btn-secondary"
             style={{ width: "100%" }}
             onClick={async () => {
-              const file = await client.pickFile("Import an OpenFlux bundle or a .flux file", ["openflux", "flux"]);
+              const file = await client.pickFile("Import a Keyglass bundle or a .flux file", ["openflux", "flux"]);
               if (!file?.trim()) return;
               try {
                 const res = await onImportBundle(file.trim());

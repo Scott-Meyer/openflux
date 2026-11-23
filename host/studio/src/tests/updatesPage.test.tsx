@@ -95,7 +95,7 @@ describe("Updates page", () => {
     daemon.status.indexSource = "bundled";
     setup(daemon);
     await waitFor(() => screen.getByText("The last check failed"));
-    expect(screen.getByText("OpenFlux couldn't reach the update server.")).toBeTruthy();
+    expect(screen.getByText("Keyglass couldn't reach the update server.")).toBeTruthy();
     expect(screen.getByText("Check the internet connection and try again.")).toBeTruthy();
     expect(screen.getByText(/came with this installation/)).toBeTruthy();
   });
@@ -137,7 +137,7 @@ describe("Updates page", () => {
     const { updates } = setup(daemon);
     await waitFor(() => screen.getByText("Install keyboard updates…"));
     fireEvent.click(screen.getByLabelText(/Display 1.0.1/));
-    expect(screen.getByText("OpenFlux adds any other component your selection needs.")).toBeTruthy();
+    expect(screen.getByText("Keyglass adds any other component your selection needs.")).toBeTruthy();
     await waitFor(() => expect(updates.planUpdates).toHaveBeenCalledWith(["bridge"]));
     fireEvent.click(screen.getByText("Install keyboard updates…"));
     const dialog = screen.getByRole("dialog", { name: "Install keyboard updates?" });
@@ -160,7 +160,7 @@ describe("Updates page", () => {
     fireEvent.click(within(screen.getByRole("dialog")).getByText("Install"));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("The update didn't start");
-    expect(alert.textContent).toContain("OpenFlux is already working on the keyboard.");
+    expect(alert.textContent).toContain("Keyglass is already working on the keyboard.");
     expect(alert.textContent).toContain("Wait for the backup to finish.");
   });
 
@@ -208,24 +208,24 @@ describe("Conversion", () => {
     const daemon = new MockDaemon(FACTORY_KEYBOARD);
     const onKeyboardChanged = vi.fn();
     const { updates } = setup(daemon, { onKeyboardChanged });
-    await waitFor(() => screen.getByText("Convert this keyboard to OpenFlux"));
-    const wizard = screen.getByLabelText("Convert to OpenFlux");
+    await waitFor(() => screen.getByText("Convert this keyboard to Keyglass"));
+    const wizard = screen.getByLabelText("Convert to Keyglass");
     expect(wizard.textContent).toContain("key calibration are kept");
     expect(wizard.textContent).toContain("reset the keyboard to its factory software later");
     expect(wizard.textContent).toContain("Factory software 1.4.28");
     expect(screen.queryByText("Install keyboard updates…")).toBeNull();
 
-    fireEvent.click(screen.getByText("Convert to OpenFlux…"));
-    const dialog = screen.getByRole("dialog", { name: "Convert to OpenFlux?" });
+    fireEvent.click(screen.getByText("Convert to Keyglass…"));
+    const dialog = screen.getByRole("dialog", { name: "Convert to Keyglass?" });
     expect(updates.startConversion).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByText("Cancel"));
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    fireEvent.click(screen.getByText("Convert to OpenFlux…"));
+    fireEvent.click(screen.getByText("Convert to Keyglass…"));
     fireEvent.click(within(screen.getByRole("dialog")).getByText("Convert"));
     await waitFor(() => expect(screen.getByText("Step 1 of 4: Installing firmware 1.0.0")).toBeTruthy());
     expect(updates.startConversion).toHaveBeenCalledWith("convert");
-    expect(screen.getByText("Converting the keyboard to OpenFlux")).toBeTruthy();
+    expect(screen.getByText("Converting the keyboard to Keyglass")).toBeTruthy();
 
     act(() => {
       daemon.progress("job-1", { step: { index: 4, count: 4, label: "Importing your settings" } });
@@ -236,7 +236,7 @@ describe("Conversion", () => {
       daemon.progress("job-1", { pressRefinement: { installed: false, code: "offline", message: "unreachable" } });
       daemon.finish("job-1", "succeeded");
     });
-    await waitFor(() => screen.getByText("The keyboard runs OpenFlux, and your settings were imported."));
+    await waitFor(() => screen.getByText("The keyboard runs Keyglass, and your settings were imported."));
     expect(screen.getByText(/Press-refinement data isn't installed/).textContent).toContain(
       "matches the keyboard maker's original 1.4 software",
     );
@@ -252,7 +252,7 @@ describe("Conversion", () => {
     };
     setup(daemon);
     await waitFor(() => screen.getByText("Connect the keyboard directly, not through a hub."));
-    expect(screen.getByText("Convert to OpenFlux…").closest("button")?.disabled).toBe(true);
+    expect(screen.getByText("Convert to Keyglass…").closest("button")?.disabled).toBe(true);
   });
 
   it("factory reset is unavailable with the daemon's reason", async () => {

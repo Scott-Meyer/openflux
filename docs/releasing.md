@@ -1,15 +1,15 @@
-# Releasing OpenFlux
+# Releasing Keyglass
 
-OpenFlux is released as four independently versioned units, with a clear split between what humans download and what `openfluxd` / Studio fetch automatically:
+Keyglass is released as four independently versioned units, with a clear split between what humans download and what `openfluxd` / Studio fetch automatically:
 
 | Unit | Git tag | Where it publishes | Artifacts |
 |---|---|---|---|
-| **host** | `host-vX.Y.Z` | **Public GitHub Release** (`OpenFlux Studio vX.Y.Z`, always `Latest`) + Tauri feed on GitHub Pages | 6 Studio installers (`.dmg`, `_x64-setup.exe`, 2× `.AppImage`, 2× `.deb`) + `SHA256SUMS`; `.app.tar.gz` updater archive and FFmpeg GPL source on GitHub Pages |
+| **host** | `host-vX.Y.Z` | **Public GitHub Release** (`Keyglass Studio vX.Y.Z`, always `Latest`) + Tauri feed on GitHub Pages | 6 Studio installers (`.dmg`, `_x64-setup.exe`, 2× `.AppImage`, 2× `.deb`) + `SHA256SUMS`; `.app.tar.gz` updater archive and FFmpeg GPL source on GitHub Pages |
 | **firmware** | `firmware-vX.Y.Z` | **GitHub Pages** (`packages/firmware/X.Y.Z/`) | `openflux-firmware-X.Y.Z.uf2` |
 | **bridge** | `bridge-vX.Y.Z` | **GitHub Pages** (`packages/bridge/X.Y.Z/`) | `openflux-bridge_X.Y.Z_aarch64.ipk`, `openflux-factory-restore_X.Y.Z_aarch64.ipk` |
 | **display** | `display-vX.Y.Z` | **GitHub Pages** (`packages/display/X.Y.Z/`) | `openflux-display_X.Y.Z_aarch64.ipk` (LGPL FFmpeg source under `source/`) |
 
-Keyboard components never create public GitHub Releases and never steal the `Latest` badge from OpenFlux Studio. Users download OpenFlux Studio from GitHub Releases; Studio bundles the latest stable keyboard software and `openfluxd` delivers independent keyboard updates over the air from GitHub Pages.
+Keyboard components never create public GitHub Releases and never steal the `Latest` badge from Keyglass Studio. Users download Keyglass Studio from GitHub Releases; Studio bundles the latest stable keyboard software and `openfluxd` delivers independent keyboard updates over the air from GitHub Pages.
 
 ## How a release happens
 
@@ -54,15 +54,17 @@ To rotate the release key from A to B:
 
 ## Published files
 
-GitHub Releases (`https://github.com/Scott-Meyer/openflux/releases`):
-- Only `OpenFlux Studio vX.Y.Z` releases, containing the 6 installers + `SHA256SUMS`.
+GitHub Releases (`https://github.com/keyglass-dev/keyglass/releases`):
+- Only `Keyglass Studio vX.Y.Z` releases, containing the 6 installers + `SHA256SUMS`.
 
-GitHub Pages (`https://scott-meyer.github.io/openflux/`):
+GitHub Pages (`https://keyglass-dev.github.io/keyglass/`):
 - `index.json`, `index.json.sig`: signed update index for `openfluxd`
 - `site-manifest.json`: sha256 inventory used across deploys
 - `packages/<component>/<version>/...`: keyboard `.uf2` and `.ipk` OTA packages
 - `updates/stable/latest.json` (+ active `.app.tar.gz`) and `updates/beta/latest.json`: Tauri updater feeds
 - `source/`: FFmpeg GPL/LGPL corresponding source archives, licenses, and build info
+
+Existing v1 installs use the [legacy updater mirror](https://github.com/Scott-Meyer/scott-meyer.github.io). After a host release, verify its stable feed serves the new version; run the mirror workflow manually for an immediate refresh.
 
 ## Testing the release scripts
 

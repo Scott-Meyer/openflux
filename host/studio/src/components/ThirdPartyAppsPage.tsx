@@ -6,7 +6,7 @@ import { DaemonErrorNotice } from "./updates/common";
 
 const PERMISSIONS: { key: keyof ThirdPartySettings; label: string; hint: string }[] = [
   { key: "saveToKeyboard", label: "Save to the keyboard", hint: "Write the current settings to the keyboard." },
-  { key: "import", label: "Import settings", hint: "Import setting files into OpenFlux." },
+  { key: "import", label: "Import settings", hint: "Import setting files into Keyglass." },
   { key: "profileChange", label: "Switch profiles", hint: "Change the active profile." },
   { key: "shortcutChange", label: "Switch shortcut sets", hint: "Show the shortcuts for the app in use." },
   { key: "mosaicChange", label: "Add and update modules", hint: "Create and update modules on the display." },
@@ -19,7 +19,7 @@ function requestedAgo(unixSeconds: number, now: number): string {
   return m === 1 ? "1 minute ago" : `${m} minutes ago`;
 }
 
-/** Apps on this computer that use the OpenFlux API: approvals, access and permissions. */
+/** Apps on this computer that use the Keyglass API: approvals, access and permissions. */
 export const ThirdPartyAppsPage: React.FC<{
   client: ThirdPartyClient;
   onPendingCount?: (n: number) => void;
@@ -96,7 +96,7 @@ export const ThirdPartyAppsPage: React.FC<{
       <section className="card" aria-label="App access">
         <h3>Apps</h3>
         <p className="muted">
-          Apps on this computer can change what the keyboard shows and which profile it uses through the OpenFlux API.
+          Apps on this computer can change what the keyboard shows and which profile it uses through the Keyglass API.
           An app asks once; you decide whether it may.
         </p>
         {error && <DaemonErrorNotice error={error} />}
@@ -175,7 +175,7 @@ export const ThirdPartyAppsPage: React.FC<{
                 disabled={saving}
                 onChange={(e) => void putSetting({ apiActive: e.target.checked })}
               />
-              Allow apps to use the OpenFlux API
+              Allow apps to use the Keyglass API
             </label>
             <p className="muted">When this is off, no app can connect, including allowed ones.</p>
             <fieldset className="permission-list" disabled={!settings.apiActive || saving}>
@@ -196,7 +196,7 @@ export const ThirdPartyAppsPage: React.FC<{
             </fieldset>
             {warnings.length > 0 && (
               <div className="notice notice-warn" role="alert">
-                <p>Apps may not see this change: OpenFlux couldn't update these files.</p>
+                <p>Apps may not see this change: Keyglass couldn't update these files.</p>
                 <ul>
                   {warnings.map((w) => (
                     <li key={w}>{w}</li>
@@ -210,8 +210,8 @@ export const ThirdPartyAppsPage: React.FC<{
         )}
         {platform === "macos" && (
           <p className="muted">
-            Apps find OpenFlux through a file in Documents/flux/config. The first time OpenFlux writes it, macOS asks
-            whether OpenFlux may access the Documents folder; allow it so apps can connect.
+            Apps find Keyglass through a file in Documents/flux/config. The first time Keyglass writes it, macOS asks
+            whether Keyglass may access the Documents folder; allow it so apps can connect.
           </p>
         )}
       </section>

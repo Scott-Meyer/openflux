@@ -84,7 +84,7 @@ impl TrayController {
             let _ = &running_flag;
             if !self.spawn_helper() {
                 match Command::new("zenity")
-                    .args(["--notification", "--text=OpenFlux is running"])
+                    .args(["--notification", "--text=Keyglass is running"])
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
@@ -305,8 +305,8 @@ fn windows_tray_loop(
                 }
             } else if ev == WM_RBUTTONUP {
                 let hmenu = CreatePopupMenu();
-                let open_lbl: Vec<u16> = "Open OpenFlux Studio\0".encode_utf16().collect();
-                let quit_lbl: Vec<u16> = "Quit OpenFlux\0".encode_utf16().collect();
+                let open_lbl: Vec<u16> = "Open Keyglass Studio\0".encode_utf16().collect();
+                let quit_lbl: Vec<u16> = "Quit Keyglass\0".encode_utf16().collect();
                 AppendMenuW(hmenu, MF_STRING, ID_OPEN, open_lbl.as_ptr());
                 AppendMenuW(hmenu, MF_STRING, ID_QUIT, quit_lbl.as_ptr());
                 let mut pt = Point { x: 0, y: 0 };
@@ -332,8 +332,8 @@ fn windows_tray_loop(
                     let _ = Command::new(b).spawn();
                 }
             } else if cmd == ID_QUIT {
-                // Close OpenFlux Studio cleanly if it is open, then stop the daemon.
-                let title: Vec<u16> = "OpenFlux Studio\0".encode_utf16().collect();
+                // Close Keyglass Studio cleanly if it is open, then stop the daemon.
+                let title: Vec<u16> = "Keyglass Studio\0".encode_utf16().collect();
                 let studio_hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
                 if studio_hwnd != 0 {
                     PostMessageW(studio_hwnd, WM_CLOSE, 0, 0);
@@ -420,7 +420,7 @@ fn windows_tray_loop(
             (LoadIconW(0, IDI_APPLICATION as *const u16), false)
         };
         let mut tip = [0u16; 128];
-        for (i, ch) in "OpenFlux".encode_utf16().take(127).enumerate() {
+        for (i, ch) in "Keyglass".encode_utf16().take(127).enumerate() {
             tip[i] = ch;
         }
         let mut nid = NotifyIconDataW {

@@ -34,7 +34,7 @@ use std::time::Duration;
 pub const COMPAT_TOML: &str = include_str!("../../../../compat.toml");
 
 /// Where the published index lives.
-pub const DEFAULT_INDEX_URL: &str = "https://scott-meyer.github.io/openflux/index.json";
+pub const DEFAULT_INDEX_URL: &str = "https://keyglass-dev.github.io/keyglass/index.json";
 
 /// How long installs may take before a job gives up waiting, and how often it looks.
 #[derive(Debug, Clone, Copy)]

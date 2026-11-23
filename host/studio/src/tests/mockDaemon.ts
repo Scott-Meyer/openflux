@@ -159,7 +159,7 @@ export class MockDaemon {
     this.assertAlive();
     if (this.stopRequested) {
       this.events.push(`refused:${activity}`);
-      throw refusal("busy", "OpenFlux is stopping");
+      throw refusal("busy", "Keyglass is stopping");
     }
     this.leases.add(activity);
     this.events.push(`begin:${activity}`);
@@ -175,7 +175,7 @@ export class MockDaemon {
     this.assertAlive();
     if (this.stopRequested) {
       this.events.push(`refused:${kind}`);
-      throw refusal("busy", "OpenFlux is stopping");
+      throw refusal("busy", "Keyglass is stopping");
     }
     if (this.busyNames().length > 0) throw refusal("busy", "Another job is running");
     const job: Job = {

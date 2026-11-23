@@ -31,30 +31,30 @@ track:
 
 ![The keyboard's display with a blue and violet background, a flip clock, the playing track, weather and a Pomodoro timer](docs/images/display-aurora.png)
 
-The desktop app (still called OpenFlux Studio in v1) edits the keymap of every layer:
+Keyglass Studio, the desktop app edits the keymap of every layer:
 
-![OpenFlux Studio's Keymap page: the keyboard's keys, with the selected key's action, label, icon and colors](docs/images/studio-keymap.png)
+![Keyglass Studio's Keymap page: the keyboard's keys, with the selected key's action, label, icon and colors](docs/images/studio-keymap.png)
 
 designs themes with a live preview of the display:
 
-![OpenFlux Studio's Themes page: a preview of the display, background choices, and dimming, color and font settings](docs/images/studio-themes.png)
+![Keyglass Studio's Themes page: a preview of the display, background choices, and dimming, color and font settings](docs/images/studio-themes.png)
 
 arranges the Mosaic:
 
-![OpenFlux Studio's Modules page: the four Mosaic slots and the modules that can go in them](docs/images/studio-mosaic.png)
+![Keyglass Studio's Modules page: the four Mosaic slots and the modules that can go in them](docs/images/studio-mosaic.png)
 
 and shows what the keyboard runs, with its updates:
 
-![OpenFlux Studio's Updates page: the update channel, the background service, and a keyboard that can be converted to OpenFlux](docs/images/studio-updates.png)
+![Keyglass Studio's Updates page: the update channel, the background service, and a keyboard that can be converted to Keyglass](docs/images/studio-updates.png)
 
 ## First five minutes
 
 1. Install the current release for macOS, Windows or Linux:
    [docs/installing.md](docs/installing.md).
-2. Open OpenFlux Studio and connect the keyboard. The top bar shows
+2. Open Keyglass Studio and connect the keyboard. The top bar shows
    **Connected**.
 3. If the keyboard still runs other software, open **Updates** and choose
-   **Convert to OpenFlux…**. It takes a few minutes, and the keyboard can't
+   **Convert to Keyglass…**. It takes a few minutes, and the keyboard can't
    type meanwhile: [docs/converting-a-keyboard.md](docs/converting-a-keyboard.md).
 4. Open **Themes**, pick a background and choose **Save Changes to
    Keyboard** at the top right.
@@ -81,7 +81,7 @@ Windows 10 or later, and Linux on x86_64 or aarch64 with the C library of
 Ubuntu 22.04 or newer.
 
 Download it from
-[GitHub Releases](https://github.com/Scott-Meyer/openflux/releases): the
+[GitHub Releases](https://github.com/keyglass-dev/keyglass/releases): the
 `host-v*` releases are the ones to download. They include the keyboard
 software, and Studio fetches newer keyboard releases itself.
 [docs/installing.md](docs/installing.md) walks through each system.
@@ -92,7 +92,7 @@ Keyglass has four components, each versioned and released on its own:
 
 | Component | What it is | Release tag | Source |
 |---|---|---|---|
-| host | OpenFlux Studio and the background service `openfluxd`, for macOS, Windows and Linux | `host-vX.Y.Z` | [`host/`](host) |
+| host | Keyglass Studio and the background service `openfluxd`, for macOS, Windows and Linux | `host-vX.Y.Z` | [`host/`](host) |
 | firmware | firmware of the RP2040 key scanner | `firmware-vX.Y.Z` | [`keyboard/firmware/`](keyboard/firmware) |
 | bridge | service on the keyboard's computer linking USB, the key scanner and the display | `bridge-vX.Y.Z` | [`keyboard/bridge/`](keyboard/bridge) |
 | display | the keyboard's display app | `display-vX.Y.Z` | [`keyboard/display/`](keyboard/display) |

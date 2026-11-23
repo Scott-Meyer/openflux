@@ -275,7 +275,7 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
               type="button"
               className="btn-danger"
               onClick={() => {
-                if (window.confirm("Restore all keyboard theme, font, and layout settings to the OpenFlux defaults?")) {
+                if (window.confirm("Restore all keyboard theme, font, and layout settings to the Keyglass defaults?")) {
                   onRestoreDefaults();
                 }
               }}

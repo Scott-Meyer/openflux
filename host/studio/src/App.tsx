@@ -405,7 +405,7 @@ export const App: React.FC<AppProps> = ({
     const isConn = isKeyboardConnected(status);
     if (!isReset && isConn && status?.usbUnreadable) {
       setBanner(
-        "OpenFlux sees your keyboard on USB, but couldn't communicate with it. Close any other Flux software, reconnect the keyboard, or update its firmware/bridge if it predates Windows WinUSB support.",
+        "Keyglass sees your keyboard on USB, but couldn't communicate with it. Close any other Flux software, reconnect the keyboard, or update its firmware/bridge if it predates Windows WinUSB support.",
       );
       return Promise.resolve();
     }
@@ -643,7 +643,7 @@ export const App: React.FC<AppProps> = ({
               <OpenFluxLogo size={24} />
             </span>
             <div>
-              <strong>OpenFlux Studio</strong>
+              <strong>Keyglass Studio</strong>
             </div>
           </div>
           <select
@@ -704,10 +704,10 @@ export const App: React.FC<AppProps> = ({
           </button>
         </div>
       </header>
-      {!snapshotLoaded && <div className="topbar-banner">Loading configuration from OpenFlux daemon...</div>}
+      {!snapshotLoaded && <div className="topbar-banner">Loading configuration from Keyglass daemon...</div>}
       {status?.usbUnreadable && (
         <div className="topbar-banner">
-          OpenFlux sees your keyboard on USB, but couldn't communicate with it. Close any other Flux software, reconnect
+          Keyglass sees your keyboard on USB, but couldn't communicate with it. Close any other Flux software, reconnect
           the keyboard, or update its firmware/bridge if it predates Windows WinUSB support.
         </div>
       )}
@@ -715,20 +715,20 @@ export const App: React.FC<AppProps> = ({
 
       <main className="main-pane">
         {needsConversion && tab !== "updates" && (
-          <section className="conversion-callout" aria-label="Convert keyboard to OpenFlux">
+          <section className="conversion-callout" aria-label="Convert keyboard to Keyglass">
             <div className="conversion-callout-copy">
-              <strong>Factory Flux keyboard detected — Convert to OpenFlux</strong>
+              <strong>Factory Flux keyboard detected — Convert to Keyglass</strong>
               <p className="muted">
                 {updatesStatus?.keyboard.components
                   .filter((c) => c.installed)
                   .map((c) => `${COMPONENT_LABELS[c.component]} ${c.installed}`)
                   .join(" · ") || "This keyboard is running its original factory software."}
-                {" — "}Converting installs OpenFlux across the keyboard, keeps your factory calibration and settings,
+                {" — "}Converting installs Keyglass across the keyboard, keeps your factory calibration and settings,
                 and can be reset to factory software anytime.
               </p>
             </div>
             <button type="button" className="btn-primary" onClick={() => setTab("updates")}>
-              Convert to OpenFlux…
+              Convert to Keyglass…
             </button>
           </section>
         )}

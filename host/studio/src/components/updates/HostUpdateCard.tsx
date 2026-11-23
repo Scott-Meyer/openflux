@@ -19,13 +19,13 @@ function formatBytes(n: number): string {
 }
 
 const FAILED_TITLES = {
-  check: "Couldn't check for an OpenFlux update",
+  check: "Couldn't check for a Keyglass update",
   download: "The update couldn't be downloaded",
   stop: "The background service couldn't be stopped for the update",
   install: "The update couldn't be installed",
 } as const;
 
-/** OpenFlux's own update: the daemon's view of it, and Studio's updater. */
+/** Keyglass's own update: the daemon's view of it, and Studio's updater. */
 export const HostUpdateCard: React.FC<{
   flow: HostUpdateFlow;
   host: HostStatus | null;
@@ -43,29 +43,29 @@ export const HostUpdateCard: React.FC<{
       case "idle":
         return null;
       case "checking":
-        return <p className="muted">Checking for an OpenFlux update…</p>;
+        return <p className="muted">Checking for a Keyglass update…</p>;
       case "unsupported":
         return (
           <>
             <p className="muted">{s.reason}</p>
             {host?.state === "updateAvailable" && host.latest && (
               <p>
-                OpenFlux {host.latest} is available. {notes}
+                Keyglass {host.latest} is available. {notes}
               </p>
             )}
           </>
         );
       case "upToDate":
-        return <p>OpenFlux {s.currentVersion} is up to date.</p>;
+        return <p>Keyglass {s.currentVersion} is up to date.</p>;
       case "available":
         return (
           <>
             <p>
-              OpenFlux {s.update.version} is available. You have {s.update.currentVersion}.
+              Keyglass {s.update.version} is available. You have {s.update.currentVersion}.
             </p>
             {s.update.notes && <p className="muted pre-line">{s.update.notes}</p>}
             <p className="muted">
-              Studio restarts to finish. If OpenFlux is working on the keyboard, the update waits until that work is
+              Studio restarts to finish. If Keyglass is working on the keyboard, the update waits until that work is
               done.
             </p>
             <div className="btn-group">
@@ -83,7 +83,7 @@ export const HostUpdateCard: React.FC<{
         return (
           <>
             <p>
-              Downloading OpenFlux {s.update.version}
+              Downloading Keyglass {s.update.version}
               {s.downloaded > 0 && ` (${formatBytes(s.downloaded)}${s.total ? ` of ${formatBytes(s.total)}` : ""})`}…
             </p>
             <div
@@ -121,9 +121,9 @@ export const HostUpdateCard: React.FC<{
         );
       }
       case "installing":
-        return <p>Installing OpenFlux {s.update.version}…</p>;
+        return <p>Installing Keyglass {s.update.version}…</p>;
       case "relaunching":
-        return <p>Restarting OpenFlux Studio…</p>;
+        return <p>Restarting Keyglass Studio…</p>;
       case "cancelled":
         return (
           <>
@@ -133,7 +133,7 @@ export const HostUpdateCard: React.FC<{
                 ? "Nothing was changed."
                 : s.daemonRestarted
                   ? "The background service was started again."
-                  : "The background service couldn't be started again. Quit OpenFlux Studio and open it again."}
+                  : "The background service couldn't be started again. Quit Keyglass Studio and open it again."}
             </p>
           </>
         );
@@ -145,7 +145,7 @@ export const HostUpdateCard: React.FC<{
             {s.daemonRestarted === true && <p className="muted">The background service was started again.</p>}
             {s.daemonRestarted === false && (
               <p className="muted">
-                The background service couldn't be started again. Quit OpenFlux Studio and open it again.
+                The background service couldn't be started again. Quit Keyglass Studio and open it again.
               </p>
             )}
             {s.update && (
@@ -159,14 +159,14 @@ export const HostUpdateCard: React.FC<{
   })();
 
   return (
-    <section className="card" aria-label="OpenFlux app">
+    <section className="card" aria-label="Keyglass app">
       <div className="toolbar-between">
-        <h3>OpenFlux</h3>
+        <h3>Keyglass</h3>
         {host && <span className="pill">Installed {host.installed}</span>}
       </div>
       {host?.state === "updateAvailable" && s.phase === "idle" && (
         <p>
-          OpenFlux {host.latest} is available. {notes}
+          Keyglass {host.latest} is available. {notes}
         </p>
       )}
       {host?.state === "blocked" && <p className="muted">{host.reason ?? "This update can't be installed."}</p>}

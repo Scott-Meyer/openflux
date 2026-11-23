@@ -1,9 +1,9 @@
-# Installing OpenFlux
+# Installing Keyglass
 
-OpenFlux for your computer is released as **host** releases, tagged
+Keyglass for your computer is released as **host** releases, tagged
 `host-vX.Y.Z` on the project's
-[GitHub Releases](https://github.com/Scott-Meyer/openflux/releases) page.
-Each installer contains OpenFlux Studio, the background service `openfluxd`,
+[GitHub Releases](https://github.com/keyglass-dev/keyglass/releases) page.
+Each installer contains Keyglass Studio, the background service `openfluxd`,
 and the newest stable keyboard software at the time of the release, so a
 keyboard can be set up without an internet connection.
 
@@ -12,9 +12,13 @@ AppImage, from when Studio first opens in a session). It keeps the
 keyboard's live information (system load, media, weather, the active
 application) up to date even while Studio is closed.
 
-After installing, open OpenFlux Studio and connect the keyboard. If the
-keyboard is not running OpenFlux yet, Studio offers to convert it; see
+After installing, open Keyglass Studio and connect the keyboard. If the
+keyboard is not running Keyglass yet, Studio offers to convert it; see
 [converting-a-keyboard.md](converting-a-keyboard.md).
+
+Keyglass Studio was previously called OpenFlux Studio. Update your existing
+installation normally. Some installer filenames, paths, and shortcuts still
+use the old name so they keep working across the update.
 
 ## Checking a download
 
@@ -44,17 +48,17 @@ check those signatures as described in
 
 ## Before uninstalling
 
-A keyboard is returned to its factory software from OpenFlux Studio. If you
+A keyboard is returned to its factory software from Keyglass Studio. If you
 want that, [reset the keyboard](converting-a-keyboard.md#reset-to-factory-software)
-before removing OpenFlux.
+before removing Keyglass.
 
 ## macOS
 
 Requires macOS 13 or later, on Apple silicon or Intel.
 
 1. Download `openflux-studio_<version>_universal.dmg` from the release.
-2. Open it and drag **OpenFlux Studio** to **Applications**.
-3. Open OpenFlux Studio. On first launch it registers `openfluxd` to start at
+2. Open it and drag **Keyglass Studio** to **Applications**. The app file may still be named `OpenFlux Studio.app`.
+3. Open Keyglass Studio. On first launch it registers `openfluxd` to start at
    login. It appears in **System Settings > General > Login Items** under the
    app's name, where you can turn it off.
 
@@ -63,9 +67,9 @@ The app is signed and notarized.
 **Updates.** Studio checks for updates and installs them when you choose
 to; the background service restarts from the updated app.
 
-**Uninstalling.** Choose **Quit OpenFlux Daemon** from the OpenFlux icon in
-the menu bar, turn off OpenFlux Studio in **System Settings > General >
-Login Items**, then move OpenFlux Studio from Applications to the Trash. Your
+**Uninstalling.** Choose **Quit Keyglass Daemon** from the Keyglass icon in
+the menu bar, turn off Keyglass Studio in **System Settings > General >
+Login Items**, then move the Studio app from Applications to the Trash. Your
 settings stay in `~/Library/Application Support/org.openflux.studio` and
 `~/.local/share/openflux` until you delete them.
 
@@ -80,12 +84,12 @@ Requires 64-bit Windows 10 or later.
 **Updates.** Studio checks for updates and installs them with the setup
 program when you choose to.
 
-**Uninstalling.** Open **Settings > Apps**, select OpenFlux Studio and
+**Uninstalling.** Open **Settings > Apps**, select Keyglass Studio and
 choose Uninstall. Selecting **Delete the application data** removes Studio's
 own settings in `%APPDATA%\org.openflux.studio`. The daemon's data in
 `%LOCALAPPDATA%\openflux` is kept until you delete it.
 
-Installers and the uninstaller wait while OpenFlux is working on the
+Installers and the uninstaller wait while Keyglass is working on the
 keyboard (for example installing a keyboard update) and continue once it
 has finished.
 

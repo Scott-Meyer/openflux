@@ -1,9 +1,9 @@
 import AppKit
 import Foundation
 
-// openflux-tray: the OpenFlux menu-bar item on macOS, started by openfluxd.
+// openflux-tray: the Keyglass menu-bar item on macOS, started by openfluxd.
 // It is a plain AppKit process so the daemon's tray costs no WebView. The menu opens
-// OpenFlux Studio (`--desktop-bin`, default: the sibling `openflux-studio`) and quits the
+// Keyglass Studio (`--desktop-bin`, default: the sibling `openflux-studio`) and quits the
 // daemon (`--daemon-pid`). The tray exits on its own when the daemon process goes away.
 //
 // The tray asks the daemon's local API whether anything needs the user: an update, a keyboard
@@ -309,21 +309,21 @@ final class OpenFluxTrayApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func render() {
         statusItem.button?.image = makeTrayIconImage(badge: attention.badge)
-        var tip = ["OpenFlux"]
+        var tip = ["Keyglass"]
         if attention.updatesAvailable { tip.append("Updates available") }
-        if attention.needsConversion { tip.append("Keyboard can be converted to OpenFlux") }
+        if attention.needsConversion { tip.append("Keyboard can be converted to Keyglass") }
         if !attention.pendingApps.isEmpty { tip.append("Apps waiting for approval") }
         statusItem.button?.toolTip = tip.joined(separator: " · ")
 
         guard let menu = statusItem.menu else { return }
         menu.removeAllItems()
-        menu.addItem(item("Open OpenFlux Studio", #selector(openStudio(_:))))
+        menu.addItem(item("Open Keyglass Studio", #selector(openStudio(_:))))
         var extra: [NSMenuItem] = []
         if let job = attention.runningJob {
             extra.append(item(job, nil))
         }
         if attention.needsConversion {
-            extra.append(item("Convert the keyboard to OpenFlux…", #selector(openStudio(_:)), page: "updates"))
+            extra.append(item("Convert the keyboard to Keyglass…", #selector(openStudio(_:)), page: "updates"))
         } else if attention.updatesAvailable {
             extra.append(item("Updates available…", #selector(openStudio(_:)), page: "updates"))
         }
@@ -338,7 +338,7 @@ final class OpenFluxTrayApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             extra.forEach { menu.addItem($0) }
         }
         menu.addItem(NSMenuItem.separator())
-        let quitItem = NSMenuItem(title: "Quit OpenFlux Daemon", action: #selector(quitDaemon), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit Keyglass Daemon", action: #selector(quitDaemon), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
     }
