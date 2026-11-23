@@ -12,7 +12,7 @@ import {
 } from "../api/v2Client";
 
 // Clean primary functional tags shown by default; all extra descriptive tags expand via "More tags ▾"
-const PRIMARY_TAGS = ["key-press", "top-bar", "background", "keys", "companion", "shader"];
+const PRIMARY_TAGS = ["core", "key-press", "top-bar", "background", "keys", "companion", "shader"];
 
 function moduleAllTags(m: V2ModuleRecord): string[] {
   const set = new Set<string>(m.manifest.tags ?? []);

@@ -125,8 +125,8 @@ pub struct Compositor {
     wave_tex: wgpu::Texture,
     wave_view: wgpu::TextureView,
 
-    // Background image / NV12 textures
-    bg_rgba_tex: Option<(String, wgpu::Texture, wgpu::TextureView)>,
+    // Background image / NV12 textures (tracks mtime so live `bg-stream` frames hot-reload!)
+    bg_rgba_tex: Option<(String, Option<SystemTime>, wgpu::Texture, wgpu::TextureView)>,
     nv12_y_tex: Option<(u32, u32, wgpu::Texture, wgpu::TextureView)>,
     nv12_uv_tex: Option<(u32, u32, wgpu::Texture, wgpu::TextureView)>,
 
@@ -661,10 +661,11 @@ impl Compositor {
     }
 
     fn ensure_bg_image(&mut self, path: &str) {
+        let mtime = std::fs::metadata(path).ok().and_then(|m| m.modified().ok());
         if self
             .bg_rgba_tex
             .as_ref()
-            .is_some_and(|(cached, _, _)| cached == path)
+            .is_some_and(|(cached, cached_mt, _, _)| cached == path && *cached_mt == mtime)
         {
             return;
         }
@@ -673,6 +674,33 @@ impl Compositor {
         };
         let rgba = img.to_rgba8();
         let (w, h) = rgba.dimensions();
+        // Reuse existing texture if dimensions match (zero GPU allocation per streamed frame!)
+        if let Some((ref mut cpath, ref mut cmt, ref tex, _)) = self.bg_rgba_tex {
+            if tex.width() == w && tex.height() == h {
+                self.queue.write_texture(
+                    wgpu::ImageCopyTexture {
+                        texture: tex,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &rgba,
+                    wgpu::ImageDataLayout {
+                        offset: 0,
+                        bytes_per_row: Some(w * 4),
+                        rows_per_image: Some(h),
+                    },
+                    wgpu::Extent3d {
+                        width: w,
+                        height: h,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                *cpath = path.to_string();
+                *cmt = mtime;
+                return;
+            }
+        }
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("bg-image"),
             size: wgpu::Extent3d {
@@ -707,7 +735,7 @@ impl Compositor {
             },
         );
         let view = tex.create_view(&Default::default());
-        self.bg_rgba_tex = Some((path.to_string(), tex, view));
+        self.bg_rgba_tex = Some((path.to_string(), mtime, tex, view));
     }
 
     fn get_or_compile_custom_shader(
@@ -864,9 +892,11 @@ impl Compositor {
         self.particles.step(scene.dt_sec.max(0.001), &self.sdf_grid, &self.geometry);
         let physics_ms = t_phys.elapsed().as_secs_f32() * 1000.0;
 
-        // Prepare background media if requested.
+        // Prepare background media if requested (clear stale image if no media active).
         if let Some(ref bg_path) = scene.background_media {
             self.ensure_bg_image(bg_path);
+        } else {
+            self.bg_rgba_tex = None;
         }
 
         // Precompile ALL active module shaders across background, distortion, and under_key stages!
@@ -1078,7 +1108,7 @@ impl Compositor {
                 pass.set_pipeline(&self.nv12_pipeline);
                 pass.set_bind_group(0, &bg, &[]);
                 pass.draw(0..3, 0..1);
-            } else if let Some((_, _, ref view)) = self.bg_rgba_tex {
+            } else if let Some((_, _, _, ref view)) = self.bg_rgba_tex {
                 let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("bg-img"),
                     layout: &self.blit_bgl,

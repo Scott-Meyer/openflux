@@ -539,6 +539,9 @@ fn main() {
         let mut rkmpp_stream: Option<openflux_display::rkmpp::RkmppVideoStream> = None;
         let mut rkmpp_path = String::new();
         let mut rkmpp_failed_path = String::new();
+    let mut v2_img_path = String::new();
+    let mut v2_img_mtime: Option<std::time::SystemTime> = None;
+    let mut v2_img_loaded = false;
         let mut rkmpp_epoch_ms: u64 = 0;
         let mut rkmpp_epoch_set = false;
         let mut rkmpp_pending: Option<openflux_display::rkmpp::Nv12Frame> = None;
@@ -969,7 +972,52 @@ fn main() {
                                 rkmpp_due = None;
                                 rkmpp_epoch_set = false;
                             }
-                        } else if desired_bg != rkmpp_path && desired_bg != rkmpp_failed_path {
+                            // Support static & live-streamed JPEG/PNG backgrounds (e.g. `bg-stream`!)
+                            if !cached_suspended && !desired_bg.is_empty() {
+                                let rp = if Path::new(&desired_bg).is_file() {
+                                    desired_bg.clone()
+                                } else {
+                                    let resolved = openflux_display::media_bg::resolve_bg_media_path(
+                                        Some(&media_dir),
+                                        &desired_bg,
+                                    );
+                                    if !resolved.is_empty() && Path::new(&resolved).is_file() {
+                                        resolved
+                                    } else {
+                                        Path::new(&desired_bg)
+                                            .file_name()
+                                            .and_then(|n| n.to_str())
+                                            .map(|n| Path::new(&media_dir).join(n).to_string_lossy().into_owned())
+                                            .unwrap_or_default()
+                                    }
+                                };
+                                let mt = std::fs::metadata(&rp).ok().and_then(|m| m.modified().ok());
+                                if mt.is_some() && (rp != v2_img_path || mt != v2_img_mtime) {
+                                    if let Ok(img) = image::open(&rp) {
+                                        let rgba = img.to_rgba8();
+                                        let (iw, ih) = rgba.dimensions();
+                                        let mut argb = Vec::with_capacity((iw * ih) as usize);
+                                        for px in rgba.chunks_exact(4) {
+                                            argb.push(
+                                                ((px[3] as u32) << 24)
+                                                    | ((px[0] as u32) << 16)
+                                                    | ((px[1] as u32) << 8)
+                                                    | (px[2] as u32),
+                                            );
+                                        }
+                                        gpu.upload_bg_argb(iw as i32, ih as i32, &argb);
+                                        v2_img_path = rp;
+                                        v2_img_mtime = mt;
+                                        v2_img_loaded = true;
+                                    }
+                                }
+                            } else {
+                                v2_img_loaded = false;
+                            }
+                        } else {
+                            v2_img_loaded = false;
+                        }
+                        if bg_is_vid && !cached_suspended && desired_bg != rkmpp_path && desired_bg != rkmpp_failed_path {
                             rkmpp_stream = None;
                             rkmpp_path.clear();
                             rkmpp_pending = None;
@@ -1061,7 +1109,7 @@ fn main() {
                                 ipc.send_bus_frame(&out_frame);
                             }
                             let (ww, wh) = v2.wave_dims();
-                            let has_bg_media = rkmpp_stream.is_some();
+                            let has_bg_media = rkmpp_stream.is_some() || v2_img_loaded;
                             if let Err(e) = gpu.render_v2_and_swap(
                                 cached_suspended,
                                 has_bg_media,

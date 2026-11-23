@@ -19,6 +19,19 @@ subscribes = ["keys/providers/#", "input/keys/event", "keyboard/state", "keyboar
 publishes = ["layout/regions/keys", "layout/regions/slots"]
 
 [[settings]]
+key = "legend_style"
+label = "Number & Symbol Shift Style"
+kind = "select"
+default = "dual_shift"
+options = ["dual_shift", "swap"]
+
+[[settings]]
+key = "bold_legends"
+label = "Crisp Bold Legends"
+kind = "boolean"
+default = true
+
+[[settings]]
 key = "legend_color"
 label = "Default Legend Color"
 kind = "color"

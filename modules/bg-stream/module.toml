@@ -1,0 +1,67 @@
+id = "bg-stream"
+name = "Live Stream Background"
+version = "2.0.0"
+description = "Streams live YouTube, Twitch, HLS, or RTSP video onto your keyboard background (100% transparent when idle/offline so your normal background plays underneath!)"
+author = "OpenFlux"
+category = "background"
+tags = ["background", "video", "stream", "youtube", "twitch", "rtsp"]
+stages = ["background"]
+host_requirement = "required"
+slot_capable = false
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+host = "host/stream_bridge.py"
+
+[channels]
+subscribes = ["modules/bg-stream/#"]
+publishes = ["modules/bg-stream/state"]
+
+[[settings]]
+key = "stream_url"
+label = "Stream URL (YouTube, Twitch, HLS, RTSP)"
+kind = "string"
+default = ""
+
+[[settings]]
+key = "active"
+label = "Stream Enabled"
+kind = "boolean"
+default = true
+
+[[settings]]
+key = "fps"
+label = "Target FPS"
+kind = "number"
+default = 12
+min = 2
+max = 24
+
+[[settings]]
+key = "quality"
+label = "JPEG Quality (2=Sharp, 12=Fast)"
+kind = "number"
+default = 6
+min = 2
+max = 12
+
+[[settings]]
+key = "bg_dimming"
+label = "Stream Dimming (%)"
+kind = "number"
+default = 20
+min = 0
+max = 85
+
+[[actions]]
+id = "stop"
+label = "Stop Stream (Transparent)"
+topic = "modules/bg-stream/command"
+payload = { action = "stop" }
+
+[[actions]]
+id = "reconnect"
+label = "Reconnect Stream"
+topic = "modules/bg-stream/command"
+payload = { action = "reconnect" }

@@ -423,25 +423,66 @@ function on_render(ctx, stage)
         )
       end
 
-      -- Resolve dynamic label (Shift case / shifted symbol!)
-      local label = tostring(rule.label or "")
-      if rule.shifted and held.shift then
-        label = tostring(rule.shifted)
-      elseif rule.shift_case then
-        local upper = (held.shift ~= caps_lock)
-        label = upper and string.upper(label) or string.lower(label)
+      local legend_style = tostring(cfg.legend_style or "dual_shift")
+      local bold_leg = cfg.bold_legends ~= false
+
+      -- Helper: crisp shadowed & subtly bolded text so legends stay super readable over bright video!
+      local function draw_crisp_text(tx, ty, str, sz, c, bold)
+        local a = c[4] or 1.0
+        ctx:text(tx + 1.4, ty + 1.6, str, sz, { 0, 0, 0, math.min(0.86, a * 0.85) }, "center")
+        ctx:text(tx, ty, str, sz, c, "center")
+        if bold then
+          ctx:text(tx + 0.75, ty, str, sz, { c[1], c[2], c[3], a * 0.78 }, "center")
+        end
       end
 
+      -- Resolve dynamic label (Dual-Shift emphasis OR classic Swap!)
+      local raw_label = tostring(rule.label or "")
+      local has_dual = (rule.shifted ~= nil and tostring(rule.shifted) ~= "" and legend_style == "dual_shift")
+      local label = raw_label
+      if not has_dual then
+        if rule.shifted and held.shift then
+          label = tostring(rule.shifted)
+        elseif rule.shift_case then
+          local upper = (held.shift ~= caps_lock)
+          label = upper and string.upper(label) or string.lower(label)
+        end
+      end
+
+      local has_img = type(rule.image) == "string" and #rule.image > 0
       local has_icon = type(rule.icon) == "string" and #rule.icon > 0
-      if has_icon then
+      if has_img then
+        -- Real PNG/image icon right inside the keycap (unlocks Stream Deck buttons & custom icons!)
+        local pad = 10
+        local isz = math.min(r.w - pad * 2, r.h - pad * 2)
+        local ix = vx - isz * 0.5
+        local iy = (#label > 0) and (ry + 6) or (vy - isz * 0.5)
+        if #label > 0 then isz = math.max(28, isz - 16); ix = vx - isz * 0.5 end
+        ctx:image(ix, iy, isz, isz, rule.image, { 1, 1, 1, on_cd and 0.4 or 1.0 })
+        if #label > 0 then
+          local lsz = (#label <= 7) and 13 or 11
+          draw_crisp_text(vx, ry + r.h - 20, label, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.96 }, bold_leg)
+        end
+      elseif has_icon then
         local icon_y = (#label > 0) and (vy - 11) or vy
         local icon_a = on_cd and 0.32 or 0.96
         draw_icon(ctx, rule.icon, vx, icon_y, { col[1], col[2], col[3], icon_a }, 1.0)
         if #label > 0 then
           local lsz = (#label <= 6) and 14 or 12
-          ctx:text(vx + 1, ry + r.h - 23 + 1, label, lsz, { 0, 0, 0, 0.72 }, "center")
-          ctx:text(vx, ry + r.h - 23, label, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.94 }, "center")
+          draw_crisp_text(vx, ry + r.h - 23, label, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.95 }, bold_leg)
         end
+      elseif has_dual then
+        -- Dual-Legend Shift Highlight mode (`!` above `1`, `@` above `2`, etc.):
+        -- Active glyph snaps bright & bold while the inactive glyph sits softly dimmed!
+        local top_s = tostring(rule.shifted)
+        local bot_s = raw_label
+        local shift_on = (held.shift == true)
+        local top_a = shift_on and 0.98 or 0.42
+        local bot_a = shift_on and 0.42 or 0.98
+        local top_sz = shift_on and 24 or 17
+        local bot_sz = shift_on and 17 or 25
+        draw_crisp_text(vx, vy - 28, top_s, top_sz, { col[1], col[2], col[3], top_a }, shift_on and bold_leg)
+        draw_crisp_text(vx, vy + 2,  bot_s, bot_sz, { col[1], col[2], col[3], bot_a }, (not shift_on) and bold_leg)
       elseif #label > 0 then
         local sp = (#label > 7) and string.find(label, " ") or nil
         if sp then
@@ -450,17 +491,14 @@ function on_render(ctx, stage)
           if #l1 > 9 then l1 = string.sub(l1, 1, 8) .. "." end
           if #l2 > 9 then l2 = string.sub(l2, 1, 8) .. "." end
           local lsz = 13
-          local a = on_cd and 0.50 or 0.96
-          ctx:text(vx + 1, vy - 15 + 1, l1, lsz, { 0, 0, 0, 0.78 }, "center")
-          ctx:text(vx, vy - 15, l1, lsz, { col[1], col[2], col[3], a }, "center")
-          ctx:text(vx + 1, vy + 2 + 1, l2, lsz, { 0, 0, 0, 0.78 }, "center")
-          ctx:text(vx, vy + 2, l2, lsz, { col[1], col[2], col[3], a }, "center")
+          local a = on_cd and 0.50 or 0.98
+          draw_crisp_text(vx, vy - 15, l1, lsz, { col[1], col[2], col[3], a }, bold_leg)
+          draw_crisp_text(vx, vy + 2,  l2, lsz, { col[1], col[2], col[3], a }, bold_leg)
         else
           local disp = (#label > 9) and (string.sub(label, 1, 8) .. ".") or label
-          local lsz = (#disp <= 1) and 30 or ((#disp <= 2) and 27 or ((#disp <= 5) and 19 or 14))
+          local lsz = (#disp <= 1) and 31 or ((#disp <= 2) and 27 or ((#disp <= 5) and 19 or 14))
           local ly = vy - lsz * 0.44
-          ctx:text(vx + 1.5, ly + 1.5, disp, lsz, { 0, 0, 0, 0.75 }, "center")
-          ctx:text(vx, ly, disp, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.96 }, "center")
+          draw_crisp_text(vx, ly, disp, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.98 }, bold_leg)
         end
       end
 
