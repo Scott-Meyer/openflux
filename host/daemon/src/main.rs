@@ -874,6 +874,9 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn bridge_armed_sentinel_present(&self) -> Result<bool, String> {
+        if let Some(m) = self.active_mux() {
+            return m.stat_file(device_paths::BRIDGE_ROLLBACK_ARMED);
+        }
         let client = self.client()?;
         let listing = client
             .get_file_list(device_paths::BRIDGE_ROLLBACK_DIR)
@@ -882,6 +885,10 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn confirm_bridge_install(&self) -> Result<(), String> {
+        if let Some(m) = self.active_mux() {
+            let _ = m.delete_file(device_paths::BRIDGE_ROLLBACK_ARMED);
+            return Ok(());
+        }
         let client = self.client()?;
         // DELETE_FILE succeeds when the file is already gone and fails only on real errors.
         client
@@ -922,6 +929,11 @@ impl DeviceSink for UsbDeviceSink {
 
     fn read_device_soc_stats(&self) -> Option<serde_json::Value> {
         if let Some(m) = self.active_mux() {
+            if let Ok(raw) = m.get_file(device_paths::SOC_STATS_JSON) {
+                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&raw) {
+                    return Some(val);
+                }
+            }
             return m.get_soc_stats().ok();
         }
         let client = self.client.as_ref()?;
