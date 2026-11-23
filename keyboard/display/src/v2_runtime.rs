@@ -49,6 +49,7 @@ pub struct KeyboardV2Display {
     pub wave_params: WaveFieldParams,
     pub active_media_path: Option<String>,
     pub active_stream_name: Option<String>,
+    pub stream_overlays: Vec<openflux_modules::StreamOverlayCmd>,
     pub bg_dimming: f32,
     pub top_fade: f32,
     pub dt_sec: f32,
@@ -220,6 +221,7 @@ impl KeyboardV2Display {
             wave_params: WaveFieldParams::default(),
             active_media_path: None,
             active_stream_name: None,
+            stream_overlays: Vec::new(),
             bg_dimming: 0.0,
             top_fade: 0.0,
             dt_sec: 0.016,
@@ -746,6 +748,7 @@ impl KeyboardV2Display {
 
         self.active_media_path = scene.background_media.clone();
         self.active_stream_name = scene.background_stream.clone();
+        self.stream_overlays = scene.stream_overlays;
         self.bg_dimming = scene.bg_dimming;
         self.top_fade = scene.top_fade;
         self.dt_sec = dt;

@@ -19,8 +19,8 @@ pub use installer::{
     ModuleOrigin, StagedModuleSource,
 };
 pub use ir::{
-    DrawCommand, FrameScene, KeyGlowCmd, KeyGlowShape, ParticleSpawnCmd, ShaderPassCmd, TextAlign,
-    WaveFieldParams, WaveImpulseCmd,
+    DrawCommand, FrameScene, KeyGlowCmd, KeyGlowShape, ParticleSpawnCmd, ShaderPassCmd,
+    StreamOverlayCmd, TextAlign, WaveFieldParams, WaveImpulseCmd,
 };
 pub use lua_runtime::{parse_hex_color, ModuleLogEntry, ModuleRuntime, RuntimeModuleStatus};
 pub use manifest::{

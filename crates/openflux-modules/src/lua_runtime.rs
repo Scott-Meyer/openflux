@@ -437,6 +437,25 @@ impl UserData for RenderCtxHandle {
             }
             Ok(())
         });
+        methods.add_method(
+            "stream_rect",
+            |_, this, (x, y, w, h, stream_name, radius): (f32, f32, f32, f32, String, Option<f32>)| {
+                let trimmed = stream_name.trim().to_string();
+                if !trimmed.is_empty() && w > 2.0 && h > 2.0 {
+                    this.scene.lock().unwrap().stream_overlays.push(
+                        crate::ir::StreamOverlayCmd {
+                            stream_name: trimmed,
+                            x,
+                            y,
+                            w,
+                            h,
+                            radius: radius.unwrap_or(0.0),
+                        },
+                    );
+                }
+                Ok(())
+            },
+        );
         methods.add_method("background_dimming", |_, this, frac: f32| {
             this.scene.lock().unwrap().bg_dimming = frac.clamp(0.0, 0.9);
             Ok(())

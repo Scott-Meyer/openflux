@@ -1168,6 +1168,21 @@ fn main() {
                             }
                             let (ww, wh) = v2.wave_dims();
                             let has_bg_media = live_stream_active || rkmpp_stream.is_some() || v2_img_loaded;
+                            // Upload any bounded popup live streams (`ctx:stream_rect(...)`) cleanly into overlay NV12!
+                            let mut stream_overlay_rects: Vec<(i32, i32, i32, i32)> = Vec::new();
+                            for so in &v2.stream_overlays {
+                                if v2_mux.has_stream(&so.stream_name) {
+                                    if let Some(f) = v2_mux.take_h264_frame(&so.stream_name) {
+                                        gpu.upload_overlay_nv12(f.width, f.height, &f.nv12);
+                                    }
+                                    stream_overlay_rects.push((
+                                        so.x.round() as i32,
+                                        so.y.round() as i32,
+                                        so.w.round() as i32,
+                                        so.h.round() as i32,
+                                    ));
+                                }
+                            }
                             if let Err(e) = gpu.render_v2_and_swap(
                                 cached_suspended,
                                 has_bg_media,
@@ -1192,6 +1207,7 @@ fn main() {
                                 &v2.glows,
                                 &v2.canvas.rgba,
                                 v2.overlay_dirty,
+                                &stream_overlay_rects,
                             ) {
                                 eprintln!("Wayland EGL v2 present error, exiting cleanly: {e}");
                                 break;

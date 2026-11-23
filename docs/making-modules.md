@@ -253,7 +253,8 @@ All colors are `{ r, g, b, a }` with floats in `0.0..1.0`.
 
 **GPU Effects & Media:**
 - `ctx:background_media(path)` — plays a local video (`.mp4`/`.mkv`/`.mov` via RK3566 hardware decoder) or displays an image.
-- `ctx:stream_background(stream_name)` — displays a live `CH_MEDIA` H.264/JPEG stream pushed to `POST /v2/streams/<stream_name>`.
+- `ctx:stream_background(stream_name)` — displays a live `CH_MEDIA` H.264/JPEG stream pushed to `POST /v2/streams/<stream_name>` full-screen as the background.
+- `ctx:stream_rect(x, y, w, h, stream_name [, radius])` — renders a live `CH_MEDIA` hardware-decoded H.264 video stream inside a bounded popup or widget rectangle while keeping the normal background visible behind it.
 - `ctx:background_dimming(frac)` — GPU-side background dimming (`0.0..0.9`, zero CPU cost).
 - `ctx:top_fade(frac)` — GPU-side edge-to-edge top-bar tint dimming (`0.0..0.85`).
 - `ctx:shader(rel_path, p0 [, p1, p2, p3])` — runs a custom `.glsl` shader in `background`, `distortion`, or `under_key` with up to four `vec4` uniforms (`p0..p3`, each `{x, y, z, w}`).

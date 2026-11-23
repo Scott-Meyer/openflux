@@ -191,6 +191,17 @@ pub struct ShaderPassCmd {
     pub params: [[f32; 4]; 4],
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StreamOverlayCmd {
+    pub stream_name: String,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    #[serde(default)]
+    pub radius: f32,
+}
+
 /// Aggregated visual output from all active modules for one compositor frame.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FrameScene {
@@ -201,6 +212,9 @@ pub struct FrameScene {
     /// Optional live `CH_MEDIA` stream name (e.g. `"bg-stream"`) decoded directly via hardware `rkmpp` H.264!
     #[serde(default)]
     pub background_stream: Option<String>,
+    /// Optional live `CH_MEDIA` streams rendered inside bounded popup/widget rects (e.g. Prusa camera popup!).
+    #[serde(default)]
+    pub stream_overlays: Vec<StreamOverlayCmd>,
     /// GPU-side background dimming factor `[0.0..0.9]` (0 = full brightness, 0.3 = 30% darker).
     #[serde(default)]
     pub bg_dimming: f32,

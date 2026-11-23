@@ -978,6 +978,9 @@ pub struct WaylandGpuPresenter {
     v2_ping_fbo: [u32; 2],
     v2_ping_tex: [u32; 2],
     v2_custom_programs: std::collections::HashMap<String, CachedV2Program>,
+    tex_ov_y: u32,
+    tex_ov_uv: u32,
+    ov_nv12_dims: (i32, i32),
     fbo_a: u32,
     tex_fbo_a: u32,
     fbo_b: u32,
@@ -1225,6 +1228,9 @@ impl WaylandGpuPresenter {
                 v2_ping_fbo: [0, 0],
                 v2_ping_tex: [0, 0],
                 v2_custom_programs: std::collections::HashMap::new(),
+                tex_ov_y: 0,
+                tex_ov_uv: 0,
+                ov_nv12_dims: (0, 0),
                 fbo_a: fbos[0],
                 tex_fbo_a,
                 fbo_b: fbos[1],
@@ -1271,6 +1277,85 @@ impl WaylandGpuPresenter {
             }
         }
         Ok(!self.state.closed)
+    }
+
+    /// Uploads a live `CH_MEDIA` overlay stream frame (e.g. Prusa camera popup) into dedicated
+    /// NV12 textures so the underlying background video keeps playing untouched behind the popup!
+    pub fn upload_overlay_nv12(&mut self, w: i32, h: i32, nv12: &[u8]) {
+        if w <= 0 || h <= 0 || nv12.len() < (w as usize) * (h as usize) * 3 / 2 {
+            return;
+        }
+        let y_len = (w as usize) * (h as usize);
+        unsafe {
+            if self.tex_ov_y == 0 {
+                let mut t = [0u32; 2];
+                (self.gl.gl_gen_textures)(2, t.as_mut_ptr());
+                self.tex_ov_y = t[0];
+                self.tex_ov_uv = t[1];
+                for tex in t {
+                    (self.gl.gl_bind_texture)(GL_TEXTURE_2D, tex);
+                    (self.gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR as i32);
+                    (self.gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR as i32);
+                    (self.gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE as i32);
+                    (self.gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE as i32);
+                }
+            }
+            (self.gl.gl_active_texture)(GL_TEXTURE0);
+            (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_ov_y);
+            if self.ov_nv12_dims != (w, h) {
+                (self.gl.gl_tex_image_2d)(
+                    GL_TEXTURE_2D,
+                    0,
+                    GL_LUMINANCE as i32,
+                    w,
+                    h,
+                    0,
+                    GL_LUMINANCE,
+                    GL_UNSIGNED_BYTE,
+                    nv12.as_ptr() as *const c_void,
+                );
+            } else {
+                (self.gl.gl_tex_sub_image_2d)(
+                    GL_TEXTURE_2D,
+                    0,
+                    0,
+                    0,
+                    w,
+                    h,
+                    GL_LUMINANCE,
+                    GL_UNSIGNED_BYTE,
+                    nv12.as_ptr() as *const c_void,
+                );
+            }
+            (self.gl.gl_active_texture)(GL_TEXTURE1);
+            (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_ov_uv);
+            if self.ov_nv12_dims != (w, h) {
+                (self.gl.gl_tex_image_2d)(
+                    GL_TEXTURE_2D,
+                    0,
+                    GL_LUMINANCE_ALPHA as i32,
+                    w / 2,
+                    h / 2,
+                    0,
+                    GL_LUMINANCE_ALPHA,
+                    GL_UNSIGNED_BYTE,
+                    nv12[y_len..].as_ptr() as *const c_void,
+                );
+                self.ov_nv12_dims = (w, h);
+            } else {
+                (self.gl.gl_tex_sub_image_2d)(
+                    GL_TEXTURE_2D,
+                    0,
+                    0,
+                    0,
+                    w / 2,
+                    h / 2,
+                    GL_LUMINANCE_ALPHA,
+                    GL_UNSIGNED_BYTE,
+                    nv12[y_len..].as_ptr() as *const c_void,
+                );
+            }
+        }
     }
 
     pub fn upload_bg_nv12(&mut self, w: i32, h: i32, nv12: &[u8]) {
@@ -1839,6 +1924,7 @@ impl WaylandGpuPresenter {
         glows: &[crate::v2_runtime::V2GlowDraw],
         overlay_rgba: &[u8],
         overlay_dirty: bool,
+        stream_overlay_rects: &[(i32, i32, i32, i32)],
     ) -> Result<(), String> {
         let _ = self.queue.dispatch_pending(&mut self.state);
         unsafe {
@@ -2096,6 +2182,53 @@ impl WaylandGpuPresenter {
                     );
                     self.draw_fullscreen_quad(self.prog_v2_overlay);
                 }
+
+                // Pass 4: Bounded Live `CH_MEDIA` Stream Popups (e.g. Prusa camera popup card!)
+                // Drawn directly via hardware NV12 shader inside each requested `(x, y, w, h)` rect
+                // so the background ocean waves & top bar stay cleanly visible behind the popup!
+                if !stream_overlay_rects.is_empty() && self.tex_ov_y != 0 && self.ov_nv12_dims.0 > 0 {
+                    (self.gl.gl_disable)(GL_BLEND);
+                    (self.gl.gl_use_program)(self.prog_v2_refract);
+                    (self.gl.gl_active_texture)(GL_TEXTURE0);
+                    (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_ov_y);
+                    (self.gl.gl_uniform1i)(
+                        (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tex_y".as_ptr()),
+                        0,
+                    );
+                    (self.gl.gl_active_texture)(GL_TEXTURE1);
+                    (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_ov_uv);
+                    (self.gl.gl_uniform1i)(
+                        (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tex_uv".as_ptr()),
+                        1,
+                    );
+                    (self.gl.gl_uniform1i)(
+                        (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_bg_mode".as_ptr()),
+                        1,
+                    );
+                    (self.gl.gl_uniform1f)(
+                        (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_wave_enabled".as_ptr()),
+                        0.0,
+                    );
+                    (self.gl.gl_uniform1f)(
+                        (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_bg_dim".as_ptr()),
+                        0.0,
+                    );
+                    (self.gl.gl_uniform4f)(
+                        (self.gl.gl_get_uniform_location)(self.prog_v2_refract, c"u_tint".as_ptr()),
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                    );
+                    for &(rx, ry, rw, rh) in stream_overlay_rects {
+                        if rw > 0 && rh > 0 {
+                            let gl_y = (self.height - ry - rh).max(0);
+                            (self.gl.gl_viewport)(rx, gl_y, rw, rh);
+                            self.draw_fullscreen_quad(self.prog_v2_refract);
+                        }
+                    }
+                    (self.gl.gl_viewport)(0, 0, self.width, self.height);
+                }
             }
 
             if let Some(ref s) = self.state.surface {
@@ -2201,6 +2334,10 @@ impl Drop for WaylandGpuPresenter {
             if self.v2_ping_fbo[0] != 0 {
                 (self.gl.gl_delete_framebuffers)(2, self.v2_ping_fbo.as_ptr());
                 (self.gl.gl_delete_textures)(2, self.v2_ping_tex.as_ptr());
+            }
+            if self.tex_ov_y != 0 {
+                let ovt = [self.tex_ov_y, self.tex_ov_uv];
+                (self.gl.gl_delete_textures)(2, ovt.as_ptr());
             }
             let fbos = [self.fbo_a, self.fbo_b];
             (self.gl.gl_delete_framebuffers)(2, fbos.as_ptr());
