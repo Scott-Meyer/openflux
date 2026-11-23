@@ -5,7 +5,7 @@ description = "Shows live 3D printer telemetry (nozzle, bed, progress, ETA) in a
 author = "OpenFlux"
 category = "widget"
 tags = ["3d-printer", "prusa", "camera", "telemetry", "rtsp", "top-bar"]
-stages = ["tile", "world_overlay"]
+stages = ["background", "tile", "world_overlay"]
 host_requirement = "required"
 slot_capable = true
 stackable = true
@@ -49,12 +49,31 @@ kind = "string"
 default = ""
 
 [[settings]]
+key = "peek_key_enabled"
+label = "Enable Hold-to-Peek Camera Key"
+kind = "boolean"
+default = true
+
+[[settings]]
 key = "peek_key_index"
-label = "Hold-to-Glance Camera Key"
+label = "Hold-to-Peek Camera Key"
 kind = "key"
 default = 13
 min = 0
 max = 84
+
+[[settings]]
+key = "video_while_printing"
+label = "Show Live Video While Printing"
+kind = "select"
+default = "off"
+options = ["off", "popup", "background"]
+
+[[settings]]
+key = "accent"
+label = "Accent Color"
+kind = "color"
+default = "#fa6831"
 
 [[settings]]
 key = "poll_seconds"

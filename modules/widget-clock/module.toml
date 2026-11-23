@@ -19,7 +19,7 @@ singleton = true
 script = "script.lua"
 
 [channels]
-subscribes = []
+subscribes = ["host/time"]
 publishes = []
 
 [[settings]]

@@ -52,6 +52,8 @@ pub struct KeyboardV2Display {
     pub stream_overlays: Vec<openflux_modules::StreamOverlayCmd>,
     pub bg_dimming: f32,
     pub top_fade: f32,
+    parallax_rx: openflux_bus::Subscription,
+    last_parallax_sig: String,
     pub dt_sec: f32,
     pub background_shaders: Vec<openflux_modules::ShaderPassCmd>,
     pub distortion_shaders: Vec<openflux_modules::ShaderPassCmd>,
@@ -206,6 +208,9 @@ impl KeyboardV2Display {
 
         let sdf_grid = KeySdfGrid::build(&geometry);
         let canvas = Canvas2D::new(DISPLAY_WIDTH_PX, DISPLAY_HEIGHT_PX, font_bytes);
+        let parallax_rx = broker
+            .subscribe("display/parallax", openflux_bus::SubscribeOptions::default())
+            .expect("valid parallax topic");
         let mirror = openflux_bus::BrokerMirror::new(broker.clone(), "host");
 
         Self {
@@ -224,6 +229,8 @@ impl KeyboardV2Display {
             stream_overlays: Vec::new(),
             bg_dimming: 0.0,
             top_fade: 0.0,
+            parallax_rx,
+            last_parallax_sig: String::new(),
             dt_sec: 0.016,
             background_shaders: Vec::new(),
             distortion_shaders: Vec::new(),
@@ -250,6 +257,7 @@ impl KeyboardV2Display {
         let extra = vec![
             "host/#".to_string(),
             "modules/#".to_string(),
+            "display/parallax".to_string(),
             "fx/surface/impulse".to_string(),
             "keys/providers/ability-deck".to_string(),
             "keys/providers/streamdeck".to_string(),
@@ -742,6 +750,43 @@ impl KeyboardV2Display {
 
     /// Steps Lua modules, 2D wave simulation, Key-SDF colliding/refracting particles, and 2D overlay.
     pub fn step_frame(&mut self, dt_sec: f32, now_ms: u64) {
+        // Apply any live `display/parallax` updates pushed from Studio over OFV2 CH_BUS!
+        let mut latest_parallax: Option<serde_json::Value> = None;
+        while let Some(msg) = self.parallax_rx.try_recv() {
+            latest_parallax = Some(msg.payload);
+        }
+        if let Some(val) = latest_parallax {
+            let sig = val.to_string();
+            if sig != self.last_parallax_sig {
+                self.last_parallax_sig = sig;
+                let mut s = crate::config::SettingsConfig::default();
+                if let Some(b) = val.get("parallaxActive").and_then(|v| v.as_bool()) {
+                    s.parallax_active = b;
+                }
+                if let Some(d) = val.get("eyeHeight").and_then(|v| v.as_f64()) {
+                    s.eye_height_mm = d;
+                }
+                if let Some(d) = val.get("eyeDistanceFromFront").and_then(|v| v.as_f64()) {
+                    s.eye_dist_front_mm = d;
+                }
+                if let Some(m) = val.get("footStandMode").and_then(|v| v.as_str()) {
+                    s.foot_stand_deg = match m {
+                        "low" => 4.0,
+                        "high" => 8.0,
+                        _ => 0.0,
+                    };
+                }
+                if let Some(x) = val.get("displayOffsetX").and_then(|v| v.as_f64()) {
+                    s.display_offset_x_px = x;
+                }
+                if let Some(y) = val.get("displayOffsetY").and_then(|v| v.as_f64()) {
+                    s.display_offset_y_px = y;
+                }
+                self.apply_parallax_settings(&s);
+                self.last_keys_hash = 0;
+                self.overlay_dirty = true;
+            }
+        }
         let dt = dt_sec.clamp(0.001, 0.06);
         self.time_sec += dt;
         let scene = self.runtime.step_frame(dt, now_ms);

@@ -688,6 +688,9 @@ async fn put_config(
         if explicit_reset {
             g.settings_hydrated = true;
         }
+        // Pure-v2 live optical parallax sync: publish straight onto `display/parallax` so the
+        // keyboard shifts every keycap legend in real time over OFV2 CH_BUS!
+        state.v2.publish_parallax_from_settings(s);
     }
     if let Some(m) = body.get("mosaic") {
         g.mosaic = m.clone();

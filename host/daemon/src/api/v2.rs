@@ -133,6 +133,25 @@ impl V2State {
             },
             PublishOptions::retained(),
         );
+        // Seed live `display/parallax` from persisted Studio settings on startup so the physical
+        // keyboard immediately receives your seating/parallax calibration over OFV2 CH_BUS!
+        if let Ok(raw) = std::fs::read_to_string(base.join("config/settings.json")) {
+            if let Ok(s) = serde_json::from_str::<serde_json::Value>(&raw) {
+                let _ = broker.publish(
+                    "display/parallax",
+                    serde_json::json!({
+                        "parallaxActive": s.get("parallaxActive").and_then(|v| v.as_bool()).unwrap_or(true),
+                        "eyeHeight": s.get("eyeHeight").and_then(|v| v.as_f64()).unwrap_or(425.0),
+                        "eyeDistanceFromFront": s.get("eyeDistanceFromFront").and_then(|v| v.as_f64()).unwrap_or(300.0),
+                        "footStandMode": s.get("footStandMode").and_then(|v| v.as_str()).unwrap_or("none"),
+                        "displayOffsetX": s.get("displayOffsetX").and_then(|v| v.as_i64()).unwrap_or(0),
+                        "displayOffsetY": s.get("displayOffsetY").and_then(|v| v.as_i64()).unwrap_or(0),
+                        "showAlignmentGrid": s.get("showAlignmentGrid").and_then(|v| v.as_bool()).unwrap_or(false),
+                    }),
+                    PublishOptions::retained(),
+                );
+            }
+        }
 
         let mut runtime = ModuleRuntime::new(broker.clone(), geometry.clone());
         let discovered = registry.discover();
@@ -263,6 +282,21 @@ impl V2State {
             }
         }
         parts.join("|")
+    }
+
+    /// Publishes optical parallax settings onto retained `display/parallax` so the live
+    /// physical keyboard (via OFV2 CH_BUS) shifts every keycap legend in real time!
+    pub fn publish_parallax_from_settings(&self, s: &serde_json::Value) {
+        let payload = serde_json::json!({
+            "parallaxActive": s.get("parallaxActive").and_then(|v| v.as_bool()).unwrap_or(true),
+            "eyeHeight": s.get("eyeHeight").and_then(|v| v.as_f64()).unwrap_or(425.0),
+            "eyeDistanceFromFront": s.get("eyeDistanceFromFront").and_then(|v| v.as_f64()).unwrap_or(300.0),
+            "footStandMode": s.get("footStandMode").and_then(|v| v.as_str()).unwrap_or("none"),
+            "displayOffsetX": s.get("displayOffsetX").and_then(|v| v.as_i64()).unwrap_or(0),
+            "displayOffsetY": s.get("displayOffsetY").and_then(|v| v.as_i64()).unwrap_or(0),
+            "showAlignmentGrid": s.get("showAlignmentGrid").and_then(|v| v.as_bool()).unwrap_or(false),
+        });
+        let _ = self.broker.publish("display/parallax", payload, PublishOptions::retained());
     }
 
     pub fn notify_modules_changed(&self, reason: &str, module_id: Option<&str>) {

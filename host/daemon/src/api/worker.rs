@@ -376,7 +376,25 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
         .name("openflux-host-telemetry".into())
         .spawn(move || {
             let mut bridge = crate::bridges::create_platform_bridge();
+            let mut last_time_pub: Option<Instant> = None;
             while running.load(Ordering::Relaxed) {
+                if last_time_pub.map(|t| t.elapsed() >= Duration::from_secs(30)).unwrap_or(true) {
+                    last_time_pub = Some(Instant::now());
+                    let hc = HostClock::current();
+                    let unix_sec = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    let _ = state.v2.broker.publish(
+                        "host/time",
+                        serde_json::json!({
+                            "unix_sec": unix_sec,
+                            "tz_offset_sec": hc.utc_offset_secs.unwrap_or(0),
+                            "zone": hc.zone,
+                        }),
+                        openflux_bus::PublishOptions::retained().with_origin("host-telemetry"),
+                    );
+                }
                 let hw = bridge.sample_hardware();
                 let media = bridge.media_snapshot();
 
