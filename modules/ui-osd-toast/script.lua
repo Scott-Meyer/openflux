@@ -130,13 +130,14 @@ function on_render(ctx, stage)
   if stage ~= "world_overlay" or #toasts == 0 then return end
 
   local cfg = module.config()
-  local pos = tostring(cfg.position or "top_center")
+  local pos = tostring(cfg.position or "top_bar")
   local def_col = module.color("default_accent", "#5ce1ff")
 
-  local base_y = 266
-  local step_y = 92
-  if pos == "top_bar" then
-    base_y = 66
+  -- Default `top_bar`: centered both horizontally AND vertically inside the top-bar area (y=5..261, center y=133)!
+  local base_y = 95
+  local step_y = 88
+  if pos == "top_center" then
+    base_y = 266
   elseif pos == "bottom_center" then
     base_y = 964
     step_y = -92

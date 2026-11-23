@@ -195,6 +195,7 @@ class RtspFrameGrabber:
         self._url = ""
         self._stop = threading.Event()
         self.frames_uploaded = 0
+        self.last_error = ""
 
     def ensure_running(self, url: str):
         if self._url == url and self._thread and self._thread.is_alive():
@@ -271,33 +272,7 @@ class RtspFrameGrabber:
         while not self._stop.is_set():
             conn = None
             try:
-                # Grab one fast preview snapshot first so quick clicks on PRT immediately show a picture!
-                try:
-                    snap_tmp = CAM_LOCAL_PATH + ".snap.jpg"
-                    snap_res = subprocess.run(
-                        [
-                            ff, "-hide_banner", "-loglevel", "error",
-                            "-rtsp_transport", "tcp",
-                            "-i", url,
-                            "-frames:v", "1",
-                            "-vf", "scale=960:-2",
-                            "-q:v", "5",
-                            "-y", snap_tmp,
-                        ],
-                        timeout=8,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    if snap_res.returncode == 0 and os.path.isfile(snap_tmp) and os.path.getsize(snap_tmp) >= 1024:
-                        os.replace(snap_tmp, CAM_LOCAL_PATH)
-                        bus_post(
-                            "/v2/keyboard/upload-media",
-                            {"local_path": CAM_LOCAL_PATH, "remote_name": "prusa_cam_live.jpg"},
-                            timeout=4.0,
-                        )
-                except Exception:
-                    pass
-
+                # Single clean RTSP TCP connection (never double-connect to Buddy3D's 1-client rtspd!)
                 cmd = [
                     ff, "-hide_banner", "-loglevel", "error",
                     "-rtsp_transport", "tcp",
@@ -317,15 +292,23 @@ class RtspFrameGrabber:
                 self._proc = proc
 
                 # Wait for the FIRST real H.264 chunk BEFORE opening POST /v2/streams/prusa-cam!
-                # If the RTSP camera is offline/unreachable, ffmpeg exits with 0 bytes and we
-                # never trigger a false `active: true` flash on the keyboard!
                 out_fd = proc.stdout.fileno()
                 first_chunk = os.read(out_fd, 16384)
                 if not first_chunk:
+                    err_out = ""
+                    try:
+                        err_out = (proc.stderr.read() or b"").decode("utf-8", "ignore").strip()
+                    except Exception:
+                        pass
                     proc.wait(timeout=2.0)
+                    short_err = err_out.splitlines()[0] if err_out else f"ffmpeg exited ({proc.returncode})"
+                    if short_err != self.last_error:
+                        self.last_error = short_err
+                        print(f"[prusa] RTSP unavailable ({url}): {short_err}", flush=True)
                     if not self._stop.is_set():
-                        time.sleep(8.0)
+                        time.sleep(10.0)
                     continue
+                self.last_error = ""
 
                 conn = (
                     http.client.HTTPSConnection(parsed.hostname, parsed.port, context=SSL_CTX, timeout=15)

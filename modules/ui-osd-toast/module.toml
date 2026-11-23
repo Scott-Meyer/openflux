@@ -22,8 +22,8 @@ publishes = []
 key = "position"
 label = "HUD Position"
 kind = "select"
-default = "top_center"
-options = ["top_center", "top_bar", "bottom_center"]
+default = "top_bar"
+options = ["top_bar", "top_center", "bottom_center"]
 
 [[settings]]
 key = "default_accent"
