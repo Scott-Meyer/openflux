@@ -302,15 +302,11 @@ impl V2UsbMux {
         let remote = format!("/home/root/{fname}");
         let bytes = std::fs::read(local_ipk).map_err(|e| format!("read ipk: {e}"))?;
         let sz = bytes.len();
+        // Upload cleanly to `/home/root/<fname>` so the keyboard's single `flux-ipk-monitor.sh`
+        // installs it without a competing `opkg` lock collision!
         self.put_file(&remote, &bytes)?;
-        let _ = self.bulk_rpc(
-            BulkRpcRequest::SideloadIpk {
-                remote_path: remote.clone(),
-            },
-            Duration::from_secs(5),
-        )?;
         Ok(format!(
-            "Uploaded {fname} ({sz} B) to {remote} over OFV2 and scheduled install."
+            "Uploaded {fname} ({sz} B) to {remote} over OFV2; flux-ipk-monitor installs automatically."
         ))
     }
 
@@ -353,16 +349,18 @@ impl V2UsbMux {
         }
         self.connected.store(true, Ordering::Release);
 
-        // Immediately confirm bridge install rollback sentinel over OFV2 so sideloaded 2.1.0
-        // never gets rolled back by the 10-minute watchdog!
-        {
-            let pending_confirm_tx = self.tx_lock.clone();
+        // Immediately confirm bridge rollback sentinel & clear any stale display update semaphore
+        // over OFV2 so openflux-bridge 2.1.0 stays permanent and openflux-display is never stuck!
+        for stale in [
+            "/home/root/.openflux/rollback/bridge/armed",
+            "/tmp/openflux_updating_display",
+        ] {
             let req_id = self.next_req_id.fetch_add(1, Ordering::Relaxed);
             if let Ok(payload) = serde_json::to_vec(&BulkRpcRequest::DeleteFile {
-                path: "/home/root/.openflux/rollback/bridge/armed".into(),
+                path: stale.into(),
             }) {
                 let encoded = MuxFrame::new(MuxChannel::BulkReq, 0, req_id, payload).encode();
-                let (lock, cv) = &*pending_confirm_tx;
+                let (lock, cv) = &*self.tx_lock;
                 let mut q = lock.lock().unwrap();
                 q.bulk.push_back(encoded);
                 cv.notify_one();

@@ -1633,6 +1633,30 @@ async fn close_media_stream(
     (StatusCode::OK, Json(json!({ "ok": true, "closed": name })))
 }
 
+#[derive(Deserialize)]
+struct KeyboardReadQuery {
+    path: String,
+}
+
+async fn keyboard_read_file(
+    State(state): State<Arc<ApiState>>,
+    Query(q): Query<KeyboardReadQuery>,
+) -> impl IntoResponse {
+    let device = state.device.clone();
+    let path = q.path;
+    let res = tokio::task::spawn_blocking(move || device.get_file(&path))
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r);
+    match res {
+        Ok(bytes) => {
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            (StatusCode::OK, Json(json!({ "ok": true, "bytes": bytes.len(), "text": text })))
+        }
+        Err(e) => err_resp(StatusCode::BAD_GATEWAY, e),
+    }
+}
+
 /// Mounts all OpenFlux v2 routes (open localhost bus, module management, disclosure, lists, presets, GPU preview).
 pub fn router(state: Arc<ApiState>) -> Router {
     Router::new()
@@ -1665,6 +1689,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/simulate/burst", post(simulate_physics_burst))
         .route("/v2/preview/frame", post(render_preview_frame))
         .route("/v2/keyboard/sync", post(keyboard_sync_v2))
+        .route("/v2/keyboard/read", get(keyboard_read_file))
         .route("/v2/keyboard/upload-media", post(keyboard_upload_media))
         .route("/v2/keyboard/sideload", post(keyboard_sideload))
         .route("/v2/keyboard/flash-uf2", post(keyboard_flash_uf2))
