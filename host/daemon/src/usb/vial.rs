@@ -15,9 +15,14 @@ pub const VIAL_USAGE_PAGE: u16 = 0xFF60;
 pub const VIAL_USAGE: u16 = 0x61;
 pub const VIAL_RAW_EPSIZE: usize = 32;
 pub const VIAL_KEYCODE_BASE: u16 = 0x7E00;
-/// 64 native Vial USER00..USER63 slots (`0x7E00..0x7E3F`): 14 built-ins (`0..13`) + 50 dynamic module actions (`14..63`).
+/// 64 native Vial USER00..USER63 slots (`0x7E00..0x7E3F`):
+/// - `0..13`  (`0x7E00..0x7E0D`): 14 built-in OpenFlux actions
+/// - `14..38` (`0x7E0E..0x7E26`): 25 sticky dynamic module `[[actions]]` slots
+/// - `39..63` (`0x7E27..0x7E3F`): 25 fixed Hall-effect Analog Gamepad keycodes (`GP_*`)
 pub const VIAL_MAX_CUSTOM_SLOTS: usize = 64;
 pub const VIAL_BUILTIN_SLOTS: usize = 14;
+pub const VIAL_GAMEPAD_SLOT_START: usize = 39;
+pub const VIAL_GAMEPAD_SLOT_COUNT: usize = 25;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VialStatus {
@@ -230,6 +235,34 @@ const BUILTINS: [(&str, &str, &str, &str); VIAL_BUILTIN_SLOTS] = [
     ("openflux.theme_prev", "Theme\nPrev", "OF_THM-", "Switch to previous display theme"),
 ];
 
+const GAMEPAD_SLOTS: [(&str, &str, &str, &str); VIAL_GAMEPAD_SLOT_COUNT] = [
+    ("gamepad.ls_up", "LS\nUp", "GP_LS↑", "Analog Gamepad — Left Stick Up"),
+    ("gamepad.ls_down", "LS\nDown", "GP_LS↓", "Analog Gamepad — Left Stick Down"),
+    ("gamepad.ls_left", "LS\nLeft", "GP_LS←", "Analog Gamepad — Left Stick Left"),
+    ("gamepad.ls_right", "LS\nRight", "GP_LS→", "Analog Gamepad — Left Stick Right"),
+    ("gamepad.rs_up", "RS\nUp", "GP_RS↑", "Analog Gamepad — Right Stick Up"),
+    ("gamepad.rs_down", "RS\nDown", "GP_RS↓", "Analog Gamepad — Right Stick Down"),
+    ("gamepad.rs_left", "RS\nLeft", "GP_RS←", "Analog Gamepad — Right Stick Left"),
+    ("gamepad.rs_right", "RS\nRight", "GP_RS→", "Analog Gamepad — Right Stick Right"),
+    ("gamepad.lt", "Trigger\nLT", "GP_LT", "Analog Gamepad — Left Trigger (Analog)"),
+    ("gamepad.rt", "Trigger\nRT", "GP_RT", "Analog Gamepad — Right Trigger (Analog)"),
+    ("gamepad.a", "GP\nA", "GP_A", "Analog Gamepad — A Button"),
+    ("gamepad.b", "GP\nB", "GP_B", "Analog Gamepad — B Button"),
+    ("gamepad.x", "GP\nX", "GP_X", "Analog Gamepad — X Button"),
+    ("gamepad.y", "GP\nY", "GP_Y", "Analog Gamepad — Y Button"),
+    ("gamepad.lb", "GP\nLB", "GP_LB", "Analog Gamepad — Left Bumper"),
+    ("gamepad.rb", "GP\nRB", "GP_RB", "Analog Gamepad — Right Bumper"),
+    ("gamepad.l3", "GP\nL3", "GP_L3", "Analog Gamepad — Left Stick Click"),
+    ("gamepad.r3", "GP\nR3", "GP_R3", "Analog Gamepad — Right Stick Click"),
+    ("gamepad.dpad_up", "D-Pad\nUp", "GP_D↑", "Analog Gamepad — D-Pad Up"),
+    ("gamepad.dpad_down", "D-Pad\nDown", "GP_D↓", "Analog Gamepad — D-Pad Down"),
+    ("gamepad.dpad_left", "D-Pad\nLeft", "GP_D←", "Analog Gamepad — D-Pad Left"),
+    ("gamepad.dpad_right", "D-Pad\nRight", "GP_D→", "Analog Gamepad — D-Pad Right"),
+    ("gamepad.start", "GP\nStart", "GP_STA", "Analog Gamepad — Start / Menu"),
+    ("gamepad.back", "GP\nBack", "GP_BCK", "Analog Gamepad — Back / View"),
+    ("gamepad.guide", "GP\nGuide", "GP_GUI", "Analog Gamepad — Guide / Home"),
+];
+
 fn make_short_name(module_id: &str, action_id: &str) -> String {
     let mut base = module_id;
     for prefix in ["widget-", "ui-", "fx-", "bg-", "companion-", "dock-", "keys-"] {
@@ -325,12 +358,15 @@ impl ModuleActionsMap {
             );
         }
 
-        // Mark existing dynamic slots (>=14) inactive first; re-activate any still present.
+        // Mark existing dynamic slots (14..38) inactive first; re-activate any still present.
         for (&slot, entry) in self.entries.iter_mut() {
-            if (slot as usize) >= VIAL_BUILTIN_SLOTS {
+            let s = slot as usize;
+            if s >= VIAL_BUILTIN_SLOTS && s < VIAL_GAMEPAD_SLOT_START {
                 entry.active = false;
             }
         }
+
+        let gamepad_enabled = enabled_manifests.iter().any(|m| m.id == "analog-gamepad");
 
         for manifest in enabled_manifests {
             for act in &manifest.actions {
@@ -342,17 +378,22 @@ impl ModuleActionsMap {
                 let existing_slot = self
                     .entries
                     .iter()
-                    .find(|(&s, e)| (s as usize) >= VIAL_BUILTIN_SLOTS && e.action_id == full_id)
+                    .find(|(&s, e)| {
+                        let su = s as usize;
+                        su >= VIAL_BUILTIN_SLOTS
+                            && su < VIAL_GAMEPAD_SLOT_START
+                            && e.action_id == full_id
+                    })
                     .map(|(&s, _)| s);
 
                 let slot = if let Some(s) = existing_slot {
                     s
                 } else {
-                    // Allocate lowest unused slot in 14..64 (reusing tombstoned slots only if full).
-                    let free = (VIAL_BUILTIN_SLOTS as u16..VIAL_MAX_CUSTOM_SLOTS as u16)
+                    // Allocate lowest unused slot in 14..39 (reusing tombstoned slots only if full).
+                    let free = (VIAL_BUILTIN_SLOTS as u16..VIAL_GAMEPAD_SLOT_START as u16)
                         .find(|s| !self.entries.contains_key(s))
                         .or_else(|| {
-                            (VIAL_BUILTIN_SLOTS as u16..VIAL_MAX_CUSTOM_SLOTS as u16)
+                            (VIAL_BUILTIN_SLOTS as u16..VIAL_GAMEPAD_SLOT_START as u16)
                                 .find(|s| self.entries.get(s).map(|e| !e.active).unwrap_or(true))
                         });
                     let Some(s) = free else {
@@ -393,6 +434,41 @@ impl ModuleActionsMap {
                         active: true,
                     },
                 );
+            }
+        }
+
+        // Fixed 25-slot Analog Gamepad block (slots 39..63 = 0x7E27..0x7E3F): populated in
+        // vial.json whenever the `analog-gamepad` module is enabled (marked inactive otherwise).
+        if gamepad_enabled {
+            for (i, (id, name, short_name, title)) in GAMEPAD_SLOTS.iter().enumerate() {
+                let slot = (VIAL_GAMEPAD_SLOT_START + i) as u16;
+                self.slots.insert(slot.to_string(), (*id).to_string());
+                self.entries.insert(
+                    slot,
+                    ActionSlotEntry {
+                        action_id: (*id).to_string(),
+                        module_id: "analog-gamepad".to_string(),
+                        keycode: VIAL_KEYCODE_BASE + slot,
+                        name: (*name).to_string(),
+                        short_name: (*short_name).to_string(),
+                        short_label: Some((*short_name).to_string()),
+                        title: (*title).to_string(),
+                        icon: None,
+                        accent: Some("#58f29c".to_string()),
+                        mode: "hold".to_string(),
+                        topic: None,
+                        payload: Value::Null,
+                        release_payload: None,
+                        retain: false,
+                        active: true,
+                    },
+                );
+            }
+        } else {
+            for slot in VIAL_GAMEPAD_SLOT_START as u16..VIAL_MAX_CUSTOM_SLOTS as u16 {
+                if let Some(e) = self.entries.get_mut(&slot) {
+                    e.active = false;
+                }
             }
         }
     }
@@ -645,16 +721,22 @@ mod tests {
         assert!(!map.entries.get(&14).unwrap().active);
         assert!(map.entries.get(&15).unwrap().active);
 
-        // Verify all 50 dynamic slots (14..63) allocate cleanly and fit inside FW_QMK_MAX_VIAL_DEF_BYTES (10240)
-        let many_acts: Vec<(&str, &str)> = (0..48)
+        // Verify 25 dynamic module slots (14..38) + 25 fixed Analog Gamepad slots (39..63) = 64 total,
+        // and confirm full 64-slot vial.json XZ fits inside FW_QMK_MAX_VIAL_DEF_BYTES (10240).
+        let many_acts: Vec<(&str, &str)> = (0..23)
             .map(|i| {
                 let s: &'static str = Box::leak(format!("act_{i}").into_boxed_str());
                 (s, s)
             })
             .collect();
         let m_many = fake_manifest("many", many_acts);
-        map.reconcile_from_manifests(&[m1, m2, m_many]);
+        let m_gp = fake_manifest("analog-gamepad", vec![]);
+        map.reconcile_from_manifests(&[m1, m2, m_many, m_gp]);
         assert_eq!(map.entries.len(), 64);
+        assert_eq!(map.entries.get(&38).unwrap().keycode, 0x7E26);
+        assert_eq!(map.entries.get(&39).unwrap().action_id, "gamepad.ls_up");
+        assert_eq!(map.entries.get(&39).unwrap().keycode, 0x7E27);
+        assert_eq!(map.entries.get(&63).unwrap().action_id, "gamepad.guide");
         assert_eq!(map.entries.get(&63).unwrap().keycode, 0x7E3F);
 
         let xz = map.build_vial_xz().unwrap();

@@ -5,6 +5,7 @@
 #include "pico/stdlib.h"
 #include "tusb.h"
 
+#include "fw_gamepad.h"
 #include "fw_hdlc.h"
 #include "fw_protocol.h"
 #include "fw_scanner.h"
@@ -20,7 +21,21 @@ static fw_usb_tx_t g_usb_tx;
 static fw_hdlc_decoder_t g_uart_dec;
 static volatile uint8_t g_reboot_mcu = 0;
 static volatile uint8_t g_reboot_soc = 0;
+static volatile uint8_t g_usb_reenumerate = 0;
 static volatile uint8_t g_usb_config_changed = 0;
+
+/* Hall-effect Analog Gamepad state + App-Linking layer override. */
+static fw_gamepad_config_t g_gamepad_cfg;
+static bool g_gamepad_cfg_dirty = false;
+static uint8_t g_layer_override = 0xFFU; /* 0..7 = active App-Linking layer, 0xFF = profile default */
+static uint16_t g_gp_resolved_kc[FW_MAX_KEYS_PER_LAYOUT];
+static bool g_gp_resolved_valid = false;
+static uint8_t g_gp_last_wire[FW_GP_REPORT_WIRE_LEN];
+static bool g_gp_has_sent = false;
+
+bool fw_usb_gamepad_enabled(void) {
+    return g_gamepad_cfg.mode != FW_GP_MODE_OFF;
+}
 
 /* Ring buffers decoupling TinyUSB callbacks from the QMK scan step (zero blocking!). */
 static uint8_t g_vial_rx_ring[4][FW_QMK_VIAL_RAW_EPSIZE];
@@ -463,6 +478,38 @@ static int on_vial_def_uploaded(const uint8_t *xz_data, size_t len, void *ctx) {
     return 0;
 }
 
+static int on_gamepad_config(const uint8_t *data, size_t len, void *ctx) {
+    (void)ctx;
+    fw_gamepad_config_t next;
+    if (fw_gamepad_config_decode(data, len, &next) != 0)
+        return -1;
+    bool was_enabled = (g_gamepad_cfg.mode != FW_GP_MODE_OFF);
+    bool now_enabled = (next.mode != FW_GP_MODE_OFF);
+    g_gamepad_cfg = next;
+    g_gamepad_cfg_dirty = true;
+    g_gp_has_sent = false;
+    if (was_enabled != now_enabled) {
+        g_usb_reenumerate = 1U;
+    }
+    return 0;
+}
+
+static int on_layer_override(uint8_t layer, void *ctx) {
+    (void)ctx;
+    if (layer == 0xFFU) {
+        g_layer_override = 0xFFU;
+        (void)fw_runtime_set_active_profile(&g_rt, g_rt.active_profile);
+        g_gp_resolved_valid = false;
+        return 0;
+    }
+    if (layer >= 8U)
+        return -1;
+    g_layer_override = layer;
+    fw_qmk_set_default_layer(layer);
+    g_gp_resolved_valid = false;
+    return 0;
+}
+
 static void on_refinement_installed(const uint8_t data[FW_REFINEMENT_PAYLOAD_BYTES], void *ctx) {
     (void)ctx;
     (void)fw_runtime_install_refinement(&g_rt, data, FW_REFINEMENT_PAYLOAD_BYTES);
@@ -475,8 +522,13 @@ static bool refinement_is_active(void *ctx) {
 int main(void) {
     init_hardware();
     fw_runtime_init(&g_rt);
+    fw_gamepad_config_default(&g_gamepad_cfg);
     if (fw_lfs_mount() == 0) {
         fw_lfs_load_boot_state(&g_rt);
+        uint8_t gp_buf[FW_GP_CONFIG_WIRE_LEN];
+        if (fw_lfs_load_gamepad_cfg(gp_buf, sizeof(gp_buf)) == 0) {
+            (void)fw_gamepad_config_decode(gp_buf, sizeof(gp_buf), &g_gamepad_cfg);
+        }
 #if FW_ENABLE_PRESS_REFINEMENT
         /* The command receiver is idle before USB initialization. Use its transfer buffer instead of the stack. */
         if (fw_lfs_read_refinement(g_usb_rx.rx_buf) == FW_REFINEMENT_INSTALLED)
@@ -513,6 +565,8 @@ int main(void) {
         .on_refinement_installed = on_refinement_installed,
         .refinement_active = refinement_is_active,
         .on_vial_def_uploaded = on_vial_def_uploaded,
+        .on_gamepad_config = on_gamepad_config,
+        .on_layer_override = on_layer_override,
         .on_language_saved = on_language_saved,
         .on_platform_saved = on_platform_saved,
         .ctx = NULL,
@@ -582,6 +636,19 @@ int main(void) {
             sleep_ms(50);
             reset_usb_boot(0, 0);
         }
+        if (g_usb_reenumerate && !fw_usb_tx_busy(&g_usb_tx)) {
+            g_usb_reenumerate = 0U;
+            if (g_gamepad_cfg_dirty) {
+                uint8_t gp_buf[FW_GP_CONFIG_WIRE_LEN];
+                fw_gamepad_config_encode(&g_gamepad_cfg, gp_buf);
+                (void)fw_lfs_save_gamepad_cfg(gp_buf, sizeof(gp_buf));
+                g_gamepad_cfg_dirty = false;
+            }
+            sleep_ms(20);
+            tud_disconnect();
+            sleep_ms(120);
+            tud_connect();
+        }
         if (g_reboot_soc && !fw_usb_tx_busy(&g_usb_tx)) {
             g_reboot_soc = 0U;
             gpio_init(FW_SOC_RST_GPIO);
@@ -627,8 +694,13 @@ int main(void) {
             g_rt.keyframe_layout != last_qmk_layout) {
             fw_qmk_set_layout(g_rt.keyframe_layout, scan_ms);
             (void)fw_qmk_seed_from_legacy_keymap(&g_rt, g_rt.keyframe_layout);
-            /* Preserve the active profile's default layer across magnetic keyframe hot-swaps. */
-            (void)fw_runtime_set_active_profile(&g_rt, g_rt.active_profile);
+            /* Preserve active App-Linking layer override or profile default layer across hot-swaps. */
+            if (g_layer_override < 8U) {
+                fw_qmk_set_default_layer(g_layer_override);
+            } else {
+                (void)fw_runtime_set_active_profile(&g_rt, g_rt.active_profile);
+            }
+            g_gp_resolved_valid = false;
             last_qmk_layout = g_rt.keyframe_layout;
             resolved_dirty = true;
         }
@@ -666,6 +738,12 @@ int main(void) {
             if (g_language_dirty) {
                 (void)fw_lfs_save_u32("language_code", g_language_pending);
                 g_language_dirty = false;
+            }
+            if (g_gamepad_cfg_dirty) {
+                uint8_t gp_buf[FW_GP_CONFIG_WIRE_LEN];
+                fw_gamepad_config_encode(&g_gamepad_cfg, gp_buf);
+                (void)fw_lfs_save_gamepad_cfg(gp_buf, sizeof(gp_buf));
+                g_gamepad_cfg_dirty = false;
             }
         }
         (void)fw_qmk_poll_eeprom_flush(now_ms, 500U, keys_quiet);
@@ -719,6 +797,32 @@ int main(void) {
         }
         if (qmk_faces_changed) {
             resolved_dirty = true;
+            g_gp_resolved_valid = false;
+        }
+        /* 1000 Hz Hall-effect Analog Gamepad evaluation & USB HID transmission (IF 6, instance 3). */
+        if (g_gamepad_cfg.mode != FW_GP_MODE_OFF) {
+            uint8_t glid = (g_rt.keyframe_layout >= 1U && g_rt.keyframe_layout <= 3U) ? g_rt.keyframe_layout : 1U;
+            uint16_t gn_keys = 0U;
+            for (uint8_t r = 0U; r < FW_MATRIX_ROWS; r++) {
+                if (FW_ROW_LEN[glid][r] > 1U)
+                    gn_keys = (uint16_t)(gn_keys + (FW_ROW_LEN[glid][r] - 1U));
+            }
+            if (!g_gp_resolved_valid) {
+                for (uint16_t k = 0U; k < gn_keys && k < FW_MAX_KEYS_PER_LAYOUT; k++) {
+                    g_gp_resolved_kc[k] = fw_qmk_resolve_key(k, NULL);
+                }
+                g_gp_resolved_valid = true;
+            }
+            fw_gamepad_report_t gp_rep;
+            uint8_t gp_wire[FW_GP_REPORT_WIRE_LEN];
+            fw_gamepad_evaluate(&g_gamepad_cfg, g_rt.flux, g_rt.key_pressed, g_gp_resolved_kc, gn_keys, &gp_rep);
+            fw_gamepad_report_pack(&gp_rep, gp_wire);
+            if ((!g_gp_has_sent || memcmp(gp_wire, g_gp_last_wire, sizeof(gp_wire)) != 0) && tud_hid_n_ready(3)) {
+                if (tud_hid_n_report(3, 0, gp_wire, sizeof(gp_wire))) {
+                    memcpy(g_gp_last_wire, gp_wire, sizeof(gp_wire));
+                    g_gp_has_sent = true;
+                }
+            }
         }
         int keys_changed = (memcmp(last_bitmap, g_rt.key_bitmap, sizeof(last_bitmap)) != 0);
         int leds_changed = (g_rt.host_state_status != last_leds);

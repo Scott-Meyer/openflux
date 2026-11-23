@@ -23,6 +23,9 @@ typedef struct {
     bool (*refinement_active)(void *ctx);
     /* Dynamic XZ-compressed vial.json uploaded by openfluxd (RAM-buffered and debounced to LittleFS). */
     int (*on_vial_def_uploaded)(const uint8_t *xz_data, size_t len, void *ctx);
+    /* Analog gamepad config (0x74) and App-Linking layer override (0x75). */
+    int (*on_gamepad_config)(const uint8_t *data, size_t len, void *ctx);
+    int (*on_layer_override)(uint8_t layer, void *ctx);
 } fw_usb_hooks_t;
 
 typedef enum {

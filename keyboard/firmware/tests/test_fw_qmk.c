@@ -1,3 +1,4 @@
+#include "fw_gamepad.h"
 #include "fw_protocol.h"
 #include "fw_scanner.h"
 #include "lfs_store.h"
@@ -236,8 +237,8 @@ static void test_homerow_mods_and_rapid_trigger_guard(test_qmk_ctx_t *t) {
 }
 
 static void test_flux_custom_action_no_os_keystroke(test_qmk_ctx_t *t) {
-    /* Bind dynamic module slot 50 (USER50 = 0x7E32, past old 32-slot limit) on Layer 0 row 0 col 14. */
-    vial_set_keycode(0U, 0U, 14U, 0x7E32U, 2000U);
+    /* Bind dynamic module slot 35 (USER35 = 0x7E23, within 14..38 dynamic block) on Layer 0 row 0 col 14. */
+    vial_set_keycode(0U, 0U, 14U, 0x7E23U, 2000U);
 
     uint8_t pressed[96] = {0};
     fw_hid_report_t hid;
@@ -246,14 +247,76 @@ static void test_flux_custom_action_no_os_keystroke(test_qmk_ctx_t *t) {
     pressed[14] = 1U;
     fw_qmk_process_scan(pressed, 85U, 2010U, &hid);
     assert(t->flux_event_count == before + 1U);
-    assert(t->last_flux_slot == 50U && t->last_flux_pressed == true);
+    assert(t->last_flux_slot == 35U && t->last_flux_pressed == true);
     /* Must NOT emit any OS keyboard keystroke or modifier */
     assert(hid.modifiers == 0U && hid.keycodes[0] == 0U && hid.consumer_usage == 0U);
 
     pressed[14] = 0U;
     fw_qmk_process_scan(pressed, 85U, 2040U, &hid);
     assert(t->flux_event_count == before + 2U);
-    assert(t->last_flux_slot == 50U && t->last_flux_pressed == false);
+    assert(t->last_flux_slot == 35U && t->last_flux_pressed == false);
+}
+
+static void test_analog_gamepad_math_and_curves(void) {
+    fw_gamepad_config_t cfg;
+    fw_gamepad_config_default(&cfg);
+    cfg.mode = FW_GP_MODE_HID;
+    cfg.deadzone_um = 200U;
+    cfg.saturation_um = 2600U;
+    cfg.curve = FW_GP_CURVE_LINEAR;
+    cfg.radial_clamp = true;
+
+    uint16_t flux[85] = {0};
+    uint8_t pressed[85] = {0};
+    uint16_t resolved[85] = {0};
+    resolved[33] = FW_GP_LS_UP;    /* W */
+    resolved[47] = FW_GP_LS_LEFT;  /* A */
+    resolved[48] = FW_GP_LS_DOWN;  /* S */
+    resolved[49] = FW_GP_LS_RIGHT; /* D */
+    resolved[32] = FW_GP_LT;       /* Q */
+    resolved[34] = FW_GP_RT;       /* E */
+    resolved[78] = FW_GP_A;        /* Space */
+    resolved[72] = FW_GP_DPAD_UP;
+    resolved[84] = FW_GP_DPAD_RIGHT;
+
+    fw_gamepad_report_t rep;
+
+    /* 1. Inside deadzone -> zero stick, centered hat (8), zero buttons */
+    flux[33] = 150U;
+    fw_gamepad_evaluate(&cfg, flux, pressed, resolved, 85U, &rep);
+    assert(rep.lx == 0 && rep.ly == 0 && rep.lt == 0 && rep.rt == 0 && rep.hat == 8U && rep.buttons == 0U);
+
+    /* 2. Full diagonal W+D -> radial clamp normalizes magnitude to ~23170 each (0.707 * 32767) */
+    flux[33] = 2800U;
+    flux[49] = 2800U;
+    flux[32] = 1400U; /* half travel -> ~50% trigger */
+    pressed[78] = 1U; /* A button */
+    pressed[72] = 1U; /* DPad Up */
+    pressed[84] = 1U; /* DPad Right -> NE (1) */
+    fw_gamepad_evaluate(&cfg, flux, pressed, resolved, 85U, &rep);
+    assert(rep.lx > 23000 && rep.lx < 23300);
+    assert(rep.ly < -23000 && rep.ly > -23300);
+    assert(rep.lt > 30000 && rep.lt < 35000);
+    assert(rep.hat == 1U); /* NE */
+    assert((rep.buttons & 1U) == 1U);
+
+    /* 3. Precision curve (t^2) at half travel must be significantly lower than Snappy (1-(1-t)^2) */
+    memset(flux, 0, sizeof(flux));
+    memset(pressed, 0, sizeof(pressed));
+    flux[49] = 1400U; /* exact midpoint between 200 and 2600 */
+    cfg.curve = FW_GP_CURVE_PRECISION;
+    fw_gamepad_evaluate(&cfg, flux, pressed, resolved, 85U, &rep);
+    int16_t prec_x = rep.lx;
+    cfg.curve = FW_GP_CURVE_SNAPPY;
+    fw_gamepad_evaluate(&cfg, flux, pressed, resolved, 85U, &rep);
+    int16_t snap_x = rep.lx;
+    assert(prec_x > 7500 && prec_x < 9000);   /* ~0.25 * 32767 = 8192 */
+    assert(snap_x > 24000 && snap_x < 25000); /* ~0.75 * 32767 = 24575 */
+
+    /* 4. Mode Off -> always zeroed */
+    cfg.mode = FW_GP_MODE_OFF;
+    fw_gamepad_evaluate(&cfg, flux, pressed, resolved, 85U, &rep);
+    assert(rep.lx == 0 && rep.ly == 0 && rep.hat == 8U);
 }
 
 static void test_per_layout_littlefs_persistence_and_uart_state(test_qmk_ctx_t *t) {
@@ -502,6 +565,7 @@ void test_fw_qmk(void) {
     test_per_layout_littlefs_persistence_and_uart_state(&ctx);
     test_one_time_legacy_keymap_upgrade_migration(&ctx);
     test_long_macro_zero_drops_and_load_error_safety(&ctx);
+    test_analog_gamepad_math_and_curves();
 
     printf("fw_qmk tests passed.\n");
 }

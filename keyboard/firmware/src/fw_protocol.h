@@ -51,6 +51,8 @@ enum fw_usb_cmd {
     FW_CMD_PUT_PRESS_REFINEMENT = 0x71,
     FW_CMD_GET_PRESS_REFINEMENT = 0x72,
     FW_CMD_PUT_VIAL_DEF = 0x73,
+    FW_CMD_SET_GAMEPAD_CONFIG = 0x74,
+    FW_CMD_SET_LAYER_OVERRIDE = 0x75,
 };
 
 enum fw_resp_type {

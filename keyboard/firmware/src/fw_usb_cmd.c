@@ -211,6 +211,24 @@ static void dispatch_command(fw_usb_rx_t *rx, fw_usb_send_fn_t send_fn, void *se
             }
             break;
         }
+        case FW_CMD_SET_GAMEPAD_CONFIG: {
+            if (plen >= 7U && rx->hooks.on_gamepad_config &&
+                rx->hooks.on_gamepad_config(p, plen, rx->hooks.ctx) == 0) {
+                send_response(send_fn, send_ctx, rx, FW_RESP_ACK, NULL, 0U);
+            } else {
+                send_response(send_fn, send_ctx, rx, FW_RESP_NAK, NULL, 0U);
+            }
+            break;
+        }
+        case FW_CMD_SET_LAYER_OVERRIDE: {
+            if (plen >= 1U && rx->hooks.on_layer_override &&
+                rx->hooks.on_layer_override(p[0], rx->hooks.ctx) == 0) {
+                send_response(send_fn, send_ctx, rx, FW_RESP_ACK, NULL, 0U);
+            } else {
+                send_response(send_fn, send_ctx, rx, FW_RESP_NAK, NULL, 0U);
+            }
+            break;
+        }
         default:
             send_response(send_fn, send_ctx, rx, FW_RESP_NAK, NULL, 0U);
             break;

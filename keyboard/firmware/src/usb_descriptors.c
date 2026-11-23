@@ -4,13 +4,15 @@
 
 #include <string.h>
 
-#define ITF_NUM_HID        0
-#define ITF_NUM_VENDOR     1
-#define ITF_NUM_CDC        2
-#define ITF_NUM_CDC_DATA   3
-#define ITF_NUM_HID_VENDOR 4
-#define ITF_NUM_HID_VIAL   5
-#define ITF_NUM_TOTAL      6
+#define ITF_NUM_HID         0
+#define ITF_NUM_VENDOR      1
+#define ITF_NUM_CDC         2
+#define ITF_NUM_CDC_DATA    3
+#define ITF_NUM_HID_VENDOR  4
+#define ITF_NUM_HID_VIAL    5
+#define ITF_NUM_HID_GAMEPAD 6
+#define ITF_NUM_TOTAL_BASE  6
+#define ITF_NUM_TOTAL_GP    7
 
 #define EPNUM_VENDOR_OUT 0x01
 #define EPNUM_CDC_OUT    0x02
@@ -21,6 +23,9 @@
 #define EPNUM_HID_VENDOR 0x85
 #define EPNUM_VIAL_OUT   0x06
 #define EPNUM_VIAL_IN    0x86
+#define EPNUM_GAMEPAD_IN 0x87
+
+extern bool fw_usb_gamepad_enabled(void);
 
 #define REPORT_ID_KEYBOARD    1
 #define REPORT_ID_CONSUMER    2
@@ -106,6 +111,59 @@ static const uint8_t desc_hid_vial_report[] = {
         HID_OUTPUT       ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
     HID_COLLECTION_END,
 };
+/* Standard Classic USB HID Gamepad (15 bytes, no Report ID):
+ *   lx, ly, rx, ry (4x int16: -32767..+32767, Usages X, Y, Z, Rz)
+ *   lt, rt         (2x uint16: 0..65535, Usages Rx, Ry)
+ *   hat            (1x uint8: 0..7 = N..NW, 8 = centered)
+ *   buttons        (16x 1-bit: Usages Button 1..16)
+ * Enumerated ONLY when gamepad mode != Off so non-gaming setups expose zero controller to the OS. */
+static const uint8_t desc_hid_gamepad_report[] = {
+    HID_USAGE_PAGE   ( HID_USAGE_PAGE_DESKTOP                   ),
+    HID_USAGE        ( HID_USAGE_DESKTOP_GAMEPAD                ),
+    HID_COLLECTION   ( HID_COLLECTION_APPLICATION               ),
+        /* 4x 16-bit signed stick axes: X, Y, Z, Rz */
+        HID_USAGE_PAGE   ( HID_USAGE_PAGE_DESKTOP               ),
+        HID_USAGE        ( HID_USAGE_DESKTOP_X                  ),
+        HID_USAGE        ( HID_USAGE_DESKTOP_Y                  ),
+        HID_USAGE        ( HID_USAGE_DESKTOP_Z                  ),
+        HID_USAGE        ( HID_USAGE_DESKTOP_RZ                 ),
+        HID_LOGICAL_MIN_N( -32767, 2                            ),
+        HID_LOGICAL_MAX_N( 32767, 2                             ),
+        HID_REPORT_SIZE  ( 16                                   ),
+        HID_REPORT_COUNT ( 4                                    ),
+        HID_INPUT        ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
+        /* 2x 16-bit unsigned analog triggers: Rx (LT), Ry (RT) */
+        HID_USAGE        ( HID_USAGE_DESKTOP_RX                 ),
+        HID_USAGE        ( HID_USAGE_DESKTOP_RY                 ),
+        HID_LOGICAL_MIN  ( 0                                    ),
+        HID_LOGICAL_MAX_N( 65535, 3                             ),
+        HID_REPORT_SIZE  ( 16                                   ),
+        HID_REPORT_COUNT ( 2                                    ),
+        HID_INPUT        ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
+        /* 8-way Hat Switch (D-Pad): 0..7 = N..NW, 8 = null/centered */
+        HID_USAGE        ( HID_USAGE_DESKTOP_HAT_SWITCH         ),
+        HID_LOGICAL_MIN  ( 0                                    ),
+        HID_LOGICAL_MAX  ( 7                                    ),
+        HID_PHYSICAL_MIN ( 0                                    ),
+        HID_PHYSICAL_MAX_N( 315, 2                              ),
+        HID_UNIT         ( 0x14                                 ),
+        HID_REPORT_SIZE  ( 4                                    ),
+        HID_REPORT_COUNT ( 1                                    ),
+        HID_INPUT        ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE | HID_NULL_STATE ),
+        HID_REPORT_SIZE  ( 4                                    ),
+        HID_REPORT_COUNT ( 1                                    ),
+        HID_INPUT        ( HID_CONSTANT                         ),
+        /* 16 digital buttons */
+        HID_USAGE_PAGE   ( HID_USAGE_PAGE_BUTTON                ),
+        HID_USAGE_MIN    ( 1                                    ),
+        HID_USAGE_MAX    ( 16                                   ),
+        HID_LOGICAL_MIN  ( 0                                    ),
+        HID_LOGICAL_MAX  ( 1                                    ),
+        HID_REPORT_SIZE  ( 1                                    ),
+        HID_REPORT_COUNT ( 16                                   ),
+        HID_INPUT        ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
+    HID_COLLECTION_END,
+};
 // clang-format on
 
 const uint8_t *tud_hid_descriptor_report_cb(uint8_t instance) {
@@ -113,10 +171,12 @@ const uint8_t *tud_hid_descriptor_report_cb(uint8_t instance) {
         return desc_hid_of_report;
     if (instance == 2U)
         return desc_hid_vial_report;
+    if (instance == 3U)
+        return desc_hid_gamepad_report;
     return desc_hid_kbd_report;
 }
 
-static const tusb_desc_device_t desc_device = {
+static tusb_desc_device_t desc_device = {
     .bLength = sizeof(tusb_desc_device_t),
     .bDescriptorType = TUSB_DESC_DEVICE,
     .bcdUSB = 0x0210,
@@ -134,6 +194,8 @@ static const tusb_desc_device_t desc_device = {
 };
 
 const uint8_t *tud_descriptor_device_cb(void) {
+    /* Distinct bcdDevice when Classic HID Gamepad is enumerated so OSes cleanly refresh drivers. */
+    desc_device.bcdDevice = fw_usb_gamepad_enabled() ? 0x0103U : 0x0102U;
     return (const uint8_t *)&desc_device;
 }
 
@@ -195,24 +257,36 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
     return false;
 }
 
-#define CONFIG_TOTAL_LEN                                                                                               \
+#define CONFIG_TOTAL_LEN_BASE                                                                                          \
     (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_VENDOR_DESC_LEN + TUD_CDC_DESC_LEN + TUD_HID_DESC_LEN +              \
      TUD_HID_INOUT_DESC_LEN)
 
+#define CONFIG_TOTAL_LEN_GP (CONFIG_TOTAL_LEN_BASE + TUD_HID_DESC_LEN)
+
 // clang-format off
-static const uint8_t desc_configuration[] = {
-    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, 0xA0, 100),
+static const uint8_t desc_configuration_base[] = {
+    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL_BASE, 0, CONFIG_TOTAL_LEN_BASE, 0xA0, 100),
     TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_KEYBOARD, sizeof(desc_hid_kbd_report), EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 1),
     TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, 0, EPNUM_VENDOR_OUT, EPNUM_VENDOR_IN, FW_USB_PACKET_SIZE),
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
     TUD_HID_DESCRIPTOR(ITF_NUM_HID_VENDOR, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_of_report), EPNUM_HID_VENDOR, 16, 1),
     TUD_HID_INOUT_DESCRIPTOR(ITF_NUM_HID_VIAL, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_vial_report), EPNUM_VIAL_OUT, EPNUM_VIAL_IN, CFG_TUD_HID_EP_BUFSIZE, 1),
 };
+
+static const uint8_t desc_configuration_gp[] = {
+    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL_GP, 0, CONFIG_TOTAL_LEN_GP, 0xA0, 100),
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_KEYBOARD, sizeof(desc_hid_kbd_report), EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 1),
+    TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, 0, EPNUM_VENDOR_OUT, EPNUM_VENDOR_IN, FW_USB_PACKET_SIZE),
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID_VENDOR, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_of_report), EPNUM_HID_VENDOR, 16, 1),
+    TUD_HID_INOUT_DESCRIPTOR(ITF_NUM_HID_VIAL, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_vial_report), EPNUM_VIAL_OUT, EPNUM_VIAL_IN, CFG_TUD_HID_EP_BUFSIZE, 1),
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID_GAMEPAD, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_gamepad_report), EPNUM_GAMEPAD_IN, 16, 1),
+};
 // clang-format on
 
 const uint8_t *tud_descriptor_configuration_cb(uint8_t index) {
     (void)index;
-    return desc_configuration;
+    return fw_usb_gamepad_enabled() ? desc_configuration_gp : desc_configuration_base;
 }
 
 static char g_serial_str[2 * PICO_UNIQUE_BOARD_ID_SIZE_BYTES + 1] = "openflux-fw-0001";

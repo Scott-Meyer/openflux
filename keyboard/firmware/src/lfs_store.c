@@ -465,3 +465,22 @@ int fw_lfs_save_vial_def(const uint8_t *buf, size_t len) {
     (void)lfs_remove(&g_lfs, "vial_def.tmp");
     return -1;
 }
+
+int fw_lfs_load_gamepad_cfg(uint8_t *buf, size_t len) {
+    if (!g_mounted || !buf || len == 0U)
+        return -1;
+    size_t n = 0U;
+    if (lfs_read_exact("gamepad_cfg.bin", buf, len, &n) != 0 || n != len)
+        return -1;
+    return 0;
+}
+
+int fw_lfs_save_gamepad_cfg(const uint8_t *buf, size_t len) {
+    if (!g_mounted || !buf || len == 0U)
+        return -1;
+    if (lfs_write_file("gamepad_cfg.tmp", buf, len) == 0 &&
+        lfs_rename(&g_lfs, "gamepad_cfg.tmp", "gamepad_cfg.bin") == 0)
+        return 0;
+    (void)lfs_remove(&g_lfs, "gamepad_cfg.tmp");
+    return -1;
+}

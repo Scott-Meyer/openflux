@@ -11,7 +11,7 @@ use crate::usb::protocol::{
     BRIDGE_CMD_SET_SYSTEM_TIME, BRIDGE_CMD_STAT_FILE, BRIDGE_TARGET, FIRMWARE_TARGET,
     FW_CMD_FILE_FROM_HOST, FW_CMD_FILE_TO_HOST, FW_CMD_GET_KEYMAP, FW_CMD_GET_PRESS_REFINEMENT,
     FW_CMD_PRESS_REFINEMENT_STATUS, FW_CMD_PUT_PRESS_REFINEMENT, FW_CMD_PUT_VIAL_DEF,
-    FW_CMD_SEND_KEYMAP,
+    FW_CMD_SEND_KEYMAP, FW_CMD_SET_GAMEPAD_CONFIG, FW_CMD_SET_LAYER_OVERRIDE,
     FW_CMD_SET_ACTIVE_PROFILE, FW_CMD_SET_LANGUAGE, FW_CMD_SET_PLATFORM, FW_CMD_VERSION,
     KEYBOARD_VID,
 };
@@ -372,6 +372,35 @@ impl KeyboardUsbClient {
     /// `PUT_VIAL_DEF`: uploads a dynamic XZ-compressed `vial.json` definition to RP2040 LittleFS.
     pub fn put_vial_def(&self, xz_bytes: &[u8]) -> Result<(), UsbError> {
         self.transact(FIRMWARE_TARGET, FW_CMD_PUT_VIAL_DEF, xz_bytes, 5000)?;
+        Ok(())
+    }
+
+    /// `SET_GAMEPAD_CONFIG` (0x74): configures the RP2040 Hall-effect Analog Gamepad engine.
+    /// `mode`: 0=Off (no USB controller), 1=Classic HID Gamepad, 2=XInput.
+    /// `curve`: 0=Linear, 1=SCurve, 2=Snappy, 3=Precision.
+    pub fn set_gamepad_config(
+        &self,
+        mode: u8,
+        deadzone_um: u16,
+        saturation_um: u16,
+        curve: u8,
+        radial_clamp: bool,
+    ) -> Result<(), UsbError> {
+        let mut payload = [0u8; 7];
+        payload[0] = mode;
+        payload[1..3].copy_from_slice(&deadzone_um.to_le_bytes());
+        payload[3..5].copy_from_slice(&saturation_um.to_le_bytes());
+        payload[5] = curve;
+        payload[6] = u8::from(radial_clamp);
+        self.transact(FIRMWARE_TARGET, FW_CMD_SET_GAMEPAD_CONFIG, &payload, 3000)?;
+        Ok(())
+    }
+
+    /// `SET_LAYER_OVERRIDE` (0x75): switches QMK's default layer for App Linking (`Some(0..7)`),
+    /// or restores the active profile's default layer (`None` -> `0xFF`).
+    pub fn set_layer_override(&self, layer: Option<u8>) -> Result<(), UsbError> {
+        let byte = layer.unwrap_or(0xFF);
+        self.transact(FIRMWARE_TARGET, FW_CMD_SET_LAYER_OVERRIDE, &[byte], 3000)?;
         Ok(())
     }
 }

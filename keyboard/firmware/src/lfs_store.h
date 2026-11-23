@@ -32,6 +32,8 @@ int fw_lfs_load_qmk_eeprom(uint8_t layout_id, uint8_t *buf, size_t len);
 int fw_lfs_save_qmk_eeprom(uint8_t layout_id, const uint8_t *buf, size_t len);
 int fw_lfs_load_vial_def(uint8_t *buf, size_t cap, size_t *out_len);
 int fw_lfs_save_vial_def(const uint8_t *buf, size_t len);
+int fw_lfs_load_gamepad_cfg(uint8_t *buf, size_t len);
+int fw_lfs_save_gamepad_cfg(const uint8_t *buf, size_t len);
 
 /* Only INSTALLED yields a record suitable for the scanner. Read into scratch, not active model state. */
 fw_refinement_state_t fw_lfs_read_refinement(uint8_t record[FW_REFINEMENT_RECORD_BYTES]);

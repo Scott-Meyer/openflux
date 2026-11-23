@@ -5,7 +5,7 @@ BUILD_DIR ?= build
 # The firmware version has one source: OPENFLUX_FIRMWARE_VERSION in CMakeLists.txt.
 VERSION ?= $(shell sed -n 's/^set(OPENFLUX_FIRMWARE_VERSION "\([^"]*\)").*/\1/p' CMakeLists.txt)
 
-CORE_SRCS = src/fw_calibration.c src/fw_classic_row.c src/fw_classic_neighbors.c src/fw_classic_keys.c src/fw_depth.c src/fw_hdlc.c src/fw_keyframe.c src/fw_lifecycle.c \
+CORE_SRCS = src/fw_calibration.c src/fw_classic_row.c src/fw_classic_neighbors.c src/fw_classic_keys.c src/fw_depth.c src/fw_gamepad.c src/fw_hdlc.c src/fw_keyframe.c src/fw_lifecycle.c \
             src/fw_rapid.c src/fw_refine.c src/fw_refinement_record.c src/fw_rest.c src/fw_rest_runtime.c \
             src/fw_scanner.c src/fw_thermal.c src/fw_usb_cmd.c src/lfs_store.c
 TEST_SRCS = tests/test_fw_core.c tests/test_fw_rapid.c tests/test_fw_refine.c tests/test_fw_refinement.c \

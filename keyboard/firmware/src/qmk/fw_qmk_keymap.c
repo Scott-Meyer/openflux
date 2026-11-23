@@ -117,8 +117,13 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         host_consumer_send(record->event.pressed ? AC_NEXT_KEYBOARD_LAYOUT_SELECT : 0);
         return false;
     }
-    /* Vial USER00..USER63 map contiguously to 0x7E00..0x7E3F (slots 0..63). */
-    if (keycode >= 0x7E00U && keycode <= 0x7E3FU) {
+    /* Fixed 25-slot Analog Gamepad block (0x7E27..0x7E3F): handled at 1000 Hz by fw_gamepad_evaluate();
+     * suppress ordinary OS keyboard output and module action events on these keys. */
+    if (keycode >= 0x7E27U && keycode <= 0x7E3FU) {
+        return false;
+    }
+    /* Vial USER00..USER38 (0x7E00..0x7E26): 14 built-in Flux actions + 25 dynamic module actions. */
+    if (keycode >= 0x7E00U && keycode <= 0x7E26U) {
         fw_qmk_emit_custom_action((uint16_t)(keycode - 0x7E00U), record->event.pressed);
         return false;
     }

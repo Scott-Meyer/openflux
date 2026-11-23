@@ -114,6 +114,7 @@ add_executable(openflux_firmware
     src/fw_classic_neighbors.c
     src/fw_classic_keys.c
     src/fw_depth.c
+    src/fw_gamepad.c
     src/fw_keyframe.c
     src/fw_lifecycle.c
     src/fw_refine.c
