@@ -110,7 +110,7 @@
     {
       "name": "Show the Character Viewer",
       "context": "Common",
-      "label": "Character",
+      "label": "Emoji",
       "mac": "Ctrl+Cmd+Space"
     },
     {
@@ -140,7 +140,7 @@
     {
       "name": "Take a screenshot or make a screen recording",
       "context": "Common",
-      "label": "Screenshot",
+      "label": "Capture UI",
       "mac": "Shift+Cmd+5"
     },
     {
@@ -531,6 +531,654 @@
       "context": "System",
       "label": "Windows",
       "mac": "Ctrl+Down"
+    },
+    {
+      "name": "Copy entire screen to clipboard",
+      "context": "Screenshots",
+      "label": "Screen Clip",
+      "mac": "Ctrl+Shift+Cmd+3"
+    },
+    {
+      "name": "Copy selected area or window to clipboard",
+      "context": "Screenshots",
+      "label": "Area Clip",
+      "mac": "Ctrl+Shift+Cmd+4"
+    },
+    {
+      "name": "Minimize all windows of the front app",
+      "context": "System",
+      "label": "Min All",
+      "mac": "Option+Cmd+M"
+    },
+    {
+      "name": "Reopen last closed tab",
+      "context": "Common",
+      "label": "Reopen Tab",
+      "mac": "Shift+Cmd+T"
+    },
+    {
+      "name": "Toggle hidden files in Finder & file dialogs",
+      "context": "System",
+      "label": "Hidden",
+      "mac": "Shift+Cmd+."
+    },
+    {
+      "name": "Previous tab",
+      "context": "Common",
+      "label": "Prev Tab",
+      "mac": "Shift+Cmd+["
+    },
+    {
+      "name": "Next tab",
+      "context": "Common",
+      "label": "Next Tab",
+      "mac": "Shift+Cmd+]"
+    },
+    {
+      "name": "Zoom in",
+      "context": "Common",
+      "label": "Zoom In",
+      "mac": "Cmd+="
+    },
+    {
+      "name": "Zoom out",
+      "context": "Common",
+      "label": "Zoom Out",
+      "mac": "Cmd+-"
+    },
+    {
+      "name": "Reset zoom to 100%",
+      "context": "Common",
+      "label": "Zoom 100%",
+      "mac": "Cmd+0"
+    },
+    {
+      "name": "Move left a Space",
+      "context": "System",
+      "label": "Space ←",
+      "mac": "Ctrl+Left"
+    },
+    {
+      "name": "Move right a Space",
+      "context": "System",
+      "label": "Space →",
+      "mac": "Ctrl+Right"
+    },
+    {
+      "name": "Delete entire line to the left",
+      "context": "Text editing",
+      "label": "Del Line",
+      "mac": "Cmd+Backspace"
+    },
+    {
+      "name": "Move to beginning of paragraph",
+      "context": "Text editing",
+      "label": "Para ↑",
+      "mac": "Option+Up"
+    },
+    {
+      "name": "Move to end of paragraph",
+      "context": "Text editing",
+      "label": "Para ↓",
+      "mac": "Option+Down"
+    },
+    {
+      "name": "Insert ¡ (Option+1)",
+      "context": "Unicode Symbols",
+      "label": "¡",
+      "mac": "Option+1"
+    },
+    {
+      "name": "Insert ™ (Option+2)",
+      "context": "Unicode Symbols",
+      "label": "™",
+      "mac": "Option+2"
+    },
+    {
+      "name": "Insert £ (Option+3)",
+      "context": "Unicode Symbols",
+      "label": "£",
+      "mac": "Option+3"
+    },
+    {
+      "name": "Insert ¢ (Option+4)",
+      "context": "Unicode Symbols",
+      "label": "¢",
+      "mac": "Option+4"
+    },
+    {
+      "name": "Insert ∞ (Option+5)",
+      "context": "Unicode Symbols",
+      "label": "∞",
+      "mac": "Option+5"
+    },
+    {
+      "name": "Insert § (Option+6)",
+      "context": "Unicode Symbols",
+      "label": "§",
+      "mac": "Option+6"
+    },
+    {
+      "name": "Insert ¶ (Option+7)",
+      "context": "Unicode Symbols",
+      "label": "¶",
+      "mac": "Option+7"
+    },
+    {
+      "name": "Insert • (Option+8)",
+      "context": "Unicode Symbols",
+      "label": "•",
+      "mac": "Option+8"
+    },
+    {
+      "name": "Insert ª (Option+9)",
+      "context": "Unicode Symbols",
+      "label": "ª",
+      "mac": "Option+9"
+    },
+    {
+      "name": "Insert º (Option+0)",
+      "context": "Unicode Symbols",
+      "label": "º",
+      "mac": "Option+0"
+    },
+    {
+      "name": "Insert – (Option+-)",
+      "context": "Unicode Symbols",
+      "label": "–",
+      "mac": "Option+-"
+    },
+    {
+      "name": "Insert ≠ (Option+=)",
+      "context": "Unicode Symbols",
+      "label": "≠",
+      "mac": "Option+="
+    },
+    {
+      "name": "Insert œ (Option+Q)",
+      "context": "Unicode Symbols",
+      "label": "œ",
+      "mac": "Option+Q"
+    },
+    {
+      "name": "Insert ∑ (Option+W)",
+      "context": "Unicode Symbols",
+      "label": "∑",
+      "mac": "Option+W"
+    },
+    {
+      "name": "Insert ´ (Option+E)",
+      "context": "Unicode Symbols",
+      "label": "´",
+      "mac": "Option+E"
+    },
+    {
+      "name": "Insert ® (Option+R)",
+      "context": "Unicode Symbols",
+      "label": "®",
+      "mac": "Option+R"
+    },
+    {
+      "name": "Insert † (Option+T)",
+      "context": "Unicode Symbols",
+      "label": "†",
+      "mac": "Option+T"
+    },
+    {
+      "name": "Insert ¥ (Option+Y)",
+      "context": "Unicode Symbols",
+      "label": "¥",
+      "mac": "Option+Y"
+    },
+    {
+      "name": "Insert ¨ (Option+U)",
+      "context": "Unicode Symbols",
+      "label": "¨",
+      "mac": "Option+U"
+    },
+    {
+      "name": "Insert ˆ (Option+I)",
+      "context": "Unicode Symbols",
+      "label": "ˆ",
+      "mac": "Option+I"
+    },
+    {
+      "name": "Insert ø (Option+O)",
+      "context": "Unicode Symbols",
+      "label": "ø",
+      "mac": "Option+O"
+    },
+    {
+      "name": "Insert π (Option+P)",
+      "context": "Unicode Symbols",
+      "label": "π",
+      "mac": "Option+P"
+    },
+    {
+      "name": "Insert “ (Option+[)",
+      "context": "Unicode Symbols",
+      "label": "“",
+      "mac": "Option+["
+    },
+    {
+      "name": "Insert ‘ (Option+])",
+      "context": "Unicode Symbols",
+      "label": "‘",
+      "mac": "Option+]"
+    },
+    {
+      "name": "Insert « (Option+\\)",
+      "context": "Unicode Symbols",
+      "label": "«",
+      "mac": "Option+\\"
+    },
+    {
+      "name": "Insert å (Option+A)",
+      "context": "Unicode Symbols",
+      "label": "å",
+      "mac": "Option+A"
+    },
+    {
+      "name": "Insert ß (Option+S)",
+      "context": "Unicode Symbols",
+      "label": "ß",
+      "mac": "Option+S"
+    },
+    {
+      "name": "Insert ∂ (Option+D)",
+      "context": "Unicode Symbols",
+      "label": "∂",
+      "mac": "Option+D"
+    },
+    {
+      "name": "Insert ƒ (Option+F)",
+      "context": "Unicode Symbols",
+      "label": "ƒ",
+      "mac": "Option+F"
+    },
+    {
+      "name": "Insert © (Option+G)",
+      "context": "Unicode Symbols",
+      "label": "©",
+      "mac": "Option+G"
+    },
+    {
+      "name": "Insert ˙ (Option+H)",
+      "context": "Unicode Symbols",
+      "label": "˙",
+      "mac": "Option+H"
+    },
+    {
+      "name": "Insert ∆ (Option+J)",
+      "context": "Unicode Symbols",
+      "label": "∆",
+      "mac": "Option+J"
+    },
+    {
+      "name": "Insert ˚ (Option+K)",
+      "context": "Unicode Symbols",
+      "label": "˚",
+      "mac": "Option+K"
+    },
+    {
+      "name": "Insert ¬ (Option+L)",
+      "context": "Unicode Symbols",
+      "label": "¬",
+      "mac": "Option+L"
+    },
+    {
+      "name": "Insert … (Option+;)",
+      "context": "Unicode Symbols",
+      "label": "…",
+      "mac": "Option+;"
+    },
+    {
+      "name": "Insert æ (Option+')",
+      "context": "Unicode Symbols",
+      "label": "æ",
+      "mac": "Option+'"
+    },
+    {
+      "name": "Insert Ω (Option+Z)",
+      "context": "Unicode Symbols",
+      "label": "Ω",
+      "mac": "Option+Z"
+    },
+    {
+      "name": "Insert ≈ (Option+X)",
+      "context": "Unicode Symbols",
+      "label": "≈",
+      "mac": "Option+X"
+    },
+    {
+      "name": "Insert ç (Option+C)",
+      "context": "Unicode Symbols",
+      "label": "ç",
+      "mac": "Option+C"
+    },
+    {
+      "name": "Insert √ (Option+V)",
+      "context": "Unicode Symbols",
+      "label": "√",
+      "mac": "Option+V"
+    },
+    {
+      "name": "Insert ∫ (Option+B)",
+      "context": "Unicode Symbols",
+      "label": "∫",
+      "mac": "Option+B"
+    },
+    {
+      "name": "Insert ˜ (Option+N)",
+      "context": "Unicode Symbols",
+      "label": "˜",
+      "mac": "Option+N"
+    },
+    {
+      "name": "Insert µ (Option+M)",
+      "context": "Unicode Symbols",
+      "label": "µ",
+      "mac": "Option+M"
+    },
+    {
+      "name": "Insert ≤ (Option+,)",
+      "context": "Unicode Symbols",
+      "label": "≤",
+      "mac": "Option+,"
+    },
+    {
+      "name": "Insert ≥ (Option+.)",
+      "context": "Unicode Symbols",
+      "label": "≥",
+      "mac": "Option+."
+    },
+    {
+      "name": "Insert ÷ (Option+/)",
+      "context": "Unicode Symbols",
+      "label": "÷",
+      "mac": "Option+/"
+    },
+    {
+      "name": "Insert ` (Option+`)",
+      "context": "Unicode Symbols",
+      "label": "`",
+      "mac": "Option+`"
+    },
+    {
+      "name": "Insert ⁄ (Shift+Option+1)",
+      "context": "Unicode Symbols",
+      "label": "⁄",
+      "mac": "Shift+Option+1"
+    },
+    {
+      "name": "Insert € (Shift+Option+2)",
+      "context": "Unicode Symbols",
+      "label": "€",
+      "mac": "Shift+Option+2"
+    },
+    {
+      "name": "Insert ‹ (Shift+Option+3)",
+      "context": "Unicode Symbols",
+      "label": "‹",
+      "mac": "Shift+Option+3"
+    },
+    {
+      "name": "Insert › (Shift+Option+4)",
+      "context": "Unicode Symbols",
+      "label": "›",
+      "mac": "Shift+Option+4"
+    },
+    {
+      "name": "Insert ﬁ (Shift+Option+5)",
+      "context": "Unicode Symbols",
+      "label": "ﬁ",
+      "mac": "Shift+Option+5"
+    },
+    {
+      "name": "Insert ﬂ (Shift+Option+6)",
+      "context": "Unicode Symbols",
+      "label": "ﬂ",
+      "mac": "Shift+Option+6"
+    },
+    {
+      "name": "Insert ‡ (Shift+Option+7)",
+      "context": "Unicode Symbols",
+      "label": "‡",
+      "mac": "Shift+Option+7"
+    },
+    {
+      "name": "Insert ° (Shift+Option+8)",
+      "context": "Unicode Symbols",
+      "label": "°",
+      "mac": "Shift+Option+8"
+    },
+    {
+      "name": "Insert · (Shift+Option+9)",
+      "context": "Unicode Symbols",
+      "label": "·",
+      "mac": "Shift+Option+9"
+    },
+    {
+      "name": "Insert ‚ (Shift+Option+0)",
+      "context": "Unicode Symbols",
+      "label": "‚",
+      "mac": "Shift+Option+0"
+    },
+    {
+      "name": "Insert — (Shift+Option+-)",
+      "context": "Unicode Symbols",
+      "label": "—",
+      "mac": "Shift+Option+-"
+    },
+    {
+      "name": "Insert ± (Shift+Option+=)",
+      "context": "Unicode Symbols",
+      "label": "±",
+      "mac": "Shift+Option+="
+    },
+    {
+      "name": "Insert Œ (Shift+Option+Q)",
+      "context": "Unicode Symbols",
+      "label": "Œ",
+      "mac": "Shift+Option+Q"
+    },
+    {
+      "name": "Insert „ (Shift+Option+W)",
+      "context": "Unicode Symbols",
+      "label": "„",
+      "mac": "Shift+Option+W"
+    },
+    {
+      "name": "Insert ´ (Shift+Option+E)",
+      "context": "Unicode Symbols",
+      "label": "´",
+      "mac": "Shift+Option+E"
+    },
+    {
+      "name": "Insert ‰ (Shift+Option+R)",
+      "context": "Unicode Symbols",
+      "label": "‰",
+      "mac": "Shift+Option+R"
+    },
+    {
+      "name": "Insert ˇ (Shift+Option+T)",
+      "context": "Unicode Symbols",
+      "label": "ˇ",
+      "mac": "Shift+Option+T"
+    },
+    {
+      "name": "Insert Á (Shift+Option+Y)",
+      "context": "Unicode Symbols",
+      "label": "Á",
+      "mac": "Shift+Option+Y"
+    },
+    {
+      "name": "Insert ¨ (Shift+Option+U)",
+      "context": "Unicode Symbols",
+      "label": "¨",
+      "mac": "Shift+Option+U"
+    },
+    {
+      "name": "Insert ˆ (Shift+Option+I)",
+      "context": "Unicode Symbols",
+      "label": "ˆ",
+      "mac": "Shift+Option+I"
+    },
+    {
+      "name": "Insert Ø (Shift+Option+O)",
+      "context": "Unicode Symbols",
+      "label": "Ø",
+      "mac": "Shift+Option+O"
+    },
+    {
+      "name": "Insert ∏ (Shift+Option+P)",
+      "context": "Unicode Symbols",
+      "label": "∏",
+      "mac": "Shift+Option+P"
+    },
+    {
+      "name": "Insert ” (Shift+Option+[)",
+      "context": "Unicode Symbols",
+      "label": "”",
+      "mac": "Shift+Option+["
+    },
+    {
+      "name": "Insert ’ (Shift+Option+])",
+      "context": "Unicode Symbols",
+      "label": "’",
+      "mac": "Shift+Option+]"
+    },
+    {
+      "name": "Insert » (Shift+Option+\\)",
+      "context": "Unicode Symbols",
+      "label": "»",
+      "mac": "Shift+Option+\\"
+    },
+    {
+      "name": "Insert Å (Shift+Option+A)",
+      "context": "Unicode Symbols",
+      "label": "Å",
+      "mac": "Shift+Option+A"
+    },
+    {
+      "name": "Insert Í (Shift+Option+S)",
+      "context": "Unicode Symbols",
+      "label": "Í",
+      "mac": "Shift+Option+S"
+    },
+    {
+      "name": "Insert Î (Shift+Option+D)",
+      "context": "Unicode Symbols",
+      "label": "Î",
+      "mac": "Shift+Option+D"
+    },
+    {
+      "name": "Insert Ï (Shift+Option+F)",
+      "context": "Unicode Symbols",
+      "label": "Ï",
+      "mac": "Shift+Option+F"
+    },
+    {
+      "name": "Insert ˝ (Shift+Option+G)",
+      "context": "Unicode Symbols",
+      "label": "˝",
+      "mac": "Shift+Option+G"
+    },
+    {
+      "name": "Insert Ó (Shift+Option+H)",
+      "context": "Unicode Symbols",
+      "label": "Ó",
+      "mac": "Shift+Option+H"
+    },
+    {
+      "name": "Insert Ô (Shift+Option+J)",
+      "context": "Unicode Symbols",
+      "label": "Ô",
+      "mac": "Shift+Option+J"
+    },
+    {
+      "name": "Insert Apple (Shift+Option+K)",
+      "context": "Unicode Symbols",
+      "label": "Apple",
+      "mac": "Shift+Option+K"
+    },
+    {
+      "name": "Insert Ò (Shift+Option+L)",
+      "context": "Unicode Symbols",
+      "label": "Ò",
+      "mac": "Shift+Option+L"
+    },
+    {
+      "name": "Insert Ú (Shift+Option+;)",
+      "context": "Unicode Symbols",
+      "label": "Ú",
+      "mac": "Shift+Option+;"
+    },
+    {
+      "name": "Insert Æ (Shift+Option+')",
+      "context": "Unicode Symbols",
+      "label": "Æ",
+      "mac": "Shift+Option+'"
+    },
+    {
+      "name": "Insert ¸ (Shift+Option+Z)",
+      "context": "Unicode Symbols",
+      "label": "¸",
+      "mac": "Shift+Option+Z"
+    },
+    {
+      "name": "Insert ˛ (Shift+Option+X)",
+      "context": "Unicode Symbols",
+      "label": "˛",
+      "mac": "Shift+Option+X"
+    },
+    {
+      "name": "Insert Ç (Shift+Option+C)",
+      "context": "Unicode Symbols",
+      "label": "Ç",
+      "mac": "Shift+Option+C"
+    },
+    {
+      "name": "Insert ◊ (Shift+Option+V)",
+      "context": "Unicode Symbols",
+      "label": "◊",
+      "mac": "Shift+Option+V"
+    },
+    {
+      "name": "Insert ı (Shift+Option+B)",
+      "context": "Unicode Symbols",
+      "label": "ı",
+      "mac": "Shift+Option+B"
+    },
+    {
+      "name": "Insert ˜ (Shift+Option+N)",
+      "context": "Unicode Symbols",
+      "label": "˜",
+      "mac": "Shift+Option+N"
+    },
+    {
+      "name": "Insert Â (Shift+Option+M)",
+      "context": "Unicode Symbols",
+      "label": "Â",
+      "mac": "Shift+Option+M"
+    },
+    {
+      "name": "Insert ¯ (Shift+Option+,)",
+      "context": "Unicode Symbols",
+      "label": "¯",
+      "mac": "Shift+Option+,"
+    },
+    {
+      "name": "Insert ˘ (Shift+Option+.)",
+      "context": "Unicode Symbols",
+      "label": "˘",
+      "mac": "Shift+Option+."
+    },
+    {
+      "name": "Insert ¿ (Shift+Option+/)",
+      "context": "Unicode Symbols",
+      "label": "¿",
+      "mac": "Shift+Option+/"
     }
   ]
 }

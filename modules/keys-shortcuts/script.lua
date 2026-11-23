@@ -57,16 +57,17 @@ end
 local function find_shortcuts_dir()
   local mdir = module.dir()
   local candidates = {
-    "/usr/lib/openflux/display/shortcuts",
+    mdir .. "/shortcuts",
     "/home/root/openflux/shortcuts",
-    mdir .. "/../../assets/shortcuts",
-    mdir .. "/../assets/shortcuts",
+    "/usr/lib/openflux/display/shortcuts",
   }
   local home = os.getenv("HOME")
   if home and #home > 0 then
-    table.insert(candidates, home .. "/Applications/OpenFlux Studio.app/Contents/Resources/assets/shortcuts")
     table.insert(candidates, home .. "/.local/share/openflux/assets/shortcuts")
+    table.insert(candidates, home .. "/Applications/OpenFlux Studio.app/Contents/Resources/assets/shortcuts")
   end
+  table.insert(candidates, mdir .. "/../../assets/shortcuts")
+  table.insert(candidates, mdir .. "/../assets/shortcuts")
   for _, d in ipairs(candidates) do
     local files = fs.list_dir(d)
     if type(files) == "table" and #files > 0 then
@@ -116,6 +117,10 @@ local function parse_combo(str)
 
   local mods = 0
   local key_tok = nil
+  -- Preserve literal trailing '+' (e.g. "Cmd++" -> Zoom In = KC_EQL)
+  if string.sub(str, -2) == "++" then
+    str = string.sub(str, 1, -2) .. "PLUS"
+  end
   for part in string.gmatch(str, "[^+]+") do
     local up = string.upper(part:match("^%s*(.-)%s*$") or "")
     if up == "CTRL" or up == "CONTROL" then

@@ -192,9 +192,35 @@ local function rule_from_legacy_action(ki, act, lower_default)
   return { key = ki, label = kc:gsub("^KC_", "") }
 end
 
+local function should_show_key(kc, src_layer, vis)
+  if vis == "hidden" then
+    return false
+  elseif vis == "layers_only" then
+    return (src_layer or 0) > 0
+  elseif vis == "hide_letters" then
+    -- Touch-typist mode: hide A..Z letters on Layer 0, keep symbols/numbers/modifiers/Fn layers!
+    if (src_layer or 0) == 0 and kc >= 0x04 and kc <= 0x1D then
+      return false
+    end
+    return true
+  end
+  return true
+end
+
 local function publish_keymap()
-  local lower_default = module.config().lowercase_default ~= false
+  local cfg = module.config()
+  local lower_default = cfg.lowercase_default ~= false
+  local vis = tostring(cfg.legend_visibility or "all")
   local rules = {}
+
+  if vis == "hidden" then
+    bus.publish("keys/providers/keymap", {
+      priority = 10,
+      mode = "replace",
+      rules = {},
+    }, true)
+    return
+  end
 
   -- Priority 1: Live QMK/Vial `keyboard/resolved_keys` (instant updates on every layer & Vialite edit!)
   if type(resolved_keys) == "table" and type(resolved_keys.keys) == "table" and #resolved_keys.keys > 0 then
@@ -202,21 +228,28 @@ local function publish_keymap()
       if type(entry) == "table" then
         local kc = tonumber(entry.keycode) or 0
         local sl = tonumber(entry.source_layer) or 0
-        local r = rule_from_qmk_keycode(idx - 1, kc, sl, lower_default)
-        if r then table.insert(rules, r) end
+        if should_show_key(kc, sl, vis) then
+          local r = rule_from_qmk_keycode(idx - 1, kc, sl, lower_default)
+          if r then table.insert(rules, r) end
+        end
       end
     end
   elseif type(hw_keymap) == "table" and type(hw_keymap.layers) == "table" and #hw_keymap.layers > 0 then
-    local l0 = hw_keymap.layers[1]
-    if l0 and type(l0.keyActions) == "table" and #l0.keyActions > 0 then
-      for idx, act in ipairs(l0.keyActions) do
-        local r = rule_from_legacy_action(idx - 1, act, lower_default)
-        if r then table.insert(rules, r) end
+    if vis ~= "layers_only" then
+      local l0 = hw_keymap.layers[1]
+      if l0 and type(l0.keyActions) == "table" and #l0.keyActions > 0 then
+        for idx, act in ipairs(l0.keyActions) do
+          local r = rule_from_legacy_action(idx - 1, act, lower_default)
+          if r then
+            local skip = (vis == "hide_letters" and r.shift_case == true)
+            if not skip then table.insert(rules, r) end
+          end
+        end
       end
     end
   end
 
-  if #rules == 0 then
+  if #rules == 0 and vis == "all" then
     -- Minimal fallback ANSI default when keyboard is unplugged
     local fallback = {
       { 0, "Esc" }, { 1, "F1" }, { 2, "F2" }, { 3, "F3" }, { 4, "F4" }, { 5, "F5" }, { 6, "F6" },

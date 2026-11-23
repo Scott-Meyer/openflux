@@ -23,3 +23,10 @@ key = "lowercase_default"
 label = "Lowercase Letters When Unshifted"
 kind = "boolean"
 default = true
+
+[[settings]]
+key = "legend_visibility"
+label = "Base Keycap Legends"
+kind = "select"
+default = "all"
+options = ["all", "hide_letters", "layers_only", "hidden"]

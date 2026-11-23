@@ -133,8 +133,10 @@ function on_event(topic, payload)
     end
   elseif topic == "input/keys/event" and type(payload) == "table" then
     local pk = configured_peek_key()
-    if pk and tonumber(payload.key) == pk then
-      local next_p = (payload.pressed == true)
+    local ki = tonumber(payload.key_index)
+    if ki == nil then ki = tonumber(payload.key) end
+    if pk and ki == pk then
+      local next_p = (payload.kind == "press") or (payload.pressed == true)
       if next_p ~= peeking then
         peeking = next_p
         bus.publish("modules/prusa-connect/peek", { active = peeking }, true)
