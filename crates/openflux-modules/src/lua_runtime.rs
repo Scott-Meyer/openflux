@@ -430,6 +430,13 @@ impl UserData for RenderCtxHandle {
             this.scene.lock().unwrap().background_media = Some(full);
             Ok(())
         });
+        methods.add_method("stream_background", |_, this, stream_name: String| {
+            let trimmed = stream_name.trim().to_string();
+            if !trimmed.is_empty() {
+                this.scene.lock().unwrap().background_stream = Some(trimmed);
+            }
+            Ok(())
+        });
         methods.add_method("background_dimming", |_, this, frac: f32| {
             this.scene.lock().unwrap().bg_dimming = frac.clamp(0.0, 0.9);
             Ok(())

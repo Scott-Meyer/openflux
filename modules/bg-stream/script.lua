@@ -1,43 +1,34 @@
 -- Live Stream Background (`bg-stream`)
 -- Stackable with `bg-media` and `bg-aurora-shader`!
--- When no stream is live/active, this module draws NOTHING (100% transparent) so your normal
--- background plays underneath untouched. The moment a YouTube / Twitch / HLS / RTSP stream
--- starts producing frames, it takes over the background (full 3D water ripples & key legends
--- continue working right on top!).
+-- Uses OpenFlux v2's `CH_MEDIA` live H.264 hardware stream (`ctx:stream_background("bg-stream")`)
+-- decoded directly by the RK3566 `rkmpp` hardware VPU at up to 1080p 60 FPS with ZERO disk writes!
+-- When no stream is active/live (or stream closes/offline), draws NOTHING (100% transparent)
+-- so your ocean waves / Patagonia background underneath plays seamlessly untouched.
 
-local stream = {
-  live = false,
-  local_path = "",
-  kb_path = "/home/root/openflux/media/stream_live.jpg",
-}
+local stream_active = false
 
 function on_init()
-  local cur = bus.get("modules/bg-stream/state")
+  local cur = bus.get("modules/streams/bg-stream")
   if type(cur) == "table" then
-    stream = cur
+    stream_active = (cur.active == true)
   end
 end
 
 function on_event(topic, payload)
-  if topic == "modules/bg-stream/state" and type(payload) == "table" then
-    stream = payload
+  if topic == "modules/streams/bg-stream" and type(payload) == "table" then
+    stream_active = (payload.active == true)
   end
 end
 
 function on_render(ctx, stage)
   if stage ~= "background" then return end
   local cfg = module.config()
-  if cfg.active == false or not stream.live then
-    -- 100% transparent: let bg-media / bg-aurora-shader underneath show through!
+  if cfg.active == false or not stream_active then
+    -- 100% transparent: underlying `bg-media` / `bg-aurora-shader` shines right through!
     return
   end
 
-  local is_linux_kb = (string.sub(module.dir(), 1, 5) == "/usr/" or string.sub(module.dir(), 1, 6) == "/home/")
-  local path = is_linux_kb and tostring(stream.kb_path or "/home/root/openflux/media/stream_live.jpg")
-    or tostring(stream.local_path or "")
-  if #path == 0 then return end
-
-  ctx:background_media(path)
+  ctx:stream_background("bg-stream")
   local dim = tonumber(cfg.bg_dimming) or 20
   if dim > 0 then
     ctx:background_dimming(math.max(0.0, math.min(0.85, dim / 100.0)))

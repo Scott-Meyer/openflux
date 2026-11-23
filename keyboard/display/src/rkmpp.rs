@@ -588,6 +588,190 @@ pub fn open_rkmpp_stream(path: &str) -> Option<RkmppVideoStream> {
     })
 }
 
+/// Direct live H.264 Annex-B hardware VPU decoder (`librockchip_mpp.so.1`) for real-time USB
+/// `CH_MEDIA` streams (YouTube, Twitch, screen share, RTSP camera) at 1080p 60 FPS with ZERO
+/// ffmpeg subprocess and ZERO disk writes!
+pub struct LiveRkmppDecoder {
+    in_tx: Option<mpsc::SyncSender<Vec<u8>>>,
+    latest_frame: Arc<Mutex<Option<Nv12Frame>>>,
+    stop: Arc<AtomicBool>,
+    join: Option<JoinHandle<()>>,
+}
+
+impl LiveRkmppDecoder {
+    pub fn open_h264() -> Option<Self> {
+        let mpp = MppLib::load()?;
+        let (in_tx, in_rx) = mpsc::sync_channel::<Vec<u8>>(32);
+        let latest_frame: Arc<Mutex<Option<Nv12Frame>>> = Arc::new(Mutex::new(None));
+        let latest_bg = latest_frame.clone();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_bg = stop.clone();
+
+        let join = thread::Builder::new()
+            .name("rkmpp-live-h264".into())
+            .spawn(move || unsafe {
+                let mut ctx: *mut c_void = std::ptr::null_mut();
+                let mut mpi: *const MppApi = std::ptr::null();
+                if (mpp.mpp_create)(&mut ctx, &mut mpi) != 0 || ctx.is_null() || mpi.is_null() {
+                    return;
+                }
+                if let Some(ctrl) = (*mpi).control {
+                    let mut split: u32 = 1;
+                    let _ = ctrl(
+                        ctx,
+                        MPP_DEC_SET_PARSER_SPLIT_MODE,
+                        &mut split as *mut u32 as *mut c_void,
+                    );
+                }
+                if (mpp.mpp_init)(ctx, MPP_CTX_DEC, MPP_VIDEO_CODING_AVC) != 0 {
+                    let _ = (mpp.mpp_destroy)(ctx);
+                    return;
+                }
+                if let Some(ctrl) = (*mpi).control {
+                    let mut in_tmo: i64 = 10;
+                    let _ = ctrl(
+                        ctx,
+                        MPP_SET_INPUT_TIMEOUT,
+                        &mut in_tmo as *mut i64 as *mut c_void,
+                    );
+                    let mut out_tmo: i64 = 0;
+                    let _ = ctrl(
+                        ctx,
+                        MPP_SET_OUTPUT_TIMEOUT,
+                        &mut out_tmo as *mut i64 as *mut c_void,
+                    );
+                    let mut fmt_out: i32 = MPP_FMT_YUV420SP;
+                    let _ = ctrl(
+                        ctx,
+                        MPP_DEC_SET_OUTPUT_FORMAT,
+                        &mut fmt_out as *mut i32 as *mut c_void,
+                    );
+                }
+                let put_pkt = (*mpi).decode_put_packet;
+                let get_frm = (*mpi).decode_get_frame;
+                let ctrl_fn = (*mpi).control;
+                let caller = CString::new("openflux_rkmpp_live").unwrap();
+                let mut frame_idx = 0u64;
+
+                while !stop_bg.load(Ordering::SeqCst) {
+                    let Ok(chunk) = in_rx.recv_timeout(std::time::Duration::from_millis(50)) else {
+                        continue;
+                    };
+                    if chunk.is_empty() {
+                        continue;
+                    }
+                    let mut pkt: *mut c_void = std::ptr::null_mut();
+                    if (mpp.mpp_packet_init)(&mut pkt, chunk.as_ptr() as *mut c_void, chunk.len()) != 0
+                        || pkt.is_null()
+                    {
+                        continue;
+                    }
+                    let mut sent = false;
+                    let mut attempts = 0u32;
+                    while !sent && attempts < 20 && !stop_bg.load(Ordering::SeqCst) {
+                        attempts += 1;
+                        if let Some(put) = put_pkt {
+                            if put(ctx, pkt) == 0 {
+                                sent = true;
+                            }
+                        }
+                        loop {
+                            let mut frm: *mut c_void = std::ptr::null_mut();
+                            let Some(getf) = get_frm else { break };
+                            let ret = getf(ctx, &mut frm);
+                            if ret != 0 || frm.is_null() {
+                                break;
+                            }
+                            if (mpp.mpp_frame_get_info_change)(frm) != 0 {
+                                if let Some(ctrl) = ctrl_fn {
+                                    let _ = ctrl(
+                                        ctx,
+                                        MPP_DEC_SET_INFO_CHANGE_READY,
+                                        std::ptr::null_mut(),
+                                    );
+                                }
+                                (mpp.mpp_frame_deinit)(&mut frm);
+                                continue;
+                            }
+                            let fmt = (mpp.mpp_frame_get_fmt)(frm);
+                            let buf = (mpp.mpp_frame_get_buffer)(frm);
+                            if !buf.is_null() {
+                                let w = (mpp.mpp_frame_get_width)(frm);
+                                let h = (mpp.mpp_frame_get_height)(frm);
+                                let hs = (mpp.mpp_frame_get_hor_stride)(frm);
+                                let vs = (mpp.mpp_frame_get_ver_stride)(frm);
+                                let buf_sz = (mpp.mpp_buffer_get_size)(buf, caller.as_ptr());
+                                let ptr =
+                                    (mpp.mpp_buffer_get_ptr)(buf, caller.as_ptr()) as *const u8;
+                                if let Some((wu, hu, hsu, uv_off, uv_rows, nv12_sz)) =
+                                    validate_nv12_frame_bounds(fmt, w, h, hs, vs, buf_sz)
+                                {
+                                    if !ptr.is_null() {
+                                        let mut nv12 = Vec::with_capacity(nv12_sz);
+                                        for row in 0..hu {
+                                            nv12.extend_from_slice(std::slice::from_raw_parts(
+                                                ptr.add(row * hsu),
+                                                wu,
+                                            ));
+                                        }
+                                        let uv_base = ptr.add(uv_off);
+                                        for row in 0..uv_rows {
+                                            nv12.extend_from_slice(std::slice::from_raw_parts(
+                                                uv_base.add(row * hsu),
+                                                wu,
+                                            ));
+                                        }
+                                        frame_idx += 1;
+                                        *latest_bg.lock().unwrap() = Some(Nv12Frame {
+                                            pts_ms: frame_idx * 16,
+                                            width: w,
+                                            height: h,
+                                            nv12,
+                                        });
+                                    }
+                                }
+                            }
+                            (mpp.mpp_frame_deinit)(&mut frm);
+                        }
+                        if !sent {
+                            thread::sleep(std::time::Duration::from_millis(1));
+                        }
+                    }
+                    let _ = (mpp.mpp_packet_deinit)(&mut pkt);
+                }
+                let _ = (mpp.mpp_destroy)(ctx);
+            })
+            .ok()?;
+
+        Some(Self {
+            in_tx: Some(in_tx),
+            latest_frame,
+            stop,
+            join: Some(join),
+        })
+    }
+
+    pub fn push_annexb(&self, data: Vec<u8>) {
+        if let Some(ref tx) = self.in_tx {
+            let _ = tx.try_send(data);
+        }
+    }
+
+    pub fn take_latest(&self) -> Option<Nv12Frame> {
+        self.latest_frame.lock().unwrap().take()
+    }
+}
+
+impl Drop for LiveRkmppDecoder {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        self.in_tx.take();
+        if let Some(jh) = self.join.take() {
+            let _ = jh.join();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

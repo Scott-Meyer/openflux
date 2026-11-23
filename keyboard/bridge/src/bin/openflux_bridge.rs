@@ -8,6 +8,7 @@ use openflux_bridge::uart_bridge::UartBridge;
 use openflux_bridge::usb_commands::CommandHooks;
 use openflux_bridge::usb_gadget::{bridge_open_ffs, bridge_setup_gadget};
 use openflux_bridge::usb_rx::BridgeRxState;
+use openflux_bridge::v2_mux::V2BridgeMux;
 use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -130,10 +131,11 @@ const FUNCTIONFS_DISABLE: u8 = 3;
 const FUNCTIONFS_SETUP: u8 = 4;
 
 #[cfg(target_os = "linux")]
-fn drain_ep0_events(ep0: RawFd, tx_q: &mut FfsTxQueue, rx: &mut BridgeRxState) {
+fn drain_ep0_events(ep0: RawFd, tx_q: &mut FfsTxQueue, rx: &mut BridgeRxState) -> bool {
     if ep0 < 0 {
-        return;
+        return false;
     }
+    let mut disconnected = false;
     #[repr(C)]
     #[derive(Clone, Copy)]
     struct UsbCtrlRequest {
@@ -177,6 +179,7 @@ fn drain_ep0_events(ep0: RawFd, tx_q: &mut FfsTxQueue, rx: &mut BridgeRxState) {
             if ev.ev_type == FUNCTIONFS_DISABLE || ev.ev_type == FUNCTIONFS_UNBIND {
                 tx_q.abort_all();
                 rx.reset();
+                disconnected = true;
             } else if ev.ev_type == FUNCTIONFS_SETUP {
                 let mut dummy: u8 = 0;
                 if (ev.u_setup.b_request_type & 0x80) != 0 {
@@ -187,6 +190,7 @@ fn drain_ep0_events(ep0: RawFd, tx_q: &mut FfsTxQueue, rx: &mut BridgeRxState) {
             }
         }
     }
+    disconnected
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -288,6 +292,10 @@ fn main() {
         let _ = ipc.init(Some(sp));
     } else if !test_mode {
         let _ = ipc.init(Some(BRIDGE_SOCK_DEFAULT));
+    }
+    let mut v2_mux = V2BridgeMux::new();
+    if !test_mode {
+        let _ = v2_mux.init_socket();
     }
 
     let (mut aio, mut tx_q) = if !test_mode {
@@ -425,6 +433,30 @@ fn main() {
             client_poll_indices.push((idx, cfd));
         }
 
+        let v2_listen_fd = v2_mux.listen_fd();
+        let v2_listen_idx = if v2_listen_fd >= 0 {
+            let idx = pfds.len();
+            pfds.push(libc::pollfd {
+                fd: v2_listen_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            });
+            Some(idx)
+        } else {
+            None
+        };
+        let v2_client_fds = v2_mux.client_fds();
+        let mut v2_client_poll_indices: Vec<(usize, RawFd)> = Vec::with_capacity(v2_client_fds.len());
+        for cfd in v2_client_fds {
+            let idx = pfds.len();
+            pfds.push(libc::pollfd {
+                fd: cfd,
+                events: libc::POLLIN,
+                revents: 0,
+            });
+            v2_client_poll_indices.push((idx, cfd));
+        }
+
         let need_aio_retry = aio
             .as_ref()
             .is_some_and(|a| !a.pending || (tx_q.has_pending() && !tx_q.pending));
@@ -528,8 +560,10 @@ fn main() {
         }
 
         if let Some(i) = ep0_idx {
-            if (pfds[i].revents & libc::POLLIN) != 0 {
-                drain_ep0_events(ep0, &mut tx_q, &mut rx);
+            if (pfds[i].revents & libc::POLLIN) != 0
+                && drain_ep0_events(ep0, &mut tx_q, &mut rx)
+            {
+                v2_mux.on_usb_disconnect();
             }
         }
         if let Some(i) = ipc_idx {
@@ -540,6 +574,21 @@ fn main() {
         for (idx, cfd) in client_poll_indices {
             if (pfds[idx].revents & (libc::POLLIN | libc::POLLERR | libc::POLLHUP)) != 0 {
                 ipc.read_client_by_fd(cfd, &mut uart);
+            }
+        }
+        if let Some(i) = v2_listen_idx {
+            if (pfds[i].revents & libc::POLLIN) != 0 {
+                v2_mux.accept();
+            }
+        }
+        for (idx, cfd) in v2_client_poll_indices {
+            if (pfds[idx].revents & (libc::POLLIN | libc::POLLERR | libc::POLLHUP)) != 0 {
+                v2_mux.read_display_client_by_fd(cfd);
+            }
+        }
+        while let Some(tx_bytes) = v2_mux.pop_next_usb_tx() {
+            if !tx_q.enqueue(Some(&tx_bytes)) {
+                break;
             }
         }
 
@@ -604,6 +653,7 @@ fn main() {
                 {
                     tx_q.abort_all();
                     rx.reset();
+                    v2_mux.on_usb_disconnect();
                 } else {
                     let mut hooks = LoopHooks {
                         tx_q: &mut tx_q,
@@ -624,7 +674,13 @@ fn main() {
             }
 
             let terminated = rx_chunk.len() < max_read;
-            {
+            if v2_mux.try_feed_usb(&rx_chunk) {
+                while let Some(tx_bytes) = v2_mux.pop_next_usb_tx() {
+                    if !tx_q.enqueue(Some(&tx_bytes)) {
+                        break;
+                    }
+                }
+            } else {
                 let mut hooks = LoopHooks {
                     tx_q: &mut tx_q,
                     ipc: &mut ipc,
@@ -647,6 +703,7 @@ fn main() {
     }
     tx_q.destroy();
     rx.reset();
+    v2_mux.close_socket();
     ipc.close();
     uart.close();
     unsafe {

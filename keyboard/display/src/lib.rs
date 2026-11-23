@@ -7,6 +7,7 @@ pub mod ipc;
 pub mod layout;
 pub mod media_bg;
 pub mod renderer;
+pub mod v2_mux_client;
 pub mod v2_runtime;
 #[cfg(target_os = "linux")]
 pub mod rkmpp;

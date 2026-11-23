@@ -172,6 +172,12 @@ fn spawn_v2_bus_bridge_thread(
             };
 
             while running.load(Ordering::Relaxed) {
+                // When clean full-duplex OFV2 USB mux is active, it owns 100% of broker mirroring!
+                if device.is_v2_mux_active() {
+                    was_connected = false;
+                    let _ = sub.recv_timeout(Duration::from_millis(250));
+                    continue;
+                }
                 let (has_bridge, _) = device.is_connected();
                 if !has_bridge || state.check_keyboard_unreserved().is_err() {
                     was_connected = false;
@@ -2154,7 +2160,9 @@ pub fn reconcile_tick_with_state(
         }
     }
 
-    if has_bridge {
+    // When OFV2 full-duplex mux is active, all telemetry/app/media/weather flow cleanly over
+    // subscription-driven `CH_BUS` mirroring — ZERO legacy v1 `live_json` / HDLC traffic!
+    if has_bridge && !device.is_v2_mux_active() {
         let changed = wstate.last_live_sent.as_ref() != Some(&live_json);
         let keepalive_due = wstate
             .last_live_sent_at

@@ -23,6 +23,7 @@ iana-time-zone = "0.1"
 hyper = { version = "1.4", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio", "server-auto", "service"] }
 flate2 = "1"
+futures-util = "0.3"
 # Scales album art for the keyboard's now-playing tile.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp"] }
 # Reads the keyboard's vendor-page function-key reports. Shared access on macOS: hidapi otherwise

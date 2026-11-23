@@ -600,13 +600,28 @@ fn execute_device_backup(
 
 struct UsbDeviceSink {
     client: Option<KeyboardUsbClient>,
+    v2_mux: std::sync::Mutex<Option<Arc<openfluxd::usb::v2_mux::V2UsbMux>>>,
 }
 
 impl UsbDeviceSink {
     fn new() -> Self {
         Self {
             client: KeyboardUsbClient::new().ok(),
+            v2_mux: std::sync::Mutex::new(None),
         }
+    }
+
+    fn attach_v2_mux(&self, mux: Arc<openfluxd::usb::v2_mux::V2UsbMux>) {
+        *self.v2_mux.lock().unwrap() = Some(mux);
+    }
+
+    fn active_mux(&self) -> Option<Arc<openfluxd::usb::v2_mux::V2UsbMux>> {
+        self.v2_mux
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|m| m.is_connected())
+            .cloned()
     }
 
     fn client(&self) -> Result<&KeyboardUsbClient, String> {
@@ -617,14 +632,37 @@ impl UsbDeviceSink {
 }
 
 impl DeviceSink for UsbDeviceSink {
+    fn is_v2_mux_active(&self) -> bool {
+        self.active_mux().is_some()
+    }
+
+    fn send_media_frame(
+        &self,
+        stream_name: &str,
+        codec: openflux_bus::MediaCodec,
+        data: &[u8],
+        flags: u8,
+    ) -> bool {
+        self.active_mux()
+            .map(|m| m.send_media(stream_name, codec, data, flags))
+            .unwrap_or(false)
+    }
+
     fn is_connected(&self) -> (bool, bool) {
-        self.client
+        let (has_bridge_probe, has_fw) = self
+            .client
             .as_ref()
             .map(|c| c.probe_attached())
-            .unwrap_or((false, false))
+            .unwrap_or((false, false));
+        (self.active_mux().is_some() || has_bridge_probe, has_fw)
     }
 
     fn versions(&self) -> serde_json::Value {
+        if let Some(m) = self.active_mux() {
+            if let Ok(v) = m.get_versions() {
+                return v;
+            }
+        }
         self.client
             .as_ref()
             .map(|c| c.get_versions())
@@ -653,6 +691,13 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn set_system_time(&self, utc_timestamp: &str, zone: &str) -> Result<(), String> {
+        if let Some(m) = self.active_mux() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+            return m.set_clock(now, zone);
+        }
         self.client()?
             .set_system_time(utc_timestamp, zone)
             .map_err(|e| e.to_string())
@@ -691,8 +736,28 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn pull_config_dir(&self) -> Result<serde_json::Value, String> {
-        let client = self.client()?;
         let mut out = serde_json::Map::new();
+        if let Some(m) = self.active_mux() {
+            for (fname, key) in device_paths::CONFIG_DOCUMENTS {
+                if let Ok(raw) = m.get_file(fname) {
+                    if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&raw) {
+                        out.insert(key.into(), v);
+                    }
+                }
+            }
+            if let Ok(client) = self.client() {
+                if let Ok(raw_km) = client.get_keymap() {
+                    if decode_keymap_blob(&raw_km).is_ok() {
+                        out.insert(
+                            "firmwareKeymapBlobHex".into(),
+                            serde_json::Value::String(ApiState::encode_hex_bytes(&raw_km)),
+                        );
+                    }
+                }
+            }
+            return Ok(serde_json::Value::Object(out));
+        }
+        let client = self.client()?;
         for (fname, key) in device_paths::CONFIG_DOCUMENTS {
             if let Ok(raw) = client.get_file(fname) {
                 if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&raw) {
@@ -746,16 +811,26 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn put_file(&self, path: &str, data: &[u8]) -> Result<(), String> {
+        if let Some(m) = self.active_mux() {
+            return m.put_file(path, data);
+        }
         let client = self.client()?;
         client.put_file(path, data).map_err(|e| e.to_string())
     }
 
     fn stat_file(&self, path: &str) -> Result<bool, String> {
+        if let Some(m) = self.active_mux() {
+            return m.stat_file(path);
+        }
         let client = self.client()?;
         client.stat_file(path).map_err(|e| e.to_string())
     }
 
     fn list_files(&self, dir: &str) -> Result<Vec<(String, u64)>, String> {
+        if let Some(m) = self.active_mux() {
+            let names = m.list_files(dir)?;
+            return Ok(names.into_iter().map(|n| (n, 0)).collect());
+        }
         let client = self.client()?;
         let listing = client.get_file_list(dir).map_err(|e| e.to_string())?;
         Ok(listing
@@ -816,6 +891,9 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn sideload_ipk(&self, ipk_path: &str) -> Result<String, String> {
+        if let Some(m) = self.active_mux() {
+            return m.sideload_ipk(std::path::Path::new(ipk_path));
+        }
         let client = self.client()?;
         let p = PathBuf::from(ipk_path);
         let fname = p
@@ -834,12 +912,18 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn read_device_pomodoro_state(&self) -> Option<serde_json::Value> {
+        if self.active_mux().is_some() {
+            return None; // In OFV2 mode, Pomodoro state flows over the unified bus!
+        }
         let client = self.client.as_ref()?;
         let raw = client.get_file(device_paths::POMODORO_STATE_JSON).ok()?;
         serde_json::from_slice::<serde_json::Value>(&raw).ok()
     }
 
     fn read_device_soc_stats(&self) -> Option<serde_json::Value> {
+        if let Some(m) = self.active_mux() {
+            return m.get_soc_stats().ok();
+        }
         let client = self.client.as_ref()?;
         let raw = client.get_file(device_paths::SOC_STATS_JSON).ok()?;
         serde_json::from_slice::<serde_json::Value>(&raw).ok()
@@ -944,10 +1028,14 @@ fn run_daemon(args: &[String]) -> i32 {
 
     let no_usb = args.iter().any(|a| a == "--no-usb")
         || std::env::var("OPENFLUX_DISABLE_USB").as_deref() == Ok("1");
-    let device: Arc<dyn DeviceSink> = if no_usb {
-        Arc::new(openfluxd::api::state::NoopDeviceSink)
+    let usb_sink = if no_usb {
+        None
     } else {
-        Arc::new(UsbDeviceSink::new())
+        Some(Arc::new(UsbDeviceSink::new()))
+    };
+    let device: Arc<dyn DeviceSink> = match usb_sink {
+        Some(ref s) => s.clone(),
+        None => Arc::new(openfluxd::api::state::NoopDeviceSink),
     };
     let local_token = std::env::var("OPENFLUX_API_TOKEN")
         .ok()
@@ -977,6 +1065,13 @@ fn run_daemon(args: &[String]) -> i32 {
     // A signal or the tray's Quit asks for a stop like `--request-stop`: keyboard work finishes
     // first. The runtime, the API and the worker keep running until the exit is due.
     let running_flag = Arc::new(AtomicBool::new(true));
+    if let Some(ref sink) = usb_sink {
+        let mux = openfluxd::usb::v2_mux::V2UsbMux::start(
+            api_state.v2.broker.clone(),
+            running_flag.clone(),
+        );
+        sink.attach_v2_mux(mux);
+    }
     {
         let lifecycle = api_state.lifecycle.clone();
         let running = running_flag.clone();

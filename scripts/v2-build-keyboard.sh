@@ -11,7 +11,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$REPO/.work/v2-keyboard-builds"
 TARGET="${1:-all}"
-VERSION="${OPENFLUX_V2_VERSION:-2.0.0}"
+VERSION="${OPENFLUX_V2_VERSION:-2.1.0}"
 mkdir -p "$OUT"
 
 build_firmware() {

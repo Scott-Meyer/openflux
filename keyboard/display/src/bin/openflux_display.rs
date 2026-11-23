@@ -438,6 +438,7 @@ fn main() {
         use openflux_display::config::ConfigReloader;
         use openflux_display::ipc::BridgeIpcClient;
         use openflux_display::rkmpp::StreamEnded;
+        use openflux_display::v2_mux_client::V2MuxClient;
         use std::sync::atomic::{AtomicBool, Ordering};
         use std::time::Instant;
 
@@ -528,6 +529,8 @@ fn main() {
 
         let mut ipc = BridgeIpcClient::new();
         let _ = ipc.connect(&sock_path);
+        let mut v2_mux = V2MuxClient::new();
+        let _ = v2_mux.ensure_connected();
 
         let start = Instant::now();
         let mut reloader = ConfigReloader::new(cfg_path);
@@ -778,10 +781,34 @@ fn main() {
                 });
             }
 
+            if let Some(ref mut v2) = v2_display {
+                if v2_mux.ensure_connected() {
+                    if let Some(sub_f) = v2.build_mirror_subscribe(true) {
+                        v2_mux.send_bus_frame(&sub_f);
+                    }
+                }
+                let (bus_frames, stream_events, mux_disc) = v2_mux.poll();
+                for (sname, active, codec) in stream_events {
+                    v2.publish_stream_state(&sname, active, codec);
+                }
+                for pf in bus_frames {
+                    let replies = v2.on_mirror_frame(pf);
+                    for r in replies {
+                        v2_mux.send_bus_frame(&r);
+                    }
+                }
+                if mux_disc {
+                    v2.on_host_disconnect();
+                }
+            }
+
             if mono_ms >= next_reload_ms {
                 next_reload_ms = mono_ms + 250;
                 if let Some(ref mut v2) = v2_display {
                     if v2.poll_reload() {
+                        if let Some(sub_f) = v2.build_mirror_subscribe(false) {
+                            v2_mux.send_bus_frame(&sub_f);
+                        }
                         log_diag("OpenFlux v2 modules hot-reloaded on keyboard");
                         rkmpp_failed_path.clear();
                         bg_dirty = true;
@@ -1097,9 +1124,24 @@ fn main() {
 
                         if !gpu.is_frame_pending() {
                             let t_ren = Instant::now();
-                            if let Some(f) = rkmpp_due.take() {
-                                gpu.upload_bg_nv12(f.width, f.height, &f.nv12);
-                                rkmpp_vframes += 1;
+                            // Priority 1: Live `CH_MEDIA` hardware-decoded H.264/JPEG stream (if requested by a Lua module!)
+                            let mut live_stream_active = false;
+                            if let Some(ref sname) = v2.active_stream_name {
+                                if v2_mux.has_stream(sname) {
+                                    live_stream_active = true;
+                                    if let Some(f) = v2_mux.take_h264_frame(sname) {
+                                        gpu.upload_bg_nv12(f.width, f.height, &f.nv12);
+                                        rkmpp_vframes += 1;
+                                    } else if let Some((jw, jh, argb)) = v2_mux.take_jpeg_frame(sname) {
+                                        gpu.upload_bg_argb(jw, jh, &argb);
+                                    }
+                                }
+                            }
+                            if !live_stream_active {
+                                if let Some(f) = rkmpp_due.take() {
+                                    gpu.upload_bg_nv12(f.width, f.height, &f.nv12);
+                                    rkmpp_vframes += 1;
+                                }
                             }
                             let dt_ms = if last_v2_step_ms == 0 {
                                 16
@@ -1108,11 +1150,11 @@ fn main() {
                             };
                             last_v2_step_ms = mono_ms;
                             v2.step_frame(dt_ms as f32 * 0.001, mono_ms);
-                            for out_frame in v2.drain_outgoing_bus_frames() {
-                                ipc.send_bus_frame(&out_frame);
+                            for out_pf in v2.drain_mirror_outgoing() {
+                                v2_mux.send_bus_frame(&out_pf);
                             }
                             let (ww, wh) = v2.wave_dims();
-                            let has_bg_media = rkmpp_stream.is_some() || v2_img_loaded;
+                            let has_bg_media = live_stream_active || rkmpp_stream.is_some() || v2_img_loaded;
                             if let Err(e) = gpu.render_v2_and_swap(
                                 cached_suspended,
                                 has_bg_media,
@@ -1518,9 +1560,14 @@ fn main() {
                 }
             }
 
-            let mut pfds: [libc::pollfd; 2] = [
+            let mut pfds: [libc::pollfd; 3] = [
                 libc::pollfd {
                     fd: presenter.raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                },
+                libc::pollfd {
+                    fd: -1,
                     events: libc::POLLIN,
                     revents: 0,
                 },
@@ -1533,6 +1580,10 @@ fn main() {
             let mut nfds: libc::nfds_t = 1;
             if let Some(ifd) = ipc.raw_fd() {
                 pfds[nfds as usize].fd = ifd;
+                nfds += 1;
+            }
+            if let Some(vfd) = v2_mux.raw_fd() {
+                pfds[nfds as usize].fd = vfd;
                 nfds += 1;
             }
             let sleep_ms: i32 = if let Some(vw) = video_wait_ms {

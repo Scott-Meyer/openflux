@@ -198,6 +198,9 @@ pub struct FrameScene {
     pub dt_sec: f32,
     pub background_shaders: Vec<ShaderPassCmd>,
     pub background_media: Option<String>,
+    /// Optional live `CH_MEDIA` stream name (e.g. `"bg-stream"`) decoded directly via hardware `rkmpp` H.264!
+    #[serde(default)]
+    pub background_stream: Option<String>,
     /// GPU-side background dimming factor `[0.0..0.9]` (0 = full brightness, 0.3 = 30% darker).
     #[serde(default)]
     pub bg_dimming: f32,

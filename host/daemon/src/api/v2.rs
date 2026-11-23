@@ -978,6 +978,7 @@ async fn v2_status_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse 
         StatusCode::OK,
         Json(json!({
             "pid": std::process::id(),
+            "usb_protocol": if state.device.is_v2_mux_active() { "ofv2" } else { "legacy" },
             "modules_rev": state.v2.modules_rev.load(Ordering::SeqCst),
             "latest_bus_seq": state.v2.broker.latest_seq(),
             "bundled_dir": state.v2.registry.bundled_dir,
@@ -1522,6 +1523,116 @@ async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespon
     }
 }
 
+/// Real-time live video/frame streaming ingest (`POST /v2/streams/:name`).
+/// Any PC-side module (YouTube/Twitch via ffmpeg, Prusa RTSP camera, screen capture, OBS) can
+/// stream raw H.264 Annex-B (`Content-Type: video/h264`) or single JPEG frames (`image/jpeg`)
+/// straight over `CH_MEDIA` (Priority 1) directly into the keyboard's hardware `rkmpp` VPU decoder!
+/// Automatically sends `FLAG_STREAM_CLOSE` on EOF/disconnect so the keyboard module becomes 100% transparent.
+async fn ingest_media_stream(
+    State(state): State<Arc<ApiState>>,
+    AxumPath(name): AxumPath<String>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Body,
+) -> impl IntoResponse {
+    use futures_util::StreamExt;
+    let ctype = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("video/h264")
+        .to_ascii_lowercase();
+    let is_jpeg = ctype.contains("jpeg") || ctype.contains("jpg");
+    let codec = if is_jpeg {
+        openflux_bus::MediaCodec::Jpeg
+    } else {
+        openflux_bus::MediaCodec::H264AnnexB
+    };
+
+    let mut data_stream = body.into_data_stream();
+    let mut total_bytes: u64 = 0;
+    let mut chunks: u64 = 0;
+
+    if is_jpeg {
+        let mut frame = Vec::new();
+        while let Some(Ok(chunk)) = data_stream.next().await {
+            if frame.len() + chunk.len() <= 2 * 1024 * 1024 {
+                frame.extend_from_slice(&chunk);
+            }
+        }
+        if !frame.is_empty() {
+            total_bytes = frame.len() as u64;
+            let _ = state.device.send_media_frame(&name, codec, &frame, 0);
+        }
+        return (
+            StatusCode::OK,
+            Json(json!({ "ok": true, "stream": name, "codec": "jpeg", "bytes": total_bytes })),
+        );
+    }
+
+    // Continuous streaming H.264 Annex-B body!
+    let _ = state.v2.broker.publish(
+        format!("modules/streams/{name}"),
+        json!({ "active": true, "codec": "h264", "name": name }),
+        PublishOptions::retained().with_origin("host-stream"),
+    );
+
+    while let Some(item) = data_stream.next().await {
+        match item {
+            Ok(chunk) if !chunk.is_empty() => {
+                total_bytes += chunk.len() as u64;
+                chunks += 1;
+                // Slice large chunks cleanly to <= 64 KB so P0 CH_BUS preempts freely!
+                for part in chunk.chunks(64 * 1024) {
+                    let _ = state.device.send_media_frame(&name, codec, part, 0);
+                }
+            }
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
+
+    // Stream ended or closed -> notify keyboard immediately so module turns 100% transparent!
+    let _ = state.device.send_media_frame(
+        &name,
+        codec,
+        &[],
+        openflux_bus::FLAG_STREAM_CLOSE,
+    );
+    let _ = state.v2.broker.publish(
+        format!("modules/streams/{name}"),
+        json!({ "active": false, "codec": "closed", "name": name }),
+        PublishOptions::retained().with_origin("host-stream"),
+    );
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "ok": true,
+            "stream": name,
+            "codec": "h264",
+            "chunks": chunks,
+            "bytes": total_bytes,
+        })),
+    )
+}
+
+async fn close_media_stream(
+    State(state): State<Arc<ApiState>>,
+    AxumPath(name): AxumPath<String>,
+) -> impl IntoResponse {
+    let _ = state.device.send_media_frame(
+        &name,
+        openflux_bus::MediaCodec::H264AnnexB,
+        &[],
+        openflux_bus::FLAG_STREAM_CLOSE,
+    );
+    let _ = state.v2.broker.publish(
+        format!("modules/streams/{name}"),
+        json!({ "active": false, "codec": "closed", "name": name }),
+        PublishOptions::retained().with_origin("host-stream"),
+    );
+    (StatusCode::OK, Json(json!({ "ok": true, "closed": name })))
+}
+
 /// Mounts all OpenFlux v2 routes (open localhost bus, module management, disclosure, lists, presets, GPU preview).
 pub fn router(state: Arc<ApiState>) -> Router {
     Router::new()
@@ -1543,6 +1654,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/modules/:id/reload", post(reload_module_api))
         .route("/v2/modules/:id/logs", get(get_module_logs_api))
         .route("/v2/media/library", get(list_media_library_api))
+        .route("/v2/streams/:name", post(ingest_media_stream).delete(close_media_stream))
         .route("/v2/lists", get(list_curated_lists).post(add_curated_list))
         .route("/v2/lists/browse", get(browse_curated_list))
         .route("/v2/lists/:id", delete(remove_curated_list))

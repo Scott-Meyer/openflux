@@ -199,6 +199,21 @@ impl Broker {
         self.inner.lock().unwrap().node_id.clone()
     }
 
+    /// Returns deduplicated topic patterns of all active subscribers except `exclude_id`
+    /// (used by `BrokerMirror` to advertise real local subscriptions to the remote peer).
+    pub fn active_subscription_patterns_excluding(&self, exclude_id: u64) -> Vec<String> {
+        let g = self.inner.lock().unwrap();
+        let mut pats: Vec<String> = g
+            .subscribers
+            .iter()
+            .filter(|s| s.id != exclude_id)
+            .map(|s| s.pattern.as_str().to_string())
+            .collect();
+        pats.sort();
+        pats.dedup();
+        pats
+    }
+
     /// Publishes a JSON value onto a concrete hierarchical topic.
     pub fn publish(
         &self,

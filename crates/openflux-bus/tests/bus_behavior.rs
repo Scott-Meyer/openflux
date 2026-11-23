@@ -73,3 +73,112 @@ fn physical_geometry_sdf_distinguishes_keycap_interior_from_trench() {
         trench.signed_distance_px
     );
 }
+
+#[test]
+fn mux_framing_and_subscription_driven_broker_mirroring() {
+    use openflux_bus::{
+        decode_media_payload, encode_media_payload, BrokerMirror, MediaCodec, MuxChannel,
+        MuxDecoder, MuxFrame, FLAG_KEYFRAME,
+    };
+
+    // 1. Priority-multiplexed framing survives arbitrary byte-splitting & coalescing
+    let media_payload =
+        encode_media_payload(MediaCodec::H264AnnexB, "bg-stream", &[0, 0, 0, 1, 0x67, 0x42]);
+    let f1 = MuxFrame::new(MuxChannel::Bus, 0, 0, b"{\"type\":\"ping\",\"ts_ms\":1}".to_vec());
+    let f2 = MuxFrame::new(MuxChannel::Media, FLAG_KEYFRAME, 7, media_payload);
+    let mut wire = Vec::new();
+    wire.extend_from_slice(&f1.encode());
+    wire.extend_from_slice(&f2.encode());
+
+    let mut dec = MuxDecoder::new();
+    let mut decoded = Vec::new();
+    for ch in wire.chunks(3) {
+        decoded.extend(dec.feed(ch));
+    }
+    assert_eq!(decoded.len(), 2);
+    assert_eq!(decoded[0], f1);
+    assert_eq!(decoded[1], f2);
+    let (codec, name, bytes) = decode_media_payload(&decoded[1].payload).unwrap();
+    assert_eq!(codec, MediaCodec::H264AnnexB);
+    assert_eq!(name, "bg-stream");
+    assert_eq!(bytes, &[0, 0, 0, 1, 0x67, 0x42]);
+
+    // 2. Subscription-driven BrokerMirror between host and keyboard (retained replay, loop-free, LWT!)
+    let host = Broker::new("host");
+    let kb = Broker::new("keyboard");
+
+    // Pre-populate retained state on host before keyboard subscribes
+    host.publish(
+        "host/app/active",
+        json!({"app_id": "com.tinyspeck.slackmacgap"}),
+        PublishOptions::retained(),
+    )
+    .unwrap();
+    host.publish(
+        "host/unsubscribed/secret",
+        json!({"x": 1}),
+        PublishOptions::retained(),
+    )
+    .unwrap();
+
+    // Keyboard module subscribes ONLY to `host/app/#`
+    let _kb_mod_sub = kb
+        .subscribe("host/app/#", SubscribeOptions::default())
+        .unwrap();
+    // Host module subscribes ONLY to `input/keys/event` (NOT analog!)
+    let _host_mod_sub = host
+        .subscribe("input/keys/event", SubscribeOptions::default())
+        .unwrap();
+
+    let mut host_mirror = BrokerMirror::new(host.clone(), "keyboard");
+    let mut kb_mirror = BrokerMirror::new(kb.clone(), "host");
+
+    // Exchange Subscribe advertisements
+    let kb_sub_frame = kb_mirror.build_subscribe_if_changed(&[], true).unwrap();
+    let host_replays = host_mirror.on_remote_frame(kb_sub_frame);
+    assert_eq!(
+        host_replays.len(),
+        1,
+        "host replays ONLY retained matching host/app/#"
+    );
+    for pf in host_replays {
+        kb_mirror.on_remote_frame(pf);
+    }
+    assert_eq!(
+        kb.get_retained("host/app/active").unwrap().payload["app_id"],
+        "com.tinyspeck.slackmacgap"
+    );
+    assert!(kb.get_retained("host/unsubscribed/secret").is_none());
+
+    let host_sub_frame = host_mirror.build_subscribe_if_changed(&[], true).unwrap();
+    kb_mirror.on_remote_frame(host_sub_frame);
+
+    // Keyboard publishes both keypress (subscribed on host) and 120Hz analog (NOT subscribed)
+    kb.publish(
+        "input/keys/event",
+        json!({"key_index": 60}),
+        PublishOptions::default(),
+    )
+    .unwrap();
+    kb.publish(
+        "input/keys/analog",
+        json!({"depth_um": 1200}),
+        PublishOptions::default(),
+    )
+    .unwrap();
+    let kb_out = kb_mirror.drain_outgoing();
+    assert_eq!(
+        kb_out.len(),
+        1,
+        "unsubscribed 120Hz analog must NOT cross USB"
+    );
+    for pf in kb_out {
+        host_mirror.on_remote_frame(pf);
+    }
+    // Loop immunity: host_mirror must NOT echo keyboard's frame back!
+    assert!(host_mirror.drain_outgoing().is_empty());
+
+    // Disconnect purges peer-owned retained state cleanly (LWT)
+    kb_mirror.on_disconnect();
+    assert!(kb.get_retained("host/app/active").is_none());
+}

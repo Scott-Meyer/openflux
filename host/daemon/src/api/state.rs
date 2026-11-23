@@ -118,6 +118,21 @@ pub trait DeviceSink: Send + Sync {
     fn is_connected(&self) -> (bool, bool);
     fn versions(&self) -> serde_json::Value;
     fn send_live_json(&self, payload: &serde_json::Value) -> Result<(), String>;
+    /// True when the clean full-duplex priority-multiplexed `OFV2` USB link is active
+    /// (bypassing legacy v1 `live_json`, SimpleHDLC, and `CMD_POLL_BUS_FRAMES` polling!).
+    fn is_v2_mux_active(&self) -> bool {
+        false
+    }
+    /// Streams a real-time `CH_MEDIA` frame (raw H.264 Annex-B or JPEG) on Priority 1 with zero disk I/O.
+    fn send_media_frame(
+        &self,
+        _stream_name: &str,
+        _codec: openflux_bus::MediaCodec,
+        _data: &[u8],
+        _flags: u8,
+    ) -> bool {
+        false
+    }
     /// Sends one live `openflux_bus::WireFrame` directly to the keyboard over `LIVE_DATA_TYPE_BUS_FRAME`.
     fn send_bus_frame(&self, _frame: &openflux_bus::WireFrame) -> Result<(), String> {
         Err("Bus bridge unsupported on this sink".into())

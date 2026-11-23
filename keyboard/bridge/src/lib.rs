@@ -7,3 +7,4 @@ pub mod uart_bridge;
 pub mod usb_commands;
 pub mod usb_gadget;
 pub mod usb_rx;
+pub mod v2_mux;

@@ -47,6 +47,7 @@ pub struct KeyboardV2Display {
     pub wave_enabled: bool,
     pub wave_params: WaveFieldParams,
     pub active_media_path: Option<String>,
+    pub active_stream_name: Option<String>,
     pub bg_dimming: f32,
     pub top_fade: f32,
     pub dt_sec: f32,
@@ -63,7 +64,7 @@ pub struct KeyboardV2Display {
     last_bitmap: [u8; 32],
     last_input_ms: u64,
     last_state_mtime: Option<SystemTime>,
-    bridge_out_sub: Option<openflux_bus::Subscription>,
+    pub mirror: openflux_bus::BrokerMirror,
 }
 
 fn hash_f32<H: std::hash::Hasher>(h: &mut H, v: f32) {
@@ -200,9 +201,7 @@ impl KeyboardV2Display {
 
         let sdf_grid = KeySdfGrid::build(&geometry);
         let canvas = Canvas2D::new(DISPLAY_WIDTH_PX, DISPLAY_HEIGHT_PX, font_bytes);
-        let bridge_out_sub = broker
-            .subscribe("#", openflux_bus::SubscribeOptions { replay_retained: false, ..Default::default() })
-            .ok();
+        let mirror = openflux_bus::BrokerMirror::new(broker.clone(), "host");
 
         Self {
             broker,
@@ -216,6 +215,7 @@ impl KeyboardV2Display {
             wave_enabled: false,
             wave_params: WaveFieldParams::default(),
             active_media_path: None,
+            active_stream_name: None,
             bg_dimming: 0.0,
             top_fade: 0.0,
             dt_sec: 0.016,
@@ -232,41 +232,43 @@ impl KeyboardV2Display {
             last_bitmap: [0u8; 32],
             last_input_ms: openflux_bus::now_unix_ms(),
             last_state_mtime,
-            bridge_out_sub,
+            mirror,
         }
     }
 
-    /// Drains keyboard-originated bus events ready to stream up to the host daemon (loop-free!).
-    pub fn drain_outgoing_bus_frames(&mut self) -> Vec<WireFrame> {
-        let Some(ref sub) = self.bridge_out_sub else {
-            return Vec::new();
-        };
-        let msgs = sub.drain();
-        let mut out = Vec::new();
-        for msg in msgs {
-            let orig = msg.origin.as_deref().unwrap_or("");
-            // Never re-export any bridged or host-originated message (strictly loop-free!).
-            if orig.starts_with("bridge:") || orig == "host" {
-                continue;
-            }
-            if msg.topic.starts_with("layout/")
-                || msg.topic == "keyboard/geometry"
-                || msg.topic == "keyboard/keymap"
-                || msg.topic == openflux_bus::topics::INPUT_KEYS_ANALOG
-                || msg.topic.starts_with("keyboard/analog")
-                || msg.topic.starts_with("host/")
-            {
-                continue;
-            }
-            out.push(WireFrame::Publish {
-                topic: msg.topic,
-                payload: msg.payload,
-                retain: msg.retain,
-                ttl_ms: msg.expires_at_ms.map(|e| e.saturating_sub(msg.timestamp_ms)),
-                origin: Some(format!("bridge:keyboard:{orig}")),
-            });
-        }
-        out
+    /// Builds a `PeerBusFrame::Subscribe` advertising all patterns active keyboard modules care about.
+    pub fn build_mirror_subscribe(&mut self, force: bool) -> Option<openflux_bus::PeerBusFrame> {
+        let extra = vec![
+            "host/#".to_string(),
+            "modules/#".to_string(),
+            "fx/surface/impulse".to_string(),
+            "keys/providers/ability-deck".to_string(),
+            "keys/providers/streamdeck".to_string(),
+        ];
+        self.mirror.build_subscribe_if_changed(&extra, force)
+    }
+
+    pub fn on_mirror_frame(
+        &mut self,
+        frame: openflux_bus::PeerBusFrame,
+    ) -> Vec<openflux_bus::PeerBusFrame> {
+        self.mirror.on_remote_frame(frame)
+    }
+
+    pub fn drain_mirror_outgoing(&self) -> Vec<openflux_bus::PeerBusFrame> {
+        self.mirror.drain_outgoing()
+    }
+
+    pub fn on_host_disconnect(&mut self) {
+        self.mirror.on_disconnect();
+    }
+
+    pub fn publish_stream_state(&self, name: &str, active: bool, codec: &str) {
+        let _ = self.broker.publish(
+            format!("modules/streams/{name}"),
+            serde_json::json!({ "active": active, "codec": codec, "name": name }),
+            PublishOptions::retained().with_origin("display-media"),
+        );
     }
 
     /// Checks whether `modules_state.json` or any Lua module file changed on disk (e.g. after USB sync).
@@ -605,6 +607,7 @@ impl KeyboardV2Display {
         let scene = self.runtime.step_frame(dt, now_ms);
 
         self.active_media_path = scene.background_media.clone();
+        self.active_stream_name = scene.background_stream.clone();
         self.bg_dimming = scene.bg_dimming;
         self.top_fade = scene.top_fade;
         self.dt_sec = dt;
