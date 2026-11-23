@@ -109,11 +109,28 @@ def main():
             time.sleep(10)
             continue
 
-        # Hardware Apple VideoToolbox H.264 on macOS (<1% CPU!), fallback to ultrafast libx264
+        # Hardware Apple VideoToolbox H.264 on macOS (<1% CPU!):
+        # -bf 0 disables B-frame reordering (eliminates back-and-forth jitter/skipping!)
+        # 1280x720 cuts Mali-G52 NV12 upload bandwidth by 2.3x for locked butter-smooth playback!
         vcodec = (
-            ["-c:v", "h264_videotoolbox", "-realtime", "true", "-b:v", "4500k", "-g", str(fps)]
+            [
+                "-c:v", "h264_videotoolbox",
+                "-realtime", "true",
+                "-bf", "0",
+                "-b:v", "2800k",
+                "-maxrate", "3500k",
+                "-bufsize", "5000k",
+                "-g", str(fps),
+            ]
             if os.uname().sysname == "Darwin"
-            else ["-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-b:v", "4500k", "-g", str(fps)]
+            else [
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-tune", "zerolatency",
+                "-bf", "0",
+                "-b:v", "2800k",
+                "-g", str(fps),
+            ]
         )
         cmd = [ffmpeg, "-hide_banner", "-loglevel", "warning", "-re"]
         yt_proc = None
@@ -144,7 +161,7 @@ def main():
         cmd += [
             "-an",
             "-vf",
-            f"fps={fps},scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,format=yuv420p",
+            f"fps={fps},scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,format=yuv420p",
             *vcodec,
             "-f",
             "h264",

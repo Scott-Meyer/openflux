@@ -24,7 +24,7 @@ use std::thread;
 use std::time::Duration;
 
 const BULK_CHUNK_BYTES: usize = 16 * 1024;
-const MAX_MEDIA_Q_PER_STREAM: usize = 16;
+const MAX_MEDIA_Q_PER_STREAM: usize = 96;
 
 struct TxQueues {
     /// Priority 0: Pub/Sub bus frames (always drained first!).

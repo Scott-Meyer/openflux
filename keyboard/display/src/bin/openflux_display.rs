@@ -987,12 +987,19 @@ fn main() {
                 ActivePresenter::Gpu(ref mut gpu) => {
                     if let Some(ref mut v2) = v2_display {
                         anim_active = !cached_suspended;
-                        let desired_bg = v2
-                            .active_media_path
+                        let live_stream_override = v2
+                            .active_stream_name
                             .as_deref()
-                            .filter(|s| !s.is_empty())
-                            .unwrap_or(cfg.appearance.bg_path.as_str())
-                            .to_string();
+                            .is_some_and(|sname| v2_mux.has_stream(sname));
+                        let desired_bg = if live_stream_override {
+                            String::new()
+                        } else {
+                            v2.active_media_path
+                                .as_deref()
+                                .filter(|s| !s.is_empty())
+                                .unwrap_or(cfg.appearance.bg_path.as_str())
+                                .to_string()
+                        };
                         let bg_is_vid = openflux_display::media_bg::is_video_path(&desired_bg);
                         if !bg_is_vid || cached_suspended {
                             if rkmpp_stream.is_some() {
