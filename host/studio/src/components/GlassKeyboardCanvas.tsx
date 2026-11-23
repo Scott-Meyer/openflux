@@ -97,34 +97,30 @@ void main() {
     float ridge = smoothstep(0.0045, 0.0, abs(v_uv.y - 0.244));
     col = scr + vec3(0.82, 0.89, 1.0) * (sheen + ridge * 0.22);
   } else if (reg < 0.18) {
-    // 2. Recessed Matte-Black Optical Key Trench (ambient occlusion around keycaps)
+    // 2. Translucent Clear Acrylic Keyframe Trench (continuous IPS glow visible between keys,
+    // softly darkened by the 9mm acrylic keyframe wall shadow just like the real Flux board!)
     vec3 scr = sample_screen(v_uv);
-    col = scr * 0.28 + vec3(0.015, 0.018, 0.026);
+    col = scr * 0.56 + vec3(0.012, 0.016, 0.024);
   } else if (reg < 0.58) {
     // 3. Steep Sloped 3D Acrylic Keycap Bevel Wall (IOR = 1.51 Snell refraction + prism dispersion!)
-    // Strong inward optical bending through 9mm clear acrylic side walls
-    vec2 refr = nxy * 0.018;
-    float r_ch = sample_screen(v_uv + refr * 1.12).r;
+    vec2 refr = nxy * 0.022;
+    float r_ch = sample_screen(v_uv + refr * 1.15).r;
     float g_ch = sample_screen(v_uv + refr * 1.00).g;
-    float b_ch = sample_screen(v_uv + refr * 0.88).b;
+    float b_ch = sample_screen(v_uv + refr * 0.85).b;
     vec3 refr_col = vec3(r_ch, g_ch, b_ch);
 
-    // Internal acrylic wall brightening + Fresnel glass rim + overhead softbox specular catch
-    float edge_rim = smoothstep(0.15, 0.85, h);
-    vec3 glass_tint = vec3(0.84, 0.91, 1.0);
-    col = refr_col * (0.86 + 0.18 * edge_rim);
-    col += glass_tint * (fresnel * 0.34 + spec1 * 0.55 + spec2 * 0.20);
-    // Subtle dark base shadow at the bottom of the bevel where acrylic meets the keyframe
-    col *= mix(0.68, 1.04, smoothstep(0.0, 0.45, h));
+    float edge_rim = smoothstep(0.12, 0.88, h);
+    vec3 glass_tint = vec3(0.86, 0.93, 1.0);
+    col = refr_col * (0.94 + 0.18 * edge_rim);
+    col += glass_tint * (fresnel * 0.36 + spec1 * 0.62 + spec2 * 0.24);
+    col *= mix(0.76, 1.06, smoothstep(0.0, 0.45, h));
   } else {
     // 4. Sculpted Crystal-Clear Keycap Top Face (gentle spherical dish magnification!)
-    vec2 lens_uv = v_uv + nxy * 0.0045;
+    vec2 lens_uv = v_uv + nxy * 0.0055;
     vec3 scr = sample_screen(lens_uv);
-    // Crisp, clear optical transmission with very subtle studio glass highlight
-    float dish_sheen = spec1 * 0.16 + spec2 * 0.07 + fresnel * 0.08;
-    // Slight bright micro-bevel ring right where the top face meets the sloped wall
-    float inner_lip = smoothstep(0.88, 0.82, h) * 0.15;
-    col = scr * 1.04 + vec3(0.86, 0.92, 1.0) * (dish_sheen + inner_lip);
+    float dish_sheen = spec1 * 0.18 + spec2 * 0.08 + fresnel * 0.09;
+    float inner_lip = smoothstep(0.88, 0.82, h) * 0.16;
+    col = scr * 1.08 + vec3(0.88, 0.94, 1.0) * (dish_sheen + inner_lip);
   }
 
   // Interactive 3D internal acrylic edge glow on Hovered / Selected key
