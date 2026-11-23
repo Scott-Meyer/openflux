@@ -128,7 +128,7 @@ starts again at your next login.
 **Updates.** Studio tells you when a release is available and links to
 its package; install it the same way.
 
-**Uninstalling.** `sudo apt remove openflux-studio`. Your data in
+**Uninstalling.** `sudo apt remove open-flux-studio`. Your data in
 `~/.local/share/openflux` is kept.
 
 ### AppImage

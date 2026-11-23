@@ -602,7 +602,8 @@ jobs:
 
           mkdir -p dist/release
           cp staged/artifacts/* dist/release/
-          (cd dist/release && find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
+          (cd dist/release && find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' | LC_ALL=C sort | xargs sha256sum) > "$RUNNER_TEMP/host-sha256sums"
+          mv "$RUNNER_TEMP/host-sha256sums" dist/release/SHA256SUMS
           cat dist/release/SHA256SUMS
 
           cp compat.toml staged/compat.toml
