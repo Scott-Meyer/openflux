@@ -1,6 +1,7 @@
 # Keyglass
 
-**Keyglass is an independent project, not affiliated with or endorsed by Flux.**
+> [!IMPORTANT]
+> ## Keyglass is an independent project, not affiliated with or endorsed by Flux.
 
 ![The Flux keyboard's display running Keyglass: a clock, system load, weather and a Pomodoro timer above a label on every key](docs/images/display-emerald.png)
 
