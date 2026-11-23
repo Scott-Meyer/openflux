@@ -574,9 +574,14 @@ fn open_and_handshake_v2(ctx: &Context) -> Option<(V2UsbLockGuard, DeviceHandle<
     if h.claim_interface(BRIDGE_TARGET.interface).is_err() {
         return None;
     }
-    // Drain any stale bytes on EP_IN before handshake
-    let mut junk = [0u8; 512];
-    let _ = h.read_bulk(BRIDGE_TARGET.ep_in, &mut junk, Duration::from_millis(20));
+    // Drain ALL stale packets on EP_IN before handshake (handles seamless daemon restarts!)
+    let mut junk = [0u8; 4096];
+    for _ in 0..16 {
+        match h.read_bulk(BRIDGE_TARGET.ep_in, &mut junk, Duration::from_millis(15)) {
+            Ok(n) if n > 0 => continue,
+            _ => break,
+        }
+    }
 
     if h.write_bulk(
         BRIDGE_TARGET.ep_out,
@@ -588,12 +593,18 @@ fn open_and_handshake_v2(ctx: &Context) -> Option<(V2UsbLockGuard, DeviceHandle<
         let _ = h.release_interface(BRIDGE_TARGET.interface);
         return None;
     }
-    let mut ack = [0u8; 64];
-    match h.read_bulk(BRIDGE_TARGET.ep_in, &mut ack, Duration::from_millis(600)) {
-        Ok(n) if n >= 4 && ack[..4] == V2_UPGRADE_ACK => Some((lock, h)),
-        _ => {
-            let _ = h.release_interface(BRIDGE_TARGET.interface);
-            None
+    let mut ack = [0u8; 4096];
+    for _ in 0..8 {
+        match h.read_bulk(BRIDGE_TARGET.ep_in, &mut ack, Duration::from_millis(250)) {
+            Ok(n) if n >= 4 => {
+                let slice = &ack[..n];
+                if slice.windows(4).any(|w| w == V2_UPGRADE_ACK) {
+                    return Some((lock, h));
+                }
+            }
+            _ => break,
         }
     }
+    let _ = h.release_interface(BRIDGE_TARGET.interface);
+    None
 }
