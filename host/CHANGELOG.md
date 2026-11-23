@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/keyglass-dev/keyglass/compare/host-v1.1.1...host-v1.1.2) (2026-11-23)
+
+
+### Bug Fixes
+
+* **host:** ship the Keyglass Studio branding without changing install identity ([5d0af2f](https://github.com/keyglass-dev/keyglass/commit/5d0af2f8d9b0345e61ec81b8f2a14c2172321535))
+
 ## [1.1.1](https://github.com/Scott-Meyer/openflux/compare/host-v1.1.0...host-v1.1.1) (2026-11-21)
 
 
