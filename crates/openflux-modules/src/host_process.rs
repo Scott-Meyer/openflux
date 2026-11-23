@@ -14,6 +14,8 @@ const MAX_HOST_LOGS: usize = 200;
 
 struct RunningHostModule {
     child: Child,
+    config_json: String,
+    entry_path: std::path::PathBuf,
     logs: Arc<Mutex<VecDeque<ModuleLogEntry>>>,
 }
 
@@ -38,8 +40,6 @@ impl HostProcessManager {
         let Some(host_rel) = &discovered.manifest.entrypoints.host else {
             return Ok(());
         };
-        self.stop_module(&discovered.manifest.id);
-
         let entry_path = discovered.path.join(host_rel);
         if !entry_path.is_file() {
             return Err(format!(
@@ -47,16 +47,26 @@ impl HostProcessManager {
                 entry_path.display()
             ));
         }
+        let cfg_json = serde_json::to_string(&instance.config).unwrap_or_else(|_| "{}".into());
+
+        // Keep already-running host process alive when neither its config nor entrypoint changed!
+        if let Some(existing) = self.running.get_mut(&discovered.manifest.id) {
+            if existing.config_json == cfg_json
+                && existing.entry_path == entry_path
+                && matches!(existing.child.try_wait(), Ok(None))
+            {
+                return Ok(());
+            }
+        }
+        self.stop_module(&discovered.manifest.id);
 
         let mut cmd = build_host_command(&entry_path);
         cmd.current_dir(&discovered.path)
             .env("OPENFLUX_BUS_URL", &self.bus_url)
             .env("OPENFLUX_MODULE_ID", &discovered.manifest.id)
             .env("OPENFLUX_MODULE_DIR", &discovered.path)
-            .env(
-                "OPENFLUX_CONFIG_JSON",
-                serde_json::to_string(&instance.config).unwrap_or_else(|_| "{}".into()),
-            )
+            .env("OPENFLUX_CONFIG_JSON", &cfg_json)
+            .env("OPENFLUX_MODULE_CONFIG", &cfg_json)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
@@ -74,7 +84,12 @@ impl HostProcessManager {
 
         self.running.insert(
             discovered.manifest.id.clone(),
-            RunningHostModule { child, logs },
+            RunningHostModule {
+                child,
+                config_json: cfg_json,
+                entry_path,
+                logs,
+            },
         );
         Ok(())
     }

@@ -162,6 +162,11 @@ impl KeyboardUsbClient {
     }
 
     /// Version strings each component reports, keyed `firmware`, `bridge`, `display` and `os`.
+    pub fn get_firmware_version(&self) -> Result<String, UsbError> {
+        let raw = self.transact(FIRMWARE_TARGET, FW_CMD_VERSION, &[], 2000)?;
+        Ok(String::from_utf8_lossy(&raw).trim_matches('\0').to_string())
+    }
+
     pub fn get_versions(&self) -> serde_json::Value {
         let ask = |target: UsbTarget, cmd: u8| {
             self.transact(target, cmd, &[], 2000)

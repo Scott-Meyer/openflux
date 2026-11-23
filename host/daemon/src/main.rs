@@ -659,7 +659,35 @@ impl DeviceSink for UsbDeviceSink {
 
     fn versions(&self) -> serde_json::Value {
         if let Some(m) = self.active_mux() {
-            if let Ok(v) = m.get_versions() {
+            if let Ok(mut v) = m.get_versions() {
+                if let Some(obj) = v.as_object_mut() {
+                    if !obj.contains_key("firmware") {
+                        let fw = self
+                            .client
+                            .as_ref()
+                            .and_then(|c| c.get_firmware_version().ok());
+                        obj.insert("firmware".into(), serde_json::json!(fw));
+                    }
+                    // Read real installed display version stamp and ensure canonical `openflux-display <ver>` prefix
+                    let raw_disp = m
+                        .get_file("/home/root/.openflux/versions/display")
+                        .ok()
+                        .and_then(|b| String::from_utf8(b).ok())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .or_else(|| {
+                            obj.get("display")
+                                .and_then(|x| x.as_str())
+                                .map(|s| s.trim().to_string())
+                        })
+                        .unwrap_or_else(|| "2.1.0".into());
+                    let canon_disp = if raw_disp.starts_with("openflux-display ") {
+                        raw_disp
+                    } else {
+                        format!("openflux-display {raw_disp}")
+                    };
+                    obj.insert("display".into(), serde_json::json!(canon_disp));
+                }
                 return v;
             }
         }

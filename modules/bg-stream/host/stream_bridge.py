@@ -18,7 +18,7 @@ import time
 from urllib.parse import urlparse
 
 BUS_URL = os.environ.get("OPENFLUX_BUS_URL", "https://127.0.0.1:52323")
-CONFIG_JSON = os.environ.get("OPENFLUX_MODULE_CONFIG", "{}")
+CONFIG_JSON = os.environ.get("OPENFLUX_CONFIG_JSON") or os.environ.get("OPENFLUX_MODULE_CONFIG") or "{}"
 STREAM_NAME = "bg-stream"
 SSL_CTX = ssl._create_unverified_context()
 
@@ -73,7 +73,7 @@ def resolve_stream_url(raw_url: str) -> tuple[str | None, str]:
                 "--no-warnings",
                 "--no-playlist",
                 "-f",
-                "best[height<=1080][vcodec!=none]/best",
+                "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/best[height<=1080][vcodec!=none]/best",
                 u,
             ],
             capture_output=True,

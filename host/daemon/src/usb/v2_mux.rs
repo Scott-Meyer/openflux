@@ -353,6 +353,22 @@ impl V2UsbMux {
         }
         self.connected.store(true, Ordering::Release);
 
+        // Immediately confirm bridge install rollback sentinel over OFV2 so sideloaded 2.1.0
+        // never gets rolled back by the 10-minute watchdog!
+        {
+            let pending_confirm_tx = self.tx_lock.clone();
+            let req_id = self.next_req_id.fetch_add(1, Ordering::Relaxed);
+            if let Ok(payload) = serde_json::to_vec(&BulkRpcRequest::DeleteFile {
+                path: "/home/root/.openflux/rollback/bridge/armed".into(),
+            }) {
+                let encoded = MuxFrame::new(MuxChannel::BulkReq, 0, req_id, payload).encode();
+                let (lock, cv) = &*pending_confirm_tx;
+                let mut q = lock.lock().unwrap();
+                q.bulk.push_back(encoded);
+                cv.notify_one();
+            }
+        }
+
         // Immediately advertise host's active subscriptions to keyboard!
         {
             let mut m = mirror.lock().unwrap();
