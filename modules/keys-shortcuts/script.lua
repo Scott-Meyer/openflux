@@ -89,6 +89,61 @@ local EXTRA_APP_ALIASES = {
   ["zoom.json"] = "zoom,us.zoom.xos",
 }
 
+local KEY_TOKEN_TO_KC = {
+  ESC = "KC_ESC", ESCAPE = "KC_ESC",
+  ENTER = "KC_ENT", RETURN = "KC_ENT",
+  TAB = "KC_TAB", SPACE = "KC_SPC",
+  BACKSPACE = "KC_BSPC", BKSP = "KC_BSPC", DELETE = "KC_DEL", DEL = "KC_DEL",
+  UP = "KC_UP", DOWN = "KC_DOWN", LEFT = "KC_LEFT", RIGHT = "KC_RGHT",
+  HOME = "KC_HOME", END = "KC_END", PAGEUP = "KC_PGUP", PGUP = "KC_PGUP",
+  PAGEDOWN = "KC_PGDN", PGDN = "KC_PGDN",
+  ["-"] = "KC_MINS", MINUS = "KC_MINS", ["_"] = "KC_MINS",
+  ["="] = "KC_EQL", PLUS = "KC_EQL", ["+"] = "KC_EQL",
+  ["["] = "KC_LBRC", ["]"] = "KC_RBRC", ["\\"] = "KC_BSLS",
+  [";"] = "KC_SCLN", ["'"] = "KC_QUOT", ["`"] = "KC_GRV", ["~"] = "KC_GRV",
+  [","] = "KC_COMM", ["."] = "KC_DOT", ["/"] = "KC_SLSH", ["?"] = "KC_SLSH",
+}
+
+-- Parses a shortcut combo string like "Cmd+Shift+N", "Ctrl+Opt+C", "Cmd+," into (kc, mods)
+-- Skips multi-key chords (containing space like "Cmd+K Cmd+S").
+local function parse_combo(str)
+  if type(str) ~= "string" or #str == 0 then return nil, 0 end
+  -- Skip multi-stroke chords (e.g. "Cmd+K Cmd+C") or alternatives ("Cmd+1 / Cmd+2")
+  if string.find(str, " / ", 1, true) then
+    str = str:match("^(.-)%s*/") or str
+  end
+  if string.find(str, " ", 1, true) then return nil, 0 end
+
+  local mods = 0
+  local key_tok = nil
+  for part in string.gmatch(str, "[^+]+") do
+    local up = string.upper(part:match("^%s*(.-)%s*$") or "")
+    if up == "CTRL" or up == "CONTROL" then
+      mods = mods | 1
+    elseif up == "SHIFT" then
+      mods = mods | 2
+    elseif up == "ALT" or up == "OPT" or up == "OPTION" then
+      mods = mods | 4
+    elseif up == "CMD" or up == "COMMAND" or up == "META" or up == "SUPER" or up == "WIN" then
+      mods = mods | 8
+    elseif #up > 0 then
+      key_tok = up
+    end
+  end
+  if mods == 0 or not key_tok then return nil, 0 end
+  if KEY_TOKEN_TO_KC[key_tok] then return KEY_TOKEN_TO_KC[key_tok], mods end
+  if #key_tok == 1 then
+    local b = string.byte(key_tok)
+    if (b >= 65 and b <= 90) or (b >= 48 and b <= 57) then
+      return "KC_" .. key_tok, mods
+    end
+  end
+  if key_tok:match("^F%d+$") then
+    return "KC_" .. key_tok, mods
+  end
+  return nil, 0
+end
+
 local function load_all_packs(accent)
   local rules = base_common_rules(accent)
   local dir, files = find_shortcuts_dir()
@@ -124,15 +179,19 @@ local function load_all_packs(accent)
               when_tbl = { app = table.concat(app_tokens, ",") }
               prio = 35
             elseif fname == "windows.json" then
-              -- Skip windows.json base overrides on macOS so macos.json owns default Cmd shortcuts
               rows = {}
             end
 
             for _, r in ipairs(rows) do
-              if type(r) == "table" and not r.macHasSecondKey then
-                local kc = r.macKeyCode
-                local mods = tonumber(r.macModifiers) or 0
-                local lbl = tostring(r.label or "")
+              if type(r) == "table" then
+                local kc, mods = nil, 0
+                if type(r.macKeyCode) == "string" and tonumber(r.macModifiers) and not r.macHasSecondKey then
+                  kc = r.macKeyCode
+                  mods = tonumber(r.macModifiers)
+                elseif type(r.mac) == "string" then
+                  kc, mods = parse_combo(r.mac)
+                end
+                local lbl = tostring(r.label or r.name or "")
                 if type(kc) == "string" and #kc > 0 and mods > 0 and #lbl > 0 then
                   local dedup = fname .. ":" .. kc .. ":" .. tostring(mods)
                   if not seen_pack_key[dedup] then
