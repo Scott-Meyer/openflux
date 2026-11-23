@@ -101,7 +101,7 @@ local function publish_peek_key()
     return
   end
   local col = tostring(module.config().accent or "#fa6831")
-  local icon_path = (type(module.dir) == "function") and (module.dir() .. "/prusa-cam.png") or nil
+  local icon_path = "module://widget-prusa-connect/prusa-cam.png"
   bus.publish("keys/providers/prusa-peek", {
     priority = 36,
     mode = "replace",
