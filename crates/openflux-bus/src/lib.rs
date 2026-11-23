@@ -20,9 +20,9 @@ pub use mux::{
     MUX_MAGIC, V2_UPGRADE_ACK, V2_UPGRADE_MAGIC,
 };
 pub use schema::{
-    topics, AnalogKeyFrame, AnalogKeySample, HostConnectionState, KeyEvent, KeyEventKind,
-    KeyboardState, MediaNowPlaying, SurfaceImpulse, SystemMetrics, WeatherHourly, WeatherState,
-    MAX_TRAVEL_UM,
+    topics, AnalogKeyFrame, AnalogKeySample, FluxActionEvent, HostConnectionState, KeyEvent,
+    KeyEventKind, KeyboardState, MediaNowPlaying, ResolvedKeyEntry, ResolvedKeysState,
+    SurfaceImpulse, SystemMetrics, WeatherHourly, WeatherState, MAX_TRAVEL_UM,
 };
 pub use topic::{topic_matches, validate_pattern, validate_topic, TopicError, TopicPattern};
 pub use wire::{apply_remote_frame, WireFrame};

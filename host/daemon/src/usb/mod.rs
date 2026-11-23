@@ -4,3 +4,4 @@ pub mod picoboot;
 pub mod press_refinement;
 pub mod protocol;
 pub mod v2_mux;
+pub mod vial;

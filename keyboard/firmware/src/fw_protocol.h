@@ -50,6 +50,7 @@ enum fw_usb_cmd {
     FW_CMD_PRESS_REFINEMENT_STATUS = 0x70,
     FW_CMD_PUT_PRESS_REFINEMENT = 0x71,
     FW_CMD_GET_PRESS_REFINEMENT = 0x72,
+    FW_CMD_PUT_VIAL_DEF = 0x73,
 };
 
 enum fw_resp_type {
@@ -63,6 +64,8 @@ enum fw_uart_msg_type {
     FW_UART_MSG_UPDATE = 2,
     FW_UART_MSG_QC_SENSORS = 3,
     FW_UART_MSG_ANALOG = 4,
+    FW_UART_MSG_FLUX_ACTION = 5,
+    FW_UART_MSG_RESOLVED_KEYS = 6,
 };
 
 #define FW_UART_MSG_UPDATE_LEN     139U

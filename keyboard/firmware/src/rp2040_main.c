@@ -10,6 +10,7 @@
 #include "fw_scanner.h"
 #include "fw_usb_cmd.h"
 #include "lfs_store.h"
+#include "qmk/fw_qmk.h"
 
 #include <string.h>
 
@@ -20,6 +21,47 @@ static fw_hdlc_decoder_t g_uart_dec;
 static volatile uint8_t g_reboot_mcu = 0;
 static volatile uint8_t g_reboot_soc = 0;
 static volatile uint8_t g_usb_config_changed = 0;
+
+/* Ring buffers decoupling TinyUSB callbacks from the QMK scan step (zero blocking!). */
+static uint8_t g_vial_rx_ring[4][FW_QMK_VIAL_RAW_EPSIZE];
+static uint8_t g_vial_rx_head = 0U;
+static uint8_t g_vial_rx_tail = 0U;
+
+static uint8_t g_vial_tx_ring[4][FW_QMK_VIAL_RAW_EPSIZE];
+static uint8_t g_vial_tx_head = 0U;
+static uint8_t g_vial_tx_tail = 0U;
+
+typedef struct {
+    uint16_t slot;
+    uint8_t pressed;
+    uint8_t mods;
+    uint8_t layer;
+} rp2040_flux_evt_t;
+
+static rp2040_flux_evt_t g_flux_hid_ring[16];
+static uint8_t g_flux_hid_head = 0U;
+static uint8_t g_flux_hid_tail = 0U;
+
+/* Debounced RAM staging for dynamic XZ vial.json uploaded over IF 1. */
+static uint8_t g_vial_def_stage[FW_QMK_MAX_VIAL_DEF_BYTES];
+static size_t g_vial_def_stage_len = 0U;
+static bool g_vial_def_dirty = false;
+static uint32_t g_vial_def_dirty_ms = 0U;
+static bool g_language_dirty = false;
+static uint32_t g_language_pending = 0U;
+
+/* Non-blocking 2048-byte UART1 TX ring buffer so display telemetry never stalls ADC scans. */
+#define RP2040_UART_TX_RING_CAP 2048U
+static uint8_t g_uart_tx_ring[RP2040_UART_TX_RING_CAP];
+static uint16_t g_uart_tx_head = 0U;
+static uint16_t g_uart_tx_tail = 0U;
+
+static void uart_tx_drain(void) {
+    while (g_uart_tx_tail != g_uart_tx_head && uart_is_writable(uart1)) {
+        uart_putc_raw(uart1, (char)g_uart_tx_ring[g_uart_tx_tail]);
+        g_uart_tx_tail = (uint16_t)((g_uart_tx_tail + 1U) & (RP2040_UART_TX_RING_CAP - 1U));
+    }
+}
 
 enum { BRIDGE_HEARTBEAT_MS = 1000 };
 /* Responses acknowledge the message type, not a sequence number. Only a recent successful
@@ -195,11 +237,16 @@ static int on_profile_saved(const uint8_t *xfer, size_t len, void *ctx) {
 }
 static int on_language_saved(uint32_t code, void *ctx) {
     (void)ctx;
-    return fw_lfs_save_u32("language_code", code);
+    /* Defer flash write to quiet-keys window so SET_LANGUAGE never stalls typing. */
+    g_language_pending = code;
+    g_language_dirty = true;
+    return 0;
 }
 static int on_platform_saved(uint32_t code, void *ctx) {
     (void)ctx;
-    return fw_lfs_save_u32("platform_type_code", code);
+    g_rt.platform_code = code;
+    g_rt.platform_dirty = 1U;
+    return 0;
 }
 
 static void on_uart_frame(const uint8_t *payload, size_t len, void *ctx) {
@@ -215,12 +262,21 @@ static void on_uart_frame(const uint8_t *payload, size_t len, void *ctx) {
 }
 
 static void uart_send_hdlc(const uint8_t *payload, size_t len) {
-    /* Only the foreground loop transmits; uart_write_blocking consumes the bytes before return. */
+    /* Non-blocking HDLC enqueue into UART1 TX ring (atomic frame: drop only if ring is full). */
     static uint8_t wire[FW_HDLC_MAX_LEN * 2U + 16U];
+    uart_tx_drain();
     int n = fw_hdlc_encode(payload, len, wire, sizeof(wire));
-    if (n > 0) {
-        uart_write_blocking(uart1, wire, (size_t)n);
+    if (n <= 0)
+        return;
+    uint16_t used = (uint16_t)((g_uart_tx_head - g_uart_tx_tail) & (RP2040_UART_TX_RING_CAP - 1U));
+    uint16_t avail = (uint16_t)((RP2040_UART_TX_RING_CAP - 1U) - used);
+    if ((uint16_t)n > avail)
+        return;
+    for (int i = 0; i < n; i++) {
+        g_uart_tx_ring[g_uart_tx_head] = wire[i];
+        g_uart_tx_head = (uint16_t)((g_uart_tx_head + 1U) & (RP2040_UART_TX_RING_CAP - 1U));
     }
+    uart_tx_drain();
 }
 
 static fw_hid_report_t g_last_hid;
@@ -287,11 +343,124 @@ static int rp2040_send_of_func(uint32_t func_mask, void *ctx) {
         (uint8_t)((func_mask >> 16) & 0xFFU),
         (uint8_t)((func_mask >> 24) & 0xFFU),
     };
-    return tud_hid_n_report(1, 0, le, sizeof(le)) ? 0 : -1;
+    /* Report ID 3 on IF 4 (legacy 4-byte OpenFlux mask, compatible with existing openfluxd). */
+    return tud_hid_n_report(1, 3, le, sizeof(le)) ? 0 : -1;
 }
 
 void fw_on_hid_led_report(uint8_t led_mask) {
     g_rt.host_state_status = led_mask;
+}
+
+void fw_on_vial_raw_hid_rx(const uint8_t *buffer, uint16_t bufsize) {
+    if (!buffer || bufsize == 0U)
+        return;
+    uint8_t next = (uint8_t)((g_vial_rx_head + 1U) & 3U);
+    if (next == g_vial_rx_tail)
+        return; /* drop if overloaded */
+    memset(g_vial_rx_ring[g_vial_rx_head], 0, FW_QMK_VIAL_RAW_EPSIZE);
+    size_t n = (bufsize < FW_QMK_VIAL_RAW_EPSIZE) ? (size_t)bufsize : FW_QMK_VIAL_RAW_EPSIZE;
+    memcpy(g_vial_rx_ring[g_vial_rx_head], buffer, n);
+    g_vial_rx_head = next;
+}
+
+static int qmk_cb_eeprom_load(uint8_t layout_id, uint8_t *buf, size_t len, void *ctx) {
+    (void)ctx;
+    return fw_lfs_load_qmk_eeprom(layout_id, buf, len);
+}
+
+static int qmk_cb_eeprom_save(uint8_t layout_id, const uint8_t *buf, size_t len, void *ctx) {
+    (void)ctx;
+    return fw_lfs_save_qmk_eeprom(layout_id, buf, len);
+}
+
+static void qmk_cb_raw_hid_send(const uint8_t data[FW_QMK_VIAL_RAW_EPSIZE], void *ctx) {
+    (void)ctx;
+    /* Non-blocking enqueue so Vial traffic NEVER stalls the 1000 Hz Hall-effect scan loop. */
+    if (g_vial_tx_tail == g_vial_tx_head && tud_hid_n_ready(2)) {
+        if (tud_hid_n_report(2, 0, data, FW_QMK_VIAL_RAW_EPSIZE))
+            return;
+    }
+    uint8_t next = (uint8_t)((g_vial_tx_head + 1U) & 3U);
+    if (next == g_vial_tx_tail) {
+        g_vial_tx_tail = (uint8_t)((g_vial_tx_tail + 1U) & 3U);
+    }
+    memcpy(g_vial_tx_ring[g_vial_tx_head], data, FW_QMK_VIAL_RAW_EPSIZE);
+    g_vial_tx_head = next;
+}
+
+static void qmk_cb_on_flux_action(uint16_t slot, bool pressed, uint8_t effective_mods, uint32_t active_layers,
+                                  void *ctx) {
+    (void)ctx;
+    fw_runtime_handle_of_action(&g_rt, slot, pressed);
+
+    uint8_t top_layer = 0U;
+    for (int l = 7; l >= 0; l--) {
+        if ((active_layers >> (uint32_t)l) & 1U) {
+            top_layer = (uint8_t)l;
+            break;
+        }
+    }
+
+    /* Emit unacknowledged FW_UART_MSG_FLUX_ACTION = 5 to the Linux display SoC. */
+    uint8_t frame[12];
+    uint32_t seq = ++g_rt.uart_tx_seq;
+    frame[0] = FW_UART_MSG_FLUX_ACTION;
+    frame[1] = (uint8_t)(seq & 0xFFU);
+    frame[2] = (uint8_t)((seq >> 8) & 0xFFU);
+    frame[3] = (uint8_t)((seq >> 16) & 0xFFU);
+    frame[4] = (uint8_t)((seq >> 24) & 0xFFU);
+    frame[5] = (uint8_t)(slot & 0xFFU);
+    frame[6] = (uint8_t)(slot >> 8);
+    frame[7] = pressed ? 1U : 0U;
+    frame[8] = effective_mods;
+    frame[9] = top_layer;
+    frame[10] = (uint8_t)(g_rt.active_profile & 0xFFU);
+    frame[11] = 0U;
+    uart_send_hdlc(frame, sizeof(frame));
+
+    /* Queue generic action report (Report ID 4) for USB Vendor HID IF 4. */
+    uint8_t next = (uint8_t)((g_flux_hid_head + 1U) & 15U);
+    if (next != g_flux_hid_tail) {
+        g_flux_hid_ring[g_flux_hid_head].slot = slot;
+        g_flux_hid_ring[g_flux_hid_head].pressed = pressed ? 1U : 0U;
+        g_flux_hid_ring[g_flux_hid_head].mods = effective_mods;
+        g_flux_hid_ring[g_flux_hid_head].layer = top_layer;
+        g_flux_hid_head = next;
+    }
+}
+
+static bool qmk_cb_hid_drain_one(const fw_hid_report_t *rep, void *ctx) {
+    (void)ctx;
+    if (!rep)
+        return false;
+    /* Called only when a giant >120-char macro fills the 256-entry FIFO: briefly yield to USB
+     * so one packet can transmit instead of dropping macro characters. */
+    uint32_t start = to_ms_since_boot(get_absolute_time());
+    while (!tud_hid_n_ready(0) && (uint32_t)(to_ms_since_boot(get_absolute_time()) - start) < 5U) {
+        tud_task();
+    }
+    if (!tud_hid_n_ready(0))
+        return false;
+    g_last_hid = *rep;
+    return rp2040_send_kbd(rep->modifiers, rep->keycodes, rep->nkro_bitmap, NULL) == 0;
+}
+
+static uint8_t qmk_cb_get_host_leds(void *ctx) {
+    (void)ctx;
+    return g_rt.host_state_status;
+}
+
+static int on_vial_def_uploaded(const uint8_t *xz_data, size_t len, void *ctx) {
+    (void)ctx;
+    if (!xz_data || len == 0U || len > sizeof(g_vial_def_stage))
+        return -1;
+    if (fw_qmk_set_vial_def(xz_data, len, NULL) != 0)
+        return -1;
+    memcpy(g_vial_def_stage, xz_data, len);
+    g_vial_def_stage_len = len;
+    g_vial_def_dirty = true;
+    g_vial_def_dirty_ms = to_ms_since_boot(get_absolute_time());
+    return 0;
 }
 
 static void on_refinement_installed(const uint8_t data[FW_REFINEMENT_PAYLOAD_BYTES], void *ctx) {
@@ -315,6 +484,27 @@ int main(void) {
 #endif
     }
 
+    static const fw_qmk_platform_t qmk_plat = {
+        .eeprom_load = qmk_cb_eeprom_load,
+        .eeprom_save = qmk_cb_eeprom_save,
+        .raw_hid_send = qmk_cb_raw_hid_send,
+        .hid_drain_one = qmk_cb_hid_drain_one,
+        .on_flux_action = qmk_cb_on_flux_action,
+        .get_host_leds = qmk_cb_get_host_leds,
+        .ctx = NULL,
+    };
+    fw_qmk_init(&qmk_plat, 1U, to_ms_since_boot(get_absolute_time()));
+    /* One-time upgrade migration: seed QMK EEPROM from existing LittleFS keymap if no Vial EEPROM exists yet. */
+    (void)fw_qmk_seed_from_legacy_keymap(&g_rt, 1U);
+    {
+        size_t def_len = 0U;
+        if (fw_lfs_load_vial_def(g_vial_def_stage, sizeof(g_vial_def_stage), &def_len) == 0) {
+            (void)fw_qmk_set_vial_def(g_vial_def_stage, def_len, NULL);
+        }
+    }
+    g_rt.qmk_enabled = 1U;
+    (void)fw_runtime_set_active_profile(&g_rt, g_rt.active_profile);
+
     static const fw_usb_hooks_t hooks = {
         .on_mcu_bootloader = on_mcu_bootloader,
         .on_soc_bootloader = on_soc_bootloader,
@@ -322,6 +512,7 @@ int main(void) {
         .on_profile_settings_saved = on_profile_saved,
         .on_refinement_installed = on_refinement_installed,
         .refinement_active = refinement_is_active,
+        .on_vial_def_uploaded = on_vial_def_uploaded,
         .on_language_saved = on_language_saved,
         .on_platform_saved = on_platform_saved,
         .ctx = NULL,
@@ -339,31 +530,43 @@ int main(void) {
     memcpy(g_rt.baseline_adc, rest.mean, sizeof rest.mean);
 
     static fw_hid_scheduler_t hid_sched;
+    static fw_hid_report_t qmk_cur_hid;
+    static bool qmk_has_pending_hid = false;
     static uint8_t last_bitmap[32];
     /* These messages are built and consumed serially, never accessed by an interrupt. */
     static union {
         uint8_t update[FW_UART_MSG_UPDATE_LEN];
         uint8_t qc[FW_UART_MSG_QC_LEN];
         uint8_t analog[FW_UART_MSG_ANALOG_MAX_LEN];
+        uint8_t resolved[320];
     } io;
     uint32_t last_analog_tx_ms = 0U;
+    uint32_t last_resolved_tx_ms = 0U;
+    bool resolved_dirty = true;
     uint8_t last_leds = 0U;
     uint32_t last_profile = g_rt.active_profile;
     uint32_t last_act_mode = g_rt.active_actuation_mode;
     uint32_t last_platform = g_rt.platform_code;
     uint32_t last_eff_layer = g_rt.effective_layer_bitfield;
     uint16_t last_of_event_seq = g_rt.of_event_seq;
+    fw_qmk_state_t last_qmk_state;
+    fw_qmk_get_state(&last_qmk_state);
+    uint8_t last_qmk_layout = 1U;
     uint32_t last_full_scan_ms = to_ms_since_boot(get_absolute_time());
     uint32_t last_uart_ms = last_full_scan_ms - BRIDGE_HEARTBEAT_MS;
+    uint32_t last_key_activity_ms = last_full_scan_ms;
 
     for (;;) {
         tud_task();
+        uart_tx_drain();
 
         if (g_usb_config_changed) {
             /* A new USB configuration knows nothing of earlier reports or of a half-received
              * command: resend the current key state and wait for a fresh command header. */
             g_usb_config_changed = 0U;
             memset(&hid_sched, 0, sizeof(hid_sched));
+            fw_qmk_clear_hid_queue();
+            qmk_has_pending_hid = false;
             fw_usb_rx_reset(&g_usb_rx);
             fw_usb_tx_reset(&g_usb_tx);
         }
@@ -394,6 +597,18 @@ int main(void) {
         }
 
         uint32_t scan_ms = to_ms_since_boot(get_absolute_time());
+        /* Drain queued Vial Raw HID TX responses without ever blocking the scan loop. */
+        if (g_vial_tx_tail != g_vial_tx_head && tud_hid_n_ready(2)) {
+            if (tud_hid_n_report(2, 0, g_vial_tx_ring[g_vial_tx_tail], FW_QMK_VIAL_RAW_EPSIZE)) {
+                g_vial_tx_tail = (uint8_t)((g_vial_tx_tail + 1U) & 3U);
+            }
+        }
+        /* Drain pending Vial Raw HID packets before scanning so edits take effect cleanly. */
+        while (g_vial_rx_tail != g_vial_rx_head) {
+            fw_qmk_raw_hid_rx(g_vial_rx_ring[g_vial_rx_tail], scan_ms);
+            g_vial_rx_tail = (uint8_t)((g_vial_rx_tail + 1U) & 3U);
+        }
+
         bool full_scan = (scan_ms - last_full_scan_ms) >= 16U;
         scan_sensors(raw_adc, full_scan ? FW_NUM_SENSORS : FW_REST_CHANNELS);
         if (full_scan)
@@ -408,28 +623,108 @@ int main(void) {
             bool bridge_connected = time_us_64() < g_bridge_ack_expires_us;
             fw_runtime_calibrate(&g_rt, rest.mean, rest.unstable, calibrated_ms, bridge_connected);
         }
+        if (g_rt.keyframe_attached && g_rt.keyframe_layout >= 1U && g_rt.keyframe_layout <= 3U &&
+            g_rt.keyframe_layout != last_qmk_layout) {
+            fw_qmk_set_layout(g_rt.keyframe_layout, scan_ms);
+            (void)fw_qmk_seed_from_legacy_keymap(&g_rt, g_rt.keyframe_layout);
+            /* Preserve the active profile's default layer across magnetic keyframe hot-swaps. */
+            (void)fw_runtime_set_active_profile(&g_rt, g_rt.active_profile);
+            last_qmk_layout = g_rt.keyframe_layout;
+            resolved_dirty = true;
+        }
         fw_hid_report_t hid;
         bool kbd_ep_ready = tud_hid_n_ready(0);
         fw_runtime_set_time(&g_rt, scan_ms);
         fw_runtime_set_hid_ready(&g_rt, kbd_ep_ready ? 1U : 0U);
         fw_runtime_process_scan(&g_rt, raw_adc, &hid);
-        g_last_hid = hid;
         uint32_t now_ms = to_ms_since_boot(get_absolute_time());
         bool save_rest = fw_runtime_finish_scan(&g_rt, now_ms);
         if (save_rest)
             (void)fw_lfs_save_rest_ref(&g_rt);
-        if (g_rt.platform_dirty) {
-            (void)fw_lfs_save_u32("platform_type_code", g_rt.platform_code);
-            g_rt.platform_dirty = 0U;
+        /* Only flush dirty LittleFS files when NO keys are held AND typing has been quiet >=500ms,
+         * so flash erase/program IRQ-disabled windows never interrupt active typing. */
+        bool any_key_down = false;
+        for (size_t i = 0; i < sizeof(g_rt.key_bitmap); i++) {
+            if (g_rt.key_bitmap[i] != 0U) {
+                any_key_down = true;
+                break;
+            }
         }
-        fw_hid_scheduler_step(&hid_sched, &hid, kbd_ep_ready, tud_hid_n_ready(1), rp2040_send_kbd, rp2040_send_consumer,
-                              rp2040_send_of_func, NULL);
+        /* Wake a suspended host computer on any physical key press (matches USB config 0xA0). */
+        if (any_key_down && tud_suspended()) {
+            (void)tud_remote_wakeup();
+        }
+        if (any_key_down || memcmp(last_bitmap, g_rt.key_bitmap, sizeof(last_bitmap)) != 0) {
+            last_key_activity_ms = now_ms;
+        }
+        bool keys_quiet = !any_key_down && (uint32_t)(now_ms - last_key_activity_ms) >= 500U;
+        if (keys_quiet) {
+            if (g_rt.platform_dirty) {
+                (void)fw_lfs_save_u32("platform_type_code", g_rt.platform_code);
+                g_rt.platform_dirty = 0U;
+            }
+            if (g_language_dirty) {
+                (void)fw_lfs_save_u32("language_code", g_language_pending);
+                g_language_dirty = false;
+            }
+        }
+        (void)fw_qmk_poll_eeprom_flush(now_ms, 500U, keys_quiet);
+        if (g_vial_def_dirty && keys_quiet && (uint32_t)(now_ms - g_vial_def_dirty_ms) >= 500U) {
+            (void)fw_lfs_save_vial_def(g_vial_def_stage, g_vial_def_stage_len);
+            g_vial_def_dirty = false;
+        }
+        /* Drain QMK's HID report FIFO one report per USB poll opportunity so back-to-back
+         * press+release transitions emitted inside one scan (mod-tap/layer-tap taps, fast rolls,
+         * combos, macros) are NEVER overwritten before reaching the host OS! */
+        if (g_rt.qmk_enabled) {
+            if (!qmk_has_pending_hid && fw_qmk_pop_hid_report(&qmk_cur_hid)) {
+                qmk_has_pending_hid = true;
+            }
+            const fw_hid_report_t *tx_hid = qmk_has_pending_hid ? &qmk_cur_hid : &hid;
+            g_last_hid = *tx_hid;
+            fw_hid_scheduler_step(&hid_sched, tx_hid, kbd_ep_ready, tud_hid_n_ready(1), rp2040_send_kbd,
+                                  rp2040_send_consumer, rp2040_send_of_func, NULL);
+            if (qmk_has_pending_hid && hid_sched.initialized &&
+                hid_sched.last_modifiers == qmk_cur_hid.modifiers &&
+                hid_sched.last_consumer_usage == qmk_cur_hid.consumer_usage &&
+                memcmp(hid_sched.last_nkro_bitmap, qmk_cur_hid.nkro_bitmap, sizeof(qmk_cur_hid.nkro_bitmap)) == 0) {
+                qmk_has_pending_hid = false;
+            }
+        } else {
+            g_last_hid = hid;
+            fw_hid_scheduler_step(&hid_sched, &hid, kbd_ep_ready, tud_hid_n_ready(1), rp2040_send_kbd,
+                                  rp2040_send_consumer, rp2040_send_of_func, NULL);
+        }
+        if (g_flux_hid_tail != g_flux_hid_head && tud_hid_n_ready(1)) {
+            rp2040_flux_evt_t ev = g_flux_hid_ring[g_flux_hid_tail];
+            uint8_t pkt[8] = {
+                (uint8_t)(ev.slot & 0xFFU), (uint8_t)(ev.slot >> 8), ev.pressed, ev.mods, ev.layer, 0U, 0U, 0U,
+            };
+            if (tud_hid_n_report(1, 4, pkt, sizeof(pkt))) {
+                g_flux_hid_tail = (uint8_t)((g_flux_hid_tail + 1U) & 15U);
+            }
+        }
 
+        fw_qmk_state_t cur_qmk_state;
+        fw_qmk_get_state(&cur_qmk_state);
+        int qmk_changed = (memcmp(&cur_qmk_state, &last_qmk_state, sizeof(cur_qmk_state)) != 0);
+        int qmk_faces_changed = (cur_qmk_state.layer_state != last_qmk_state.layer_state ||
+                                 cur_qmk_state.default_layer_state != last_qmk_state.default_layer_state ||
+                                 cur_qmk_state.keymap_revision != last_qmk_state.keymap_revision);
+        if (!qmk_faces_changed &&
+            (cur_qmk_state.effective_mods != last_qmk_state.effective_mods ||
+             cur_qmk_state.oneshot_mods != last_qmk_state.oneshot_mods) &&
+            fw_qmk_has_enabled_key_overrides()) {
+            qmk_faces_changed = 1;
+        }
+        if (qmk_faces_changed) {
+            resolved_dirty = true;
+        }
         int keys_changed = (memcmp(last_bitmap, g_rt.key_bitmap, sizeof(last_bitmap)) != 0);
         int leds_changed = (g_rt.host_state_status != last_leds);
         int state_changed = (g_rt.active_profile != last_profile || g_rt.active_actuation_mode != last_act_mode ||
                              g_rt.platform_code != last_platform || g_rt.effective_layer_bitfield != last_eff_layer ||
-                             g_rt.of_event_seq != last_of_event_seq);
+                             g_rt.of_event_seq != last_of_event_seq || qmk_changed);
         if (keys_changed || leds_changed || state_changed || (now_ms - last_uart_ms) >= BRIDGE_HEARTBEAT_MS) {
             fw_runtime_build_msg_update(&g_rt, now_ms, io.update);
             uart_send_hdlc(io.update, sizeof(io.update));
@@ -440,7 +735,16 @@ int main(void) {
             last_act_mode = g_rt.active_actuation_mode;
             last_platform = g_rt.platform_code;
             last_eff_layer = g_rt.effective_layer_bitfield;
+            last_qmk_state = cur_qmk_state;
             last_uart_ms = now_ms;
+        }
+        if (resolved_dirty && (now_ms - last_resolved_tx_ms) >= 20U) {
+            size_t rlen = fw_runtime_build_msg_resolved_keys(&g_rt, io.resolved, sizeof(io.resolved));
+            if (rlen > 0U) {
+                uart_send_hdlc(io.resolved, rlen);
+            }
+            resolved_dirty = false;
+            last_resolved_tx_ms = now_ms;
         }
         if (g_rt.analog_mode && (now_ms - last_analog_tx_ms) >= 8U) {
             size_t alen = fw_runtime_build_msg_analog(&g_rt, now_ms, io.analog);

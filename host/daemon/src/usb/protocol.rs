@@ -40,6 +40,7 @@ pub const FW_CMD_GET_RUNTIME_STATE: u8 = 109;
 pub const FW_CMD_PRESS_REFINEMENT_STATUS: u8 = 0x70;
 pub const FW_CMD_PUT_PRESS_REFINEMENT: u8 = 0x71;
 pub const FW_CMD_GET_PRESS_REFINEMENT: u8 = 0x72;
+pub const FW_CMD_PUT_VIAL_DEF: u8 = 0x73;
 
 pub const RESP_NAK: u8 = 0;
 pub const RESP_ACK: u8 = 1;

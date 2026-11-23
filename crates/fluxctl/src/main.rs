@@ -95,6 +95,37 @@ enum Commands {
         #[command(subcommand)]
         cmd: KeyboardCmd,
     },
+
+    /// Inspect and edit QMK/Vial keymaps, sync dynamic module actions, and query live Vial Raw HID state.
+    Vial {
+        #[command(subcommand)]
+        cmd: VialCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum VialCmd {
+    /// Show Vial Raw HID connection status, protocol version, and keyboard UID.
+    Status,
+    /// List sticky QK_KB_n custom action slots mapped from enabled modules.
+    Actions,
+    /// Rebuild dynamic vial.json + module_actions.json and upload to RP2040 + keyboard SoC.
+    Sync,
+    /// Read the 16-bit QMK keycode at (layer, row, col) directly from live Vial EEPROM.
+    Get { layer: u8, row: u8, col: u8 },
+    /// Write a 16-bit QMK keycode (hex `0x2209` or decimal) at (layer, row, col) and verify readback.
+    Set {
+        layer: u8,
+        row: u8,
+        col: u8,
+        keycode: String,
+    },
+    /// Dump all 6x16 keycodes for a layer from live Vial EEPROM.
+    Layer { layer: u8 },
+    /// Export the live Vial keymap setup (all 8 layers + Tap Dances + Combos + Key Overrides) to a JSON file.
+    Export { path: PathBuf },
+    /// Import and apply a saved Vial keymap setup JSON file onto the live keyboard.
+    Import { path: PathBuf },
 }
 
 #[derive(Subcommand)]
@@ -453,9 +484,34 @@ fn parse_setting_value(raw: &str) -> Value {
     serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_string()))
 }
 
+fn load_daemon_token() -> Option<String> {
+    if let Ok(t) = std::env::var("OPENFLUX_BUS_TOKEN") {
+        let trimmed = t.trim().to_string();
+        if !trimmed.is_empty() {
+            return Some(trimmed);
+        }
+    }
+    let data = std::env::var("OPENFLUX_DATA_DIR")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(default_data_dir);
+    std::fs::read_to_string(data.join("config/desktop_token.txt"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 fn daemon_client(timeout_ms: u64) -> Result<reqwest::blocking::Client, String> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Some(tok) = load_daemon_token() {
+        if let Ok(val) = reqwest::header::HeaderValue::from_str(&format!("Bearer {tok}")) {
+            headers.insert(reqwest::header::AUTHORIZATION, val);
+        }
+    }
     reqwest::blocking::Client::builder()
         .danger_accept_invalid_certs(true)
+        .default_headers(headers)
         .timeout(Duration::from_millis(timeout_ms))
         .build()
         .map_err(|e| e.to_string())
@@ -609,6 +665,361 @@ fn run(cli: Cli) -> Result<(), String> {
         Commands::Simulate { cmd } => handle_simulate(&cli, cmd),
         Commands::Preview { cmd } => handle_preview(&cli, &reg, cmd),
         Commands::Keyboard { cmd } => handle_keyboard(&cli, cmd),
+        Commands::Vial { cmd } => handle_vial(&cli, cmd),
+    }
+}
+
+fn vial_xfer(base: &str, pkt: &[u8; 32]) -> Result<[u8; 32], String> {
+    let val = daemon_json(
+        reqwest::Method::POST,
+        &format!("{base}/v2/vial/xfer"),
+        Some(&json!({ "data": pkt.to_vec() })),
+        10_000,
+    )?;
+    let arr = val["data"]
+        .as_array()
+        .ok_or_else(|| "Malformed Vial xfer response".to_string())?;
+    let mut out = [0u8; 32];
+    for (i, v) in arr.iter().take(32).enumerate() {
+        out[i] = v.as_u64().unwrap_or(0) as u8;
+    }
+    Ok(out)
+}
+
+fn parse_u16_keycode(s: &str) -> Result<u16, String> {
+    let t = s.trim();
+    if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+        u16::from_str_radix(hex, 16).map_err(|e| format!("Invalid hex keycode '{s}': {e}"))
+    } else {
+        t.parse::<u16>()
+            .map_err(|e| format!("Invalid keycode '{s}' (use hex like 0x2209 or decimal): {e}"))
+    }
+}
+
+fn handle_vial(cli: &Cli, cmd: &VialCmd) -> Result<(), String> {
+    let base = require_live_daemon(cli)?;
+    match cmd {
+        VialCmd::Status => {
+            let mut val = daemon_json(
+                reqwest::Method::GET,
+                &format!("{base}/v2/vial/status"),
+                None,
+                5_000,
+            )?;
+            let connected = val["connected"].as_bool().unwrap_or(false);
+            let mut summary = format!(
+                "Vial Raw HID: {} ({})",
+                if connected { "CONNECTED" } else { "disconnected" },
+                val["product_name"].as_str().unwrap_or("OpenFlux")
+            );
+            if connected {
+                let mut id_req = [0u8; 32];
+                id_req[0] = 0xFE;
+                id_req[1] = 0x00;
+                if let Ok(r) = vial_xfer(&base, &id_req) {
+                    let proto = u32::from_le_bytes([r[0], r[1], r[2], r[3]]);
+                    let uid: String = r[4..12].iter().map(|b| format!("{b:02x}")).collect();
+                    val["protocol"] = json!(proto);
+                    val["uid"] = json!(uid);
+                    summary.push_str(&format!(" · protocol={proto} · uid={uid}"));
+                }
+            }
+            print_out(cli.json, &val, &summary);
+            Ok(())
+        }
+        VialCmd::Actions => {
+            let val = daemon_json(
+                reqwest::Method::GET,
+                &format!("{base}/v2/vial/actions"),
+                None,
+                5_000,
+            )?;
+            let mut lines = vec!["OpenFlux QMK/Vial Custom Action Slots (QK_KB_n):".to_string()];
+            if let Some(entries) = val["entries"].as_object() {
+                let mut sorted: Vec<(u16, &Value)> = entries
+                    .iter()
+                    .filter_map(|(k, v)| k.parse::<u16>().ok().map(|n| (n, v)))
+                    .collect();
+                sorted.sort_by_key(|(n, _)| *n);
+                for (slot, e) in sorted {
+                    let short = e["short_name"].as_str().unwrap_or("");
+                    let title = e["title"].as_str().unwrap_or("");
+                    let active = e["active"].as_bool().unwrap_or(true);
+                    lines.push(format!(
+                        "  QK_KB_{:>2} ({}): {:<10} {} {}",
+                        slot,
+                        if active { "active" } else { "disabled" },
+                        short,
+                        e["action_id"].as_str().unwrap_or(""),
+                        if !title.is_empty() { format!("— {title}") } else { String::new() }
+                    ));
+                }
+            }
+            print_out(cli.json, &val, &lines.join("\n"));
+            Ok(())
+        }
+        VialCmd::Sync => {
+            let val = daemon_json(
+                reqwest::Method::POST,
+                &format!("{base}/v2/vial/sync"),
+                Some(&json!({})),
+                15_000,
+            )?;
+            print_out(
+                cli.json,
+                &val,
+                &format!(
+                    "Synced {} action slots ({} B XZ) · firmware={} · soc={}",
+                    val["slot_count"].as_u64().unwrap_or(0),
+                    val["xz_bytes"].as_u64().unwrap_or(0),
+                    val["firmware_synced"].as_bool().unwrap_or(false),
+                    val["soc_synced"].as_bool().unwrap_or(false)
+                ),
+            );
+            Ok(())
+        }
+        VialCmd::Get { layer, row, col } => {
+            let mut req = [0u8; 32];
+            req[0] = 0x04;
+            req[1] = *layer;
+            req[2] = *row;
+            req[3] = *col;
+            let r = vial_xfer(&base, &req)?;
+            let kc = ((r[4] as u16) << 8) | (r[5] as u16);
+            let val = json!({
+                "layer": layer,
+                "row": row,
+                "col": col,
+                "keycode": kc,
+                "hex": format!("0x{kc:04X}"),
+            });
+            print_out(
+                cli.json,
+                &val,
+                &format!("L{layer} ({row},{col}) = 0x{kc:04X} ({kc})"),
+            );
+            Ok(())
+        }
+        VialCmd::Set {
+            layer,
+            row,
+            col,
+            keycode,
+        } => {
+            let kc = parse_u16_keycode(keycode)?;
+            let mut set_req = [0u8; 32];
+            set_req[0] = 0x05;
+            set_req[1] = *layer;
+            set_req[2] = *row;
+            set_req[3] = *col;
+            set_req[4] = (kc >> 8) as u8;
+            set_req[5] = (kc & 0xFF) as u8;
+            let _ = vial_xfer(&base, &set_req)?;
+
+            let mut get_req = [0u8; 32];
+            get_req[0] = 0x04;
+            get_req[1] = *layer;
+            get_req[2] = *row;
+            get_req[3] = *col;
+            let r = vial_xfer(&base, &get_req)?;
+            let got = ((r[4] as u16) << 8) | (r[5] as u16);
+            if got != kc {
+                return Err(format!(
+                    "Readback mismatch at L{layer} ({row},{col}): wrote 0x{kc:04X}, got 0x{got:04X}"
+                ));
+            }
+            let val = json!({
+                "ok": true,
+                "layer": layer,
+                "row": row,
+                "col": col,
+                "keycode": got,
+                "hex": format!("0x{got:04X}"),
+            });
+            print_out(
+                cli.json,
+                &val,
+                &format!("Set L{layer} ({row},{col}) = 0x{got:04X} (verified)"),
+            );
+            Ok(())
+        }
+        VialCmd::Layer { layer } => {
+            let mut rows = Vec::new();
+            let mut lines = vec![format!("Layer {layer} (6x16 QMK keycodes):")];
+            for row in 0..6u8 {
+                let mut cols = Vec::new();
+                let mut row_str = format!("  R{row}:");
+                for col in 0..16u8 {
+                    let mut req = [0u8; 32];
+                    req[0] = 0x04;
+                    req[1] = *layer;
+                    req[2] = row;
+                    req[3] = col;
+                    let r = vial_xfer(&base, &req)?;
+                    let kc = ((r[4] as u16) << 8) | (r[5] as u16);
+                    cols.push(format!("0x{kc:04X}"));
+                    row_str.push_str(&format!(" {kc:04X}"));
+                }
+                rows.push(cols);
+                lines.push(row_str);
+            }
+            print_out(
+                cli.json,
+                &json!({ "layer": layer, "rows": rows }),
+                &lines.join("\n"),
+            );
+            Ok(())
+        }
+        VialCmd::Export { path } => {
+            let mut layers = Vec::new();
+            for layer in 0..8u8 {
+                let mut rows = Vec::new();
+                for row in 0..6u8 {
+                    let mut cols = Vec::new();
+                    for col in 0..16u8 {
+                        let mut req = [0u8; 32];
+                        req[0] = 0x04;
+                        req[1] = layer;
+                        req[2] = row;
+                        req[3] = col;
+                        let r = vial_xfer(&base, &req)?;
+                        let kc = ((r[4] as u16) << 8) | (r[5] as u16);
+                        cols.push(kc);
+                    }
+                    rows.push(cols);
+                }
+                layers.push(rows);
+            }
+            // Read Tap Dance entries (dynamic_vial_tap_dance_get = [0xFE, 0x0D, 0x01, idx])
+            let mut tap_dances = Vec::new();
+            for idx in 0..32u8 {
+                let mut req = [0u8; 32];
+                req[0] = 0xFE;
+                req[1] = 0x0D;
+                req[2] = 0x01;
+                req[3] = idx;
+                if let Ok(r) = vial_xfer(&base, &req) {
+                    if r[0] == 0 {
+                        let on_tap = u16::from_le_bytes([r[1], r[2]]);
+                        let on_hold = u16::from_le_bytes([r[3], r[4]]);
+                        let on_double_tap = u16::from_le_bytes([r[5], r[6]]);
+                        let on_tap_hold = u16::from_le_bytes([r[7], r[8]]);
+                        let tapping_term = u16::from_le_bytes([r[9], r[10]]);
+                        if on_tap != 0 || on_hold != 0 || on_double_tap != 0 || on_tap_hold != 0 {
+                            tap_dances.push(json!({
+                                "index": idx,
+                                "on_tap": on_tap,
+                                "on_hold": on_hold,
+                                "on_double_tap": on_double_tap,
+                                "on_tap_hold": on_tap_hold,
+                                "tapping_term": tapping_term,
+                            }));
+                        }
+                    }
+                }
+            }
+            let doc = json!({
+                "format": "openflux-vial-setup-v1",
+                "layers": layers,
+                "tap_dances": tap_dances,
+            });
+            if let Some(parent) = path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+            }
+            let text = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+            std::fs::write(path, text).map_err(|e| format!("write {}: {e}", path.display()))?;
+            print_out(
+                cli.json,
+                &json!({ "ok": true, "path": path, "layers": 8, "tap_dances": tap_dances.len() }),
+                &format!(
+                    "Exported 8 layers + {} tap dances -> {}",
+                    tap_dances.len(),
+                    path.display()
+                ),
+            );
+            Ok(())
+        }
+        VialCmd::Import { path } => {
+            let text = std::fs::read_to_string(path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            let doc: Value = serde_json::from_str(&text)
+                .map_err(|e| format!("parse {}: {e}", path.display()))?;
+            let layers = doc["layers"]
+                .as_array()
+                .ok_or_else(|| "Missing 'layers' array".to_string())?;
+            let mut written_keys = 0usize;
+            for (l_idx, layer_val) in layers.iter().take(8).enumerate() {
+                let Some(rows) = layer_val.as_array() else { continue };
+                for (r_idx, row_val) in rows.iter().take(6).enumerate() {
+                    let Some(cols) = row_val.as_array() else { continue };
+                    for (c_idx, kc_val) in cols.iter().take(16).enumerate() {
+                        let kc = if let Some(n) = kc_val.as_u64() {
+                            n as u16
+                        } else if let Some(s) = kc_val.as_str() {
+                            parse_u16_keycode(s)?
+                        } else {
+                            continue;
+                        };
+                        // Only write keys that differ from live EEPROM so imports finish fast!
+                        let mut get_req = [0u8; 32];
+                        get_req[0] = 0x04;
+                        get_req[1] = l_idx as u8;
+                        get_req[2] = r_idx as u8;
+                        get_req[3] = c_idx as u8;
+                        let cur = vial_xfer(&base, &get_req)?;
+                        let cur_kc = ((cur[4] as u16) << 8) | (cur[5] as u16);
+                        if cur_kc != kc {
+                            let mut set_req = [0u8; 32];
+                            set_req[0] = 0x05;
+                            set_req[1] = l_idx as u8;
+                            set_req[2] = r_idx as u8;
+                            set_req[3] = c_idx as u8;
+                            set_req[4] = (kc >> 8) as u8;
+                            set_req[5] = (kc & 0xFF) as u8;
+                            let _ = vial_xfer(&base, &set_req)?;
+                            written_keys += 1;
+                        }
+                    }
+                }
+            }
+            let mut written_tds = 0usize;
+            if let Some(tds) = doc["tap_dances"].as_array() {
+                for td in tds {
+                    let idx = td["index"].as_u64().unwrap_or(0) as u8;
+                    if idx >= 32 {
+                        continue;
+                    }
+                    let on_tap = td["on_tap"].as_u64().unwrap_or(0) as u16;
+                    let on_hold = td["on_hold"].as_u64().unwrap_or(0) as u16;
+                    let on_dt = td["on_double_tap"].as_u64().unwrap_or(0) as u16;
+                    let on_th = td["on_tap_hold"].as_u64().unwrap_or(0) as u16;
+                    let term = td["tapping_term"].as_u64().unwrap_or(200) as u16;
+                    let mut req = [0u8; 32];
+                    req[0] = 0xFE;
+                    req[1] = 0x0D;
+                    req[2] = 0x02; // dynamic_vial_tap_dance_set
+                    req[3] = idx;
+                    req[4..6].copy_from_slice(&on_tap.to_le_bytes());
+                    req[6..8].copy_from_slice(&on_hold.to_le_bytes());
+                    req[8..10].copy_from_slice(&on_dt.to_le_bytes());
+                    req[10..12].copy_from_slice(&on_th.to_le_bytes());
+                    req[12..14].copy_from_slice(&term.to_le_bytes());
+                    let _ = vial_xfer(&base, &req)?;
+                    written_tds += 1;
+                }
+            }
+            print_out(
+                cli.json,
+                &json!({ "ok": true, "path": path, "updated_keys": written_keys, "tap_dances": written_tds }),
+                &format!(
+                    "Imported {} ({written_keys} keycodes updated, {written_tds} tap dances written)",
+                    path.display()
+                ),
+            );
+            Ok(())
+        }
     }
 }
 

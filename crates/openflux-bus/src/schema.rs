@@ -10,12 +10,14 @@ pub mod topics {
     pub const INPUT_KEYS_BITMAP: &str = "input/keys/bitmap";
     pub const INPUT_KEYS_EVENT: &str = "input/keys/event";
     pub const INPUT_KEYS_ANALOG: &str = "input/keys/analog";
+    pub const INPUT_FLUX_ACTION: &str = "input/flux/action";
 
     pub const FX_SURFACE_IMPULSE: &str = "fx/surface/impulse";
     pub const FX_KEYS_GLOW: &str = "fx/keys/glow";
 
     pub const KEYBOARD_GEOMETRY: &str = "keyboard/geometry";
     pub const KEYBOARD_STATE: &str = "keyboard/state";
+    pub const KEYBOARD_RESOLVED_KEYS: &str = "keyboard/resolved_keys";
 
     pub const HOST_CONNECTION: &str = "host/connection";
     pub const HOST_SYSTEM_METRICS: &str = "host/system/metrics";
@@ -221,4 +223,47 @@ pub struct KeyboardState {
     pub scroll_lock: bool,
     pub keyframe_attached: bool,
     pub idle_ms: u64,
+    #[serde(default)]
+    pub qmk_state_valid: bool,
+    #[serde(default)]
+    pub effective_mods: u8,
+    #[serde(default)]
+    pub oneshot_mods: u8,
+    #[serde(default = "default_oneshot_layer")]
+    pub oneshot_layer: u8,
+    #[serde(default)]
+    pub caps_word_active: bool,
+    #[serde(default)]
+    pub default_layer_bitfield: u32,
+    #[serde(default)]
+    pub keymap_revision: u32,
+}
+
+fn default_oneshot_layer() -> u8 {
+    0xFF
+}
+
+/// OS-ignored Flux/module custom keycode event (QK_KB_n) emitted by QMK.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FluxActionEvent {
+    pub slot: u16,
+    #[serde(default)]
+    pub action_id: Option<String>,
+    pub pressed: bool,
+    pub mods: u8,
+    pub layer: u8,
+    pub profile: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvedKeyEntry {
+    pub keycode: u16,
+    pub source_layer: u8,
+}
+
+/// Effective firmware-resolved QMK keycodes per physical key (accounting for layers + overrides).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvedKeysState {
+    pub keymap_revision: u32,
+    pub keys: Vec<ResolvedKeyEntry>,
 }

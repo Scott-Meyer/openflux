@@ -300,6 +300,7 @@ void test_fw_rest(void);
 void test_fw_refinement(void);
 void test_fw_refine(void);
 void test_fw_thermal(void);
+void test_fw_qmk(void);
 
 int main(void) {
     test_fw_refinement();
@@ -307,6 +308,7 @@ int main(void) {
     test_fw_thermal();
     test_fw_rest();
     test_fw_rapid();
+    test_fw_qmk();
     test_hall_key_reports();
     test_unequal_layer_and_mode_counts();
 

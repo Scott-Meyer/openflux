@@ -149,6 +149,10 @@ typedef struct fw_runtime {
     int16_t rest_ref_adc[112];
     uint32_t uart_tx_seq;
 
+    /* Real vial-qmk typing/keymap mode (enabled by rp2040_main and QMK tests). */
+    uint8_t qmk_enabled;
+    uint32_t qmk_last_keymap_rev;
+
 #ifdef HOST_TEST
     /* Optional override matrix for unit tests; NULL uses FW_ROW_LEN/FW_SENSOR_MAP[lid]. */
     const uint8_t *test_row_len;
@@ -188,11 +192,16 @@ int fw_runtime_export_profile_settings(const fw_runtime_t *rt, uint8_t *out, siz
 /* Applies active profile index (updating active_actuation_mode and active_layer_bitfield). */
 int fw_runtime_set_active_profile(fw_runtime_t *rt, uint32_t profile_idx);
 
+/* Handles a built-in OpenFlux custom slot (0..13 -> fw_of_func_code 0x02..0x0F) fired by QMK. */
+void fw_runtime_handle_of_action(fw_runtime_t *rt, uint16_t slot, bool pressed);
+
 /* Runs one Hall-effect evaluation pass over raw_adc[160], producing key_bitmap + HID report. */
 void fw_runtime_process_scan(fw_runtime_t *rt, const uint16_t raw_adc[FW_NUM_SENSORS], fw_hid_report_t *out_hid);
 
 /* Builds 139-byte MSG_UPDATE frame, 401-byte MSG_QC_SENSOR_DATA frame, and sparse v2 MSG_ANALOG frame. */
 void fw_runtime_build_msg_update(fw_runtime_t *rt, uint32_t timestamp_ms, uint8_t out_buf[FW_UART_MSG_UPDATE_LEN]);
+/* Builds FW_UART_MSG_RESOLVED_KEYS frame (effective QMK keycodes per physical key); returns bytes written. */
+size_t fw_runtime_build_msg_resolved_keys(fw_runtime_t *rt, uint8_t *out_buf, size_t cap);
 void fw_runtime_build_msg_qc(fw_runtime_t *rt, uint8_t out_buf[FW_UART_MSG_QC_LEN]);
 /* Returns total frame payload length (0 if no active keys changed beyond deadzone/hysteresis). */
 size_t fw_runtime_build_msg_analog(fw_runtime_t *rt, uint32_t timestamp_ms,

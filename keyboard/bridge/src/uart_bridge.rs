@@ -1,6 +1,7 @@
 use crate::protocol::{
     FW_MSG_QC_DATA_LEN, FW_MSG_UPDATE_LEN, FW_UART_DEFAULT_DEV, FW_UART_FLAG_ANALOG_MODE,
-    FW_UART_FLAG_QC_MODE, FW_UART_MSG_ANALOG, FW_UART_MSG_QC_DATA, FW_UART_MSG_UPDATE,
+    FW_UART_FLAG_QC_MODE, FW_UART_MSG_ANALOG, FW_UART_MSG_FLUX_ACTION, FW_UART_MSG_QC_DATA,
+    FW_UART_MSG_RESOLVED_KEYS, FW_UART_MSG_UPDATE,
 };
 use crate::simple_hdlc::{simple_hdlc_encode, SimpleHdlcDecoder};
 use std::os::unix::io::RawFd;
@@ -19,12 +20,19 @@ const ST_OF_EVENT_VER: usize = 0x2F;
 const ST_OF_EVENT_SEQ: usize = 0x30;
 const ST_OF_EVENT_RING: usize = 0x32;
 const ST_OF_EVENT_PROFILES: usize = 0x42;
+const ST_QMK_STATE_VER: usize = 0x52;
+const ST_QMK_EFFECTIVE_MODS: usize = 0x53;
+const ST_QMK_ONESHOT_MODS: usize = 0x54;
+const ST_QMK_ONESHOT_LAYER: usize = 0x55;
+const ST_QMK_FLAGS: usize = 0x56;
+const ST_QMK_DEFAULT_LAYERS: usize = 0x57;
 const ST_HOST_LEDS: usize = 0x5C;
 const ST_LANGUAGE: usize = 0x5D;
 const ST_PLATFORM: usize = 0x61;
 const ST_ACTIVE_PROFILE: usize = 0x65;
 const ST_KEYFRAME_ATTACH_STATE: usize = 0x6A;
 const ST_MODULE_TYPES: usize = 0x6B;
+const ST_QMK_KEYMAP_REV: usize = 0x6C;
 const ST_MODULE_BUTTONS: usize = 0x84;
 
 const QC_SENSOR_COUNT: usize = 198;
@@ -42,7 +50,22 @@ pub struct AnalogEntry {
     pub velocity_um_s: i16,
 }
 
-/// The firmware's latest key state, analog depth/velocity deltas, and sensor readings.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FluxActionFrame {
+    pub slot: u16,
+    pub pressed: bool,
+    pub mods: u8,
+    pub layer: u8,
+    pub profile: u8,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ResolvedKeyFrameEntry {
+    pub keycode: u16,
+    pub source_layer: u8,
+}
+
+/// The firmware's latest key state, analog depth/velocity deltas, QMK state, and sensor readings.
 #[derive(Clone)]
 pub struct FirmwareUartState {
     pub valid: bool,
@@ -57,6 +80,16 @@ pub struct FirmwareUartState {
     pub of_events_seq: u16,
     pub of_events_ring: [u8; 16],
     pub of_events_profiles: [u8; 16],
+    pub qmk_state_valid: bool,
+    pub qmk_effective_mods: u8,
+    pub qmk_oneshot_mods: u8,
+    pub qmk_oneshot_layer: u8,
+    pub qmk_caps_word_active: bool,
+    pub qmk_default_layer_bitfield: u32,
+    pub qmk_keymap_revision: u32,
+    pub last_flux_action: FluxActionFrame,
+    pub resolved_keymap_revision: u32,
+    pub resolved_keys: Vec<ResolvedKeyFrameEntry>,
     pub language_code: u32,
     pub platform_code: u32,
     pub active_profile: u32,
@@ -85,6 +118,16 @@ impl Default for FirmwareUartState {
             of_events_seq: 0,
             of_events_ring: [0; 16],
             of_events_profiles: [0; 16],
+            qmk_state_valid: false,
+            qmk_effective_mods: 0,
+            qmk_oneshot_mods: 0,
+            qmk_oneshot_layer: 0xFF,
+            qmk_caps_word_active: false,
+            qmk_default_layer_bitfield: 1,
+            qmk_keymap_revision: 0,
+            last_flux_action: FluxActionFrame::default(),
+            resolved_keymap_revision: 0,
+            resolved_keys: Vec::new(),
             language_code: 0,
             platform_code: 0,
             active_profile: 0,
@@ -310,6 +353,22 @@ impl UartBridge {
                 s.of_events_ring = [0; 16];
                 s.of_events_profiles = [0; 16];
             }
+            s.qmk_state_valid = st[ST_QMK_STATE_VER] != 0;
+            if s.qmk_state_valid {
+                s.qmk_effective_mods = st[ST_QMK_EFFECTIVE_MODS];
+                s.qmk_oneshot_mods = st[ST_QMK_ONESHOT_MODS];
+                s.qmk_oneshot_layer = st[ST_QMK_ONESHOT_LAYER];
+                s.qmk_caps_word_active = (st[ST_QMK_FLAGS] & 0x01) != 0;
+                s.qmk_default_layer_bitfield = le_u32(st, ST_QMK_DEFAULT_LAYERS);
+                s.qmk_keymap_revision = le_u32(st, ST_QMK_KEYMAP_REV);
+            } else {
+                s.qmk_effective_mods = 0;
+                s.qmk_oneshot_mods = 0;
+                s.qmk_oneshot_layer = 0xFF;
+                s.qmk_caps_word_active = false;
+                s.qmk_default_layer_bitfield = 1;
+                s.qmk_keymap_revision = 0;
+            }
             s.host_state_status = st[ST_HOST_LEDS];
             s.language_code = le_u32(st, ST_LANGUAGE);
             s.platform_code = le_u32(st, ST_PLATFORM);
@@ -359,6 +418,42 @@ impl UartBridge {
                 });
             }
             let _ = self.send_ack(msg_type, 0);
+            on_update(&self.state, msg_type);
+            return 0;
+        }
+        if msg_type == FW_UART_MSG_FLUX_ACTION {
+            if payload.len() < 11 {
+                return -1;
+            }
+            self.state.seq = le_u32(payload, 1);
+            self.state.last_flux_action = FluxActionFrame {
+                slot: u16::from_le_bytes([payload[5], payload[6]]),
+                pressed: payload[7] != 0,
+                mods: payload[8],
+                layer: payload[9],
+                profile: payload[10],
+            };
+            on_update(&self.state, msg_type);
+            return 0;
+        }
+        if msg_type == FW_UART_MSG_RESOLVED_KEYS {
+            if payload.len() < 10 {
+                return -1;
+            }
+            let n_keys = payload[9] as usize;
+            if payload.len() != 10 + n_keys * 3 || n_keys > 96 {
+                return -1;
+            }
+            self.state.seq = le_u32(payload, 1);
+            self.state.resolved_keymap_revision = le_u32(payload, 5);
+            self.state.resolved_keys.clear();
+            for i in 0..n_keys {
+                let off = 10 + i * 3;
+                self.state.resolved_keys.push(ResolvedKeyFrameEntry {
+                    keycode: u16::from_le_bytes([payload[off], payload[off + 1]]),
+                    source_layer: payload[off + 2],
+                });
+            }
             on_update(&self.state, msg_type);
             return 0;
         }

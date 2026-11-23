@@ -1,7 +1,7 @@
 use crate::device_paths::BRIDGE_SOCK_DEFAULT;
 use crate::protocol::{
-    DISPLAY_MAX_CLIENTS, FW_UART_MSG_ANALOG, FW_UART_MSG_QC_DATA, FW_UART_MSG_UPDATE,
-    LIVE_DATA_TYPE_BUS_FRAME,
+    DISPLAY_MAX_CLIENTS, FW_UART_MSG_ANALOG, FW_UART_MSG_FLUX_ACTION, FW_UART_MSG_QC_DATA,
+    FW_UART_MSG_RESOLVED_KEYS, FW_UART_MSG_UPDATE, LIVE_DATA_TYPE_BUS_FRAME,
 };
 use crate::simple_hdlc::SimpleHdlcDecoder;
 use crate::uart_bridge::{FirmwareUartState, UartBridge};
@@ -372,8 +372,22 @@ pub fn format_uart_json(state: &FirmwareUartState, msg_type: u8) -> String {
             }
             ev_field.push(']');
         }
+        let mut qmk_field = String::new();
+        if state.qmk_state_valid {
+            use std::fmt::Write;
+            let _ = write!(
+                &mut qmk_field,
+                ",\"qmk_state_valid\":true,\"effective_mods\":{},\"oneshot_mods\":{},\"oneshot_layer\":{},\"caps_word_active\":{},\"default_layer_bitfield\":{},\"keymap_revision\":{}",
+                state.qmk_effective_mods,
+                state.qmk_oneshot_mods,
+                state.qmk_oneshot_layer,
+                state.qmk_caps_word_active,
+                state.qmk_default_layer_bitfield,
+                state.qmk_keymap_revision
+            );
+        }
         return format!(
-            "{{\"type\":\"key_state\",\"seq\":{},\"timestamp_ms\":{},\"keyframe_layout\":{},\"keyframe_attached\":{},\"switch_feel\":{},\"active_layer_bitfield\":{},\"active_actuation_mode\":{},\"language_code\":{},\"platform_code\":{},\"active_profile\":{},\"num_lock\":{},\"caps_lock\":{},\"scroll_lock\":{}{},\"key_bitmap\":\"{}\"}}\n",
+            "{{\"type\":\"key_state\",\"seq\":{},\"timestamp_ms\":{},\"keyframe_layout\":{},\"keyframe_attached\":{},\"switch_feel\":{},\"active_layer_bitfield\":{},\"active_actuation_mode\":{},\"language_code\":{},\"platform_code\":{},\"active_profile\":{},\"num_lock\":{},\"caps_lock\":{},\"scroll_lock\":{}{}{},\"key_bitmap\":\"{}\"}}\n",
             state.seq,
             state.timestamp_ms,
             state.keyframe_layout,
@@ -388,6 +402,7 @@ pub fn format_uart_json(state: &FirmwareUartState, msg_type: u8) -> String {
             (state.host_state_status & 0x02) != 0,
             (state.host_state_status & 0x04) != 0,
             ev_field,
+            qmk_field,
             hex
         );
     }
@@ -414,6 +429,28 @@ pub fn format_uart_json(state: &FirmwareUartState, msg_type: u8) -> String {
                 out.push(',');
             }
             let _ = write!(&mut out, "[{},{},{}]", s.key_index, s.depth_um, s.velocity_um_s);
+        }
+        out.push_str("]}\n");
+        return out;
+    }
+    if msg_type == FW_UART_MSG_FLUX_ACTION {
+        let a = state.last_flux_action;
+        return format!(
+            "{{\"type\":\"flux_action\",\"seq\":{},\"slot\":{},\"pressed\":{},\"mods\":{},\"layer\":{},\"profile\":{}}}\n",
+            state.seq, a.slot, a.pressed, a.mods, a.layer, a.profile
+        );
+    }
+    if msg_type == FW_UART_MSG_RESOLVED_KEYS {
+        let mut out = format!(
+            "{{\"type\":\"resolved_keys\",\"seq\":{},\"keymap_revision\":{},\"keys\":[",
+            state.seq, state.resolved_keymap_revision
+        );
+        for (i, k) in state.resolved_keys.iter().enumerate() {
+            use std::fmt::Write;
+            if i > 0 {
+                out.push(',');
+            }
+            let _ = write!(&mut out, "[{},{}]", k.keycode, k.source_layer);
         }
         out.push_str("]}\n");
         return out;

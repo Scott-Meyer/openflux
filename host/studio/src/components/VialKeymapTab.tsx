@@ -169,6 +169,7 @@ export const VialKeymapTab: React.FC<VialKeymapTabProps> = ({ stylingView }) => 
           key={frameKey}
           ref={iframeRef}
           src="./vialite/index.html"
+          sandbox="allow-scripts allow-downloads"
           title="OpenFlux QMK / Vial Configurator"
           style={{
             flex: 1,

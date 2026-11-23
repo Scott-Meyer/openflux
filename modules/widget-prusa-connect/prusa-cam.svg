@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="128" height="128" fill="none">
+  <!-- Sleek camera viewfinder brackets -->
+  <g stroke="#F2F7FF" stroke-width="3.0" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 20 V12 A4 4 0 0 1 12 8 H20"/>
+    <path d="M44 8 H52 A4 4 0 0 1 56 12 V20"/>
+    <path d="M8 44 V52 A4 4 0 0 0 12 56 H20"/>
+    <path d="M44 56 H52 A4 4 0 0 0 56 52 V44"/>
+    <!-- X-axis rail stopping cleanly at extruder carriage -->
+    <path d="M16 20 H26"/>
+    <path d="M38 20 H48"/>
+    <!-- Extruder carriage & nozzle tip -->
+    <path d="M26 15 H38 V23 L32 30 L26 23 Z"/>
+  </g>
+  <!-- Crisp isometric 3D-printed cube in Prusa orange (cleanly framed, no overlapping bed line) -->
+  <g stroke="#FA6831" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 33 L43 39 V49 L32 55 L21 49 V39 Z" fill="#FA6831" fill-opacity="0.16"/>
+    <path d="M21 39 L32 45 L43 39"/>
+    <path d="M32 45 V55"/>
+  </g>
+  <!-- Live camera REC dot in top-right viewfinder -->
+  <circle cx="48" cy="14" r="2.7" fill="#FA6831"/>
+</svg>

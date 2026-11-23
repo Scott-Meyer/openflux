@@ -10,7 +10,8 @@ use crate::usb::protocol::{
     BRIDGE_CMD_SEND_LIVE_DATA,
     BRIDGE_CMD_SET_SYSTEM_TIME, BRIDGE_CMD_STAT_FILE, BRIDGE_TARGET, FIRMWARE_TARGET,
     FW_CMD_FILE_FROM_HOST, FW_CMD_FILE_TO_HOST, FW_CMD_GET_KEYMAP, FW_CMD_GET_PRESS_REFINEMENT,
-    FW_CMD_PRESS_REFINEMENT_STATUS, FW_CMD_PUT_PRESS_REFINEMENT, FW_CMD_SEND_KEYMAP,
+    FW_CMD_PRESS_REFINEMENT_STATUS, FW_CMD_PUT_PRESS_REFINEMENT, FW_CMD_PUT_VIAL_DEF,
+    FW_CMD_SEND_KEYMAP,
     FW_CMD_SET_ACTIVE_PROFILE, FW_CMD_SET_LANGUAGE, FW_CMD_SET_PLATFORM, FW_CMD_VERSION,
     KEYBOARD_VID,
 };
@@ -366,5 +367,11 @@ impl KeyboardUsbClient {
     /// `GET_PRESS_REFINEMENT`: the stored press-refinement record.
     pub fn get_press_refinement(&self) -> Result<Vec<u8>, UsbError> {
         self.transact(FIRMWARE_TARGET, FW_CMD_GET_PRESS_REFINEMENT, &[], 3000)
+    }
+
+    /// `PUT_VIAL_DEF`: uploads a dynamic XZ-compressed `vial.json` definition to RP2040 LittleFS.
+    pub fn put_vial_def(&self, xz_bytes: &[u8]) -> Result<(), UsbError> {
+        self.transact(FIRMWARE_TARGET, FW_CMD_PUT_VIAL_DEF, xz_bytes, 5000)?;
+        Ok(())
     }
 }

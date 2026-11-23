@@ -21,6 +21,8 @@ typedef struct {
     /* In enabled builds only: a complete record is durably installed; payload is borrowed for this call. */
     void (*on_refinement_installed)(const uint8_t payload[FW_REFINEMENT_PAYLOAD_BYTES], void *ctx);
     bool (*refinement_active)(void *ctx);
+    /* Dynamic XZ-compressed vial.json uploaded by openfluxd (RAM-buffered and debounced to LittleFS). */
+    int (*on_vial_def_uploaded)(const uint8_t *xz_data, size_t len, void *ctx);
 } fw_usb_hooks_t;
 
 typedef enum {

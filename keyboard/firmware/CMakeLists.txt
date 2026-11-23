@@ -27,6 +27,86 @@ if(NOT LFS_DIR)
     set(LFS_DIR "/opt/littlefs")
 endif()
 
+set(QMK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/vial-qmk")
+
+add_library(openflux_qmk STATIC
+    ${QMK_DIR}/quantum/action.c
+    ${QMK_DIR}/quantum/action_layer.c
+    ${QMK_DIR}/quantum/action_tapping.c
+    ${QMK_DIR}/quantum/action_util.c
+    ${QMK_DIR}/quantum/bitwise.c
+    ${QMK_DIR}/quantum/caps_word.c
+    ${QMK_DIR}/quantum/dynamic_keymap.c
+    ${QMK_DIR}/quantum/eeconfig.c
+    ${QMK_DIR}/quantum/keyboard.c
+    ${QMK_DIR}/quantum/keycode_config.c
+    ${QMK_DIR}/quantum/keymap_common.c
+    ${QMK_DIR}/quantum/keymap_introspection.c
+    ${QMK_DIR}/quantum/led.c
+    ${QMK_DIR}/quantum/logging/debug.c
+    ${QMK_DIR}/quantum/logging/print.c
+    ${QMK_DIR}/quantum/nvm/eeprom/nvm_dynamic_keymap.c
+    ${QMK_DIR}/quantum/nvm/eeprom/nvm_eeconfig.c
+    ${QMK_DIR}/quantum/nvm/eeprom/nvm_via.c
+    ${QMK_DIR}/quantum/process_keycode/process_auto_shift.c
+    ${QMK_DIR}/quantum/process_keycode/process_caps_word.c
+    ${QMK_DIR}/quantum/process_keycode/process_combo.c
+    ${QMK_DIR}/quantum/process_keycode/process_default_layer.c
+    ${QMK_DIR}/quantum/process_keycode/process_grave_esc.c
+    ${QMK_DIR}/quantum/process_keycode/process_key_override.c
+    ${QMK_DIR}/quantum/process_keycode/process_magic.c
+    ${QMK_DIR}/quantum/process_keycode/process_repeat_key.c
+    ${QMK_DIR}/quantum/process_keycode/process_tap_dance.c
+    ${QMK_DIR}/quantum/qmk_settings.c
+    ${QMK_DIR}/quantum/quantum.c
+    ${QMK_DIR}/quantum/raw_hid.c
+    ${QMK_DIR}/quantum/repeat_key.c
+    ${QMK_DIR}/quantum/send_string/send_string.c
+    ${QMK_DIR}/quantum/sync_timer.c
+    ${QMK_DIR}/quantum/via.c
+    ${QMK_DIR}/quantum/vial.c
+    ${QMK_DIR}/tmk_core/protocol/host.c
+    ${QMK_DIR}/tmk_core/protocol/report.c
+    ${QMK_DIR}/tmk_core/protocol/usb_device_state.c
+    ${QMK_DIR}/tmk_core/protocol/usb_util.c
+    ${QMK_DIR}/platforms/suspend.c
+    src/qmk/fw_qmk_platform.c
+    src/qmk/fw_qmk.c
+)
+
+target_include_directories(openflux_qmk PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/qmk/qmk_platform
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/qmk
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${QMK_DIR}
+    ${QMK_DIR}/quantum
+    ${QMK_DIR}/quantum/keymap_extras
+    ${QMK_DIR}/quantum/sequencer
+    ${QMK_DIR}/quantum/process_keycode
+    ${QMK_DIR}/quantum/send_string
+    ${QMK_DIR}/quantum/logging
+    ${QMK_DIR}/quantum/nvm
+    ${QMK_DIR}/quantum/nvm/eeprom
+    ${QMK_DIR}/tmk_core/protocol
+    ${QMK_DIR}/platforms
+)
+
+target_compile_definitions(openflux_qmk PRIVATE
+    FW_PROJECT_VERSION="${OPENFLUX_FIRMWARE_VERSION}"
+    QMK_KEYBOARD_H="openflux_qmk.h"
+    KEYMAP_C="fw_qmk_keymap.c"
+)
+
+target_compile_options(openflux_qmk PRIVATE
+    -std=gnu11
+    -Wall
+    -Wno-unused-parameter
+    -Wno-unused-function
+    -Wno-sign-compare
+    -Wno-int-to-pointer-cast
+    -include ${CMAKE_CURRENT_SOURCE_DIR}/src/qmk/qmk_platform/config.h
+)
+
 add_executable(openflux_firmware
     src/rp2040_main.c
     src/fw_calibration.c
@@ -74,6 +154,7 @@ target_compile_options(openflux_firmware PRIVATE -Wall -Wextra -Werror)
 set_source_files_properties(${LFS_DIR}/lfs.c ${LFS_DIR}/lfs_util.c PROPERTIES COMPILE_OPTIONS "-Wno-unused-function")
 
 target_link_libraries(openflux_firmware
+    openflux_qmk
     pico_stdlib
     hardware_adc
     hardware_flash

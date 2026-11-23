@@ -202,6 +202,15 @@ static void dispatch_command(fw_usb_rx_t *rx, fw_usb_send_fn_t send_fn, void *se
             send_response(send_fn, send_ctx, rx, FW_RESP_ACK, out, sizeof(out));
             break;
         }
+        case FW_CMD_PUT_VIAL_DEF: {
+            if (plen > 0U && rx->hooks.on_vial_def_uploaded &&
+                rx->hooks.on_vial_def_uploaded(p, plen, rx->hooks.ctx) == 0) {
+                send_response(send_fn, send_ctx, rx, FW_RESP_ACK, NULL, 0U);
+            } else {
+                send_response(send_fn, send_ctx, rx, FW_RESP_NAK, NULL, 0U);
+            }
+            break;
+        }
         default:
             send_response(send_fn, send_ctx, rx, FW_RESP_NAK, NULL, 0U);
             break;

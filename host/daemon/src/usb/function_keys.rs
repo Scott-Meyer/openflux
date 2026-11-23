@@ -16,6 +16,8 @@ use std::time::Duration;
 
 /// The report ID of the function-key report when it shares the keyboard's interface.
 pub const REPORT_ID: u8 = 3;
+/// The report ID of generic QMK/Vial Flux module actions (`{ slot_le16, pressed, mods, layer }`).
+pub const REPORT_ID_FLUX_ACTION: u8 = 4;
 /// The usage page and usage of the function-key collection.
 pub const USAGE_PAGE: u16 = 0xFF00;
 pub const USAGE: u16 = 0x01;
@@ -40,6 +42,16 @@ pub fn function_code(name: &str) -> Option<u32> {
 pub fn parse_report(report: &[u8]) -> Option<u32> {
     match report {
         [a, b, c, d] | [REPORT_ID, a, b, c, d, ..] => Some(u32::from_le_bytes([*a, *b, *c, *d])),
+        _ => None,
+    }
+}
+
+/// Parses a Report ID 4 generic Flux/module action event: `(slot, pressed, mods, layer)`.
+pub fn parse_flux_action_report(report: &[u8]) -> Option<(u16, bool, u8, u8)> {
+    match report {
+        [REPORT_ID_FLUX_ACTION, slo, shi, pressed, mods, layer, ..] => {
+            Some((u16::from_le_bytes([*slo, *shi]), *pressed != 0, *mods, *layer))
+        }
         _ => None,
     }
 }
@@ -97,11 +109,12 @@ impl ReportSource for hidapi::HidDevice {
 }
 
 /// Reads reports from `source` until it fails or `running` is cleared, and calls `on_press` for
-/// every function key that goes down. Returns the read error, or `None` when stopped.
-pub fn listen(
+/// every function key that goes down and `on_flux` for Report ID 4 QMK/Vial module actions.
+pub fn listen_with_actions(
     source: &mut dyn ReportSource,
     running: &AtomicBool,
     on_press: &mut dyn FnMut(u32),
+    on_flux: &mut dyn FnMut(u16, bool, u8, u8),
 ) -> Option<String> {
     let mut held = HeldFunctions::default();
     // Large enough for any report of the interface, including the keyboard's.
@@ -110,7 +123,10 @@ pub fn listen(
         match source.read_report(&mut buf, READ_TIMEOUT_MS) {
             Ok(0) => {}
             Ok(n) => {
-                if let Some(mask) = parse_report(&buf[..n.min(buf.len())]) {
+                let slice = &buf[..n.min(buf.len())];
+                if let Some((slot, pressed, mods, layer)) = parse_flux_action_report(slice) {
+                    on_flux(slot, pressed, mods, layer);
+                } else if let Some(mask) = parse_report(slice) {
                     held.update(mask).into_iter().for_each(&mut *on_press);
                 }
             }
@@ -118,6 +134,15 @@ pub fn listen(
         }
     }
     None
+}
+
+pub fn listen(
+    source: &mut dyn ReportSource,
+    running: &AtomicBool,
+    on_press: &mut dyn FnMut(u32),
+) -> Option<String> {
+    let mut ignore_flux = |_: u16, _: bool, _: u8, _: u8| {};
+    listen_with_actions(source, running, on_press, &mut ignore_flux)
 }
 
 /// Why the function-key collection couldn't be opened.
@@ -157,8 +182,11 @@ fn run(state: &ApiState, running: &AtomicBool) {
                     ),
                     FunctionAction::None => {}
                 };
+                let mut on_flux = |slot: u16, pressed: bool, mods: u8, layer: u8| {
+                    state.v2.dispatch_flux_action(slot, pressed, mods, layer);
+                };
                 // A read error means the keyboard went away; it is looked for again below.
-                let _ = listen(&mut device, running, &mut on_press);
+                let _ = listen_with_actions(&mut device, running, &mut on_press, &mut on_flux);
             }
             Err(OpenError::NoKeyboard) => {}
             Err(OpenError::Unavailable(why)) => {

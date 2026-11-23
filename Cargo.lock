@@ -3518,6 +3518,7 @@ dependencies = [
 name = "openflux-modules"
 version = "2.0.0-alpha.1"
 dependencies = [
+ "libc",
  "mlua",
  "openflux-bus",
  "serde",
@@ -3536,7 +3537,6 @@ dependencies = [
  "objc2",
  "objc2-foundation",
  "objc2-service-management",
- "openflux-display",
  "reqwest 0.12.28",
  "rfd",
  "serde",
@@ -3585,7 +3585,6 @@ dependencies = [
  "libusb1-sys",
  "openflux-bus",
  "openflux-compositor",
- "openflux-display",
  "openflux-modules",
  "openflux-update",
  "rcgen",

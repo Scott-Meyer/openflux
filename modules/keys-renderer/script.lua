@@ -8,6 +8,7 @@ local geom = nil
 local providers = {} -- topic -> provider table (nil tombstone removes it on Erlang/LWT purge!)
 local held = { ctrl = false, shift = false, alt = false, cmd = false, fn = false }
 local held_by_idx = {} -- physical key_index -> true while held (prevents dual-Shift/dual-Ctrl glitches!)
+local qmk_state_active = false
 local caps_lock = false
 local active_layer = 0
 local active_app = { app_id = "", process_name = "", window_title = "", profile_name = "" }
@@ -208,7 +209,7 @@ function on_event(topic, payload)
       providers[topic] = nil
     end
     needs_redraw = true
-  elseif topic == "input/keys/event" and type(payload) == "table" then
+    elseif topic == "input/keys/event" and type(payload) == "table" then
     local ki = payload.key_index
     if ki ~= nil then
       if payload.kind == "press" then
@@ -216,26 +217,43 @@ function on_event(topic, payload)
       elseif payload.kind == "release" then
         held_by_idx[ki] = nil
       end
-      local prev_mask = current_mod_mask()
-      local prev_fn = held.fn
-      held.ctrl, held.shift, held.alt, held.cmd, held.fn = false, false, false, false, false
-      for hki, _ in pairs(held_by_idx) do
-        local mk = MOD_KEYS[hki]
-        if mk then held[mk] = true end
-      end
-      if current_mod_mask() ~= prev_mask or held.fn ~= prev_fn then
-        needs_redraw = true
+      if not qmk_state_active then
+        local prev_mask = current_mod_mask()
+        local prev_fn = held.fn
+        held.ctrl, held.shift, held.alt, held.cmd, held.fn = false, false, false, false, false
+        for hki, _ in pairs(held_by_idx) do
+          local mk = MOD_KEYS[hki]
+          if mk then held[mk] = true end
+        end
+        if current_mod_mask() ~= prev_mask or held.fn ~= prev_fn then
+          needs_redraw = true
+        end
       end
     end
   elseif topic == "keyboard/state" and type(payload) == "table" then
-    local next_caps = payload.caps_lock == true
+    local next_caps = (payload.caps_lock == true) or (payload.caps_word_active == true)
     local bf = tonumber(payload.active_layer_bitfield) or 1
+    local def_bf = tonumber(payload.default_layer_bitfield) or 1
     local next_layer = 0
     if bf >= 2 then
       local v = bf
       while v >= 2 do v = math.floor(v / 2); next_layer = next_layer + 1 end
     end
-    if next_caps ~= caps_lock or next_layer ~= active_layer then
+    local prev_mask = current_mod_mask()
+    local prev_fn = held.fn
+    if payload.qmk_state_valid == true then
+      qmk_state_active = true
+      local em = tonumber(payload.effective_mods) or 0
+      local om = tonumber(payload.oneshot_mods) or 0
+      -- Combine QMK active + one-shot 8-bit HID modifier masks (bits 0/4 Ctrl, 1/5 Shift, 2/6 Alt, 3/7 GUI)
+      local function bit_set(val, b) return math.floor(val / (2 ^ b)) % 2 == 1 end
+      held.ctrl = bit_set(em, 0) or bit_set(em, 4) or bit_set(om, 0) or bit_set(om, 4)
+      held.shift = bit_set(em, 1) or bit_set(em, 5) or bit_set(om, 1) or bit_set(om, 5)
+      held.alt = bit_set(em, 2) or bit_set(em, 6) or bit_set(om, 2) or bit_set(om, 6)
+      held.cmd = bit_set(em, 3) or bit_set(em, 7) or bit_set(om, 3) or bit_set(om, 7)
+      held.fn = (bf ~= def_bf) and (next_layer > 0)
+    end
+    if next_caps ~= caps_lock or next_layer ~= active_layer or current_mod_mask() ~= prev_mask or held.fn ~= prev_fn then
       caps_lock = next_caps
       active_layer = next_layer
       needs_redraw = true
@@ -378,6 +396,199 @@ local function draw_icon(ctx, icon, cx, cy, col, sc)
     ctx:line(cx - 4 * s, cy + 5 * s, cx + 4 * s, cy + 11 * s, 3.0 * s, b)
     ctx:line(cx + 4 * s, cy - 11 * s, cx + 4 * s, cy + 11 * s, 3.0 * s, b)
     ctx:arc(cx + 5 * s, cy, 7 * s, -45, 45, 2.2 * s, col)
+  -- Crisp Material Design / Apple keyboard modifier & navigation icons (matching Vialite)
+  elseif icon == "kbd_cmd" then
+    local w = 2.6 * s
+    local r = 4.5 * s
+    local d = 4.5 * s
+    local e = d + r
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function cmd_pass(ox, oy, c)
+      -- Continuous bars connecting all 4 outer cloverleaf loops tangentially
+      ctx:line(cx + ox - e, cy + oy - d, cx + ox + e, cy + oy - d, w, c)
+      ctx:line(cx + ox - e, cy + oy + d, cx + ox + e, cy + oy + d, w, c)
+      ctx:line(cx + ox - d, cy + oy - e, cx + ox - d, cy + oy + e, w, c)
+      ctx:line(cx + ox + d, cy + oy - e, cx + ox + d, cy + oy + e, w, c)
+      -- 4 outer 270-degree cloverleaf loops (top-left, top-right, bottom-right, bottom-left)
+      ctx:arc(cx + ox - e, cy + oy - e, r, 90, 360, w, c)
+      ctx:arc(cx + ox + e, cy + oy - e, r, 180, 450, w, c)
+      ctx:arc(cx + ox + e, cy + oy + e, r, 270, 540, w, c)
+      ctx:arc(cx + ox - e, cy + oy + e, r, 0, 270, w, c)
+    end
+    cmd_pass(1.2, 1.4, sh)
+    cmd_pass(0, 0, b)
+  elseif icon == "kbd_opt" then
+    local w = 2.7 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function opt_pass(ox, oy, c)
+      ctx:line(cx + ox - 13 * s, cy + oy - 8 * s, cx + ox - 5 * s, cy + oy - 8 * s, w, c)
+      ctx:line(cx + ox - 5 * s,  cy + oy - 8 * s, cx + ox + 4 * s, cy + oy + 8 * s, w, c)
+      ctx:line(cx + ox + 4 * s,  cy + oy + 8 * s, cx + ox + 13 * s, cy + oy + 8 * s, w, c)
+      ctx:line(cx + ox + 2 * s,  cy + oy - 8 * s, cx + ox + 13 * s, cy + oy - 8 * s, w, c)
+    end
+    opt_pass(1.2, 1.4, sh)
+    opt_pass(0, 0, b)
+  elseif icon == "kbd_ctrl" then
+    local w = 2.8 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function ctrl_pass(ox, oy, c)
+      ctx:line(cx + ox - 11 * s, cy + oy + 5 * s, cx + ox, cy + oy - 7 * s, w, c)
+      ctx:line(cx + ox, cy + oy - 7 * s, cx + ox + 11 * s, cy + oy + 5 * s, w, c)
+    end
+    ctrl_pass(1.2, 1.4, sh)
+    ctrl_pass(0, 0, b)
+  elseif icon == "kbd_shift" then
+    local w = 2.5 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function sft_pass(ox, oy, c)
+      ctx:line(cx + ox, cy + oy - 12 * s, cx + ox - 12 * s, cy + oy + 1 * s, w, c)
+      ctx:line(cx + ox, cy + oy - 12 * s, cx + ox + 12 * s, cy + oy + 1 * s, w, c)
+      ctx:line(cx + ox - 12 * s, cy + oy + 1 * s, cx + ox - 5 * s, cy + oy + 1 * s, w, c)
+      ctx:line(cx + ox + 12 * s, cy + oy + 1 * s, cx + ox + 5 * s, cy + oy + 1 * s, w, c)
+      ctx:line(cx + ox - 5 * s, cy + oy + 1 * s, cx + ox - 5 * s, cy + oy + 11 * s, w, c)
+      ctx:line(cx + ox + 5 * s, cy + oy + 1 * s, cx + ox + 5 * s, cy + oy + 11 * s, w, c)
+      ctx:line(cx + ox - 5 * s, cy + oy + 11 * s, cx + ox + 5 * s, cy + oy + 11 * s, w, c)
+    end
+    sft_pass(1.2, 1.4, sh)
+    sft_pass(0, 0, b)
+  elseif icon == "kbd_caps" then
+    local w = 2.4 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function caps_pass(ox, oy, c)
+      ctx:line(cx + ox, cy + oy - 13 * s, cx + ox - 11 * s, cy + oy - 2 * s, w, c)
+      ctx:line(cx + ox, cy + oy - 13 * s, cx + ox + 11 * s, cy + oy - 2 * s, w, c)
+      ctx:line(cx + ox - 11 * s, cy + oy - 2 * s, cx + ox - 5 * s, cy + oy - 2 * s, w, c)
+      ctx:line(cx + ox + 11 * s, cy + oy - 2 * s, cx + ox + 5 * s, cy + oy - 2 * s, w, c)
+      ctx:line(cx + ox - 5 * s, cy + oy - 2 * s, cx + ox - 5 * s, cy + oy + 6 * s, w, c)
+      ctx:line(cx + ox + 5 * s, cy + oy - 2 * s, cx + ox + 5 * s, cy + oy + 6 * s, w, c)
+      ctx:line(cx + ox - 5 * s, cy + oy + 6 * s, cx + ox + 5 * s, cy + oy + 6 * s, w, c)
+      ctx:line(cx + ox - 6 * s, cy + oy + 12 * s, cx + ox + 6 * s, cy + oy + 12 * s, w + 0.5, c)
+    end
+    caps_pass(1.2, 1.4, sh)
+    caps_pass(0, 0, b)
+  elseif icon == "kbd_tab" then
+    local w = 2.5 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function tab_pass(ox, oy, c)
+      ctx:line(cx + ox - 13 * s, cy + oy, cx + ox + 6 * s, cy + oy, w, c)
+      ctx:line(cx + ox + 1 * s, cy + oy - 5.5 * s, cx + ox + 6 * s, cy + oy, w, c)
+      ctx:line(cx + ox + 1 * s, cy + oy + 5.5 * s, cx + ox + 6 * s, cy + oy, w, c)
+      ctx:line(cx + ox + 11 * s, cy + oy - 8 * s, cx + ox + 11 * s, cy + oy + 8 * s, w, c)
+    end
+    tab_pass(1.2, 1.4, sh)
+    tab_pass(0, 0, b)
+  elseif icon == "kbd_bksp" then
+    local w = 2.6 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function bk_pass(ox, oy, c)
+      ctx:line(cx + ox + 13 * s, cy + oy, cx + ox - 12 * s, cy + oy, w, c)
+      ctx:line(cx + ox - 5 * s, cy + oy - 6.5 * s, cx + ox - 12 * s, cy + oy, w, c)
+      ctx:line(cx + ox - 5 * s, cy + oy + 6.5 * s, cx + ox - 12 * s, cy + oy, w, c)
+    end
+    bk_pass(1.2, 1.4, sh)
+    bk_pass(0, 0, b)
+  elseif icon == "kbd_enter" then
+    local w = 2.6 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function ent_pass(ox, oy, c)
+      ctx:line(cx + ox + 11 * s, cy + oy - 8 * s, cx + ox + 11 * s, cy + oy + 2 * s, w, c)
+      ctx:line(cx + ox + 11 * s, cy + oy + 2 * s, cx + ox - 11 * s, cy + oy + 2 * s, w, c)
+      ctx:line(cx + ox - 5 * s, cy + oy - 4 * s, cx + ox - 11 * s, cy + oy + 2 * s, w, c)
+      ctx:line(cx + ox - 5 * s, cy + oy + 8 * s, cx + ox - 11 * s, cy + oy + 2 * s, w, c)
+    end
+    ent_pass(1.2, 1.4, sh)
+    ent_pass(0, 0, b)
+  elseif icon == "kbd_space" then
+    local w = 2.6 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function sp_pass(ox, oy, c)
+      ctx:line(cx + ox - 14 * s, cy + oy, cx + ox - 14 * s, cy + oy + 6 * s, w, c)
+      ctx:line(cx + ox - 14 * s, cy + oy + 6 * s, cx + ox + 14 * s, cy + oy + 6 * s, w, c)
+      ctx:line(cx + ox + 14 * s, cy + oy + 6 * s, cx + ox + 14 * s, cy + oy, w, c)
+    end
+    sp_pass(1.2, 1.4, sh)
+    sp_pass(0, 0, b)
+  elseif icon == "kbd_home" then
+    local w = 2.4 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function hm_pass(ox, oy, c)
+      ctx:line(cx + ox - 9 * s, cy + oy - 10 * s, cx + ox + 9 * s, cy + oy - 10 * s, w, c)
+      ctx:line(cx + ox, cy + oy + 10 * s, cx + ox, cy + oy - 5 * s, w, c)
+      ctx:line(cx + ox - 6 * s, cy + oy + 1 * s, cx + ox, cy + oy - 5 * s, w, c)
+      ctx:line(cx + ox + 6 * s, cy + oy + 1 * s, cx + ox, cy + oy - 5 * s, w, c)
+    end
+    hm_pass(1.2, 1.4, sh)
+    hm_pass(0, 0, b)
+  elseif icon == "kbd_end" then
+    local w = 2.4 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function en_pass(ox, oy, c)
+      ctx:line(cx + ox - 9 * s, cy + oy + 10 * s, cx + ox + 9 * s, cy + oy + 10 * s, w, c)
+      ctx:line(cx + ox, cy + oy - 10 * s, cx + ox, cy + oy + 5 * s, w, c)
+      ctx:line(cx + ox - 6 * s, cy + oy - 1 * s, cx + ox, cy + oy + 5 * s, w, c)
+      ctx:line(cx + ox + 6 * s, cy + oy - 1 * s, cx + ox, cy + oy + 5 * s, w, c)
+    end
+    en_pass(1.2, 1.4, sh)
+    en_pass(0, 0, b)
+  elseif icon == "kbd_pgup" then
+    local w = 2.5 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function pu_pass(ox, oy, c)
+      ctx:line(cx + ox - 8 * s, cy + oy - 1 * s, cx + ox, cy + oy - 9 * s, w, c)
+      ctx:line(cx + ox, cy + oy - 9 * s, cx + ox + 8 * s, cy + oy - 1 * s, w, c)
+      ctx:line(cx + ox - 8 * s, cy + oy + 8 * s, cx + ox, cy + oy, w, c)
+      ctx:line(cx + ox, cy + oy, cx + ox + 8 * s, cy + oy + 8 * s, w, c)
+    end
+    pu_pass(1.2, 1.4, sh)
+    pu_pass(0, 0, b)
+  elseif icon == "kbd_pgdn" then
+    local w = 2.5 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function pd_pass(ox, oy, c)
+      ctx:line(cx + ox - 8 * s, cy + oy - 8 * s, cx + ox, cy + oy, w, c)
+      ctx:line(cx + ox, cy + oy, cx + ox + 8 * s, cy + oy - 8 * s, w, c)
+      ctx:line(cx + ox - 8 * s, cy + oy + 1 * s, cx + ox, cy + oy + 9 * s, w, c)
+      ctx:line(cx + ox, cy + oy + 9 * s, cx + ox + 8 * s, cy + oy + 1 * s, w, c)
+    end
+    pd_pass(1.2, 1.4, sh)
+    pd_pass(0, 0, b)
+  elseif icon == "kbd_up" or icon == "kbd_down" or icon == "kbd_left" or icon == "kbd_right" then
+    local w = 2.6 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function arr_pass(ox, oy, c)
+      if icon == "kbd_up" then
+        ctx:line(cx + ox, cy + oy + 10 * s, cx + ox, cy + oy - 10 * s, w, c)
+        ctx:line(cx + ox - 6 * s, cy + oy - 4 * s, cx + ox, cy + oy - 10 * s, w, c)
+        ctx:line(cx + ox + 6 * s, cy + oy - 4 * s, cx + ox, cy + oy - 10 * s, w, c)
+      elseif icon == "kbd_down" then
+        ctx:line(cx + ox, cy + oy - 10 * s, cx + ox, cy + oy + 10 * s, w, c)
+        ctx:line(cx + ox - 6 * s, cy + oy + 4 * s, cx + ox, cy + oy + 10 * s, w, c)
+        ctx:line(cx + ox + 6 * s, cy + oy + 4 * s, cx + ox, cy + oy + 10 * s, w, c)
+      elseif icon == "kbd_left" then
+        ctx:line(cx + ox + 10 * s, cy + oy, cx + ox - 10 * s, cy + oy, w, c)
+        ctx:line(cx + ox - 4 * s, cy + oy - 6 * s, cx + ox - 10 * s, cy + oy, w, c)
+        ctx:line(cx + ox - 4 * s, cy + oy + 6 * s, cx + ox - 10 * s, cy + oy, w, c)
+      else
+        ctx:line(cx + ox - 10 * s, cy + oy, cx + ox + 10 * s, cy + oy, w, c)
+        ctx:line(cx + ox + 4 * s, cy + oy - 6 * s, cx + ox + 10 * s, cy + oy, w, c)
+        ctx:line(cx + ox + 4 * s, cy + oy + 6 * s, cx + ox + 10 * s, cy + oy, w, c)
+      end
+    end
+    arr_pass(1.2, 1.4, sh)
+    arr_pass(0, 0, b)
+  elseif icon == "kbd_layer" then
+    local w = 2.3 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function lyr_pass(ox, oy, c)
+      ctx:line(cx + ox, cy + oy - 11 * s, cx + ox + 11 * s, cy + oy - 4 * s, w, c)
+      ctx:line(cx + ox + 11 * s, cy + oy - 4 * s, cx + ox, cy + oy + 2 * s, w, c)
+      ctx:line(cx + ox, cy + oy + 2 * s, cx + ox - 11 * s, cy + oy - 4 * s, w, c)
+      ctx:line(cx + ox - 11 * s, cy + oy - 4 * s, cx + ox, cy + oy - 11 * s, w, c)
+      ctx:line(cx + ox - 11 * s, cy + oy + 2 * s, cx + ox, cy + oy + 8 * s, w, c)
+      ctx:line(cx + ox, cy + oy + 8 * s, cx + ox + 11 * s, cy + oy + 2 * s, w, c)
+    end
+    lyr_pass(1.2, 1.4, sh)
+    lyr_pass(0, 0, b)
   else
     ctx:circle(cx, cy, 10 * s, { col[1], col[2], col[3], col[4] * 0.25 }, 3.0 * s, b)
   end
@@ -497,24 +708,34 @@ function on_render(ctx, stage)
       local has_img = type(rule.image) == "string" and #rule.image > 0
       local has_icon = type(rule.icon) == "string" and #rule.icon > 0
       if has_img then
+        -- Resolve portable `module://<id>/<rel>` asset refs locally on BOTH Mac and keyboard
+        -- so cross-device BrokerMirror messages never break image paths!
+        local img_path = rule.image
+        if string.sub(img_path, 1, 9) == "module://" then
+          local rest = string.sub(img_path, 10)
+          local parent = module.dir():gsub("/[^/]+$", "")
+          img_path = parent .. "/" .. rest
+        end
         -- Real PNG/image icon right inside the keycap (unlocks Stream Deck buttons & custom icons!)
         local pad = 10
         local isz = math.min(r.w - pad * 2, r.h - pad * 2)
         local ix = vx - isz * 0.5
         local iy = (#label > 0) and (ry + 6) or (vy - isz * 0.5)
         if #label > 0 then isz = math.max(28, isz - 16); ix = vx - isz * 0.5 end
-        ctx:image(ix, iy, isz, isz, rule.image, { 1, 1, 1, on_cd and 0.4 or 1.0 })
+        ctx:image(ix, iy, isz, isz, img_path, { 1, 1, 1, on_cd and 0.4 or 1.0 })
         if #label > 0 then
           local lsz = (#label <= 7) and 13 or 11
-          draw_crisp_text(vx, ry + r.h - 20, label, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.96 }, bold_leg)
+          draw_crisp_text(vx, vy + 13, label, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.96 }, bold_leg)
         end
       elseif has_icon then
-        local icon_y = (#label > 0) and (vy - 11) or vy
+        local icon_y = (#label > 0) and (vy - 10) or vy
         local icon_a = on_cd and 0.32 or 0.96
         draw_icon(ctx, rule.icon, vx, icon_y, { col[1], col[2], col[3], icon_a }, 1.0)
         if #label > 0 then
           local lsz = (#label <= 6) and 14 or 12
-          draw_crisp_text(vx, ry + r.h - 23, label, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.95 }, bold_leg)
+          -- Keep caption tucked closely below the symbol (centered inside the keycap sweet-spot
+          -- so optical parallax never clips the caption off the bottom keycap edge!)
+          draw_crisp_text(vx, vy + 11, label, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.95 }, bold_leg)
         end
       elseif has_dual then
         -- Dual-Legend Shift Highlight mode (`!` above `1`, `@` above `2`, etc.):
@@ -540,8 +761,10 @@ function on_render(ctx, stage)
           draw_crisp_text(vx, vy - 15, l1, lsz, { col[1], col[2], col[3], a }, bold_leg)
           draw_crisp_text(vx, vy + 2,  l2, lsz, { col[1], col[2], col[3], a }, bold_leg)
         else
-          local disp = (#label > 9) and (string.sub(label, 1, 8) .. ".") or label
-          local lsz = (#disp <= 1) and 31 or ((#disp <= 2) and 27 or ((#disp <= 5) and 19 or 14))
+          local ulen = (utf8 and utf8.len(label)) or #label
+          local disp = (ulen > 9 and #label > 12) and (string.sub(label, 1, 8) .. ".") or label
+          local dlen = (utf8 and utf8.len(disp)) or #disp
+          local lsz = (dlen <= 1) and 31 or ((dlen <= 2) and 27 or ((dlen <= 5) and 19 or 14))
           local ly = vy - lsz * 0.44
           draw_crisp_text(vx, ly, disp, lsz, { col[1], col[2], col[3], on_cd and 0.50 or 0.98 }, bold_leg)
         end

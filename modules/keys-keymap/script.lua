@@ -5,20 +5,54 @@
 local last_caps = false
 local hw_keymap = nil
 local resolved_keys = nil
+local action_slots = {} -- numeric slot (0..95) -> system/actions entry
+
+local function index_system_actions(payload)
+  action_slots = {}
+  if type(payload) ~= "table" then return end
+  local slots = payload.slots or payload
+  if type(slots) ~= "table" then return end
+  for k, entry in pairs(slots) do
+    local s = tonumber(k) or (type(entry) == "table" and tonumber(entry.slot))
+    if s and type(entry) == "table" then
+      action_slots[math.floor(s)] = entry
+    end
+  end
+end
+
+local function resolve_action_image(entry, icon_str)
+  if type(icon_str) ~= "string" or #icon_str == 0 then return nil end
+  local lower = string.lower(icon_str)
+  if not (lower:match("%.png$") or lower:match("%.jpg$") or lower:match("%.jpeg$") or lower:match("%.svg$")) then
+    return nil
+  end
+  if string.sub(icon_str, 1, 1) == "/" or string.sub(icon_str, 1, 9) == "module://" then
+    return icon_str
+  end
+  local mid = tostring(entry.module_id or "")
+  if #mid > 0 then
+    -- Portable cross-device asset ref resolved locally by `keys-renderer` on both Mac and keyboard!
+    return "module://" .. mid .. "/" .. icon_str
+  end
+  return icon_str
+end
 
 -- USB HID Usage ID (0x04..0xE7) -> { base_label, optional_shifted, optional_icon }
 local HID_MAP = {
   [0x1E] = { "1", "!" }, [0x1F] = { "2", "@" }, [0x20] = { "3", "#" }, [0x21] = { "4", "$" }, [0x22] = { "5", "%" },
   [0x23] = { "6", "^" }, [0x24] = { "7", "&" }, [0x25] = { "8", "*" }, [0x26] = { "9", "(" }, [0x27] = { "0", ")" },
-  [0x28] = { "Enter" }, [0x29] = { "Esc" }, [0x2A] = { "Bksp" }, [0x2B] = { "Tab" }, [0x2C] = { "Space" },
+  [0x28] = { "Enter", nil, "kbd_enter" }, [0x29] = { "Esc" }, [0x2A] = { "Bksp", nil, "kbd_bksp" },
+  [0x2B] = { "Tab", nil, "kbd_tab" }, [0x2C] = { "", nil, "kbd_space" },
   [0x2D] = { "-", "_" }, [0x2E] = { "=", "+" }, [0x2F] = { "[", "{" }, [0x30] = { "]", "}" }, [0x31] = { "\\", "|" },
   [0x32] = { "#", "~" }, [0x33] = { ";", ":" }, [0x34] = { "'", "\"" }, [0x35] = { "`", "~" },
-  [0x36] = { ",", "<" }, [0x37] = { ".", ">" }, [0x38] = { "/", "?" }, [0x39] = { "Caps" },
+  [0x36] = { ",", "<" }, [0x37] = { ".", ">" }, [0x38] = { "/", "?" }, [0x39] = { "Caps", nil, "kbd_caps" },
   [0x3A] = { "F1" }, [0x3B] = { "F2" }, [0x3C] = { "F3" }, [0x3D] = { "F4" }, [0x3E] = { "F5" }, [0x3F] = { "F6" },
   [0x40] = { "F7" }, [0x41] = { "F8" }, [0x42] = { "F9" }, [0x43] = { "F10" }, [0x44] = { "F11" }, [0x45] = { "F12" },
-  [0x46] = { "Prt" }, [0x47] = { "ScrLk" }, [0x48] = { "Pause" }, [0x49] = { "Ins" }, [0x4A] = { "Home" },
-  [0x4B] = { "PgUp" }, [0x4C] = { "Del" }, [0x4D] = { "End" }, [0x4E] = { "PgDn" },
-  [0x4F] = { "→" }, [0x50] = { "←" }, [0x51] = { "↓" }, [0x52] = { "↑" },
+  [0x46] = { "Prt" }, [0x47] = { "ScrLk" }, [0x48] = { "Pause" }, [0x49] = { "Ins" },
+  [0x4A] = { "Home", nil, "kbd_home" }, [0x4B] = { "PgUp", nil, "kbd_pgup" }, [0x4C] = { "Del" },
+  [0x4D] = { "End", nil, "kbd_end" }, [0x4E] = { "PgDn", nil, "kbd_pgdn" },
+  [0x4F] = { "", nil, "kbd_right" }, [0x50] = { "", nil, "kbd_left" },
+  [0x51] = { "", nil, "kbd_down" }, [0x52] = { "", nil, "kbd_up" },
   [0x68] = { "F13" }, [0x69] = { "F14" }, [0x6A] = { "F15" }, [0x6B] = { "F16" },
   [0x6C] = { "F17" }, [0x6D] = { "F18" }, [0x6E] = { "F19" }, [0x6F] = { "F20" },
   -- QMK Consumer / Media keys
@@ -26,9 +60,22 @@ local HID_MAP = {
   [0xAB] = { "Next", nil, "play" },   [0xAC] = { "Prev", nil, "play" },   [0xAD] = { "Stop", nil, "close" },
   [0xAE] = { "Play", nil, "play" },   [0xBD] = { "Bright", nil, "brightness" }, [0xBE] = { "Dim", nil, "brightness" },
   [0xC1] = { "Mission" }, [0xC2] = { "Launch" },
-  -- Modifiers
-  [0xE0] = { "Ctrl" }, [0xE1] = { "Shift" }, [0xE2] = { "Opt" }, [0xE3] = { "Cmd" },
-  [0xE4] = { "Ctrl" }, [0xE5] = { "Shift" }, [0xE6] = { "Opt" }, [0xE7] = { "Cmd" },
+  -- Modifiers (crisp icon + clean word caption, matching Fn & Reset!)
+  [0xE0] = { "Ctrl", nil, "kbd_ctrl" }, [0xE1] = { "Shift", nil, "kbd_shift" },
+  [0xE2] = { "Opt", nil, "kbd_opt" },   [0xE3] = { "Cmd", nil, "kbd_cmd" },
+  [0xE4] = { "Ctrl", nil, "kbd_ctrl" }, [0xE5] = { "Shift", nil, "kbd_shift" },
+  [0xE6] = { "Opt", nil, "kbd_opt" },   [0xE7] = { "Cmd", nil, "kbd_cmd" },
+}
+
+-- Fixed 25-slot Analog Gamepad keycodes (`0x7E27..0x7E3F`, slots 39..63 — matching fw_qmk_keymap.c / vial.rs)
+local GP_LABELS = {
+  [39] = "LS↑",   [40] = "LS↓",  [41] = "LS←",  [42] = "LS→",
+  [43] = "RS↑",   [44] = "RS↓",  [45] = "RS←",  [46] = "RS→",
+  [47] = "LT",    [48] = "RT",
+  [49] = "A",     [50] = "B",    [51] = "X",    [52] = "Y",
+  [53] = "LB",    [54] = "RB",   [55] = "L3",   [56] = "R3",
+  [57] = "D↑",    [58] = "D↓",   [59] = "D←",   [60] = "D→",
+  [61] = "Start", [62] = "Back", [63] = "Guide",
 }
 
 -- Built-in Flux QK_KB_0..13 actions (`0x7E00..0x7E0D`, matching fw_qmk_keymap.c / vial.rs)
@@ -51,11 +98,24 @@ local QK_KB_LABELS = {
 
 local function mod_short(m)
   local b = m & 0x0F
-  if b == 1 then return "Ctl" end
-  if b == 2 then return "Sft" end
-  if b == 4 then return "Opt" end
-  if b == 8 then return "Cmd" end
+  if b == 15 then return "Hyp" end
+  if b == 7 then return "Meh" end
+  if b == 1 then return "⌃" end
+  if b == 2 then return "⇧" end
+  if b == 4 then return "⌥" end
+  if b == 8 then return "⌘" end
   return "Mod"
+end
+
+local function mod_prefix_str(m)
+  local b = m & 0x0F
+  if b == 15 then return "Hyp+" end
+  local s = ""
+  if (b & 1) ~= 0 then s = s .. "⌃" end
+  if (b & 4) ~= 0 then s = s .. "⌥" end
+  if (b & 8) ~= 0 then s = s .. "⌘" end
+  if (b & 2) ~= 0 then s = s .. "⇧" end
+  return s
 end
 
 local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default)
@@ -87,6 +147,35 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default)
     return { key = ki, label = string.format("0x%02X", kc) }
   end
 
+  -- Modified basic keycodes (0x0100..0x1FFF: S(kc), C(kc), A(kc), G(kc), C(S(kc)), etc.)
+  if kc >= 0x0100 and kc <= 0x1FFF then
+    local mods = (kc >> 8) & 0x1F
+    local base = kc & 0xFF
+    local col = (src_layer and src_layer > 0) and "#7ae7ff" or nil
+    -- Pure Shift + symbol/number renders directly as the shifted glyph (`~`, `#`, `$`, `{`, `}`, `(`, `)`, `<`, `>`, `*`, `%`, `!`, `?`, `"`, `:`, `|`, `+`, `^`, `&`, `@`)!
+    if (mods & 0x0F) == 2 then
+      local hm = HID_MAP[base]
+      if hm and hm[2] then
+        return { key = ki, label = hm[2], color = col }
+      end
+      if base >= 0x04 and base <= 0x1D then
+        return { key = ki, label = string.char(65 + (base - 0x04)), color = col }
+      end
+    end
+    -- Special macOS Opt+[ / Opt+] smart quotes
+    if (mods & 0x0F) == 4 and base == 0x2F then return { key = ki, label = "“", color = col } end
+    if (mods & 0x0F) == 4 and base == 0x30 then return { key = ki, label = "‘", color = col } end
+    -- Special Cmd+Ctrl+Shift+4 screenshot
+    if (mods & 0x0F) == 11 and base == 0x21 then return { key = ki, label = "Shot", icon = "cam", color = col } end
+    local pfx = mod_prefix_str(mods)
+    if base >= 0x04 and base <= 0x1D then
+      return { key = ki, label = pfx .. string.char(65 + (base - 0x04)), color = col }
+    end
+    if base == 0x2B then return { key = ki, label = pfx .. "Tab", color = col } end
+    local hm = HID_MAP[base]
+    return { key = ki, label = pfx .. ((hm and #hm[1] > 0) and hm[1] or string.format("%X", base)), color = col }
+  end
+
   -- MT(mod, kc): 0x2000..0x3FFF
   if kc >= 0x2000 and kc <= 0x3FFF then
     local tap = kc & 0xFF
@@ -107,7 +196,7 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default)
   -- MO(layer): 0x5220..0x523F
   if kc >= 0x5220 and kc <= 0x523F then
     local lyr = kc & 0x1F
-    return { key = ki, label = (lyr == 1) and "Fn" or ("L" .. tostring(lyr)) }
+    return { key = ki, label = (lyr == 1 or lyr == 5) and "Fn" or ("L" .. tostring(lyr)), icon = "kbd_layer" }
   end
   -- DF / TG / OSL / TT layer keys
   if kc >= 0x5240 and kc <= 0x52FF then
@@ -119,13 +208,44 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default)
   if kc >= 0x5500 and kc <= 0x55FF then
     return { key = ki, label = "OS " .. mod_short(kc & 0x1F) }
   end
+  -- TD(idx): 0x5700..0x57FF (Tap Dance)
+  if kc >= 0x5700 and kc <= 0x57FF then
+    local idx = kc - 0x5700
+    local td_labels = { [0] = "‘/’", [1] = "“/”", [2] = "!/?" }
+    return {
+      key = ki,
+      label = td_labels[idx] or ("TD" .. tostring(idx)),
+      color = (src_layer and src_layer > 0) and "#7ae7ff" or nil,
+    }
+  end
 
-  -- QK_KB_0..31: 0x7E00..0x7E1F (Built-in Flux actions + dynamic module actions!)
-  if kc >= 0x7E00 and kc <= 0x7E1F then
+  -- QK_KB_0..63 (`0x7E00..0x7E3F`) + QK_USER_0..31 (`0x7E40..0x7E5F`):
+  -- Built-in Flux actions (0..13), dynamic module actions (14..38), and fixed Analog Gamepad (39..63)!
+  if kc >= 0x7E00 and kc <= 0x7E5F then
     local idx = kc - 0x7E00
+    if GP_LABELS[idx] then
+      return { key = ki, label = GP_LABELS[idx], color = "#58f29c" }
+    end
+    local act = action_slots[idx]
+    if act and idx >= 14 then
+      local img = resolve_action_image(act, act.icon)
+      local vec_icon = (not img and type(act.icon) == "string" and #act.icon > 0) and act.icon or nil
+      local lbl = (type(act.short_label) == "string") and act.short_label or tostring(act.label or ("Act" .. tostring(idx)))
+      local col = (type(act.accent) == "string" and #act.accent > 0) and act.accent or nil
+      return {
+        key = ki,
+        label = lbl,
+        icon = vec_icon,
+        image = img,
+        color = col,
+      }
+    end
     local m = QK_KB_LABELS[idx]
     if m then
       return { key = ki, label = m[1], shifted = m[2], icon = m[3] }
+    end
+    if act then
+      return { key = ki, label = tostring(act.short_label or act.label or ("Act" .. tostring(idx))) }
     end
     return { key = ki, label = "Act" .. tostring(idx) }
   end
@@ -137,14 +257,19 @@ end
 
 local KC_LABELS = {
   KC_ESCAPE = { "Esc" }, KC_ESC = { "Esc" },
-  KC_BACKSPACE = { "Bksp" }, KC_BSPC = { "Bksp" },
-  KC_TAB = { "Tab" }, KC_CAPS = { "Caps" }, KC_CAPSLOCK = { "Caps" }, KC_CAPS_LOCK = { "Caps" },
-  KC_ENTER = { "Enter" }, KC_ENT = { "Enter" },
-  KC_LEFT_SHIFT = { "Shift" }, KC_RIGHT_SHIFT = { "Shift" }, KC_LSFT = { "Shift" }, KC_RSFT = { "Shift" },
-  KC_LEFT_CTRL = { "Ctrl" }, KC_RIGHT_CTRL = { "Ctrl" }, KC_LCTL = { "Ctrl" }, KC_RCTL = { "Ctrl" },
-  KC_LEFT_ALT = { "Opt" }, KC_RIGHT_ALT = { "Opt" }, KC_LALT = { "Opt" }, KC_RALT = { "Opt" },
-  KC_LEFT_GUI = { "Cmd" }, KC_RIGHT_GUI = { "Cmd" }, KC_LGUI = { "Cmd" }, KC_RGUI = { "Cmd" },
-  KC_SPACE = { "Space" }, KC_SPC = { "Space" },
+  KC_BACKSPACE = { "", nil, "kbd_bksp" }, KC_BSPC = { "", nil, "kbd_bksp" },
+  KC_TAB = { "", nil, "kbd_tab" },
+  KC_CAPS = { "", nil, "kbd_caps" }, KC_CAPSLOCK = { "", nil, "kbd_caps" }, KC_CAPS_LOCK = { "", nil, "kbd_caps" },
+  KC_ENTER = { "", nil, "kbd_enter" }, KC_ENT = { "", nil, "kbd_enter" },
+  KC_LEFT_SHIFT = { "", nil, "kbd_shift" }, KC_RIGHT_SHIFT = { "", nil, "kbd_shift" },
+  KC_LSFT = { "", nil, "kbd_shift" }, KC_RSFT = { "", nil, "kbd_shift" },
+  KC_LEFT_CTRL = { "", nil, "kbd_ctrl" }, KC_RIGHT_CTRL = { "", nil, "kbd_ctrl" },
+  KC_LCTL = { "", nil, "kbd_ctrl" }, KC_RCTL = { "", nil, "kbd_ctrl" },
+  KC_LEFT_ALT = { "", nil, "kbd_opt" }, KC_RIGHT_ALT = { "", nil, "kbd_opt" },
+  KC_LALT = { "", nil, "kbd_opt" }, KC_RALT = { "", nil, "kbd_opt" },
+  KC_LEFT_GUI = { "", nil, "kbd_cmd" }, KC_RIGHT_GUI = { "", nil, "kbd_cmd" },
+  KC_LGUI = { "", nil, "kbd_cmd" }, KC_RGUI = { "", nil, "kbd_cmd" },
+  KC_SPACE = { "", nil, "kbd_space" }, KC_SPC = { "", nil, "kbd_space" },
   KC_GRAVE = { "`", "~" }, KC_GRV = { "`", "~" },
   KC_MINUS = { "-", "_" }, KC_MINS = { "-", "_" },
   KC_EQUAL = { "=", "+" }, KC_EQL = { "=", "+" },
@@ -155,10 +280,13 @@ local KC_LABELS = {
   KC_QUOTE = { "'", "\"" }, KC_QUOT = { "'", "\"" },
   KC_COMMA = { ",", "<" }, KC_COMM = { ",", "<" },
   KC_DOT = { ".", ">" }, KC_SLASH = { "/", "?" }, KC_SLSH = { "/", "?" },
-  KC_UP = { "↑" }, KC_DOWN = { "↓" }, KC_LEFT = { "←" }, KC_RIGHT = { "→" }, KC_RGHT = { "→" },
-  KC_HOME = { "Home" }, KC_END = { "End" }, KC_DELETE = { "Del" }, KC_DEL = { "Del" },
+  KC_UP = { "", nil, "kbd_up" }, KC_DOWN = { "", nil, "kbd_down" },
+  KC_LEFT = { "", nil, "kbd_left" }, KC_RIGHT = { "", nil, "kbd_right" }, KC_RGHT = { "", nil, "kbd_right" },
+  KC_HOME = { "", nil, "kbd_home" }, KC_END = { "", nil, "kbd_end" },
+  KC_DELETE = { "Del" }, KC_DEL = { "Del" },
   KC_INSERT = { "Ins" }, KC_INS = { "Ins" }, KC_PSCREEN = { "Prt" }, KC_PSCR = { "Prt" },
-  KC_PAGE_UP = { "PgUp" }, KC_PGUP = { "PgUp" }, KC_PAGE_DOWN = { "PgDn" }, KC_PGDN = { "PgDn" },
+  KC_PAGE_UP = { "", nil, "kbd_pgup" }, KC_PGUP = { "", nil, "kbd_pgup" },
+  KC_PAGE_DOWN = { "", nil, "kbd_pgdn" }, KC_PGDN = { "", nil, "kbd_pgdn" },
   KC_1 = { "1", "!" }, KC_2 = { "2", "@" }, KC_3 = { "3", "#" }, KC_4 = { "4", "$" }, KC_5 = { "5", "%" },
   KC_6 = { "6", "^" }, KC_7 = { "7", "&" }, KC_8 = { "8", "*" }, KC_9 = { "9", "(" }, KC_0 = { "0", ")" },
   KC_OF_RESET_POMODORO = { "Reset", nil, "refresh" },
@@ -170,7 +298,7 @@ local KC_LABELS = {
 local function rule_from_legacy_action(ki, act, lower_default)
   if type(act) ~= "table" then return nil end
   if tonumber(act.type) == 2 or act.isMomentary == true or act.layerControlType == "momentaryLayer" then
-    return { key = ki, label = "Fn" }
+    return { key = ki, label = "Fn", icon = "kbd_layer" }
   end
   local kc = string.upper(tostring(act.keyCode or ""))
   if kc == "" or kc == "KC_NO" or kc == "KC_TRANSPARENT" then return nil end
@@ -254,11 +382,15 @@ local function publish_keymap()
     local fallback = {
       { 0, "Esc" }, { 1, "F1" }, { 2, "F2" }, { 3, "F3" }, { 4, "F4" }, { 5, "F5" }, { 6, "F6" },
       { 7, "F7" }, { 8, "F8" }, { 9, "F9" }, { 10, "F10" }, { 11, "F11" }, { 12, "F12" },
-      { 13, "Prt" }, { 14, "Ins" }, { 15, "Del" }, { 29, "Bksp" }, { 31, "Tab" }, { 46, "Caps" },
-      { 58, "Enter" }, { 60, "Shift" }, { 71, "Shift" }, { 74, "Ctrl" }, { 75, "Opt" }, { 76, "Cmd" },
-      { 78, "Space" }, { 79, "Fn" }, { 82, "←" }, { 83, "↓" }, { 84, "→" },
+      { 13, "Prt" }, { 14, "Ins" }, { 15, "Del" },
+      { 29, "", "kbd_bksp" }, { 30, "", "kbd_home" }, { 31, "", "kbd_tab" }, { 45, "", "kbd_end" },
+      { 46, "", "kbd_caps" }, { 58, "", "kbd_enter" }, { 59, "", "kbd_pgup" },
+      { 60, "", "kbd_shift" }, { 71, "", "kbd_shift" }, { 72, "", "kbd_up" }, { 73, "", "kbd_pgdn" },
+      { 74, "", "kbd_cmd" }, { 75, "", "kbd_opt" }, { 76, "", "kbd_ctrl" }, { 77, "", "kbd_ctrl" },
+      { 78, "", "kbd_space" }, { 79, "Fn", "kbd_layer" },
+      { 82, "", "kbd_left" }, { 83, "", "kbd_down" }, { 84, "", "kbd_right" },
     }
-    for _, f in ipairs(fallback) do table.insert(rules, { key = f[1], label = f[2] }) end
+    for _, f in ipairs(fallback) do table.insert(rules, { key = f[1], label = f[2], icon = f[3] }) end
   end
 
   bus.publish("keys/providers/keymap", {
@@ -269,6 +401,8 @@ local function publish_keymap()
 end
 
 function on_init()
+  local sa = bus.get("system/actions")
+  if type(sa) == "table" then index_system_actions(sa) end
   local rk = bus.get("keyboard/resolved_keys")
   if type(rk) == "table" then resolved_keys = rk end
   local cur = bus.get("keyboard/keymap")
@@ -277,7 +411,10 @@ function on_init()
 end
 
 function on_event(topic, payload)
-  if topic == "keyboard/resolved_keys" and type(payload) == "table" then
+  if topic == "system/actions" and type(payload) == "table" then
+    index_system_actions(payload)
+    publish_keymap()
+  elseif topic == "keyboard/resolved_keys" and type(payload) == "table" then
     resolved_keys = payload
     publish_keymap()
   elseif topic == "keyboard/keymap" and type(payload) == "table" then

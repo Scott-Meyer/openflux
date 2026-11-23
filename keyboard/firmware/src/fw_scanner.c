@@ -3,6 +3,7 @@
 #include "fw_row_condition.h"
 #include "fw_classic_row.h"
 #include "fw_press_guard.h"
+#include "qmk/fw_qmk.h"
 
 #include <string.h>
 
@@ -426,6 +427,14 @@ int fw_runtime_set_active_profile(fw_runtime_t *rt, uint32_t profile_idx) {
         }
     }
     rt->effective_layer_bitfield = rt->active_layer_bitfield ? rt->active_layer_bitfield : 1U;
+    if (rt->qmk_enabled) {
+        uint8_t def_layer = 0U;
+        uint32_t mask = rt->active_layer_bitfield ? rt->active_layer_bitfield : 1U;
+        while (def_layer < 7U && ((mask >> def_layer) & 1U) == 0U) {
+            def_layer++;
+        }
+        fw_qmk_set_default_layer(def_layer);
+    }
     return 0;
 }
 
@@ -556,11 +565,17 @@ static int32_t apply_feel(int32_t flux, bool stronger) {
     return stronger ? (int32_t)((uint32_t)flux * 307U) >> 8 : flux;
 }
 
-static uint32_t setting_word(const fw_layout_view_t *lv, uint32_t mode, unsigned key) {
+static uint32_t setting_word(const fw_runtime_t *rt, const fw_layout_view_t *lv, uint32_t mode, unsigned key) {
     if (!lv || key >= lv->num_keys)
         return 0;
     size_t i = lv->actuations_word_off + mode * lv->num_keys + key;
-    return rd_le32((const uint8_t *)lv->section_words + 4 * i);
+    uint32_t word = rd_le32((const uint8_t *)lv->section_words + 4 * i);
+    /* Disable rapid trigger (atype 2 -> fixed hysteresis atype 1) on dual-role / tap-dance QMK keys
+     * so partial travel micro-reversals cannot misfire home-row mods or quick-tap. */
+    if (rt && rt->qmk_enabled && (word >> 30) == 2U && fw_qmk_key_forbids_rapid_trigger((uint16_t)key)) {
+        word = (word & 0x3FFFFFFFU) | (1U << 30);
+    }
+    return word;
 }
 
 /* Both trackers consume the same calibrated sensor counts. The model-free tracker
@@ -591,7 +606,7 @@ static uint16_t FW_SCAN_CODE(scan_classic)(fw_runtime_t *rt, const fw_layout_vie
             for (unsigned c = 0; c < n; ++c) {
                 unsigned k = base + c;
                 fw_classic_key_load(cfg, keys, rt->keyframe_layout, r, c, lv && k < lv->num_keys,
-                                    setting_word(lv, table_mode, k));
+                                    setting_word(rt, lv, table_mode, k));
                 /* Changing the active table while attached reapplies its position gain. */
                 if (rt->classic_setup != FW_CLASSIC_ATTACH)
                     fw_classic_key_weight(cfg, rt->keyframe_layout, r, c);
@@ -666,7 +681,7 @@ static uint16_t FW_SCAN_CODE(scan_refined)(fw_runtime_t *rt, const fw_layout_vie
         for (unsigned c = 0; c < row_keys; c++)
             row_active += rt->key_pressed[k + c] || rt->fixed_transition_scans[k + c];
         for (uint8_t col = 0; col < row_keys; col++, k++) {
-            uint32_t word = setting_word(lv, act_mode, k);
+            uint32_t word = setting_word(rt, lv, act_mode, k);
             evaluate_key(rt, k, lid, row, col, row_keys, word, held_count, row_active);
         }
     }
@@ -740,6 +755,14 @@ void FW_SCAN_CODE(fw_runtime_process_scan)(fw_runtime_t *rt, const uint16_t raw_
         reload_actuation(rt);
         rt->last_scan_mode = (uint16_t)act_mode;
     }
+    if (rt->qmk_enabled) {
+        fw_qmk_state_t qs;
+        fw_qmk_get_state(&qs);
+        if (qs.keymap_revision != rt->qmk_last_keymap_rev) {
+            reload_actuation(rt);
+            rt->qmk_last_keymap_rev = qs.keymap_revision;
+        }
+    }
     bool stronger = rt->switch_feel == 2 && rt->cal.loaded_from_flash && rt->cal.version == 2U;
     uint16_t n_keys;
 #if FW_ENABLE_PRESS_REFINEMENT
@@ -748,6 +771,14 @@ void FW_SCAN_CODE(fw_runtime_process_scan)(fw_runtime_t *rt, const uint16_t raw_
     else
 #endif
         n_keys = scan_classic(rt, lv, act_mode, row_lens, smap, stronger);
+
+    if (rt->qmk_enabled) {
+        fw_qmk_process_scan(rt->key_pressed, n_keys, rt->macro_clock_ms, out_hid);
+        fw_qmk_state_t qs;
+        fw_qmk_get_state(&qs);
+        rt->effective_layer_bitfield = qs.layer_state ? qs.layer_state : 1U;
+        return;
+    }
 
     if (!lv || !lv->section_words) {
         memset(rt->latched_valid, 0, sizeof(rt->latched_valid));
@@ -979,6 +1010,23 @@ void FW_SCAN_CODE(fw_runtime_process_scan)(fw_runtime_t *rt, const uint16_t raw_
     }
 }
 
+void fw_runtime_handle_of_action(fw_runtime_t *rt, uint16_t slot, bool pressed) {
+    if (!rt || !pressed)
+        return;
+    if (slot < FW_QMK_BUILTIN_SLOTS) {
+        uint8_t fcode = (uint8_t)(0x02U + slot);
+        const fw_layout_view_t *lv =
+            (rt->keyframe_layout >= 1U && rt->keyframe_layout <= 3U && rt->layouts[rt->keyframe_layout].valid)
+                ? &rt->layouts[rt->keyframe_layout]
+                : NULL;
+        (void)fw_handle_of_function(rt, lv, fcode);
+        uint8_t ring_slot = (uint8_t)(rt->of_event_seq & 15U);
+        rt->of_event_ring[ring_slot] = fcode;
+        rt->of_event_profiles[ring_slot] = (uint8_t)rt->active_profile;
+        rt->of_event_seq++;
+    }
+}
+
 void fw_runtime_build_msg_update(fw_runtime_t *rt, uint32_t timestamp_ms, uint8_t out_buf[FW_UART_MSG_UPDATE_LEN]) {
     if (!rt || !out_buf)
         return;
@@ -1000,11 +1048,52 @@ void fw_runtime_build_msg_update(fw_runtime_t *rt, uint32_t timestamp_ms, uint8_
     wr_le16(st + 0x30U, rt->of_event_seq);
     memcpy(st + 0x32U, rt->of_event_ring, 16U);
     memcpy(st + 0x42U, rt->of_event_profiles, 16U);
+    if (rt->qmk_enabled) {
+        fw_qmk_state_t qs;
+        fw_qmk_get_state(&qs);
+        st[0x52U] = 1U; /* QMK state capability version */
+        st[0x53U] = qs.effective_mods;
+        st[0x54U] = qs.oneshot_mods;
+        st[0x55U] = qs.oneshot_layer;
+        st[0x56U] = qs.caps_word_active ? 1U : 0U;
+        wr_le32(st + 0x57U, qs.default_layer_state);
+        wr_le32(st + 0x6CU, qs.keymap_revision);
+    }
     st[0x5CU] = rt->host_state_status;
     wr_le32(st + 0x5DU, rt->language_code);
     wr_le32(st + 0x61U, rt->platform_code);
     wr_le32(st + 0x65U, rt->active_profile);
     st[0x6AU] = rt->lifecycle.attach_phase;
+}
+
+size_t fw_runtime_build_msg_resolved_keys(fw_runtime_t *rt, uint8_t *out_buf, size_t cap) {
+    if (!rt || !out_buf || !rt->qmk_enabled)
+        return 0U;
+    uint8_t lid = (rt->keyframe_layout >= 1U && rt->keyframe_layout <= 3U) ? rt->keyframe_layout : 1U;
+    uint16_t n_keys = 0U;
+    for (uint8_t r = 0U; r < FW_MATRIX_ROWS; r++) {
+        if (FW_ROW_LEN[lid][r] > 1U)
+            n_keys = (uint16_t)(n_keys + (FW_ROW_LEN[lid][r] - 1U));
+    }
+    /* Header: type(1) + seq(4) + keymap_rev(4) + n_keys(1) = 10 bytes; per key: qmk_kc(2) + src_layer(1) = 3 bytes. */
+    size_t needed = 10U + (size_t)n_keys * 3U;
+    if (needed > cap)
+        return 0U;
+    fw_qmk_state_t qs;
+    fw_qmk_get_state(&qs);
+    out_buf[0] = FW_UART_MSG_RESOLVED_KEYS;
+    wr_le32(out_buf + 1U, ++rt->uart_tx_seq);
+    wr_le32(out_buf + 5U, qs.keymap_revision);
+    out_buf[9] = (uint8_t)n_keys;
+    uint8_t *dst = out_buf + 10U;
+    for (uint16_t k = 0U; k < n_keys; k++) {
+        uint8_t src_layer = 0U;
+        uint16_t kc = fw_qmk_resolve_key(k, &src_layer);
+        wr_le16(dst, kc);
+        dst[2] = src_layer;
+        dst += 3U;
+    }
+    return needed;
 }
 
 void fw_runtime_build_msg_qc(fw_runtime_t *rt, uint8_t out_buf[FW_UART_MSG_QC_LEN]) {

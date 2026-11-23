@@ -369,3 +369,99 @@ int fw_lfs_save_u32(const char *filename, uint32_t value) {
     };
     return lfs_write_file(filename, b, sizeof(b));
 }
+
+static void qmk_ee_filenames(uint8_t layout_id, char live[24], char stage[28]) {
+    uint8_t lid = (layout_id >= 1U && layout_id <= 3U) ? layout_id : 1U;
+    static const char *const k_live[4] = {"vial_ee_1.bin", "vial_ee_1.bin", "vial_ee_2.bin", "vial_ee_3.bin"};
+    static const char *const k_stage[4] = {"vial_ee_1.tmp", "vial_ee_1.tmp", "vial_ee_2.tmp", "vial_ee_3.tmp"};
+    strcpy(live, k_live[lid]);
+    strcpy(stage, k_stage[lid]);
+}
+
+/* Versioned 8-byte header for per-layout QMK/Vial EEPROM files: "OFQE" + u16 ver + u16 len. */
+static const uint8_t k_qmk_ee_magic[4] = {'O', 'F', 'Q', 'E'};
+enum { FW_QMK_EE_SCHEMA_VER = 1U, FW_QMK_EE_HDR_LEN = 8U };
+
+int fw_lfs_load_qmk_eeprom(uint8_t layout_id, uint8_t *buf, size_t len) {
+    if (!g_mounted || !buf || len == 0U)
+        return -1;
+    char live[24], stage[28];
+    qmk_ee_filenames(layout_id, live, stage);
+    lfs_file_t f;
+    int rc = lfs_file_open(&g_lfs, &f, live, LFS_O_RDONLY);
+    if (rc == LFS_ERR_NOENT)
+        return 1; /* Genuinely absent — safe to seed defaults / legacy migration. */
+    if (rc != 0)
+        return -1; /* Mount/IO error — caller MUST NOT overwrite user's flash file! */
+
+    lfs_soff_t sz = lfs_file_size(&g_lfs, &f);
+    int out_rc = -1;
+    if (sz == (lfs_soff_t)(FW_QMK_EE_HDR_LEN + len)) {
+        uint8_t hdr[FW_QMK_EE_HDR_LEN];
+        if (lfs_file_read(&g_lfs, &f, hdr, sizeof(hdr)) == (lfs_ssize_t)sizeof(hdr)) {
+            uint16_t ver = (uint16_t)hdr[4] | ((uint16_t)hdr[5] << 8);
+            uint16_t plen = (uint16_t)hdr[6] | ((uint16_t)hdr[7] << 8);
+            if (memcmp(hdr, k_qmk_ee_magic, 4U) == 0 && ver == FW_QMK_EE_SCHEMA_VER && (size_t)plen == len &&
+                lfs_file_read(&g_lfs, &f, buf, (lfs_size_t)len) == (lfs_ssize_t)len) {
+                out_rc = 0;
+            }
+        }
+    } else if (sz == (lfs_soff_t)len) {
+        /* Backwards-compatible read of pre-header raw 8 KiB file (upgrades to header on next save). */
+        if (lfs_file_read(&g_lfs, &f, buf, (lfs_size_t)len) == (lfs_ssize_t)len) {
+            out_rc = 0;
+        }
+    }
+    if (lfs_file_close(&g_lfs, &f) != 0)
+        return -1;
+    return out_rc;
+}
+
+int fw_lfs_save_qmk_eeprom(uint8_t layout_id, const uint8_t *buf, size_t len) {
+    if (!g_mounted || !buf || len == 0U || len > 65535U)
+        return -1;
+    char live[24], stage[28];
+    qmk_ee_filenames(layout_id, live, stage);
+    uint8_t hdr[FW_QMK_EE_HDR_LEN] = {
+        k_qmk_ee_magic[0],
+        k_qmk_ee_magic[1],
+        k_qmk_ee_magic[2],
+        k_qmk_ee_magic[3],
+        (uint8_t)(FW_QMK_EE_SCHEMA_VER & 0xFFU),
+        (uint8_t)(FW_QMK_EE_SCHEMA_VER >> 8),
+        (uint8_t)(len & 0xFFU),
+        (uint8_t)(len >> 8),
+    };
+    lfs_file_t f;
+    if (lfs_file_open(&g_lfs, &f, stage, LFS_O_WRONLY | LFS_O_CREAT | LFS_O_TRUNC) != 0)
+        return -1;
+    lfs_ssize_t w1 = lfs_file_write(&g_lfs, &f, hdr, sizeof(hdr));
+    lfs_ssize_t w2 = (w1 == (lfs_ssize_t)sizeof(hdr)) ? lfs_file_write(&g_lfs, &f, buf, (lfs_size_t)len) : -1;
+    int close_rc = lfs_file_close(&g_lfs, &f);
+    if (w1 == (lfs_ssize_t)sizeof(hdr) && w2 == (lfs_ssize_t)len && close_rc == 0 &&
+        lfs_rename(&g_lfs, stage, live) == 0) {
+        return 0;
+    }
+    (void)lfs_remove(&g_lfs, stage);
+    return -1;
+}
+
+int fw_lfs_load_vial_def(uint8_t *buf, size_t cap, size_t *out_len) {
+    if (!g_mounted || !buf || cap == 0U)
+        return -1;
+    size_t n = 0U;
+    if (lfs_read_exact("vial_def.xz", buf, cap, &n) != 0 || n == 0U)
+        return -1;
+    if (out_len)
+        *out_len = n;
+    return 0;
+}
+
+int fw_lfs_save_vial_def(const uint8_t *buf, size_t len) {
+    if (!g_mounted || !buf || len == 0U)
+        return -1;
+    if (lfs_write_file("vial_def.tmp", buf, len) == 0 && lfs_rename(&g_lfs, "vial_def.tmp", "vial_def.xz") == 0)
+        return 0;
+    (void)lfs_remove(&g_lfs, "vial_def.tmp");
+    return -1;
+}

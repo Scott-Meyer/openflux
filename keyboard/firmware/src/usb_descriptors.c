@@ -9,7 +9,8 @@
 #define ITF_NUM_CDC        2
 #define ITF_NUM_CDC_DATA   3
 #define ITF_NUM_HID_VENDOR 4
-#define ITF_NUM_TOTAL      5
+#define ITF_NUM_HID_VIAL   5
+#define ITF_NUM_TOTAL      6
 
 #define EPNUM_VENDOR_OUT 0x01
 #define EPNUM_CDC_OUT    0x02
@@ -18,9 +19,13 @@
 #define EPNUM_HID        0x83
 #define EPNUM_VENDOR_IN  0x84
 #define EPNUM_HID_VENDOR 0x85
+#define EPNUM_VIAL_OUT   0x06
+#define EPNUM_VIAL_IN    0x86
 
-#define REPORT_ID_KEYBOARD 1
-#define REPORT_ID_CONSUMER 2
+#define REPORT_ID_KEYBOARD    1
+#define REPORT_ID_CONSUMER    2
+#define REPORT_ID_OF_FUNC     3
+#define REPORT_ID_FLUX_ACTION 4
 
 // clang-format off
 static const uint8_t desc_hid_kbd_report[] = {
@@ -55,11 +60,14 @@ static const uint8_t desc_hid_kbd_report[] = {
 };
 
 /* Dedicated vendor HID interface (ITF_NUM_HID_VENDOR) so host software can open it without triggering
- * OS keyboard Input Monitoring permission prompts. Sole collection on this interface: no Report ID byte. */
+ * OS keyboard Input Monitoring permission prompts.
+ * Report ID 3: 4-byte OpenFlux function mask (openfluxd parses both ID-3 and bare 4-byte shapes).
+ * Report ID 4: generic Flux/module action event { slot_le16, pressed, mods, layer, reserved[3] }. */
 static const uint8_t desc_hid_of_report[] = {
     HID_USAGE_PAGE_N ( 0xFF00, 2                                ),
     HID_USAGE        ( 0x01                                     ),
     HID_COLLECTION   ( HID_COLLECTION_APPLICATION               ),
+        HID_REPORT_ID    ( REPORT_ID_OF_FUNC                    )
         HID_USAGE_PAGE_N ( 0xFF00, 2                            ),
         HID_USAGE_MIN    ( 0x00                                 ),
         HID_USAGE_MAX    ( 0x1F                                 ),
@@ -68,12 +76,44 @@ static const uint8_t desc_hid_of_report[] = {
         HID_REPORT_SIZE  ( 1                                    ),
         HID_REPORT_COUNT ( 32                                   ),
         HID_INPUT        ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
+        HID_REPORT_ID    ( REPORT_ID_FLUX_ACTION                )
+        HID_USAGE_PAGE_N ( 0xFF00, 2                            ),
+        HID_USAGE        ( 0x02                                 ),
+        HID_LOGICAL_MIN  ( 0x00                                 ),
+        HID_LOGICAL_MAX_N( 0x00FF, 2                            ),
+        HID_REPORT_SIZE  ( 8                                    ),
+        HID_REPORT_COUNT ( 8                                    ),
+        HID_INPUT        ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
+    HID_COLLECTION_END,
+};
+
+/* Standard QMK/Vial Raw HID interface (0xFF60:0x61, 32-byte IN/OUT, no Report ID). */
+static const uint8_t desc_hid_vial_report[] = {
+    HID_USAGE_PAGE_N ( 0xFF60, 2                                ),
+    HID_USAGE        ( 0x61                                     ),
+    HID_COLLECTION   ( HID_COLLECTION_APPLICATION               ),
+        HID_USAGE        ( 0x62                                 ),
+        HID_LOGICAL_MIN  ( 0x00                                 ),
+        HID_LOGICAL_MAX_N( 0x00FF, 2                            ),
+        HID_REPORT_SIZE  ( 8                                    ),
+        HID_REPORT_COUNT ( 32                                   ),
+        HID_INPUT        ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
+        HID_USAGE        ( 0x63                                 ),
+        HID_LOGICAL_MIN  ( 0x00                                 ),
+        HID_LOGICAL_MAX_N( 0x00FF, 2                            ),
+        HID_REPORT_SIZE  ( 8                                    ),
+        HID_REPORT_COUNT ( 32                                   ),
+        HID_OUTPUT       ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
     HID_COLLECTION_END,
 };
 // clang-format on
 
 const uint8_t *tud_hid_descriptor_report_cb(uint8_t instance) {
-    return (instance == 1U) ? desc_hid_of_report : desc_hid_kbd_report;
+    if (instance == 1U)
+        return desc_hid_of_report;
+    if (instance == 2U)
+        return desc_hid_vial_report;
+    return desc_hid_kbd_report;
 }
 
 static const tusb_desc_device_t desc_device = {
@@ -86,7 +126,7 @@ static const tusb_desc_device_t desc_device = {
     .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
     .idVendor = FW_USB_VID,
     .idProduct = FW_USB_PID,
-    .bcdDevice = 0x0101,
+    .bcdDevice = 0x0102,
     .iManufacturer = 0x01,
     .iProduct = 0x02,
     .iSerialNumber = 0x03,
@@ -156,7 +196,8 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
 }
 
 #define CONFIG_TOTAL_LEN                                                                                               \
-    (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_VENDOR_DESC_LEN + TUD_CDC_DESC_LEN + TUD_HID_DESC_LEN)
+    (TUD_CONFIG_DESC_LEN + TUD_HID_DESC_LEN + TUD_VENDOR_DESC_LEN + TUD_CDC_DESC_LEN + TUD_HID_DESC_LEN +              \
+     TUD_HID_INOUT_DESC_LEN)
 
 // clang-format off
 static const uint8_t desc_configuration[] = {
@@ -164,7 +205,8 @@ static const uint8_t desc_configuration[] = {
     TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_KEYBOARD, sizeof(desc_hid_kbd_report), EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 1),
     TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, 0, EPNUM_VENDOR_OUT, EPNUM_VENDOR_IN, FW_USB_PACKET_SIZE),
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
-    TUD_HID_DESCRIPTOR(ITF_NUM_HID_VENDOR, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_of_report), EPNUM_HID_VENDOR, 8, 1),
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID_VENDOR, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_of_report), EPNUM_HID_VENDOR, 16, 1),
+    TUD_HID_INOUT_DESCRIPTOR(ITF_NUM_HID_VIAL, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_vial_report), EPNUM_VIAL_OUT, EPNUM_VIAL_IN, CFG_TUD_HID_EP_BUFSIZE, 1),
 };
 // clang-format on
 
@@ -208,6 +250,7 @@ const uint16_t *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
 extern uint16_t fw_on_hid_get_report(uint8_t instance, uint8_t report_id, uint8_t *buffer, uint16_t reqlen);
 extern void fw_on_hid_led_report(uint8_t led_mask);
 extern void fw_on_hid_protocol_changed(uint8_t protocol);
+extern void fw_on_vial_raw_hid_rx(const uint8_t *buffer, uint16_t bufsize);
 
 uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type, uint8_t *buffer,
                                uint16_t reqlen) {
@@ -227,5 +270,7 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_
     if (instance == 0U && (report_type == HID_REPORT_TYPE_OUTPUT || report_type == HID_REPORT_TYPE_INVALID) &&
         (report_id == 0U || report_id == 1U) && buffer != NULL && bufsize >= 1U) {
         fw_on_hid_led_report(buffer[0]);
+    } else if (instance == 2U && buffer != NULL && bufsize > 0U) {
+        fw_on_vial_raw_hid_rx(buffer, bufsize);
     }
 }
