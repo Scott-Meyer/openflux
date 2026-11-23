@@ -139,6 +139,38 @@ pub struct ModuleRegistry {
     pub state_path: PathBuf,
 }
 
+/// Validates a module ID before using it as a filesystem path component.
+/// Prevents path traversal (`..`, `/`, `\`, empty `""`) from ever escaping `local_dir`/`installed_dir`.
+pub fn validate_module_id(id: &str) -> Result<(), String> {
+    if id.is_empty() || id.len() > 64 {
+        return Err(format!("invalid module id {id:?}: must be 1..=64 characters"));
+    }
+    let bytes = id.as_bytes();
+    if !bytes[0].is_ascii_lowercase() && !bytes[0].is_ascii_digit() {
+        return Err(format!(
+            "invalid module id {id:?}: must start with a lowercase letter or digit"
+        ));
+    }
+    if !bytes
+        .iter()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-' || *b == b'_')
+    {
+        return Err(format!(
+            "invalid module id {id:?}: only lowercase letters, digits, '-' and '_' are allowed"
+        ));
+    }
+    Ok(())
+}
+
+fn safe_child_dir(parent: &Path, id: &str) -> Result<PathBuf, String> {
+    validate_module_id(id)?;
+    let dest = parent.join(id);
+    if dest.parent() != Some(parent) {
+        return Err(format!("invalid module path for id {id:?}"));
+    }
+    Ok(dest)
+}
+
 impl ModuleRegistry {
     pub fn new(
         bundled_dir: PathBuf,
@@ -244,7 +276,7 @@ impl ModuleRegistry {
         let staged = stage_module_source(source, &state.curated_lists, &self.bundled_dir)?;
         self.ensure_dirs().map_err(|e| e.to_string())?;
         let manifest = ModuleManifest::load_from_dir(&staged.module_dir).map_err(|e| e.to_string())?;
-        let dest = self.installed_dir.join(&manifest.id);
+        let dest = safe_child_dir(&self.installed_dir, &manifest.id)?;
         copy_dir_atomic(&staged.module_dir, &dest)?;
         let origin = origin_from_staged(&staged, &manifest);
         let _ = origin.save(&dest);
@@ -259,7 +291,7 @@ impl ModuleRegistry {
     pub fn install_from_dir(&self, source_dir: &Path) -> Result<DiscoveredModule, String> {
         self.ensure_dirs().map_err(|e| e.to_string())?;
         let manifest = ModuleManifest::load_from_dir(source_dir).map_err(|e| e.to_string())?;
-        let dest = self.installed_dir.join(&manifest.id);
+        let dest = safe_child_dir(&self.installed_dir, &manifest.id)?;
         copy_dir_atomic(source_dir, &dest)?;
         let origin = ModuleOrigin {
             source: source_dir.to_string_lossy().into_owned(),
@@ -280,15 +312,16 @@ impl ModuleRegistry {
 
     /// Uninstalls a user-installed or local module (bundled defaults are read-only and protected).
     pub fn uninstall_module(&self, id: &str) -> Result<ModuleTier, String> {
-        let local_path = self.local_dir.join(id);
-        let installed_path = self.installed_dir.join(id);
+        let local_path = safe_child_dir(&self.local_dir, id)?;
+        let installed_path = safe_child_dir(&self.installed_dir, id)?;
+        let bundled_path = safe_child_dir(&self.bundled_dir, id)?;
         let removed_tier = if local_path.is_dir() {
             std::fs::remove_dir_all(&local_path).map_err(|e| e.to_string())?;
             ModuleTier::Local
         } else if installed_path.is_dir() {
             std::fs::remove_dir_all(&installed_path).map_err(|e| e.to_string())?;
             ModuleTier::Installed
-        } else if self.bundled_dir.join(id).is_dir() {
+        } else if bundled_path.is_dir() {
             return Err(format!(
                 "module {id:?} is a bundled default and cannot be deleted (disable it instead)"
             ));
@@ -361,12 +394,13 @@ impl ModuleRegistry {
         new_id: &str,
         new_name: Option<&str>,
     ) -> Result<DiscoveredModule, String> {
+        validate_module_id(source_id)?;
+        let dest = safe_child_dir(&self.local_dir, new_id)?;
         self.ensure_dirs().map_err(|e| e.to_string())?;
         let discovered = self.discover();
         let src = discovered
             .get(source_id)
             .ok_or_else(|| format!("module {source_id:?} not found"))?;
-        let dest = self.local_dir.join(new_id);
         if dest.exists() {
             return Err(format!(
                 "local module {new_id:?} already exists at {}",
@@ -400,8 +434,8 @@ impl ModuleRegistry {
         category: ModuleCategory,
         name: Option<&str>,
     ) -> Result<DiscoveredModule, String> {
+        let dest = safe_child_dir(&self.local_dir, id)?;
         self.ensure_dirs().map_err(|e| e.to_string())?;
-        let dest = self.local_dir.join(id);
         if dest.exists() {
             return Err(format!("module {id:?} already exists at {}", dest.display()));
         }

@@ -399,3 +399,137 @@ host = "missing.sh"
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn module_registry_blocks_path_traversal_on_uninstall_fork_and_scaffold() {
+    let tmp = std::env::temp_dir().join(format!(
+        "openflux-sec-traversal-{}",
+        openflux_bus::now_unix_ms()
+    ));
+    let sentinel = tmp.join("keep_me.txt");
+    std::fs::create_dir_all(tmp.join("v2/modules/local")).unwrap();
+    std::fs::write(&sentinel, "do not delete").unwrap();
+
+    let reg = ModuleRegistry::new(
+        tmp.join("bundled"),
+        tmp.join("v2/modules/installed"),
+        tmp.join("v2/modules/local"),
+        tmp.join("v2/state.json"),
+    );
+
+    for bad_id in ["", ".", "..", "../../..", "../escape", "foo/bar", "a\\b", "BadCaps"] {
+        assert!(reg.uninstall_module(bad_id).is_err(), "uninstall({bad_id:?}) must fail");
+        assert!(
+            reg.scaffold_local(bad_id, openflux_modules::ModuleCategory::Widget, None)
+                .is_err(),
+            "scaffold({bad_id:?}) must fail"
+        );
+        assert!(
+            reg.fork_module("widget-clock", bad_id, None).is_err(),
+            "fork({bad_id:?}) must fail"
+        );
+    }
+    assert!(sentinel.is_file(), "sentinel outside modules dir must never be deleted");
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn lua_sandbox_blocks_os_execute_and_aborts_infinite_loops() {
+    let tmp = std::env::temp_dir().join(format!(
+        "openflux-sec-sandbox-{}",
+        openflux_bus::now_unix_ms()
+    ));
+    let pwn_file = tmp.join("should_not_exist");
+
+    let exec_dir = tmp.join("local/bad-exec");
+    std::fs::create_dir_all(&exec_dir).unwrap();
+    std::fs::write(
+        exec_dir.join("module.toml"),
+        r#"
+id = "bad-exec"
+name = "Bad Exec"
+version = "1.0.0"
+category = "effect"
+host_requirement = "none"
+stages = ["under_key"]
+[entrypoints]
+script = "script.lua"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        exec_dir.join("script.lua"),
+        format!("function on_init() os.execute('touch {}') end\n", pwn_file.display()),
+    )
+    .unwrap();
+
+    let loop_dir = tmp.join("local/bad-loop");
+    std::fs::create_dir_all(&loop_dir).unwrap();
+    std::fs::write(
+        loop_dir.join("module.toml"),
+        r#"
+id = "bad-loop"
+name = "Bad Loop"
+version = "1.0.0"
+category = "effect"
+host_requirement = "none"
+stages = ["under_key"]
+[entrypoints]
+script = "script.lua"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        loop_dir.join("script.lua"),
+        "function on_render(ctx, stage) while true do end end\n",
+    )
+    .unwrap();
+
+    let reg = ModuleRegistry::new(
+        tmp.join("bundled"),
+        tmp.join("installed"),
+        tmp.join("local"),
+        tmp.join("state.json"),
+    );
+    let discovered = reg.discover();
+    let mut state = BTreeMap::new();
+    for id in ["bad-exec", "bad-loop"] {
+        state.insert(
+            id.to_string(),
+            ModuleInstanceState {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+    }
+
+    let broker = Broker::new("test");
+    let geom = KeyboardGeometry::build(FrameLayout::Ansi);
+    let mut rt = ModuleRuntime::new(broker, geom);
+    rt.sync_modules(&discovered, &state);
+    let t0 = std::time::Instant::now();
+    let _ = rt.step_frame(0.016, 1000);
+    let elapsed = t0.elapsed();
+
+    assert!(!pwn_file.exists(), "os.execute must be stripped from Lua sandbox");
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "infinite loop must be aborted by watchdog quickly, took {elapsed:?}"
+    );
+    let statuses = rt.statuses();
+    let exec_st = statuses.iter().find(|s| s.id == "bad-exec").unwrap();
+    let loop_st = statuses.iter().find(|s| s.id == "bad-loop").unwrap();
+    assert!(!exec_st.healthy, "bad-exec must be marked unhealthy");
+    assert!(!loop_st.healthy, "bad-loop must be marked unhealthy");
+    assert!(
+        loop_st
+            .last_error
+            .as_deref()
+            .unwrap_or("")
+            .contains("execution budget"),
+        "expected watchdog error, got: {:?}",
+        loop_st.last_error
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}

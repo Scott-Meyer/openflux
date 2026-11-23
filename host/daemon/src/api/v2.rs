@@ -7,9 +7,10 @@
 use crate::api::state::{default_data_dir, ApiState};
 use crate::usb::vial::{ModuleActionsMap, VialHidRelay, VIAL_RAW_EPSIZE};
 use axum::extract::ws::{Message as WsMessage, WebSocket};
-use axum::extract::{Path as AxumPath, Query, State, WebSocketUpgrade};
+use axum::extract::{Path as AxumPath, Query, Request, State, WebSocketUpgrade};
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use base64::Engine;
@@ -31,7 +32,12 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 pub struct V2State {
+    /// Authoritative live host bus mirrored cleanly with the keyboard over OFV2.
     pub broker: Broker,
+    /// Isolated preview-only broker for host-side display Lua modules (`runtime`).
+    /// Fed strictly one-way (`broker -> preview_broker`) so Studio previews NEVER overwrite
+    /// keyboard `keys/providers/*`, blank keycaps on unplug, or double-fire Flux actions!
+    pub preview_broker: Broker,
     pub registry: ModuleRegistry,
     pub runtime: Mutex<ModuleRuntime>,
     pub host_procs: Mutex<HostProcessManager>,
@@ -105,7 +111,7 @@ fn load_font_bytes() -> Option<Vec<u8>> {
 }
 
 impl V2State {
-    pub fn new(data_dir: Option<PathBuf>) -> Arc<Self> {
+    pub fn new(data_dir: Option<PathBuf>, bus_token: Option<String>) -> Arc<Self> {
         let base = data_dir.unwrap_or_else(default_data_dir);
         let bundled = resolve_bundled_modules_dir();
         let registry = ModuleRegistry::new(
@@ -117,8 +123,14 @@ impl V2State {
         let _ = registry.ensure_dirs();
 
         let broker = Broker::new("host");
+        let preview_broker = Broker::new("host-preview");
         let geometry = KeyboardGeometry::build(FrameLayout::Ansi);
         let _ = broker.publish_typed(
+            topics::KEYBOARD_GEOMETRY,
+            &geometry,
+            PublishOptions::retained(),
+        );
+        let _ = preview_broker.publish_typed(
             topics::KEYBOARD_GEOMETRY,
             &geometry,
             PublishOptions::retained(),
@@ -185,7 +197,10 @@ impl V2State {
             let _ = broker.publish("display/power", pw.clone(), PublishOptions::retained());
         }
 
-        let mut runtime = ModuleRuntime::new(broker.clone(), geometry.clone());
+        // Run host-side display Lua modules ONLY inside the isolated `preview_broker` so they
+        // never write onto the live keyboard-mirrored `broker` (no split-brain `keys/providers/*`,
+        // no unplug keycap blanking, no double-firing actions!).
+        let mut runtime = ModuleRuntime::new(preview_broker.clone(), geometry.clone());
         let discovered = registry.discover();
         let mut state_file = registry.load_state();
 
@@ -234,7 +249,7 @@ impl V2State {
 
         runtime.sync_modules(&discovered, &state_file.modules);
 
-        let mut host_procs = HostProcessManager::new("http://127.0.0.1:52324");
+        let mut host_procs = HostProcessManager::new("http://127.0.0.1:52324").with_bus_token(bus_token);
         for (id, dm) in &discovered {
             if let Some(inst) = state_file.modules.get(id) {
                 if inst.enabled && dm.manifest.entrypoints.host.is_some() {
@@ -251,6 +266,7 @@ impl V2State {
         let initial_sig = Self::compute_disk_sig(&registry);
         let state = Arc::new(Self {
             broker,
+            preview_broker,
             registry,
             runtime: Mutex::new(runtime),
             host_procs: Mutex::new(host_procs),
@@ -315,6 +331,22 @@ impl V2State {
             }
         }
         parts.join("|")
+    }
+
+    /// Copies retained live topics one-way (`broker -> preview_broker`) so Studio Preview sees
+    /// live telemetry, clock, weather, Prusa status, and QMK keymap without ever writing back
+    /// onto the live keyboard-mirrored bus!
+    pub fn sync_live_to_preview(&self) {
+        for msg in self.broker.snapshot_retained() {
+            if msg.topic.starts_with("keys/providers/") {
+                continue;
+            }
+            let _ = self.preview_broker.publish(
+                msg.topic,
+                msg.payload,
+                PublishOptions::retained().with_origin("live-mirror"),
+            );
+        }
     }
 
     /// Stops all supervised host helper processes cleanly on daemon shutdown (zero orphans!).
@@ -1453,7 +1485,7 @@ async fn simulate_key(
     };
     let _ = state
         .v2
-        .broker
+        .preview_broker
         .publish_typed(topics::INPUT_KEYS_EVENT, &ev, PublishOptions::default());
     let sample = AnalogKeySample::from_raw(
         body.key_index,
@@ -1462,7 +1494,7 @@ async fn simulate_key(
         k.center_x,
         k.center_y,
     );
-    let _ = state.v2.broker.publish_typed(
+    let _ = state.v2.preview_broker.publish_typed(
         topics::INPUT_KEYS_ANALOG,
         &AnalogKeyFrame {
             timestamp_ms: now_ms,
@@ -1477,7 +1509,7 @@ async fn simulate_impulse(
     State(state): State<Arc<ApiState>>,
     Json(imp): Json<SurfaceImpulse>,
 ) -> impl IntoResponse {
-    let _ = state.v2.broker.publish_typed(
+    let _ = state.v2.preview_broker.publish_typed(
         topics::FX_SURFACE_IMPULSE,
         &imp,
         PublishOptions::default(),
@@ -1567,6 +1599,7 @@ async fn render_preview_frame(
     State(state): State<Arc<ApiState>>,
     Json(body): Json<PreviewFrameBody>,
 ) -> impl IntoResponse {
+    state.v2.sync_live_to_preview();
     let mut rt = state.v2.runtime.lock().unwrap();
     let _ = rt.check_hot_reload();
     let mut comp_guard = state.v2.compositor.lock().unwrap();
@@ -2195,7 +2228,62 @@ async fn put_display_power(
     (StatusCode::OK, Json(json!({ "ok": true, "power": state.v2.load_display_prefs()["power"] })))
 }
 
-/// Mounts all OpenFlux v2 routes (open localhost bus, module management, disclosure, lists, presets, GPU preview).
+/// Authenticates EVERY `/v2/*` HTTP and WebSocket request:
+/// 1. Rejects cross-origin browser requests (`Origin` outside Studio's own localhost/tauri origins)
+///    to block browser WebSocket keylogging and CSRF attacks.
+/// 2. Requires a valid daemon bearer token via `Authorization: Bearer <tok>`, `X-OpenFlux-Token`,
+///    or `?token=<tok>` (for WebSocket clients).
+async fn v2_auth_middleware(
+    State(state): State<Arc<ApiState>>,
+    req: Request,
+    next: Next,
+) -> Response {
+    if let Some(origin) = req.headers().get("origin").and_then(|v| v.to_str().ok()) {
+        let allowed = origin == "tauri://localhost"
+            || origin == "https://tauri.localhost"
+            || origin.starts_with("http://localhost:")
+            || origin.starts_with("http://127.0.0.1:")
+            || origin == "http://localhost"
+            || origin == "http://127.0.0.1";
+        if !allowed {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(json!({ "error": "cross-origin browser access to OpenFlux v2 API is forbidden" })),
+            )
+                .into_response();
+        }
+    }
+
+    let auth_owned: Option<String> = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+        .or_else(|| {
+            req.headers()
+                .get("x-openflux-token")
+                .and_then(|v| v.to_str().ok())
+                .map(|t| format!("Bearer {}", t.trim()))
+        })
+        .or_else(|| {
+            req.uri().query().and_then(|q| {
+                q.split('&').find_map(|pair| {
+                    pair.strip_prefix("token=")
+                        .filter(|v| !v.is_empty())
+                        .map(|v| format!("Bearer {v}"))
+                })
+            })
+        });
+
+    if let Err((code, msg)) = state.verify_bearer(auth_owned.as_deref()) {
+        let status = StatusCode::from_u16(code).unwrap_or(StatusCode::UNAUTHORIZED);
+        return (status, Json(json!({ "error": msg }))).into_response();
+    }
+
+    next.run(req).await
+}
+
+/// Mounts all OpenFlux v2 routes (authenticated localhost bus, module management, disclosure, lists, presets, GPU preview).
 pub fn router(state: Arc<ApiState>) -> Router {
     Router::new()
         .route("/v2/status", get(v2_status_api))
@@ -2240,5 +2328,9 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/keyboard/upload-media", post(keyboard_upload_media))
         .route("/v2/keyboard/sideload", post(keyboard_sideload))
         .route("/v2/keyboard/flash-uf2", post(keyboard_flash_uf2))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            v2_auth_middleware,
+        ))
         .with_state(state)
 }

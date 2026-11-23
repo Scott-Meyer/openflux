@@ -78,6 +78,7 @@ struct RunningHostModule {
 
 pub struct HostProcessManager {
     bus_url: String,
+    bus_token: Option<String>,
     running: BTreeMap<String, RunningHostModule>,
     failures: BTreeMap<String, String>,
 }
@@ -86,9 +87,15 @@ impl HostProcessManager {
     pub fn new(bus_url: impl Into<String>) -> Self {
         Self {
             bus_url: bus_url.into(),
+            bus_token: None,
             running: BTreeMap::new(),
             failures: BTreeMap::new(),
         }
+    }
+
+    pub fn with_bus_token(mut self, token: Option<String>) -> Self {
+        self.bus_token = token.filter(|t| !t.trim().is_empty());
+        self
     }
 
     pub fn start_module(
@@ -135,6 +142,9 @@ impl HostProcessManager {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if let Some(tok) = &self.bus_token {
+            cmd.env("OPENFLUX_BUS_TOKEN", tok);
+        }
 
         #[cfg(unix)]
         {

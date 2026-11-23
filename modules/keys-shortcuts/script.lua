@@ -159,13 +159,11 @@ local function load_all_packs(accent)
 
   local seen_pack_key = {} -- prevent duplicate (pack_file, key, mods) within the same pack
 
-  for _, fname in ipairs(files) do
-    if string.sub(fname, -5) == ".json" then
-      local f = io.open(dir .. "/" .. fname, "r")
-      if f then
-        local content = f:read("*a")
-        f:close()
-        local ok, doc = pcall(json.decode, content)
+    for _, fname in ipairs(files) do
+      if string.sub(fname, -5) == ".json" then
+        local content = fs.read_text(dir .. "/" .. fname)
+        if type(content) == "string" and #content > 0 then
+          local ok, doc = pcall(json.decode, content)
         if ok and type(doc) == "table" then
           local rows = doc.shortcuts or doc.rows
           if type(rows) == "table" then
@@ -230,10 +228,8 @@ local function load_all_packs(accent)
     table.insert(custom_paths, home .. "/.local/share/openflux/config/custom_shortcuts.json")
   end
   for _, cp in ipairs(custom_paths) do
-    local cf = io.open(cp, "r")
-    if cf then
-      local raw = cf:read("*a")
-      cf:close()
+    local raw = fs.read_text(cp)
+    if type(raw) == "string" and #raw > 0 then
       local ok, cdoc = pcall(json.decode, raw)
       if ok and type(cdoc) == "table" and type(cdoc.packs) == "table" then
         for _, pack in ipairs(cdoc.packs) do

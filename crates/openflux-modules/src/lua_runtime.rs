@@ -7,7 +7,10 @@ use crate::ir::{
 };
 use crate::manifest::CompositorStage;
 use crate::registry::{DiscoveredModule, ModuleInstanceState};
-use mlua::{Function, Lua, LuaSerdeExt, Table, UserData, UserDataMethods, Value as LuaValue};
+use mlua::{
+    Function, HookTriggers, Lua, LuaOptions, LuaSerdeExt, StdLib, Table, UserData, UserDataMethods,
+    Value as LuaValue, VmState,
+};
 use openflux_bus::{Broker, KeyboardGeometry, PublishOptions, SubscribeOptions, Subscription};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -477,6 +480,7 @@ struct LoadedLuaModule {
     lua: Lua,
     subscriptions: Arc<Mutex<Vec<Subscription>>>,
     logs: LogBuffer,
+    deadline: Arc<Mutex<Option<std::time::Instant>>>,
     script_mtime: Option<SystemTime>,
     manifest_mtime: Option<SystemTime>,
     healthy: bool,
@@ -496,7 +500,61 @@ impl LoadedLuaModule {
     ) -> Self {
         let logs = LogBuffer::default();
         let subscriptions: Arc<Mutex<Vec<Subscription>>> = Arc::new(Mutex::new(Vec::new()));
-        let lua = Lua::new();
+        let deadline: Arc<Mutex<Option<std::time::Instant>>> = Arc::new(Mutex::new(None));
+        // Sandboxed Lua 5.4 VM: NO `io` library, NO `debug` library, NO `os.execute`/`os.remove`/
+        // `os.rename`/`os.exit`, NO `dofile`/`loadfile`/`package.loadlib`!
+        // Ensures `host_requirement = "none"` modules truly cannot execute host commands.
+        let stdlib = StdLib::TABLE
+            | StdLib::STRING
+            | StdLib::MATH
+            | StdLib::UTF8
+            | StdLib::PACKAGE
+            | StdLib::OS;
+        let lua = Lua::new_with(stdlib, LuaOptions::default())
+            .expect("failed to initialize sandboxed Lua 5.4 VM");
+
+        // Strip dangerous globals & OS functions immediately after VM creation.
+        {
+            let g = lua.globals();
+            let _ = g.set("dofile", LuaValue::Nil);
+            let _ = g.set("loadfile", LuaValue::Nil);
+            let _ = g.set("io", LuaValue::Nil);
+            if let Ok(pkg) = g.get::<Table>("package") {
+                let _ = pkg.set("loadlib", LuaValue::Nil);
+            }
+            if let Ok(os_tbl) = g.get::<Table>("os") {
+                for forbidden in ["execute", "remove", "rename", "tmpname", "exit", "setlocale"] {
+                    let _ = os_tbl.set(forbidden, LuaValue::Nil);
+                }
+                // Restrict `os.getenv` strictly to `HOME` so Lua modules cannot exfiltrate secrets/tokens.
+                if let Ok(safe_getenv) = lua.create_function(|_, key: String| {
+                    if key == "HOME" {
+                        Ok(std::env::var("HOME").ok())
+                    } else {
+                        Ok(None)
+                    }
+                }) {
+                    let _ = os_tbl.set("getenv", safe_getenv);
+                }
+            }
+        }
+
+        // Execution-budget watchdog: aborts runaway loops (`while true do end`) after 150ms so
+        // one broken module can never hang the keyboard display or daemon!
+        let dl_hook = deadline.clone();
+        lua.set_hook(
+            HookTriggers::new().every_nth_instruction(100_000),
+            move |_, _| {
+                if let Some(dl) = *dl_hook.lock().unwrap() {
+                    if std::time::Instant::now() > dl {
+                        return Err(mlua::Error::RuntimeError(
+                            "module exceeded 150ms execution budget (aborted by watchdog)".into(),
+                        ));
+                    }
+                }
+                Ok(VmState::Continue)
+            },
+        );
 
         let script_path = discovered
             .manifest
@@ -513,6 +571,7 @@ impl LoadedLuaModule {
             lua,
             subscriptions,
             logs,
+            deadline,
             script_mtime,
             manifest_mtime,
             healthy: true,
@@ -527,12 +586,18 @@ impl LoadedLuaModule {
         if let Some(sp) = script_path {
             match std::fs::read_to_string(&sp) {
                 Ok(code) => {
-                    if let Err(e) = loaded.lua.load(&code).set_name(sp.to_string_lossy()).exec() {
+                    loaded.arm_watchdog(std::time::Duration::from_millis(300));
+                    let load_res = loaded.lua.load(&code).set_name(sp.to_string_lossy()).exec();
+                    loaded.clear_watchdog();
+                    if let Err(e) = load_res {
                         loaded.record_error(format!("lua load error: {e}"));
                         return loaded;
                     }
                     if let Ok(on_init) = loaded.lua.globals().get::<Function>("on_init") {
-                        if let Err(e) = on_init.call::<()>(()) {
+                        loaded.arm_watchdog(std::time::Duration::from_millis(300));
+                        let init_res = on_init.call::<()>(());
+                        loaded.clear_watchdog();
+                        if let Err(e) = init_res {
                             loaded.record_error(format!("on_init error: {e}"));
                         }
                     }
@@ -544,6 +609,14 @@ impl LoadedLuaModule {
         }
 
         loaded
+    }
+
+    fn arm_watchdog(&self, budget: std::time::Duration) {
+        *self.deadline.lock().unwrap() = Some(std::time::Instant::now() + budget);
+    }
+
+    fn clear_watchdog(&self) {
+        *self.deadline.lock().unwrap() = None;
     }
 
     fn record_error(&mut self, msg: String) {
@@ -859,6 +932,9 @@ impl LoadedLuaModule {
             "list_dir",
             self.lua.create_function(|lua, dir: String| {
                 let t = lua.create_table()?;
+                if dir.contains("..") {
+                    return Ok(t);
+                }
                 if let Ok(rd) = std::fs::read_dir(&dir) {
                     let mut names: Vec<String> = rd
                         .flatten()
@@ -870,6 +946,22 @@ impl LoadedLuaModule {
                     }
                 }
                 Ok(t)
+            })?,
+        )?;
+        fs_tbl.set(
+            "read_text",
+            self.lua.create_function(|_, path: String| {
+                if path.is_empty() || path.contains('\0') {
+                    return Ok(None);
+                }
+                // Cap read size at 2 MB to prevent memory exhaustion in Lua modules
+                let Ok(meta) = std::fs::metadata(&path) else {
+                    return Ok(None);
+                };
+                if !meta.is_file() || meta.len() > 2 * 1024 * 1024 {
+                    return Ok(None);
+                }
+                Ok(std::fs::read_to_string(&path).ok())
             })?,
         )?;
         globals.set("fs", fs_tbl)?;
@@ -1113,7 +1205,10 @@ impl ModuleRuntime {
                             }
                             Err(_) => continue,
                         };
-                        if let Err(e) = on_event.call::<()>((msg.topic, lua_payload, meta)) {
+                        loaded.arm_watchdog(std::time::Duration::from_millis(150));
+                        let ev_res = on_event.call::<()>((msg.topic, lua_payload, meta));
+                        loaded.clear_watchdog();
+                        if let Err(e) = ev_res {
                             loaded.record_error(format!("on_event error: {e}"));
                             newly_crashed.push(id.clone());
                             break;
@@ -1129,7 +1224,10 @@ impl ModuleRuntime {
                 continue;
             }
             if let Ok(on_update) = loaded.lua.globals().get::<Function>("on_update") {
-                if let Err(e) = on_update.call::<()>((dt_sec, now_ms)) {
+                loaded.arm_watchdog(std::time::Duration::from_millis(150));
+                let upd_res = on_update.call::<()>((dt_sec, now_ms));
+                loaded.clear_watchdog();
+                if let Err(e) = upd_res {
                     loaded.record_error(format!("on_update error: {e}"));
                     newly_crashed.push(id.clone());
                 }
@@ -1175,7 +1273,10 @@ impl ModuleRuntime {
                         stage,
                         scene: scene.clone(),
                     };
-                    if let Err(e) = on_render.call::<()>((handle, stage_name)) {
+                    loaded.arm_watchdog(std::time::Duration::from_millis(150));
+                    let render_res = on_render.call::<()>((handle, stage_name));
+                    loaded.clear_watchdog();
+                    if let Err(e) = render_res {
                         loaded.record_error(format!("on_render({stage_name}) error: {e}"));
                     }
                 }

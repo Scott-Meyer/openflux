@@ -24,6 +24,9 @@ SSL_CTX = ssl._create_unverified_context()
 
 
 def load_token() -> str:
+    env_tok = os.environ.get("OPENFLUX_BUS_TOKEN", "").strip()
+    if env_tok:
+        return env_tok
     p = os.path.expanduser("~/.local/share/openflux/config/desktop_token.txt")
     try:
         with open(p, "r", encoding="utf-8") as f:

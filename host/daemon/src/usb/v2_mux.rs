@@ -349,23 +349,18 @@ impl V2UsbMux {
         }
         self.connected.store(true, Ordering::Release);
 
-        // Immediately confirm bridge rollback sentinel & clear any stale display update semaphore
-        // over OFV2 so openflux-bridge 2.1.0 stays permanent and openflux-display is never stuck!
-        for stale in [
-            "/home/root/.openflux/rollback/bridge/armed",
-            "/tmp/openflux_updating_display",
-        ] {
-            let req_id = self.next_req_id.fetch_add(1, Ordering::Relaxed);
-            if let Ok(payload) = serde_json::to_vec(&BulkRpcRequest::DeleteFile {
-                path: stale.into(),
-            }) {
-                let encoded = MuxFrame::new(MuxChannel::BulkReq, 0, req_id, payload).encode();
-                let (lock, cv) = &*self.tx_lock;
-                let mut q = lock.lock().unwrap();
-                q.bulk.push_back(encoded);
-                cv.notify_one();
-            }
-        }
+        // Re-assert `host/connection { connected: true }` on every OFV2 connect so replugging
+        // never leaves the keyboard stuck on stale `connected: false`!
+        let _ = self.broker.publish_typed(
+            openflux_bus::topics::HOST_CONNECTION,
+            &openflux_bus::HostConnectionState {
+                connected: true,
+                host_asleep: false,
+                last_seen_ms: openflux_bus::now_unix_ms(),
+                host_platform: Some(std::env::consts::OS.to_string()),
+            },
+            openflux_bus::PublishOptions::retained(),
+        );
 
         // Immediately advertise host's active subscriptions to keyboard AND seed default
         // keyboard-side patterns (`host/#`, `modules/#`, `fx/surface/impulse`) + replay retained

@@ -649,6 +649,7 @@ impl ApiState {
     ) -> Arc<Self> {
         let (tx, _rx) = broadcast::channel(64);
         let mut tokens = HashMap::new();
+        let v2_token = preseeded_token.clone();
         if let Some(t) = preseeded_token {
             tokens.insert(t, TokenKind::FirstParty);
         }
@@ -775,7 +776,7 @@ impl ApiState {
             third_party_access: tokio::sync::watch::channel(0).0,
             registration_timeout_ms: std::sync::atomic::AtomicU64::new(120_000),
             updates: Mutex::new(None),
-            v2: crate::api::v2::V2State::new(None),
+            v2: crate::api::v2::V2State::new(None, v2_token),
         })
     }
 

@@ -18,9 +18,17 @@ import urllib.error
 import urllib.request
 
 BUS_URL = os.environ.get("OPENFLUX_BUS_URL", "https://127.0.0.1:52323").rstrip("/")
+BUS_TOKEN = os.environ.get("OPENFLUX_BUS_TOKEN", "").strip()
 CFG = json.loads(os.environ.get("OPENFLUX_CONFIG_JSON", "{}") or "{}")
 SSL_CTX = ssl._create_unverified_context()
 CAM_LOCAL_PATH = os.path.join(tempfile.gettempdir(), "openflux_prusa_cam_live.jpg")
+
+
+def _auth_headers(extra: dict | None = None) -> dict:
+    h = dict(extra or {})
+    if BUS_TOKEN:
+        h["Authorization"] = f"Bearer {BUS_TOKEN}"
+    return h
 
 
 def bus_post(path: str, payload: dict, timeout: float = 5.0):
@@ -28,7 +36,7 @@ def bus_post(path: str, payload: dict, timeout: float = 5.0):
     req = urllib.request.Request(
         f"{BUS_URL}{path}",
         data=data,
-        headers={"Content-Type": "application/json"},
+        headers=_auth_headers({"Content-Type": "application/json"}),
         method="POST",
     )
     try:
@@ -42,7 +50,8 @@ def bus_post(path: str, payload: dict, timeout: float = 5.0):
 def bus_get_retained(topic: str):
     url = f"{BUS_URL}/v2/bus/retained?pattern={topic}"
     try:
-        with urllib.request.urlopen(url, context=SSL_CTX, timeout=3.0) as r:
+        req = urllib.request.Request(url, headers=_auth_headers())
+        with urllib.request.urlopen(req, context=SSL_CTX, timeout=3.0) as r:
             msgs = json.loads(r.read().decode("utf-8")).get("messages", [])
             if msgs:
                 return msgs[0].get("payload")
@@ -218,7 +227,7 @@ class RtspFrameGrabber:
                 if parsed.scheme == "https"
                 else http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3)
             )
-            conn.request("DELETE", "/v2/streams/prusa-cam")
+            conn.request("DELETE", "/v2/streams/prusa-cam", headers=_auth_headers())
             conn.getresponse().read()
             conn.close()
         except Exception:
@@ -316,6 +325,8 @@ class RtspFrameGrabber:
                     else http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=15)
                 )
                 conn.putrequest("POST", "/v2/streams/prusa-cam")
+                if BUS_TOKEN:
+                    conn.putheader("Authorization", f"Bearer {BUS_TOKEN}")
                 conn.putheader("Content-Type", "video/h264")
                 conn.putheader("Transfer-Encoding", "chunked")
                 conn.endheaders()

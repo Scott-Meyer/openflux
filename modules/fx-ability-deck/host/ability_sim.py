@@ -15,16 +15,20 @@ import time
 import urllib.request
 
 BUS_URL = os.environ.get("OPENFLUX_BUS_URL", "https://127.0.0.1:52323").rstrip("/")
+BUS_TOKEN = os.environ.get("OPENFLUX_BUS_TOKEN", "").strip()
 CFG = json.loads(os.environ.get("OPENFLUX_CONFIG_JSON", "{}") or "{}")
 SSL_CTX = ssl._create_unverified_context()
 
 
 def publish(topic: str, payload: dict, retain: bool = True):
     data = json.dumps({"topic": topic, "payload": payload, "retain": retain}).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if BUS_TOKEN:
+        headers["Authorization"] = f"Bearer {BUS_TOKEN}"
     req = urllib.request.Request(
         f"{BUS_URL}/v2/bus/pub",
         data=data,
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:

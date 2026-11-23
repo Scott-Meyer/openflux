@@ -56,6 +56,40 @@ impl Drop for V2BridgeMux {
     }
 }
 
+/// Confines all OFV2 bridge file operations strictly to `/home/root/openflux/` (or a direct
+/// `.ipk` package basename under `/home/root/` when `allow_ipk_root == true`).
+/// Prevents any caller from reading, writing, or deleting arbitrary root filesystem paths.
+fn validate_bridge_path(raw: &str, allow_ipk_root: bool) -> Result<PathBuf, String> {
+    if raw.is_empty() || raw.contains('\0') {
+        return Err("empty or invalid path".into());
+    }
+    let p = Path::new(raw);
+    if !p.is_absolute() {
+        return Err(format!("path must be absolute: {raw}"));
+    }
+    for comp in p.components() {
+        if matches!(comp, std::path::Component::ParentDir) {
+            return Err(format!("path traversal rejected: {raw}"));
+        }
+    }
+    if raw == "/home/root/openflux" || raw.starts_with("/home/root/openflux/") {
+        return Ok(p.to_path_buf());
+    }
+    if allow_ipk_root {
+        if let Some(rest) = raw.strip_prefix("/home/root/") {
+            if !rest.contains('/')
+                && rest.ends_with(".ipk")
+                && rest
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-' || b == b'_')
+            {
+                return Ok(p.to_path_buf());
+            }
+        }
+    }
+    Err(format!("path outside /home/root/openflux/ rejected: {raw}"))
+}
+
 impl V2BridgeMux {
     pub fn new() -> Self {
         Self {
@@ -281,49 +315,73 @@ impl V2BridgeMux {
                 }
             }
             BulkRpcRequest::StatFile { path } => {
-                let p = Path::new(&path);
+                let p = match validate_bridge_path(&path, true) {
+                    Ok(p) => p,
+                    Err(message) => return BulkRpcResponse::Err { message },
+                };
                 let exists = p.is_file();
-                let bytes = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+                let bytes = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
                 BulkRpcResponse::Ok {
                     data: serde_json::json!({ "exists": exists, "bytes": bytes }),
                 }
             }
-            BulkRpcRequest::DeleteFile { path } => match std::fs::remove_file(&path) {
-                Ok(()) => BulkRpcResponse::Ok {
-                    data: serde_json::json!({ "deleted": true }),
-                },
-                Err(e) => BulkRpcResponse::Err {
-                    message: e.to_string(),
-                },
-            },
-            BulkRpcRequest::ListFiles { dir } => match std::fs::read_dir(&dir) {
-                Ok(rd) => {
-                    let mut names: Vec<String> = rd
-                        .flatten()
-                        .filter_map(|e| e.file_name().into_string().ok())
-                        .collect();
-                    names.sort();
-                    BulkRpcResponse::Ok {
-                        data: serde_json::json!({ "files": names }),
-                    }
+            BulkRpcRequest::DeleteFile { path } => {
+                let p = match validate_bridge_path(&path, true) {
+                    Ok(p) => p,
+                    Err(message) => return BulkRpcResponse::Err { message },
+                };
+                match std::fs::remove_file(&p) {
+                    Ok(()) => BulkRpcResponse::Ok {
+                        data: serde_json::json!({ "deleted": true }),
+                    },
+                    Err(e) => BulkRpcResponse::Err {
+                        message: e.to_string(),
+                    },
                 }
-                Err(e) => BulkRpcResponse::Err {
-                    message: e.to_string(),
-                },
-            },
-            BulkRpcRequest::GetFile { path } => match std::fs::read(&path) {
-                Ok(bytes) => {
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    BulkRpcResponse::Ok {
-                        data: serde_json::json!({ "bytes": bytes.len(), "data_b64": b64 }),
+            }
+            BulkRpcRequest::ListFiles { dir } => {
+                let d = match validate_bridge_path(&dir, false) {
+                    Ok(d) => d,
+                    Err(message) => return BulkRpcResponse::Err { message },
+                };
+                match std::fs::read_dir(&d) {
+                    Ok(rd) => {
+                        let mut names: Vec<String> = rd
+                            .flatten()
+                            .filter_map(|e| e.file_name().into_string().ok())
+                            .collect();
+                        names.sort();
+                        BulkRpcResponse::Ok {
+                            data: serde_json::json!({ "files": names }),
+                        }
                     }
+                    Err(e) => BulkRpcResponse::Err {
+                        message: e.to_string(),
+                    },
                 }
-                Err(e) => BulkRpcResponse::Err {
-                    message: e.to_string(),
-                },
-            },
+            }
+            BulkRpcRequest::GetFile { path } => {
+                let p = match validate_bridge_path(&path, false) {
+                    Ok(p) => p,
+                    Err(message) => return BulkRpcResponse::Err { message },
+                };
+                match std::fs::read(&p) {
+                    Ok(bytes) => {
+                        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                        BulkRpcResponse::Ok {
+                            data: serde_json::json!({ "bytes": bytes.len(), "data_b64": b64 }),
+                        }
+                    }
+                    Err(e) => BulkRpcResponse::Err {
+                        message: e.to_string(),
+                    },
+                }
+            }
             BulkRpcRequest::PutFileStart { path, .. } => {
-                let target = PathBuf::from(&path);
+                let target = match validate_bridge_path(&path, true) {
+                    Ok(p) => p,
+                    Err(message) => return BulkRpcResponse::Err { message },
+                };
                 if let Some(parent) = target.parent() {
                     if let Err(e) = std::fs::create_dir_all(parent) {
                         return BulkRpcResponse::Err {
@@ -331,7 +389,7 @@ impl V2BridgeMux {
                         };
                     }
                 }
-                let tmp = PathBuf::from(format!("{path}.ofv2.tmp.{req_id}"));
+                let tmp = PathBuf::from(format!("{}.ofv2.tmp.{req_id}", target.display()));
                 match File::create(&tmp) {
                     Ok(file) => {
                         self.active_puts.insert(
@@ -418,15 +476,25 @@ impl V2BridgeMux {
                 }
             }
             BulkRpcRequest::SideloadIpk { remote_path } => {
-                // Spawn detached opkg install so response ACKs cleanly before service restarts!
-                let cmd = format!(
-                    "sleep 1; opkg install --force-reinstall --force-downgrade '{remote_path}' >/tmp/openflux_sideload.log 2>&1"
-                );
-                let _ = std::process::Command::new("/bin/sh")
-                    .args(["-c", &format!("({cmd}) </dev/null >/dev/null 2>&1 &")])
+                // Strictly validate .ipk path and invoke `opkg` directly without shell interpolation!
+                let safe_path = match validate_bridge_path(&remote_path, true) {
+                    Ok(p) if p.extension().and_then(|e| e.to_str()) == Some("ipk") => p,
+                    Ok(_) => {
+                        return BulkRpcResponse::Err {
+                            message: format!("sideload path must end with .ipk: {remote_path}"),
+                        }
+                    }
+                    Err(message) => return BulkRpcResponse::Err { message },
+                };
+                let _ = std::process::Command::new("opkg")
+                    .args(["install", "--force-reinstall", "--force-downgrade"])
+                    .arg(&safe_path)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
                     .spawn();
                 BulkRpcResponse::Ok {
-                    data: serde_json::json!({ "scheduled": true, "path": remote_path }),
+                    data: serde_json::json!({ "scheduled": true, "path": safe_path.to_string_lossy() }),
                 }
             }
         }

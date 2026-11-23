@@ -237,7 +237,7 @@ fn main() {
 
             if now_sec as u64 != last_hb_sec {
                 last_hb_sec = now_sec as u64;
-                let hb = Path::new(&log_dir).join("display_heartbeat");
+                let hb = Path::new(&log_dir).join("display_heartbeat.log");
                 let _ = std::fs::write(&hb, format!("{now_sec}\n"));
             }
 

@@ -1,3 +1,5 @@
+// TODO(ui-overhaul): Unify Keymap (Vialite bindings) + Keycap Visuals/Overrides + Module Action
+// discovery into one cohesive keyboard editor so users don't bounce between separate sub-tabs.
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { v2Client } from "../api/v2Client";
