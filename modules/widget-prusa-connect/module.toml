@@ -67,7 +67,7 @@ key = "video_while_printing"
 label = "Show Live Video While Printing"
 kind = "select"
 default = "off"
-options = ["off", "popup", "background"]
+options = ["off", "tile", "popup", "background"]
 
 [[settings]]
 key = "accent"

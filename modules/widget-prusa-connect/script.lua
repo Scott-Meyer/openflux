@@ -47,7 +47,7 @@ local function active_video_mode()
   end
   if is_printing() then
     local mode = tostring(module.config().video_while_printing or "off")
-    if mode == "popup" or mode == "background" then
+    if mode == "tile" or mode == "popup" or mode == "background" then
       return mode
     end
   end
@@ -70,13 +70,15 @@ local function publish_peek_key()
     return
   end
   local col = tostring(module.config().accent or "#fa6831")
+  local icon_path = (type(module.dir) == "function") and (module.dir() .. "/prusa-cam.png") or nil
   bus.publish("keys/providers/prusa-peek", {
     priority = 36,
     mode = "replace",
     rules = {
       {
         key = pk,
-        label = "PRT",
+        label = icon_path and "" or "PRT",
+        image = icon_path,
         color = col,
         bg = peeking and "#4a1c0b" or nil,
         border = col,
@@ -180,50 +182,81 @@ function on_render(ctx, stage)
 
     local compact = r.w < 300
     local wide = r.w >= 620
-    local pad_x = compact and 14 or 22
+    local pad_x = compact and 14 or 20
 
-    if compact then
-      ctx:circle(r.x + 20, r.y + 38, 6, state_col)
-      ctx:text(r.x + 34, r.y + 26, string.format("%d%%", math.floor(prog + 0.5)), 24, { 0.96, 0.98, 1.0, 0.98 }, "left")
-      local bar_x, bar_y, bar_w, bar_h = r.x + pad_x, r.y + 78, r.w - pad_x * 2, 12
-      ctx:round_rect(bar_x, bar_y, bar_w, bar_h, 6, { 1, 1, 1, 0.14 }, 0, { 0, 0, 0, 0 })
-      if prog > 0.5 then
-        ctx:round_rect(bar_x, bar_y, math.max(10, bar_w * (prog / 100.0)), bar_h, 6, state_col, 0, { 0, 0, 0, 0 })
+    -- Optional live camera directly inside the top-bar tile slot while printing!
+    -- Compact telemetry header sits cleanly at the top, and video occupies the upper/middle
+    -- viewing sweet-spot (keeping clear of the bottom bezel shadow).
+    if vmode == "tile" and not peeking and stream_live and ctx.stream_rect then
+      local pulse = (math.floor(anim_t * 3.0) % 2 == 0) and 1.0 or 0.45
+      ctx:circle(r.x + 18, r.y + 20, 5, { 1.0, 0.25, 0.28, pulse })
+      ctx:text(
+        r.x + 30,
+        r.y + 11,
+        string.format("%d%%  %s", math.floor(prog + 0.5), eta ~= "--" and eta or st),
+        16,
+        { 0.96, 0.98, 1.0, 0.98 },
+        "left"
+      )
+      if not compact then
+        ctx:text(
+          r.x + r.w - 14,
+          r.y + 12,
+          string.format("N %d°  B %d°", noz, bed),
+          14,
+          { 0.95, 0.78, 0.58, 0.92 },
+          "right"
+        )
       end
-      ctx:text(r.x + pad_x, r.y + 114, string.format("N %d°  B %d°", noz, bed), 15, { 0.84, 0.9, 0.98, 0.9 }, "left")
-      ctx:text(r.x + pad_x, r.y + 150, eta ~= "--" and ("ETA " .. eta) or st, 15, state_col, "left")
+      local vx, vy, vw, vh = r.x + 12, r.y + 34, r.w - 24, math.max(60, r.h - 62)
+      ctx:round_rect(vx - 1, vy - 1, vw + 2, vh + 2, 10, { 0.05, 0.07, 0.11, 0.9 }, 1.2, orange)
+      ctx:stream_rect(vx, vy, vw, vh, "prusa-cam", 10)
       return
     end
 
-    ctx:circle(r.x + 28, r.y + 36, 7, state_col)
+    if compact then
+      ctx:circle(r.x + 20, r.y + 24, 6, state_col)
+      ctx:text(r.x + 34, r.y + 13, string.format("%d%%", math.floor(prog + 0.5)), 22, { 0.96, 0.98, 1.0, 0.98 }, "left")
+      local bar_x, bar_y, bar_w, bar_h = r.x + pad_x, r.y + 50, r.w - pad_x * 2, 11
+      ctx:round_rect(bar_x, bar_y, bar_w, bar_h, 5.5, { 1, 1, 1, 0.14 }, 0, { 0, 0, 0, 0 })
+      if prog > 0.5 then
+        ctx:round_rect(bar_x, bar_y, math.max(10, bar_w * (prog / 100.0)), bar_h, 5.5, state_col, 0, { 0, 0, 0, 0 })
+      end
+      ctx:text(r.x + pad_x, r.y + 76, string.format("N %d°  B %d°", noz, bed), 15, { 0.84, 0.9, 0.98, 0.92 }, "left")
+      ctx:text(r.x + pad_x, r.y + 104, eta ~= "--" and ("ETA " .. eta) or st, 15, state_col, "left")
+      return
+    end
+
+    -- Top-bar ergonomic safe zone: keep all telemetry comfortably above the bottom 15% bezel lip!
+    ctx:circle(r.x + 26, r.y + 24, 6, state_col)
     local title_txt = wide and (string.upper(tostring(status.name or "PRUSA")) .. "  •  " .. st) or ("PRUSA  " .. st)
-    ctx:text(r.x + 44, r.y + 25, title_txt, 19, state_col, "left")
+    ctx:text(r.x + 40, r.y + 14, title_txt, 18, state_col, "left")
     if stream_live then
-      ctx:circle(r.x + r.w - 80, r.y + 36, 5, { 1.0, 0.25, 0.28, 1.0 })
-      ctx:text(r.x + r.w - 22, r.y + 26, "LIVE", 16, { 1.0, 0.45, 0.45, 0.95 }, "right")
+      ctx:circle(r.x + r.w - 76, r.y + 24, 5, { 1.0, 0.25, 0.28, 1.0 })
+      ctx:text(r.x + r.w - 20, r.y + 15, "LIVE", 15, { 1.0, 0.45, 0.45, 0.95 }, "right")
     elseif configured_peek_key() ~= nil then
-      ctx:text(r.x + r.w - 22, r.y + 26, "HOLD PRT", 15, { 0.72, 0.80, 0.92, 0.65 }, "right")
+      ctx:text(r.x + r.w - 20, r.y + 15, "HOLD CAM", 14, { 0.72, 0.80, 0.92, 0.65 }, "right")
     end
 
     local bar_x = r.x + pad_x
-    local bar_y = r.y + 66
+    local bar_y = r.y + 44
     local bar_w = r.w - pad_x * 2
-    local bar_h = wide and 20 or 16
+    local bar_h = wide and 18 or 14
     ctx:round_rect(bar_x, bar_y, bar_w, bar_h, bar_h * 0.5, { 1, 1, 1, 0.14 }, 0, { 0, 0, 0, 0 })
     if prog > 0.5 then
       ctx:round_rect(bar_x, bar_y, math.max(12, bar_w * (prog / 100.0)), bar_h, bar_h * 0.5, state_col, 0, { 0, 0, 0, 0 })
     end
-    ctx:text(bar_x, bar_y + bar_h + 12, string.format("%d%%", math.floor(prog + 0.5)), wide and 34 or 26, { 0.98, 0.99, 1.0, 0.98 }, "left")
+    ctx:text(bar_x, bar_y + bar_h + 10, string.format("%d%%", math.floor(prog + 0.5)), wide and 32 or 24, { 0.98, 0.99, 1.0, 0.98 }, "left")
     local job = tostring(status.job_name or "")
     if wide and #job > 0 then
       if #job > 32 then job = string.sub(job, 1, 31) .. "…" end
-      ctx:text(bar_x + 110, bar_y + bar_h + 18, job, 18, { 0.82, 0.88, 0.96, 0.88 }, "left")
+      ctx:text(bar_x + 104, bar_y + bar_h + 16, job, 18, { 0.82, 0.88, 0.96, 0.88 }, "left")
     end
-    ctx:text(r.x + r.w - pad_x, bar_y + bar_h + 16, eta ~= "--" and ("ETA " .. eta) or tostring(status.name or ""), wide and 22 or 18, { 0.82, 0.88, 0.96, 0.88 }, "right")
+    ctx:text(r.x + r.w - pad_x, bar_y + bar_h + 14, eta ~= "--" and ("ETA " .. eta) or tostring(status.name or ""), wide and 21 or 17, { 0.82, 0.88, 0.96, 0.88 }, "right")
 
-    local ty = r.y + r.h - 46
-    ctx:text(bar_x, ty, string.format("NOZ %d/%d°C", noz, noz_t), wide and 20 or 17, { 0.98, 0.74, 0.52, 0.96 }, "left")
-    ctx:text(r.x + r.w - pad_x, ty, string.format("BED %d/%d°C", bed, bed_t), wide and 20 or 17, { 0.68, 0.86, 1.0, 0.96 }, "right")
+    local ty = bar_y + bar_h + 48
+    ctx:text(bar_x, ty, string.format("NOZ %d/%d°C", noz, noz_t), wide and 19 or 16, { 0.98, 0.74, 0.52, 0.96 }, "left")
+    ctx:text(r.x + r.w - pad_x, ty, string.format("BED %d/%d°C", bed, bed_t), wide and 19 or 16, { 0.68, 0.86, 1.0, 0.96 }, "right")
 
   elseif stage == "world_overlay" and vmode == "popup" then
     -- Sleek centered Camera Popup card (either on Hold Peek Key or Auto-While-Printing)!
