@@ -4,6 +4,7 @@ import type { DaemonClient } from "./api/daemonClient";
 import { createDaemonClient } from "./api/daemonClient";
 import { ActuationPanel } from "./components/ActuationPanel";
 import { DevicePanel } from "./components/DevicePanel";
+import { KeycapsTab } from "./components/KeycapsTab";
 import { OpenFluxLogo } from "./components/OpenFluxLogo";
 import { ShortcutsProfilesPanel } from "./components/ShortcutsProfilesPanel";
 import { TopBarDockTab } from "./components/TopBarDockTab";
@@ -637,7 +638,11 @@ export const App: React.FC<AppProps> = ({
               />
             );
           })()}
-        {tab === "keymap" && <VialKeymapTab />}
+        {tab === "keymap" && (
+          <VialKeymapTab
+            stylingView={<KeycapsTab pickFile={(title) => client.pickFile(title)} />}
+          />
+        )}
         {tab === "actuation" && (
           <ActuationPanel
             config={config}

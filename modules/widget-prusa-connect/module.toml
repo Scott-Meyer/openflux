@@ -20,7 +20,7 @@ script = "script.lua"
 host = "host/prusa_poller.py"
 
 [channels]
-subscribes = ["modules/prusa-connect/#", "modules/streams/prusa-cam", "input/keys/event"]
+subscribes = ["modules/prusa-connect/#", "modules/streams/prusa-cam", "input/keys/event", "keyboard/resolved_keys", "system/actions"]
 publishes = ["modules/prusa-connect/peek", "modules/prusa-connect/status"]
 
 [[settings]]
@@ -82,6 +82,18 @@ kind = "number"
 default = 5
 min = 2
 max = 60
+
+[[actions]]
+id = "camera_glance"
+label = "Prusa Camera Glance"
+short_label = ""
+icon = "prusa-cam.png"
+accent = "#fa6831"
+mode = "hold"
+topic = "modules/prusa-connect/peek"
+retain = true
+payload = { active = true }
+release_payload = { active = false }
 
 [[actions]]
 id = "peek_on"

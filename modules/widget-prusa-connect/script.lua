@@ -23,6 +23,31 @@ local peeking = false
 local anim_t = 0.0
 local stream_live = false
 local last_printer_state = ""
+local bound_in_vial = false
+local glance_keycode = nil
+
+local function check_bound_in_vial(rk)
+  if not glance_keycode or type(rk) ~= "table" or type(rk.keys) ~= "table" then
+    return false
+  end
+  for _, e in ipairs(rk.keys) do
+    if type(e) == "table" and math.floor(tonumber(e.keycode) or 0) == glance_keycode then
+      return true
+    end
+  end
+  return false
+end
+
+local function update_glance_keycode(sa)
+  glance_keycode = nil
+  if type(sa) ~= "table" or type(sa.slots) ~= "table" then return end
+  for _, a in pairs(sa.slots) do
+    if type(a) == "table" and (a.action_id == "widget-prusa-connect.camera_glance" or a.action_id == "widget-prusa-connect:camera_glance") then
+      glance_keycode = math.floor(tonumber(a.keycode) or 0)
+      break
+    end
+  end
+end
 
 local function configured_peek_key()
   local cfg = module.config()
@@ -64,6 +89,12 @@ local function fmt_eta(mins)
 end
 
 local function publish_peek_key()
+  -- If the user bound `Prusa Camera Glance` in QMK/Vialite, `keys-keymap` automatically paints
+  -- `prusa-cam.png` on whichever key & layer it's bound to — never paint a duplicate key-13 icon!
+  if bound_in_vial then
+    bus.publish("keys/providers/prusa-peek", nil, true)
+    return
+  end
   local pk = configured_peek_key()
   if not pk then
     bus.publish("keys/providers/prusa-peek", nil, true)
@@ -97,11 +128,26 @@ function on_init()
   if type(st) == "table" and st.active == true then
     stream_live = true
   end
+  update_glance_keycode(bus.get("system/actions"))
+  bound_in_vial = check_bound_in_vial(bus.get("keyboard/resolved_keys"))
   publish_peek_key()
 end
 
 function on_event(topic, payload)
-  if topic == "modules/prusa-connect/status" and type(payload) == "table" then
+  if topic == "system/actions" and type(payload) == "table" then
+    update_glance_keycode(payload)
+    local next_b = check_bound_in_vial(bus.get("keyboard/resolved_keys"))
+    if next_b ~= bound_in_vial then
+      bound_in_vial = next_b
+      publish_peek_key()
+    end
+  elseif topic == "keyboard/resolved_keys" and type(payload) == "table" then
+    local next_b = check_bound_in_vial(payload)
+    if next_b ~= bound_in_vial then
+      bound_in_vial = next_b
+      publish_peek_key()
+    end
+  elseif topic == "modules/prusa-connect/status" and type(payload) == "table" then
     local next_state = string.upper(tostring(payload.state or ""))
     if last_printer_state == "PRINTING" and (next_state == "FINISHED" or next_state == "IDLE" or next_state == "READY") then
       local job = tostring(payload.job_name or status.job_name or "Print")

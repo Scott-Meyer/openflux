@@ -445,6 +445,7 @@ impl KeyboardV2Display {
         let extra = vec![
             "host/#".to_string(),
             "modules/#".to_string(),
+            "system/actions".to_string(),
             "display/parallax".to_string(),
             "display/power".to_string(),
             "fx/surface/impulse".to_string(),
@@ -690,17 +691,59 @@ impl KeyboardV2Display {
 
     fn handle_flux_action(&mut self, val: &Value) {
         let slot = val.get("slot").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
+        let pressed = val.get("pressed").and_then(|v| v.as_bool()).unwrap_or(false);
+        let mods = val.get("mods").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+        let layer = val.get("layer").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+        let profile = val.get("profile").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+        let action_id = self.resolve_action_id(slot);
         let ev = FluxActionEvent {
             slot,
-            action_id: self.resolve_action_id(slot),
-            pressed: val.get("pressed").and_then(|v| v.as_bool()).unwrap_or(false),
-            mods: val.get("mods").and_then(|v| v.as_u64()).unwrap_or(0) as u8,
-            layer: val.get("layer").and_then(|v| v.as_u64()).unwrap_or(0) as u8,
-            profile: val.get("profile").and_then(|v| v.as_u64()).unwrap_or(0) as u8,
+            action_id: action_id.clone(),
+            pressed,
+            mods,
+            layer,
+            profile,
         };
         let _ = self
             .broker
             .publish_typed(topics::INPUT_FLUX_ACTION, &ev, PublishOptions::default());
+
+        // Dispatch standalone on the keyboard bus using retained `system/actions` metadata
+        // (supports both `mode == "tap"` and `mode == "hold"` with zero host round-trip!)
+        let meta = self
+            .broker
+            .get_retained("system/actions")
+            .and_then(|m| m.payload.get("slots").and_then(|s| s.get(&slot.to_string())).cloned());
+        if let Some(m) = meta {
+            if let Some(aid) = m.get("action_id").and_then(|v| v.as_str()) {
+                let sem_topic = format!("actions/{}", aid.replace('.', "/").replace(':', "/"));
+                let _ = self.broker.publish(
+                    &sem_topic,
+                    serde_json::json!({ "pressed": pressed, "slot": slot, "mods": mods, "layer": layer }),
+                    PublishOptions::default(),
+                );
+            }
+            if let Some(topic) = m.get("topic").and_then(|v| v.as_str()) {
+                let retain = m.get("retain").and_then(|v| v.as_bool()).unwrap_or(false);
+                let mode = m.get("mode").and_then(|v| v.as_str()).unwrap_or("tap");
+                let opts = if retain {
+                    PublishOptions::retained()
+                } else {
+                    PublishOptions::default()
+                };
+                if pressed {
+                    let payload = m.get("payload").cloned().unwrap_or_else(|| serde_json::json!({}));
+                    let _ = self.broker.publish(topic, payload, opts);
+                } else if mode == "hold" {
+                    let rel = m
+                        .get("release_payload")
+                        .filter(|v| !v.is_null())
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!({ "active": false }));
+                    let _ = self.broker.publish(topic, rel, opts);
+                }
+            }
+        }
     }
 
     fn handle_resolved_keys(&mut self, val: &Value) {

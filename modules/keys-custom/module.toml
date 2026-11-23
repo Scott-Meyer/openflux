@@ -1,0 +1,19 @@
+id = "keys-custom"
+name = "Custom Keycap Visuals"
+version = "2.0.0"
+description = "Per-key and per-action visual overrides (custom labels, colors, borders, vector icons, and PNG images) layered cleanly above base keymap and shortcuts"
+author = "OpenFlux"
+category = "effect"
+tags = ["keys", "core", "icons", "custom", "keymap"]
+depends = [{ role = "keys_renderer" }]
+stages = ["under_key"]
+host_requirement = "none"
+slot_capable = false
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["keyboard/resolved_keys", "system/actions"]
+publishes = ["keys/providers/custom"]

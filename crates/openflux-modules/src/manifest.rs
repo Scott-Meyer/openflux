@@ -156,6 +156,10 @@ fn default_tab_order() -> i32 {
     50
 }
 
+fn default_action_mode() -> String {
+    "tap".to_string()
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModuleActionField {
     pub id: String,
@@ -165,6 +169,21 @@ pub struct ModuleActionField {
     pub payload: Value,
     #[serde(default)]
     pub retain: bool,
+    /// Optional concise keycap legend (e.g. `"Prusa"` or `"Pomo"`).
+    #[serde(default)]
+    pub short_label: Option<String>,
+    /// Optional built-in vector icon name (e.g. `"play"`) or relative image file inside the module folder (e.g. `"prusa-cam.png"`).
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// Optional accent hex color (e.g. `"#fa6831"`) rendered on bound keycaps.
+    #[serde(default)]
+    pub accent: Option<String>,
+    /// Trigger mode: `"tap"` (fires on key press only) or `"hold"` (fires on both press and release).
+    #[serde(default = "default_action_mode")]
+    pub mode: String,
+    /// Optional payload published on key release when `mode == "hold"` (defaults to `{"active": false}`).
+    #[serde(default)]
+    pub release_payload: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

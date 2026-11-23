@@ -294,6 +294,18 @@ export const v2Client = {
   importPreset: (preset: Record<string, unknown>) => v2Call("POST", "/v2/preset/import", preset),
   publishBus: (topic: string, payload: unknown, retain = false) =>
     v2Call("POST", "/v2/bus/pub", { topic, payload, retain }),
+  getBusRetained: (pattern: string) =>
+    v2Call<{
+      messages: Array<{
+        topic: string;
+        payload: unknown;
+        origin?: string;
+        retain?: boolean;
+        seq?: number;
+      }>;
+    }>("GET", `/v2/bus/retained?pattern=${encodeURIComponent(pattern)}`),
+  importMediaFile: (local_path: string) =>
+    v2Call<{ ok: boolean; name: string; path: string }>("POST", "/v2/media/import", { local_path }),
   simulateKey: (key_index: number, depth_um = 2400, velocity_um_s = 15000, release = false) =>
     v2Call("POST", "/v2/simulate/key", { key_index, depth_um, velocity_um_s, release }),
   simulateImpulse: (x: number, y: number, radius = 64, force = 1.15) =>

@@ -278,6 +278,7 @@ impl V2State {
             })
             .ok();
 
+        state.publish_system_actions();
         state
     }
 
@@ -396,9 +397,53 @@ impl V2State {
         let _ = self.broker.publish("display/power", payload, PublishOptions::retained());
     }
 
+    /// Reconciles enabled modules' advertised `[[actions]]` into QMK slots (`0..63`) and publishes
+    /// the complete visual + dispatch registry onto retained `system/actions` (consumed by
+    /// `keys-keymap`, `keys-custom`, keyboard standalone dispatch, and Studio's `KeycapsTab`!).
+    pub fn publish_system_actions(&self) {
+        let discovered = self.registry.discover();
+        let mut slots_json = serde_json::Map::new();
+        {
+            let mut map = self.vial_actions.lock().unwrap();
+            map.reconcile_from_registry(&self.registry);
+            let _ = map.save(&self.vial_actions_path);
+            for (slot, entry) in &map.entries {
+                let module_dir = discovered
+                    .get(entry.module_id.as_str())
+                    .map(|dm| dm.path.to_string_lossy().into_owned());
+                slots_json.insert(
+                    slot.to_string(),
+                    json!({
+                        "slot": slot,
+                        "keycode": entry.keycode,
+                        "action_id": entry.action_id,
+                        "module_id": entry.module_id,
+                        "module_dir": module_dir,
+                        "label": entry.name,
+                        "short_label": entry.short_label,
+                        "icon": entry.icon,
+                        "accent": entry.accent,
+                        "mode": entry.mode,
+                        "topic": entry.topic,
+                        "payload": entry.payload,
+                        "release_payload": entry.release_payload,
+                        "retain": entry.retain,
+                        "active": entry.active,
+                    }),
+                );
+            }
+        }
+        let _ = self.broker.publish(
+            "system/actions",
+            json!({ "slots": Value::Object(slots_json) }),
+            PublishOptions::retained(),
+        );
+    }
+
     pub fn notify_modules_changed(&self, reason: &str, module_id: Option<&str>) {
         let rev = self.modules_rev.fetch_add(1, Ordering::SeqCst) + 1;
         *self.last_disk_sig.lock().unwrap() = Self::compute_disk_sig(&self.registry);
+        self.publish_system_actions();
         let _ = self.broker.publish(
             "system/modules/changed",
             json!({
@@ -411,7 +456,8 @@ impl V2State {
         );
     }
 
-    /// Dispatch a QK_KB_n Flux/module custom key event received from the RP2040 over USB IF 4.
+    /// Dispatch a QK_KB_n (`0..63`) Flux/module custom key event received from the RP2040 over USB IF 4.
+    /// Supports both `"tap"` actions (fire on press) and `"hold"` actions (fire on press AND release!).
     pub fn dispatch_flux_action(&self, slot: u16, pressed: bool, mods: u8, layer: u8) {
         let entry = self
             .vial_actions
@@ -429,15 +475,28 @@ impl V2State {
         let _ = self
             .broker
             .publish_typed(topics::INPUT_FLUX_ACTION, &ev, PublishOptions::default());
-        if pressed {
-            if let Some(e) = entry {
-                if let Some(topic) = e.topic {
-                    let opts = if e.retain {
-                        PublishOptions::retained()
-                    } else {
-                        PublishOptions::default()
-                    };
+
+        if let Some(e) = entry {
+            let sem_topic = format!("actions/{}", e.action_id.replace('.', "/").replace(':', "/"));
+            let _ = self.broker.publish(
+                &sem_topic,
+                json!({ "pressed": pressed, "slot": slot, "mods": mods, "layer": layer }),
+                PublishOptions::default(),
+            );
+            if let Some(topic) = e.topic {
+                let opts = if e.retain {
+                    PublishOptions::retained()
+                } else {
+                    PublishOptions::default()
+                };
+                if pressed {
                     let _ = self.broker.publish(&topic, e.payload, opts);
+                } else if e.mode == "hold" {
+                    let rel = e
+                        .release_payload
+                        .filter(|v| !v.is_null())
+                        .unwrap_or_else(|| json!({ "active": false }));
+                    let _ = self.broker.publish(&topic, rel, opts);
                 }
             }
         }
@@ -1020,6 +1079,47 @@ async fn update_module_api(
 
 /// Lists video/image files in `~/.local/share/openflux/media` so Studio's `bg-media` picker can
 /// offer one-click selection across all imported seamless loops and stills!
+#[derive(Deserialize)]
+struct ImportMediaBody {
+    local_path: String,
+}
+
+async fn import_media_file_api(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<ImportMediaBody>,
+) -> impl IntoResponse {
+    let src = std::path::Path::new(body.local_path.trim());
+    if !src.is_file() {
+        return err_resp(StatusCode::BAD_REQUEST, format!("file not found: {}", src.display()));
+    }
+    let Some(fname) = src.file_name().and_then(|n| n.to_str()) else {
+        return err_resp(StatusCode::BAD_REQUEST, "invalid file name");
+    };
+    let media_dir = state
+        .v2
+        .registry
+        .state_path
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("media"))
+        .unwrap_or_else(|| default_data_dir().join("media"));
+    let _ = std::fs::create_dir_all(&media_dir);
+    let dst = media_dir.join(fname);
+    if src != dst {
+        if let Err(e) = std::fs::copy(src, &dst) {
+            return err_resp(StatusCode::INTERNAL_SERVER_ERROR, format!("copy failed: {e}"));
+        }
+    }
+    (
+        StatusCode::OK,
+        Json(json!({
+            "ok": true,
+            "name": fname,
+            "path": dst.to_string_lossy(),
+        })),
+    )
+}
+
 async fn list_media_library_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     // `~/.local/share/openflux/media` (sibling of `v2/` inside the user data directory)
     let media_dir = state
@@ -1699,6 +1799,43 @@ async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespon
             uploaded_files.push(remote);
         }
 
+        // Sync `module_actions.json` (64-slot QMK action registry) to keyboard for offline use!
+        let actions_local = kb_state_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("module_actions.json");
+        if let Ok(bytes) = std::fs::read(&actions_local) {
+            let remote = "/home/root/openflux/v2/module_actions.json".to_string();
+            uploaded_bytes += bytes.len();
+            device.put_file(&remote, &bytes)?;
+            uploaded_files.push(remote);
+        }
+
+        // Sync custom PNG keycap icons referenced by `keys-custom` (`by_key` / `by_action`)
+        if let Some(custom_inst) = kb_state.modules.get("keys-custom") {
+            let media_dir = default_data_dir().join("media");
+            for map_key in ["by_key", "by_action"] {
+                if let Some(obj) = custom_inst.config.get(map_key).and_then(|v| v.as_object()) {
+                    for ov in obj.values() {
+                        if let Some(img_name) = ov.get("image").and_then(|v| v.as_str()) {
+                            let fname = std::path::Path::new(img_name)
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or(img_name);
+                            let lp = media_dir.join(fname);
+                            if lp.is_file() {
+                                let remote = format!("/home/root/openflux/media/{fname}");
+                                if !device.stat_file(&remote).unwrap_or(false) {
+                                    if let Ok(bytes) = std::fs::read(&lp) {
+                                        uploaded_bytes += bytes.len();
+                                        device.put_file(&remote, &bytes)?;
+                                        uploaded_files.push(remote);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // For ANY enabled module with `kind = "file"` settings pointing at a local file,
         // auto-upload the file to `/home/root/openflux/media/` (skipping if already present)
         // and rewrite the keyboard copy of that setting to the remote filename.
@@ -2086,6 +2223,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/modules/:id/reload", post(reload_module_api))
         .route("/v2/modules/:id/logs", get(get_module_logs_api))
         .route("/v2/media/library", get(list_media_library_api))
+        .route("/v2/media/import", post(import_media_file_api))
         .route("/v2/streams/:name", post(ingest_media_stream).delete(close_media_stream))
         .route("/v2/lists", get(list_curated_lists).post(add_curated_list))
         .route("/v2/lists/browse", get(browse_curated_list))
