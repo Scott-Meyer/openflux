@@ -166,7 +166,16 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
 
   return (
     <div className="kb-surface-frame">
-      <div className="kb-surface-chassis-sheen" aria-hidden="true" />
+      {/* Authentic matte-black anodized aluminum top rail (where physical attachments dock!) */}
+      <div className="kb-hw-top-rail" aria-hidden="true">
+        {bays.map((bay, idx) => (
+          <div
+            key={`rail-${bay.pos}-${idx}`}
+            className="kb-hw-rail-seg"
+            style={{ left: `${(bay.pos / 4) * 100}%`, width: `${(bay.span / 4) * 100}%` }}
+          />
+        ))}
+      </div>
       <div
         className="kb-surface-canvas"
         style={{ aspectRatio: `${DISPLAY_W} / ${DISPLAY_H}` }}
@@ -198,6 +207,9 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
             </span>
           )}
         </button>
+
+        {/* Subtle frosted acrylic keyframe ridge separating Top Strip from Keycap Deck */}
+        {showLivePreview && <div className="kb-keyframe-ridge" aria-hidden="true" />}
 
         {/* Interactive 85-Key Sculpted Clear Glass Keycaps */}
         {keys.map((k) => {
