@@ -7,6 +7,7 @@
 local geom = nil
 local providers = {} -- topic -> provider table (nil tombstone removes it on Erlang/LWT purge!)
 local held = { ctrl = false, shift = false, alt = false, cmd = false, fn = false }
+local held_by_idx = {} -- physical key_index -> true while held (prevents dual-Shift/dual-Ctrl glitches!)
 local caps_lock = false
 local active_layer = 0
 local active_app = { app_id = "", process_name = "", window_title = "", profile_name = "" }
@@ -205,9 +206,18 @@ function on_event(topic, payload)
       providers[topic] = nil
     end
   elseif topic == "input/keys/event" and type(payload) == "table" then
-    local mk = MOD_KEYS[payload.key_index]
-    if mk then
-      held[mk] = (payload.kind == "press")
+    local ki = payload.key_index
+    if ki ~= nil then
+      if payload.kind == "press" then
+        held_by_idx[ki] = true
+      elseif payload.kind == "release" then
+        held_by_idx[ki] = nil
+      end
+      held.ctrl, held.shift, held.alt, held.cmd, held.fn = false, false, false, false, false
+      for hki, _ in pairs(held_by_idx) do
+        local mk = MOD_KEYS[hki]
+        if mk then held[mk] = true end
+      end
     end
   elseif topic == "keyboard/state" and type(payload) == "table" then
     caps_lock = payload.caps_lock == true
@@ -365,7 +375,12 @@ function on_render(ctx, stage)
   local winners = {} -- key_index -> { priority, mode, rule }
   local badges = {}  -- key_index -> list of badge rules
 
-  for _, prov in pairs(providers) do
+  -- Deterministic sorted iteration across ALL active providers in ONE atomic frame!
+  local prov_topics = {}
+  for t, _ in pairs(providers) do table.insert(prov_topics, t) end
+  table.sort(prov_topics)
+  for _, ptopic in ipairs(prov_topics) do
+    local prov = providers[ptopic]
     if type(prov) == "table" and when_matches(prov.when) and type(prov.rules) == "table" then
       local base_prio = tonumber(prov.priority) or 10
       local base_mode = tostring(prov.mode or "replace")

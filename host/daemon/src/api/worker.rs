@@ -160,6 +160,9 @@ fn pump_v2_bus_bridge(
             if msg.topic.starts_with("layout/")
                 || msg.topic == "keyboard/geometry"
                 || msg.topic == "keyboard/keymap"
+                || msg.topic == "keys/providers/keymap"
+                || msg.topic == "keys/providers/keymap-caps"
+                || msg.topic == "keys/providers/shortcuts"
                 || msg.topic == openflux_bus::topics::INPUT_KEYS_ANALOG
                 || msg.topic == openflux_bus::topics::HOST_SYSTEM_METRICS
                 || msg.topic == openflux_bus::topics::HOST_MEDIA_NOW_PLAYING
@@ -1837,6 +1840,26 @@ pub fn reconcile_tick_with_state(
                 .unwrap_or_default()
         };
         // Auto-select a matching v1/custom shortcut pack for the foreground app when the profile leaves it blank!
+        // Ignore transient None probes or macOS switcher overlays (Dock/WindowServer/Spotlight)
+        // so shortcuts NEVER flash back and forth!
+        if active_pack.is_empty() {
+            let fg_app = win.as_ref().map(|w| w.app_id.as_str()).unwrap_or("");
+            let fg_proc = win.as_ref().map(|w| w.process_name.as_str()).unwrap_or("");
+            let fg_l = format!("{fg_app} {fg_proc}").to_ascii_lowercase();
+            let is_transient = (fg_app.is_empty() && fg_proc.is_empty())
+                || fg_l.contains("com.apple.dock")
+                || fg_l.contains("windowserver")
+                || fg_l.contains("spotlight")
+                || fg_l.contains("notificationcenter")
+                || fg_l.contains("controlcenter");
+            if is_transient {
+                if let Some(ref prev_key) = wstate.cached_pack_name {
+                    if let Some((prev_pack, _)) = prev_key.rsplit_once(':') {
+                        active_pack = prev_pack.to_string();
+                    }
+                }
+            }
+        }
         if active_pack.is_empty() {
             let fg_app = win.as_ref().map(|w| w.app_id.as_str()).unwrap_or("");
             let fg_proc = win.as_ref().map(|w| w.process_name.as_str()).unwrap_or("");
