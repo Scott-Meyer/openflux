@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
 
 /// The mosaic tile type of the weather module.
-const TILE_TYPE_WEATHER: u64 = openflux_display::config::TileType::Weather as u64;
+const TILE_TYPE_WEATHER: u64 = 3;
 
 pub enum UsbCommand {
     SetProfile {

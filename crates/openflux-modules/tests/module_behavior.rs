@@ -279,3 +279,123 @@ end
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn all_bundled_modules_pass_sandboxed_runtime_contract_validation() {
+    let bundled_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules");
+    let tmp = std::env::temp_dir().join(format!(
+        "openflux-bundled-validate-{}",
+        openflux_bus::now_unix_ms()
+    ));
+    let reg = ModuleRegistry::new(
+        bundled_dir,
+        tmp.join("installed"),
+        tmp.join("local"),
+        tmp.join("state.json"),
+    );
+    let discovered = reg.discover();
+    assert!(
+        discovered.len() >= 20,
+        "expected bundled modules in repo, found {}",
+        discovered.len()
+    );
+
+    let mut failures = Vec::new();
+    for (id, dm) in &discovered {
+        if let Err(errs) = openflux_modules::validate_module_behavior(dm) {
+            failures.push(format!("{id}: {}", errs.join("; ")));
+        }
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
+    assert!(
+        failures.is_empty(),
+        "Bundled module contract failures:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn host_process_manager_reports_missing_crashed_and_cleans_up_on_drop() {
+    let tmp = std::env::temp_dir().join(format!(
+        "openflux-host-sup-{}",
+        openflux_bus::now_unix_ms()
+    ));
+    let mod_dir = tmp.join("mod-host-test");
+    std::fs::create_dir_all(&mod_dir).unwrap();
+
+    // 1. Missing host entrypoint MUST fail loudly and mark required module unhealthy.
+    let manifest_toml = r#"
+id = "mod-host-test"
+name = "Host Supervisor Test"
+version = "1.0.0"
+category = "widget"
+host_requirement = "required"
+[entrypoints]
+host = "missing.sh"
+"#;
+    std::fs::write(mod_dir.join("module.toml"), manifest_toml).unwrap();
+    let manifest = openflux_modules::ModuleManifest::load_from_dir(&mod_dir).unwrap();
+    let dm = openflux_modules::DiscoveredModule {
+        manifest,
+        path: mod_dir.clone(),
+        tier: ModuleTier::Local,
+    };
+    let inst = ModuleInstanceState {
+        enabled: true,
+        ..Default::default()
+    };
+
+    let mut mgr = openflux_modules::HostProcessManager::new("http://127.0.0.1:52324");
+    assert!(mgr.start_module(&dm, &inst).is_err());
+    let st = mgr.status("mod-host-test", true);
+    assert!(!st.is_healthy(openflux_modules::HostRequirement::Required));
+    assert!(st.error_message().unwrap_or_default().contains("not found"));
+
+    // 2. Crashing host script MUST transition to Exited with exit code and captured stderr.
+    let crash_sh = mod_dir.join("crash.sh");
+    std::fs::write(&crash_sh, "#!/bin/sh\necho 'boom-stderr' >&2\nexit 42\n").unwrap();
+    let mut dm_crash = dm.clone();
+    dm_crash.manifest.entrypoints.host = Some("crash.sh".into());
+    mgr.start_module(&dm_crash, &inst).unwrap();
+    let mut saw_exited = false;
+    for _ in 0..30 {
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        if let openflux_modules::HostProcessStatus::Exited { code, last_stderr } =
+            mgr.status("mod-host-test", true)
+        {
+            assert_eq!(code, Some(42));
+            assert_eq!(last_stderr.as_deref(), Some("boom-stderr"));
+            saw_exited = true;
+            break;
+        }
+    }
+    assert!(saw_exited, "expected crashed host process to report Exited");
+
+    // 3. Long-running child MUST be terminated cleanly when HostProcessManager is dropped (zero orphans!).
+    let sleep_sh = mod_dir.join("stay.sh");
+    std::fs::write(&sleep_sh, "#!/bin/sh\nsleep 30\n").unwrap();
+    let mut dm_stay = dm.clone();
+    dm_stay.manifest.entrypoints.host = Some("stay.sh".into());
+    mgr.start_module(&dm_stay, &inst).unwrap();
+    let pid = match mgr.status("mod-host-test", true) {
+        openflux_modules::HostProcessStatus::Running { pid } => pid,
+        other => panic!("expected Running, got {other:?}"),
+    };
+    drop(mgr);
+
+    #[cfg(unix)]
+    {
+        let mut alive = true;
+        for _ in 0..20 {
+            let rc = unsafe { libc::kill(pid as i32, 0) };
+            if rc != 0 {
+                alive = false;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        assert!(!alive, "child process {pid} leaked after HostProcessManager drop");
+    }
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}

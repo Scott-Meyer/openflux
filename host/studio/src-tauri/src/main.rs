@@ -1,7 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use openflux_display::layout::build_physical_layout;
-use openflux_display::{DisplayPreview, FfmpegVideoAdapter, FrameLayoutType};
 use reqwest::{Certificate, Client, StatusCode};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -22,18 +20,6 @@ struct DaemonConn {
     base_url: String,
     token: String,
     http: Client,
-}
-
-/// The `openflux-ffmpeg` bundled next to Studio's executable, used to decode preview videos.
-/// `None` when it isn't there, which leaves video backgrounds unrendered in the preview.
-fn bundled_ffmpeg() -> Option<PathBuf> {
-    let name = if cfg!(windows) {
-        "openflux-ffmpeg.exe"
-    } else {
-        "openflux-ffmpeg"
-    };
-    let p = std::env::current_exe().ok()?.parent()?.join(name);
-    p.is_file().then_some(p)
 }
 
 /// The daemon's data directory, where it publishes `config/keys.json` for discovery.
@@ -346,74 +332,6 @@ async fn daemon_req_json_with_timeout(
     })
 }
 
-struct LocalPreviewState {
-    preview: DisplayPreview,
-    start: Instant,
-    last_cfg_hash: Option<u64>,
-    /// The config last rendered, with the [`DesktopState::config_gen`] it was read under. It is
-    /// used only while that generation is current.
-    cached_daemon_cfg: Option<(u64, Value)>,
-}
-
-fn render_preview_bytes(
-    prev: &mut DisplayPreview,
-    now_sec: i64,
-    now_ms: u64,
-    suspended: bool,
-    half_res: bool,
-) -> Vec<u8> {
-    if !half_res {
-        return prev.render_rgba(now_sec, now_ms, suspended);
-    }
-    // Render the full 1920x1080 frame, then average each 2x2 block down to 960x540.
-    let argb = prev.render_argb(now_sec, now_ms, suspended);
-    let mut out = vec![0u8; 960 * 540 * 4];
-    for y in 0..540usize {
-        let row0 = (y * 2) * 1920;
-        let row1 = row0 + 1920;
-        for x in 0..960usize {
-            let x2 = x * 2;
-            let p00 = argb[row0 + x2];
-            let p01 = argb[row0 + x2 + 1];
-            let p10 = argb[row1 + x2];
-            let p11 = argb[row1 + x2 + 1];
-            let r = (((p00 >> 16) & 0xFF)
-                + ((p01 >> 16) & 0xFF)
-                + ((p10 >> 16) & 0xFF)
-                + ((p11 >> 16) & 0xFF))
-                >> 2;
-            let g = (((p00 >> 8) & 0xFF)
-                + ((p01 >> 8) & 0xFF)
-                + ((p10 >> 8) & 0xFF)
-                + ((p11 >> 8) & 0xFF))
-                >> 2;
-            let b = ((p00 & 0xFF) + (p01 & 0xFF) + (p10 & 0xFF) + (p11 & 0xFF)) >> 2;
-            let a = (((p00 >> 24) & 0xFF)
-                + ((p01 >> 24) & 0xFF)
-                + ((p10 >> 24) & 0xFF)
-                + ((p11 >> 24) & 0xFF))
-                >> 2;
-            let o = (y * 960 + x) * 4;
-            out[o] = r as u8;
-            out[o + 1] = g as u8;
-            out[o + 2] = b as u8;
-            out[o + 3] = a as u8;
-        }
-    }
-    out
-}
-
-/// Removes the keyboard's active-theme fields from a live-data snapshot. The preview shows
-/// the theme being edited, which may differ from the one active on the keyboard.
-fn strip_active_theme(snap: &mut Value) {
-    if let Some(obj) = snap.as_object_mut() {
-        obj.remove("activeThemeId");
-        obj.remove("active_theme_id");
-        obj.remove("activeThemeProfileSlot");
-        obj.remove("themeRev");
-    }
-}
-
 struct LiveDataCache {
     cached: tokio::sync::Mutex<Option<Value>>,
     inflight: AtomicBool,
@@ -435,9 +353,6 @@ struct DesktopState {
     data_dir: PathBuf,
     conn: tokio::sync::Mutex<Option<Arc<DaemonConn>>>,
     closing: AtomicBool,
-    preview_inflight: tokio::sync::RwLock<()>,
-    preview_gen: AtomicU64,
-    local_preview: tokio::sync::Mutex<Option<LocalPreviewState>>,
     /// Advances each time Studio changes the daemon's config, which retires the preview's cached
     /// copy, including one a render read before the change and stores after it.
     config_gen: AtomicU64,
@@ -598,210 +513,17 @@ async fn add_icon(st: State<'_, DesktopState>, file_path: String) -> Result<Valu
 }
 
 #[tauri::command]
-async fn preview_rects(
-    st: State<'_, DesktopState>,
-    layout: Option<String>,
-) -> Result<Value, String> {
-    let _guard = st.preview_inflight.read().await;
-    if st.closing.load(Ordering::SeqCst) {
-        return Err("Window closing".into());
-    }
-    let layout_str = match layout {
-        Some(l) if !l.is_empty() => l,
-        _ => st
-            .get_json("/v1/config")
-            .await
-            .ok()
-            .and_then(|v| {
-                v.get("keymap")
-                    .and_then(|k| k.get("selectedFrameLayoutType"))
-                    .and_then(|s| s.as_str())
-                    .map(|s| s.to_string())
-            })
-            .unwrap_or_else(|| "ansi".to_string()),
-    };
-    let lt = if layout_str.eq_ignore_ascii_case("iso") {
-        FrameLayoutType::Iso
-    } else {
-        FrameLayoutType::Ansi
-    };
-    let phys = build_physical_layout(lt);
-    let rects: Vec<Value> = phys
-        .keys
-        .into_iter()
-        .map(|k| serde_json::json!({ "keyIndex": k.key_index, "x": k.x, "y": k.y, "w": k.w, "h": k.h }))
-        .collect();
-    Ok(Value::Array(rects))
+async fn preview_rects(_layout: Option<String>) -> Result<Value, String> {
+    Ok(Value::Array(Vec::new()))
 }
 
 #[tauri::command]
-async fn preview_render_rgba(
-    st: State<'_, DesktopState>,
-    opts: Value,
-) -> Result<tauri::ipc::Response, String> {
-    let bytes = render_local_preview_inner(&st, opts).await?;
-    Ok(tauri::ipc::Response::new(bytes))
-}
-
-async fn render_local_preview_inner(st: &DesktopState, opts: Value) -> Result<Vec<u8>, String> {
-    let _guard = st.preview_inflight.read().await;
-    if st.closing.load(Ordering::SeqCst) {
-        return Err("Window closing".into());
-    }
-    let gen = st.preview_gen.load(Ordering::SeqCst);
-    let half_res = opts
-        .get("halfRes")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
-    let suspended = opts
-        .get("suspended")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let live_opt = opts.get("liveJson").cloned();
-    let cfg_opt = opts.get("config").cloned();
-
-    // Read before the config, so a change made while it is fetched retires what is fetched.
-    let cfg_gen = st.config_gen.load(Ordering::SeqCst);
-    let mut cfg_val = cfg_opt;
-    if cfg_val.is_none() {
-        let has_cached = st
-            .local_preview
-            .lock()
-            .await
-            .as_ref()
-            .and_then(|p| p.cached_daemon_cfg.as_ref())
-            .filter(|(g, _)| *g == cfg_gen)
-            .map(|(_, c)| c.clone());
-        cfg_val = match has_cached {
-            Some(c) => Some(c),
-            None => st.get_json("/v1/config").await.ok(),
-        };
-    }
-    if st.closing.load(Ordering::SeqCst) || st.preview_gen.load(Ordering::SeqCst) != gen {
-        return Err("Preview closed".into());
-    }
-
-    // Refresh the live-data snapshot in the background when due, at most one request at a time,
-    // so a slow daemon never delays a preview frame.
-    {
-        let due = st
-            .live_cache
-            .next_at
-            .lock()
-            .await
-            .map(|t| Instant::now() >= t)
-            .unwrap_or(true);
-        if due && !st.live_cache.inflight.swap(true, Ordering::SeqCst) {
-            let conn_opt = st.conn.lock().await.clone();
-            if let Some(c) = conn_opt {
-                let lc = st.live_cache.clone();
-                tokio::spawn(async move {
-                    let ok = match tokio::time::timeout(
-                        Duration::from_millis(800),
-                        daemon_get_json(&c, "/v1/live-data"),
-                    )
-                    .await
-                    {
-                        Ok(Ok(mut snap)) => {
-                            strip_active_theme(&mut snap);
-                            *lc.cached.lock().await = Some(snap);
-                            *lc.next_at.lock().await =
-                                Some(Instant::now() + Duration::from_millis(750));
-                            true
-                        }
-                        _ => false,
-                    };
-                    if !ok {
-                        *lc.next_at.lock().await = Some(Instant::now() + Duration::from_secs(3));
-                    }
-                    lc.inflight.store(false, Ordering::SeqCst);
-                });
-            } else {
-                *st.live_cache.next_at.lock().await = Some(Instant::now() + Duration::from_secs(2));
-                st.live_cache.inflight.store(false, Ordering::SeqCst);
-            }
-        }
-    }
-    let cached_live_snap = st.live_cache.cached.lock().await.clone();
-    if st.closing.load(Ordering::SeqCst) || st.preview_gen.load(Ordering::SeqCst) != gen {
-        return Err("Preview closed".into());
-    }
-
-    let assets_dir = st.data_dir.join("assets").to_string_lossy().to_string();
-
-    let mut lp_guard = st.local_preview.lock().await;
-    if st.closing.load(Ordering::SeqCst) || st.preview_gen.load(Ordering::SeqCst) != gen {
-        return Err("Preview closed".into());
-    }
-    if lp_guard.is_none() {
-        let mut prev = DisplayPreview::new(1920, 1080);
-        prev.media_dir = Some(assets_dir);
-        prev.renderer
-            .bg
-            .set_video_adapter(Some(Arc::new(FfmpegVideoAdapter {
-                sync_first_frame: true,
-                target_scale: Some((960, 540)),
-                decoder_bin: None,
-                ffmpeg_bin: bundled_ffmpeg(),
-            })));
-        *lp_guard = Some(LocalPreviewState {
-            preview: prev,
-            start: Instant::now(),
-            last_cfg_hash: None,
-            cached_daemon_cfg: None,
-        });
-    }
-    let lps = lp_guard.as_mut().unwrap();
-    if let Some(ref cv) = cfg_val {
-        use std::hash::{Hash, Hasher};
-        let s = cv.to_string();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        s.hash(&mut hasher);
-        let h_val = hasher.finish();
-        if lps.last_cfg_hash != Some(h_val) {
-            let app_s = cv.get("appearance").map(|v| v.to_string());
-            let set_s = cv.get("settings").map(|v| v.to_string());
-            let mos_s = cv.get("mosaic").map(|v| v.to_string());
-            let km_s = cv.get("keymap").map(|v| v.to_string());
-            let _ = lps.preview.set_config_json(
-                app_s.as_deref(),
-                set_s.as_deref(),
-                km_s.as_deref(),
-                mos_s.as_deref(),
-                None,
-            );
-            lps.last_cfg_hash = Some(h_val);
-        }
-        lps.cached_daemon_cfg = Some((cfg_gen, cv.clone()));
-    }
-
-    let now_ms = lps.start.elapsed().as_millis() as u64;
-    if let Some(snap) = cached_live_snap {
-        let _ = lps.preview.apply_live_json(&snap.to_string(), now_ms);
-    }
-    // The editor's simulated layer and keys are applied last so they win over live data.
-    if let Some(lv) = live_opt {
-        let _ = lps.preview.apply_live_json(&lv.to_string(), now_ms);
-    }
-
-    let now_sec = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-    Ok(render_preview_bytes(
-        &mut lps.preview,
-        now_sec,
-        now_ms,
-        suspended,
-        half_res,
-    ))
+async fn preview_render_rgba(_opts: Value) -> Result<tauri::ipc::Response, String> {
+    Err("v1 preview removed; use OpenFlux v2 /v2/preview/frame.png".into())
 }
 
 #[tauri::command]
-async fn preview_close(st: State<'_, DesktopState>) -> Result<(), String> {
-    st.preview_gen.fetch_add(1, Ordering::SeqCst);
-    let mut g = st.local_preview.lock().await;
-    *g = None;
+async fn preview_close() -> Result<(), String> {
     Ok(())
 }
 
@@ -992,13 +714,6 @@ async fn pomodoro_action(st: State<'_, DesktopState>, action: String) -> Result<
                 }
             }
         }
-        {
-            let mut lp = st.local_preview.lock().await;
-            if let Some(ref mut lps) = *lp {
-                let now_ms = lps.start.elapsed().as_millis() as u64;
-                let _ = lps.preview.apply_live_json(&live_patch.to_string(), now_ms);
-            }
-        }
     }
     Ok(res)
 }
@@ -1064,13 +779,8 @@ async fn pick_folder(title: Option<String>) -> Result<Option<String>, String> {
     .map_err(|e| e.to_string())
 }
 
-async fn shutdown_preview_drain(st: &DesktopState, max_wait: Duration) {
+async fn shutdown_preview_drain(st: &DesktopState, _max_wait: Duration) {
     st.closing.store(true, Ordering::SeqCst);
-    st.preview_gen.fetch_add(1, Ordering::SeqCst);
-    let _ = tokio::time::timeout(max_wait, st.preview_inflight.write()).await;
-    if let Ok(mut g) = tokio::time::timeout(max_wait, st.local_preview.lock()).await {
-        *g = None;
-    }
 }
 
 fn main() {
@@ -1086,9 +796,6 @@ fn main() {
             data_dir: default_data_dir(),
             conn: tokio::sync::Mutex::new(None),
             closing: AtomicBool::new(false),
-            preview_inflight: tokio::sync::RwLock::new(()),
-            preview_gen: AtomicU64::new(0),
-            local_preview: tokio::sync::Mutex::new(None),
             config_gen: AtomicU64::new(0),
             live_cache: LiveDataCache::new(),
         })
@@ -1285,9 +992,6 @@ mod tests {
             data_dir: std::env::temp_dir().join("openflux_studio_unused"),
             conn: tokio::sync::Mutex::new(None),
             closing: AtomicBool::new(false),
-            preview_inflight: tokio::sync::RwLock::new(()),
-            preview_gen: AtomicU64::new(0),
-            local_preview: tokio::sync::Mutex::new(None),
             config_gen: AtomicU64::new(0),
             live_cache: LiveDataCache::new(),
         });
@@ -1425,342 +1129,4 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    #[test]
-    fn preview_config_applies_keymap_and_mosaic_sections() {
-        let mut prev = DisplayPreview::new(1920, 1080);
-        let km = serde_json::json!({
-            "selectedFrameLayoutType": "iso",
-            "keymaps": {
-                "iso": { "defaultLayer": 0, "layers": [{ "keyActions": [{ "type": 0, "keyCode": "KC_Z" }] }] }
-            }
-        });
-        let mos = serde_json::json!({
-            "tileTypes": [2, 0, 0, 0],
-            "tileConfigs": [{}, {}, {}, {}]
-        });
-        prev.set_config_json(
-            None,
-            None,
-            Some(&km.to_string()),
-            Some(&mos.to_string()),
-            None,
-        )
-        .unwrap();
-        assert_eq!(prev.cfg.keymap.selected_layout, FrameLayoutType::Iso);
-        assert_eq!(
-            prev.cfg.mosaic.tiles[0].tile_type,
-            openflux_display::config::TileType::DigitalClock
-        );
-    }
-
-    #[test]
-    fn half_res_preview_includes_the_bottom_right_keys() {
-        let mut prev = DisplayPreview::new(1920, 1080);
-        let app = serde_json::json!({
-            "selectedId": "default",
-            "defaultTheme": { "selectedKeyEffect": "solid_highlight", "ringGlowColor": 0xFF00_FF00u32, "backgroundImageDimming": 100 }
-        });
-        prev.set_config_json(Some(&app.to_string()), None, None, None, None)
-            .unwrap();
-        let idle = render_preview_bytes(&mut prev, 1763414400, 100, false, true);
-        // Key 84 is the bottom-right arrow key, so it lands in the bottom-right corner at half size.
-        let mut bm = [0u8; 32];
-        bm[84 / 8] |= 1 << (84 % 8);
-        let hex: String = bm.iter().map(|b| format!("{b:02x}")).collect();
-        prev.apply_live_json(
-            &format!(r#"{{"type":"key_state","key_bitmap":"{hex}"}}"#),
-            120,
-        )
-        .unwrap();
-        let pressed = render_preview_bytes(&mut prev, 1763414400, 140, false, true);
-        assert_eq!(pressed.len(), 960 * 540 * 4);
-        let mut br_diffs = 0usize;
-        for y in 420..540usize {
-            for x in 750..960usize {
-                let o = (y * 960 + x) * 4;
-                if pressed[o..o + 4] != idle[o..o + 4] {
-                    br_diffs += 1;
-                }
-            }
-        }
-        assert!(
-            br_diffs > 200,
-            "bottom-right key must appear scaled in half-res preview, got {br_diffs}"
-        );
-    }
-
-    #[tokio::test]
-    async fn post_is_not_replayed_when_connection_drops_after_send() {
-        use tokio::io::AsyncReadExt;
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let post_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let pc_srv = post_count.clone();
-        tokio::spawn(async move {
-            for _ in 0..3 {
-                if let Ok((mut sock, _)) = listener.accept().await {
-                    let mut buf = [0u8; 2048];
-                    let _ = sock.read(&mut buf).await;
-                    pc_srv.fetch_add(1, Ordering::SeqCst);
-                    // Close without answering, so the client can't tell whether the POST ran.
-                    drop(sock);
-                }
-            }
-        });
-        let http = Client::builder()
-            .timeout(Duration::from_secs(2))
-            .build()
-            .unwrap();
-        let st = DesktopState {
-            data_dir: std::env::temp_dir().join("openflux_studio_unused"),
-            conn: tokio::sync::Mutex::new(Some(Arc::new(DaemonConn {
-                base_url: format!("http://{addr}"),
-                token: "tok".into(),
-                http,
-            }))),
-            closing: AtomicBool::new(false),
-            preview_inflight: tokio::sync::RwLock::new(()),
-            preview_gen: AtomicU64::new(0),
-            local_preview: tokio::sync::Mutex::new(None),
-            config_gen: AtomicU64::new(0),
-            live_cache: LiveDataCache::new(),
-        };
-        let err = st
-            .req_json(
-                reqwest::Method::POST,
-                "/v1/config/save",
-                serde_json::json!({}),
-            )
-            .await
-            .unwrap_err();
-        assert!(err.contains("not replayed"), "got {err}");
-        assert_eq!(
-            post_count.load(Ordering::SeqCst),
-            1,
-            "a POST must not be replayed after the connection drops"
-        );
-    }
-
-    #[test]
-    fn preview_keeps_edited_theme_and_simulated_layer_over_live_data() {
-        let mut prev = DisplayPreview::new(1920, 1080);
-        let cfg_b = serde_json::json!({
-            "selectedId": "draft_b",
-            "defaultTheme": { "id": "default", "ringGlowColor": 0xFFFF_0000u32, "backgroundImageDimming": 100 },
-            "customThemes": [{ "id": "draft_b", "ringGlowColor": 0xFF00_00FFu32, "backgroundImageDimming": 100 }]
-        });
-        let km = serde_json::json!({
-            "selectedFrameLayoutType": "ansi",
-            "keymaps": {
-                "ansi": {
-                    "defaultLayer": 0,
-                    "layers": [
-                        { "keyActions": [{ "type": 0, "keyCode": "KC_A" }] },
-                        { "keyActions": [{ "type": 0, "keyCode": "KC_Z" }] }
-                    ]
-                }
-            }
-        });
-        prev.set_config_json(
-            Some(&cfg_b.to_string()),
-            None,
-            Some(&km.to_string()),
-            None,
-            None,
-        )
-        .unwrap();
-        let mut hw_live = serde_json::json!({ "activeThemeId": "default", "activeThemeProfileSlot": 0, "hardwareData": { "cpu": "12%", "gpuUsage": "22%" } });
-        strip_active_theme(&mut hw_live);
-        prev.apply_live_json(&hw_live.to_string(), 100).unwrap();
-        prev.apply_live_json(r#"{"type":"key_state","active_layer_bitfield":2,"key_bitmap":"0000000000000000000000000000000000000000000000000000000000000000"}"#, 120).unwrap();
-        assert_eq!(prev.cfg.appearance.ring_glow_argb, 0xFF00_00FF);
-        assert_eq!(prev.state.effective_layer(&prev.cfg.keymap), 1);
-    }
-
-    #[tokio::test]
-    async fn a_config_change_retires_the_preview_cached_config() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let cfg = serde_json::json!({
-            "appearance": { "selectedId": "default", "defaultTheme": { "id": "default" }, "customThemes": [] },
-            "settings": {},
-            "mosaic": { "tileTypes": [0,0,0,0], "tileConfigs": [{},{},{},{}] },
-            "keymap": { "selectedFrameLayoutType": "ansi", "keymaps": { "ansi": { "defaultLayer": 0, "layers": [{ "keyActions": [] }] } } }
-        });
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let config_gets = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let gets_bg = config_gets.clone();
-        let body = cfg.to_string();
-        tokio::spawn(async move {
-            while let Ok((mut sock, _)) = listener.accept().await {
-                let gets = gets_bg.clone();
-                let body = body.clone();
-                tokio::spawn(async move {
-                    let mut buf = [0u8; 2048];
-                    let n = sock.read(&mut buf).await.unwrap_or(0);
-                    let req = String::from_utf8_lossy(&buf[..n]);
-                    let reply = if req.starts_with("GET /v1/config ") {
-                        gets.fetch_add(1, Ordering::SeqCst);
-                        body
-                    } else {
-                        "{}".to_string()
-                    };
-                    let _ = sock
-                        .write_all(
-                            format!(
-                                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
-                                reply.len()
-                            )
-                            .as_bytes(),
-                        )
-                        .await;
-                });
-            }
-        });
-        let st = DesktopState {
-            data_dir: std::env::temp_dir().join("openflux_studio_unused"),
-            conn: tokio::sync::Mutex::new(Some(Arc::new(DaemonConn {
-                base_url: format!("http://{addr}"),
-                token: "tok".into(),
-                http: Client::builder()
-                    .timeout(Duration::from_secs(5))
-                    .build()
-                    .unwrap(),
-            }))),
-            closing: AtomicBool::new(false),
-            preview_inflight: tokio::sync::RwLock::new(()),
-            preview_gen: AtomicU64::new(0),
-            local_preview: tokio::sync::Mutex::new(None),
-            config_gen: AtomicU64::new(0),
-            live_cache: LiveDataCache::new(),
-        };
-        let without_config = serde_json::json!({ "halfRes": true });
-
-        // A frame rendered with an explicit config caches it; the next frame reuses it.
-        render_local_preview_inner(&st, serde_json::json!({ "halfRes": true, "config": cfg }))
-            .await
-            .unwrap();
-        render_local_preview_inner(&st, without_config.clone())
-            .await
-            .unwrap();
-        assert_eq!(config_gets.load(Ordering::SeqCst), 0);
-
-        // After a change the cached copy is not used: the next frame reads the config again, and
-        // the frame after that reuses what it read.
-        st.config_gen.fetch_add(1, Ordering::SeqCst);
-        render_local_preview_inner(&st, without_config.clone())
-            .await
-            .unwrap();
-        assert_eq!(config_gets.load(Ordering::SeqCst), 1);
-        render_local_preview_inner(&st, without_config)
-            .await
-            .unwrap();
-        assert_eq!(config_gets.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn slow_daemon_does_not_delay_preview_frames_and_close_aborts_waiting_render() {
-        use tokio::io::AsyncReadExt;
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let acc_bg = accepted.clone();
-        let hold_notify = Arc::new(tokio::sync::Notify::new());
-        let hold_bg = hold_notify.clone();
-        tokio::spawn(async move {
-            while let Ok((mut sock, _)) = listener.accept().await {
-                let ab = acc_bg.clone();
-                let hb = hold_bg.clone();
-                tokio::spawn(async move {
-                    let mut buf = [0u8; 1024];
-                    let _ = sock.read(&mut buf).await;
-                    ab.fetch_add(1, Ordering::SeqCst);
-                    // Hold the socket open until notified, then answer `{}`. Answering keeps
-                    // get_json from reconnecting through the real data directory.
-                    let _ = tokio::time::timeout(Duration::from_secs(5), hb.notified()).await;
-                    use tokio::io::AsyncWriteExt;
-                    let _ = sock
-                        .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
-                        .await;
-                });
-            }
-        });
-        let http = Client::builder()
-            .timeout(Duration::from_secs(5))
-            .build()
-            .unwrap();
-        let st = Arc::new(DesktopState {
-            data_dir: std::env::temp_dir().join("openflux_studio_unused"),
-            conn: tokio::sync::Mutex::new(Some(Arc::new(DaemonConn {
-                base_url: format!("http://{addr}"),
-                token: "tok".into(),
-                http,
-            }))),
-            closing: AtomicBool::new(false),
-            preview_inflight: tokio::sync::RwLock::new(()),
-            preview_gen: AtomicU64::new(0),
-            local_preview: tokio::sync::Mutex::new(None),
-            config_gen: AtomicU64::new(0),
-            live_cache: LiveDataCache::new(),
-        });
-        let t0 = Instant::now();
-        let cfg_opts = serde_json::json!({
-            "halfRes": true,
-            "config": {
-                "appearance": { "selectedId": "default", "defaultTheme": { "id": "default" }, "customThemes": [] },
-                "settings": {},
-                "mosaic": { "tileTypes": [0,0,0,0], "tileConfigs": [{},{},{},{}] },
-                "keymap": { "selectedFrameLayoutType": "ansi", "keymaps": { "ansi": { "defaultLayer": 0, "layers": [{ "keyActions": [] }] } } }
-            }
-        });
-        let bytes = render_local_preview_inner(&st, cfg_opts.clone())
-            .await
-            .unwrap();
-        assert_eq!(bytes.len(), 960 * 540 * 4);
-        // Wait until the background live-data request is accepted and held open.
-        for _ in 0..50 {
-            if accepted.load(Ordering::SeqCst) >= 1 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        assert!(
-            accepted.load(Ordering::SeqCst) >= 1 && st.live_cache.inflight.load(Ordering::SeqCst)
-        );
-        // A second frame renders while that request is still open.
-        let bytes2 = render_local_preview_inner(&st, cfg_opts).await.unwrap();
-        assert_eq!(bytes2.len(), 960 * 540 * 4);
-        assert!(
-            st.live_cache.inflight.load(Ordering::SeqCst),
-            "render waited for hung live-data poll instead of returning immediately"
-        );
-        assert!(t0.elapsed() < Duration::from_millis(2000));
-        hold_notify.notify_waiters();
-
-        // Closing the preview while a render waits on GET /v1/config makes that render fail
-        // with "Preview closed" and leaves no preview behind.
-        *st.local_preview.lock().await = None;
-        let before_acc = accepted.load(Ordering::SeqCst);
-        let st2 = st.clone();
-        let task = tokio::spawn(async move {
-            render_local_preview_inner(&st2, serde_json::json!({ "halfRes": true })).await
-        });
-        for _ in 0..50 {
-            if accepted.load(Ordering::SeqCst) > before_acc {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        st.preview_gen.fetch_add(1, Ordering::SeqCst);
-        hold_notify.notify_waiters();
-        let race_res = task.await.unwrap();
-        assert!(
-            race_res.is_err(),
-            "expected Preview closed when gen bumped mid-await, got Ok"
-        );
-        assert!(
-            st.local_preview.lock().await.is_none(),
-            "stale close must not recreate local_preview"
-        );
-    }
 }

@@ -20,7 +20,7 @@ export const StudioRoot: React.FC<{ services?: StudioServices }> = ({ services: 
       />
     );
   }
-  return <App services={services} platform={platform} />;
+  return <App platform={platform} />;
 };
 
 export default StudioRoot;

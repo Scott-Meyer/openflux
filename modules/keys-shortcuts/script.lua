@@ -28,7 +28,7 @@ local function pick_icon(label, hint)
   return nil
 end
 
-local function base_common_rules(accent)
+local function base_common_rules(accent, is_macos)
   local common = {
     { key = "KC_X", label = "Cut",    icon = "cut" },
     { key = "KC_C", label = "Copy",   icon = "copy" },
@@ -45,12 +45,12 @@ local function base_common_rules(accent)
     { key = "KC_R", label = "Reload", icon = "refresh" },
   }
   local out = {}
+  local primary_mod = is_macos and 8 or 1   -- Cmd (8) on macOS, Ctrl (1) on Windows/Linux
+  local redo_mod = is_macos and 10 or 3     -- Cmd+Shift (10) on macOS, Ctrl+Shift (3) on Win/Linux
   for _, c in ipairs(common) do
-    table.insert(out, { key = c.key, mods = 8, priority = 28, label = c.label, icon = c.icon, color = accent })
-    table.insert(out, { key = c.key, mods = 1, priority = 28, label = c.label, icon = c.icon, color = accent })
+    table.insert(out, { key = c.key, mods = primary_mod, priority = 28, label = c.label, icon = c.icon, color = accent })
   end
-  table.insert(out, { key = "KC_Z", mods = 10, priority = 28, label = "Redo", icon = "redo", color = accent })
-  table.insert(out, { key = "KC_Z", mods = 3,  priority = 28, label = "Redo", icon = "redo", color = accent })
+  table.insert(out, { key = "KC_Z", mods = redo_mod, priority = 28, label = "Redo", icon = "redo", color = accent })
   return out
 end
 
@@ -150,7 +150,10 @@ local function parse_combo(str)
 end
 
 local function load_all_packs(accent)
-  local rules = base_common_rules(accent)
+  local hc = bus.get("host/connection")
+  local plat = (type(hc) == "table" and type(hc.host_platform) == "string") and string.lower(hc.host_platform) or "macos"
+  local is_macos = (plat == "macos" or plat == "darwin" or plat == "")
+  local rules = base_common_rules(accent, is_macos)
   local dir, files = find_shortcuts_dir()
   if not dir then return rules end
 

@@ -19,7 +19,137 @@ use openflux_modules::{
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::SystemTime;
+
+struct OverlayRasterReq {
+    under_key_draws: Vec<openflux_modules::DrawCommand>,
+    tile_draws: Vec<openflux_modules::DrawCommand>,
+    world_overlay_draws: Vec<openflux_modules::DrawCommand>,
+    has_custom_keys_renderer: bool,
+    has_custom_dock: bool,
+    geometry: KeyboardGeometry,
+}
+
+/// Coalescing off-thread 2D overlay rasterizer with zero-alloc ping-pong buffer swap.
+/// Keeps the 60 FPS Mali-G52 video + water-refraction render thread completely non-blocking even
+/// when spamming Shift or rapidly switching layers/shortcuts!
+struct OverlayRasterWorker {
+    req_slot: Arc<(Mutex<Option<OverlayRasterReq>>, Condvar)>,
+    ready_slot: Arc<Mutex<Option<Vec<u8>>>>,
+    spare_slot: Arc<Mutex<Option<Vec<u8>>>>,
+    stop: Arc<AtomicBool>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+impl OverlayRasterWorker {
+    fn spawn(font_bytes: Option<Vec<u8>>) -> Self {
+        let req_slot: Arc<(Mutex<Option<OverlayRasterReq>>, Condvar)> =
+            Arc::new((Mutex::new(None), Condvar::new()));
+        let px_bytes = (DISPLAY_WIDTH_PX * DISPLAY_HEIGHT_PX * 4) as usize;
+        let ready_slot: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
+        let spare_slot: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(Some(vec![0u8; px_bytes])));
+        let stop = Arc::new(AtomicBool::new(false));
+
+        let req_bg = req_slot.clone();
+        let ready_bg = ready_slot.clone();
+        let spare_bg = spare_slot.clone();
+        let stop_bg = stop.clone();
+
+        let join = std::thread::Builder::new()
+            .name("v2-overlay-raster".into())
+            .spawn(move || {
+                let mut canvas = Canvas2D::new(
+                    DISPLAY_WIDTH_PX,
+                    DISPLAY_HEIGHT_PX,
+                    font_bytes.as_deref(),
+                );
+                loop {
+                    let req = {
+                        let (mtx, cv) = &*req_bg;
+                        let mut g = mtx.lock().unwrap();
+                        loop {
+                            if stop_bg.load(Ordering::SeqCst) {
+                                return;
+                            }
+                            if let Some(r) = g.take() {
+                                break r;
+                            }
+                            g = cv.wait(g).unwrap();
+                        }
+                    };
+                    if let Some(spare) = spare_bg.lock().unwrap().take() {
+                        if spare.len() == canvas.rgba.len() {
+                            canvas.rgba = spare;
+                        }
+                    }
+                    canvas.clear();
+                    if !req.under_key_draws.is_empty() {
+                        canvas.execute(&req.under_key_draws);
+                    }
+                    if req.has_custom_keys_renderer {
+                        if !req.has_custom_dock {
+                            canvas.draw_top_bar_dividers(&req.geometry);
+                        }
+                    } else {
+                        canvas.blit_cached_default_key_legends(&req.geometry, DEFAULT_ANSI_LABELS);
+                    }
+                    if !req.tile_draws.is_empty() {
+                        canvas.execute(&req.tile_draws);
+                    }
+                    if !req.world_overlay_draws.is_empty() {
+                        canvas.execute(&req.world_overlay_draws);
+                    }
+                    let mut out_buf = spare_bg
+                        .lock()
+                        .unwrap()
+                        .take()
+                        .filter(|v| v.len() == canvas.rgba.len())
+                        .unwrap_or_else(|| vec![0u8; canvas.rgba.len()]);
+                    std::mem::swap(&mut canvas.rgba, &mut out_buf);
+                    let prev_ready = ready_bg.lock().unwrap().replace(out_buf);
+                    if let Some(recycled) = prev_ready {
+                        *spare_bg.lock().unwrap() = Some(recycled);
+                    }
+                }
+            })
+            .ok();
+
+        Self {
+            req_slot,
+            ready_slot,
+            spare_slot,
+            stop,
+            join,
+        }
+    }
+
+    fn submit(&self, req: OverlayRasterReq) {
+        let (mtx, cv) = &*self.req_slot;
+        *mtx.lock().unwrap() = Some(req);
+        cv.notify_one();
+    }
+
+    fn take_ready(&self, front_buf: &mut Vec<u8>) -> bool {
+        if let Some(mut finished) = self.ready_slot.lock().unwrap().take() {
+            std::mem::swap(front_buf, &mut finished);
+            *self.spare_slot.lock().unwrap() = Some(finished);
+            return true;
+        }
+        false
+    }
+}
+
+impl Drop for OverlayRasterWorker {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        self.req_slot.1.notify_all();
+        if let Some(j) = self.join.take() {
+            let _ = j.join();
+        }
+    }
+}
 
 /// Packed GPU draw primitive for Mali-G52 GLES2 under-key glows & SDF-refracting particles.
 #[derive(Clone, Copy, Debug)]
@@ -44,7 +174,8 @@ pub struct KeyboardV2Display {
     pub sdf_grid: KeySdfGrid,
     pub particles: ParticleSystem,
     pub wave: WaveField2D,
-    pub canvas: Canvas2D,
+    pub overlay_rgba: Vec<u8>,
+    overlay_worker: OverlayRasterWorker,
     pub wave_enabled: bool,
     pub wave_params: WaveFieldParams,
     pub active_media_path: Option<String>,
@@ -53,7 +184,13 @@ pub struct KeyboardV2Display {
     pub bg_dimming: f32,
     pub top_fade: f32,
     parallax_rx: openflux_bus::Subscription,
+    power_rx: openflux_bus::Subscription,
     last_parallax_sig: String,
+    pub brightness_pct: u32,
+    pub sleep_timeout_sec: u64,
+    pub pending_brightness_pct: Option<u32>,
+    pub pending_brightness_steps: Vec<i8>,
+    prefs_path: PathBuf,
     pub dt_sec: f32,
     pub background_shaders: Vec<openflux_modules::ShaderPassCmd>,
     pub distortion_shaders: Vec<openflux_modules::ShaderPassCmd>,
@@ -200,6 +337,10 @@ impl KeyboardV2Display {
             PublishOptions::retained(),
         );
         let last_state_mtime = file_mtime(&state_path);
+        let prefs_path = state_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("/home/root/openflux/v2"))
+            .join("display_prefs.json");
         let registry = ModuleRegistry::new(bundled_dir, installed_dir, local_dir, state_path);
         let mut runtime = ModuleRuntime::new(broker.clone(), geometry.clone());
         let discovered = registry.discover();
@@ -207,13 +348,17 @@ impl KeyboardV2Display {
         runtime.sync_modules(&discovered, &saved.modules);
 
         let sdf_grid = KeySdfGrid::build(&geometry);
-        let canvas = Canvas2D::new(DISPLAY_WIDTH_PX, DISPLAY_HEIGHT_PX, font_bytes);
+        let overlay_rgba = vec![0u8; (DISPLAY_WIDTH_PX * DISPLAY_HEIGHT_PX * 4) as usize];
+        let overlay_worker = OverlayRasterWorker::spawn(font_bytes.map(|b| b.to_vec()));
         let parallax_rx = broker
             .subscribe("display/parallax", openflux_bus::SubscribeOptions::default())
             .expect("valid parallax topic");
+        let power_rx = broker
+            .subscribe("display/power", openflux_bus::SubscribeOptions::default())
+            .expect("valid power topic");
         let mirror = openflux_bus::BrokerMirror::new(broker.clone(), "host");
 
-        Self {
+        let mut this = Self {
             broker,
             geometry,
             registry,
@@ -221,7 +366,8 @@ impl KeyboardV2Display {
             sdf_grid,
             particles: ParticleSystem::default(),
             wave: WaveField2D::new(),
-            canvas,
+            overlay_rgba,
+            overlay_worker,
             wave_enabled: false,
             wave_params: WaveFieldParams::default(),
             active_media_path: None,
@@ -230,7 +376,13 @@ impl KeyboardV2Display {
             bg_dimming: 0.0,
             top_fade: 0.0,
             parallax_rx,
+            power_rx,
             last_parallax_sig: String::new(),
+            brightness_pct: 80,
+            sleep_timeout_sec: 300,
+            pending_brightness_pct: None,
+            pending_brightness_steps: Vec::new(),
+            prefs_path,
             dt_sec: 0.016,
             background_shaders: Vec::new(),
             distortion_shaders: Vec::new(),
@@ -249,6 +401,42 @@ impl KeyboardV2Display {
             last_input_ms: openflux_bus::now_unix_ms(),
             last_state_mtime,
             mirror,
+        };
+        this.load_persisted_prefs();
+        this
+    }
+
+    fn load_persisted_prefs(&mut self) {
+        if let Ok(raw) = std::fs::read_to_string(&self.prefs_path) {
+            if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(p) = doc.get("parallax") {
+                    let s = crate::layout::ParallaxConfig::from_json(p);
+                    self.apply_parallax_settings(&s);
+                    self.last_parallax_sig = p.to_string();
+                }
+                if let Some(pw) = doc.get("power") {
+                    if let Some(b) = pw.get("brightness").and_then(|v| v.as_u64()) {
+                        self.brightness_pct = (b as u32).clamp(5, 100);
+                        self.pending_brightness_pct = Some(self.brightness_pct);
+                    }
+                    if let Some(t) = pw.get("timeoutSec").and_then(|v| v.as_u64()) {
+                        self.sleep_timeout_sec = t;
+                    }
+                }
+            }
+        }
+    }
+
+    fn persist_prefs_field(&self, key: &str, val: &serde_json::Value) {
+        let mut doc = std::fs::read_to_string(&self.prefs_path)
+            .ok()
+            .and_then(|r| serde_json::from_str::<serde_json::Value>(&r).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        if let Some(obj) = doc.as_object_mut() {
+            obj.insert(key.to_string(), val.clone());
+        }
+        if let Ok(txt) = serde_json::to_string_pretty(&doc) {
+            let _ = std::fs::write(&self.prefs_path, txt);
         }
     }
 
@@ -258,6 +446,7 @@ impl KeyboardV2Display {
             "host/#".to_string(),
             "modules/#".to_string(),
             "display/parallax".to_string(),
+            "display/power".to_string(),
             "fx/surface/impulse".to_string(),
             "keys/providers/ability-deck".to_string(),
             "keys/providers/streamdeck".to_string(),
@@ -759,33 +948,30 @@ impl KeyboardV2Display {
             let sig = val.to_string();
             if sig != self.last_parallax_sig {
                 self.last_parallax_sig = sig;
-                let mut s = crate::config::SettingsConfig::default();
-                if let Some(b) = val.get("parallaxActive").and_then(|v| v.as_bool()) {
-                    s.parallax_active = b;
-                }
-                if let Some(d) = val.get("eyeHeight").and_then(|v| v.as_f64()) {
-                    s.eye_height_mm = d;
-                }
-                if let Some(d) = val.get("eyeDistanceFromFront").and_then(|v| v.as_f64()) {
-                    s.eye_dist_front_mm = d;
-                }
-                if let Some(m) = val.get("footStandMode").and_then(|v| v.as_str()) {
-                    s.foot_stand_deg = match m {
-                        "low" => 4.0,
-                        "high" => 8.0,
-                        _ => 0.0,
-                    };
-                }
-                if let Some(x) = val.get("displayOffsetX").and_then(|v| v.as_f64()) {
-                    s.display_offset_x_px = x;
-                }
-                if let Some(y) = val.get("displayOffsetY").and_then(|v| v.as_f64()) {
-                    s.display_offset_y_px = y;
-                }
+                let s = crate::layout::ParallaxConfig::from_json(&val);
                 self.apply_parallax_settings(&s);
+                self.persist_prefs_field("parallax", &val);
                 self.last_keys_hash = 0;
                 self.overlay_dirty = true;
             }
+        }
+        // Apply any live `display/power` updates (brightness / sleep timeout) pushed over OFV2 CH_BUS!
+        let mut latest_power: Option<serde_json::Value> = None;
+        while let Some(msg) = self.power_rx.try_recv() {
+            latest_power = Some(msg.payload);
+        }
+        if let Some(pw) = latest_power {
+            if let Some(b) = pw.get("brightness").and_then(|v| v.as_u64()) {
+                let pct = (b as u32).clamp(5, 100);
+                if pct != self.brightness_pct {
+                    self.brightness_pct = pct;
+                    self.pending_brightness_pct = Some(pct);
+                }
+            }
+            if let Some(t) = pw.get("timeoutSec").and_then(|v| v.as_u64()) {
+                self.sleep_timeout_sec = t;
+            }
+            self.persist_prefs_field("power", &pw);
         }
         let dt = dt_sec.clamp(0.001, 0.06);
         self.time_sec += dt;
@@ -883,38 +1069,27 @@ impl KeyboardV2Display {
             self.last_world_hash = world_hash;
             self.last_tiles_hash = tiles_hash;
             self.last_tiles_ms = now_ms;
-            self.canvas.clear();
             let active_under = if scene.keep_under_key_layer && !self.cached_under_key_draws.is_empty() {
-                &self.cached_under_key_draws
+                self.cached_under_key_draws.clone()
             } else {
-                &scene.under_key_draws
+                scene.under_key_draws
             };
-            if !active_under.is_empty() {
-                self.canvas.execute(active_under);
-            }
-            if scene.has_custom_keys_renderer {
-                if !scene.has_custom_dock {
-                    self.canvas.draw_top_bar_dividers(&self.geometry);
-                }
-            } else {
-                self.canvas
-                    .blit_cached_default_key_legends(&self.geometry, DEFAULT_ANSI_LABELS);
-            }
-            if !scene.tile_draws.is_empty() {
-                self.canvas.execute(&scene.tile_draws);
-            }
-            if !scene.world_overlay_draws.is_empty() {
-                self.canvas.execute(&scene.world_overlay_draws);
-            }
-            self.overlay_dirty = true;
-        } else {
-            self.overlay_dirty = false;
+            self.overlay_worker.submit(OverlayRasterReq {
+                under_key_draws: active_under,
+                tile_draws: scene.tile_draws,
+                world_overlay_draws: scene.world_overlay_draws,
+                has_custom_keys_renderer: scene.has_custom_keys_renderer,
+                has_custom_dock: scene.has_custom_dock,
+                geometry: self.geometry.clone(),
+            });
         }
+        // Swap in the latest off-thread rasterized RGBA buffer in O(1) whenever ready!
+        self.overlay_dirty = self.overlay_worker.take_ready(&mut self.overlay_rgba);
     }
 
     /// Updates every key's optical parallax offset (`visual_x`, `visual_y`, `parallax_dx`, `parallax_dy`)
     /// from the keyboard's physical viewing settings and republishes `keyboard/geometry` onto the bus.
-    pub fn apply_parallax_settings(&mut self, settings: &crate::config::SettingsConfig) {
+    pub fn apply_parallax_settings(&mut self, settings: &crate::layout::ParallaxConfig) {
         for k in &mut self.geometry.keys {
             let (dx, dy) = crate::layout::compute_key_parallax(
                 settings,
@@ -929,36 +1104,10 @@ impl KeyboardV2Display {
         self.runtime.update_geometry(self.geometry.clone());
     }
 
-    /// Publishes the keyboard's real hardware keymap layers onto `keyboard/keymap` so modular
-    /// key providers (`keys-keymap`, `keys-renderer`, `keys-shortcuts`) follow user remaps!
-    pub fn sync_keymap_config(&mut self, keymap: &crate::config::KeymapConfig) {
-        let layers: Vec<serde_json::Value> = keymap
-            .layers
-            .iter()
-            .map(|l| {
-                let actions: Vec<serde_json::Value> = l
-                    .actions
-                    .iter()
-                    .map(|a| {
-                        serde_json::json!({
-                            "keyCode": a.key_code,
-                            "legend": a.legend,
-                            "type": a.action_type,
-                            "targetLayer": a.target_layer,
-                            "isMomentary": a.is_momentary,
-                        })
-                    })
-                    .collect();
-                serde_json::json!({ "name": l.name, "keyActions": actions })
-            })
-            .collect();
-        let _ = self.broker.publish(
-            "keyboard/keymap",
-            serde_json::json!({
-                "defaultLayer": keymap.default_layer,
-                "layers": layers,
-            }),
-            PublishOptions::retained(),
-        );
+    pub fn is_display_asleep(&self, now_ms: u64) -> bool {
+        if self.sleep_timeout_sec == 0 {
+            return false;
+        }
+        now_ms.saturating_sub(self.last_input_ms) >= self.sleep_timeout_sec.saturating_mul(1000)
     }
 }

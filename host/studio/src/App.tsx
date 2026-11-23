@@ -2,51 +2,30 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import type { DaemonClient } from "./api/daemonClient";
 import { createDaemonClient } from "./api/daemonClient";
-import { HostUpdateFlow } from "./api/hostUpdateFlow";
-import { createStudioServices, type StudioServices } from "./api/services";
-import { COMPONENT_LABELS, type UpdatesStatus } from "./api/updates";
 import { ActuationPanel } from "./components/ActuationPanel";
-import { AutoProfileLockButton } from "./components/AutoProfileLockButton";
 import { DevicePanel } from "./components/DevicePanel";
-import { KeymapStylemapEditor } from "./components/KeymapStylemapEditor";
-import { KeymapSyncBanner } from "./components/KeymapSyncBanner";
-import { LivePreviewCanvas } from "./components/LivePreviewCanvas";
-import { MosaicBuilder } from "./components/MosaicBuilder";
 import { OpenFluxLogo } from "./components/OpenFluxLogo";
-import { ProfilesPanel } from "./components/ProfilesPanel";
 import { ShortcutsProfilesPanel } from "./components/ShortcutsProfilesPanel";
-import { ThemeBackgroundPanel } from "./components/ThemeBackgroundPanel";
-import { ThirdPartyAppsPage } from "./components/ThirdPartyAppsPage";
 import { TopBarDockTab } from "./components/TopBarDockTab";
 import { V2ModulesHub } from "./components/V2ModulesHub";
 import { VialKeymapTab } from "./components/VialKeymapTab";
-import { UpdatesPage } from "./components/updates/UpdatesPage";
 import { type V2ModuleRecord, v2Client } from "./api/v2Client";
 import type { AssetCatalog, DeviceStatus, OpenFluxConfig, PreviewKeyRect } from "./types/openflux";
-import { isKeyboardConnected, keymapSyncNotice, PLACEHOLDER_CONFIG } from "./types/openflux";
+import { isKeyboardConnected, PLACEHOLDER_CONFIG } from "./types/openflux";
 
-/** Core Studio pages (Modules hub + RP2040/Vial hardware tabs). Software modules opt into their own dynamic top tabs! */
+/** Pure OpenFlux v2 core pages (Modules hub + RP2040/Vial hardware tabs). Software modules opt into dynamic top tabs! */
 const CORE_NAV = [
   { id: "v2", label: "Modules" },
-  { id: "named_profiles", label: "Profiles" },
   { id: "actuation", label: "Actuation" },
   { id: "keymap", label: "Keymap" },
   { id: "firmware", label: "Device" },
 ] as const;
 
 export type CoreStudioTab = (typeof CORE_NAV)[number]["id"];
-export type StudioTab = CoreStudioTab | `mod:${string}` | "themes" | "profiles" | "mosaic" | "updates" | "apps";
-
-const isStudioTab = (page: string): page is StudioTab =>
-  CORE_NAV.some((n) => n.id === page) ||
-  page.startsWith("mod:") ||
-  page === "themes" ||
-  page === "profiles" ||
-  page === "mosaic";
+export type StudioTab = CoreStudioTab | `mod:${string}` | "profiles";
 
 interface AppProps {
   client?: DaemonClient;
-  services?: StudioServices;
   initialConfig?: OpenFluxConfig;
   initialTab?: StudioTab;
   /** `macos`, `windows`, `linux`: adjusts platform-specific explanations. */
@@ -55,22 +34,11 @@ interface AppProps {
 
 export const App: React.FC<AppProps> = ({
   client: injectedClient,
-  services: injectedServices,
   initialConfig,
   initialTab,
   platform,
 }) => {
   const [client] = useState<DaemonClient>(() => injectedClient ?? createDaemonClient());
-  const [services] = useState<StudioServices>(() => injectedServices ?? createStudioServices());
-  const [hostFlow] = useState(
-    () =>
-      new HostUpdateFlow({
-        updater: services.hostUpdater,
-        lifecycle: (action) => services.updates.lifecycle(action),
-        currentJob: async () => (await services.updates.getUpdates()).job,
-        startDaemon: (mode) => services.daemonService.start(mode),
-      }),
-  );
   const [tab, setTab] = useState<StudioTab>(initialTab ?? "v2");
   const [v2Modules, setV2Modules] = useState<V2ModuleRecord[]>([]);
 
@@ -87,7 +55,6 @@ export const App: React.FC<AppProps> = ({
   const moduleTabs = v2Modules
     .filter((m) => m.state.enabled && (m.state.pin_tab ?? Boolean(m.manifest.ui?.top_tab)))
     .sort((a, b) => (a.manifest.ui?.top_tab_order ?? 50) - (b.manifest.ui?.top_tab_order ?? 50));
-  const [updatesStatus, setUpdatesStatus] = useState<UpdatesStatus | null>(null);
   const [config, setConfig] = useState<OpenFluxConfig>(initialConfig ?? PLACEHOLDER_CONFIG);
   const latestServerConfigRef = useRef<OpenFluxConfig>(initialConfig ?? PLACEHOLDER_CONFIG);
   const [status, setStatus] = useState<DeviceStatus | null>(null);
@@ -97,7 +64,7 @@ export const App: React.FC<AppProps> = ({
   const [selectedKeyIndex, setSelectedKeyIndex] = useState<number | null>(0);
   const [dirty, setDirty] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
-  const [syncedRevision, setSyncedRevision] = useState(0);
+  const [, setSyncedRevision] = useState(0);
   const pendingRevRef = useRef(0);
   const sectionRevRef = useRef<Record<string, number>>({});
   const failedSectionsRef = useRef<Set<string>>(new Set());
@@ -332,19 +299,8 @@ export const App: React.FC<AppProps> = ({
     };
   }, []);
 
-  // Pages requested by the launcher (the tray opens Studio at Updates or Apps).
-  useEffect(() => {
-    const open = (page: string) => {
-      if (isStudioTab(page)) setTab(page);
-    };
-    void services.navigation.initialPage().then((p) => p && open(p));
-    return services.navigation.subscribe(open);
-  }, [services]);
-
   const [v2UsbProtocol, setV2UsbProtocol] = useState<string>("legacy");
   const keyboardConnected = v2UsbProtocol === "ofv2" || isKeyboardConnected(status);
-  // Pure v2 mode: never show the legacy v1 "Factory Flux / Setup Required" conversion banner!
-  const needsConversion = false;
 
   useEffect(() => {
     let alive = true;
@@ -363,9 +319,6 @@ export const App: React.FC<AppProps> = ({
     };
   }, []);
 
-  // Pure v2 mode: v1 `/v1/updates` and `/v1/third-party` background badge polling removed!
-  void setUpdatesStatus;
-
   const lastLayoutRef = useRef(config.keymap.selectedFrameLayoutType);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: committedLayout refetches the rects after the daemon accepts a layout change, since an earlier request can still return the old layout.
@@ -376,7 +329,6 @@ export const App: React.FC<AppProps> = ({
       lastLayoutRef.current = layout;
       setPreviewRects([]);
     }
-    // The rects are computed in the desktop shell; the only failure is a closing window.
     client
       .getPreviewRects(layout)
       .then((kr) => {
@@ -388,21 +340,8 @@ export const App: React.FC<AppProps> = ({
     };
   }, [client, config.keymap.selectedFrameLayoutType, committedLayout]);
 
-  const isKeymapLocked = () => keymapSyncNotice(status, latestServerConfigRef.current.hydrated)?.locksEditing ?? false;
-
-  const keymapNotice = keymapSyncNotice(status, config.hydrated);
-  const keymapLocked = keymapNotice?.locksEditing ?? false;
-
-  /** Replaces the keymap file with the keyboard's firmware keymap, then reloads config and status. */
-  const adoptFirmwareKeymap = async () => {
-    await client.adoptFirmwareKeymap();
-    await refreshFromDaemon();
-  };
-
-  const keymapBanner = (syncingText: string) =>
-    keymapNotice && (
-      <KeymapSyncBanner notice={keymapNotice} syncingText={syncingText} onAdoptFirmware={adoptFirmwareKeymap} />
-    );
+  const isKeymapLocked = () => false;
+  const keymapLocked = false;
 
   const pushConfigPatch = (patch: Partial<OpenFluxConfig>) => {
     const isReset = Boolean(patch.explicitReset);
@@ -488,39 +427,6 @@ export const App: React.FC<AppProps> = ({
     return flushChainRef.current;
   };
 
-  const patchActiveThemePartial = (
-    partial: Partial<OpenFluxConfig["appearance"]["defaultTheme"]>,
-    expectedResetEpoch?: number,
-    targetThemeId?: string,
-  ) => {
-    const curResetEpoch = sectionRevRef.current.explicitReset ?? 0;
-    if (expectedResetEpoch !== undefined && expectedResetEpoch !== curResetEpoch) {
-      return;
-    }
-    const cur = configRef.current;
-    const sid = targetThemeId ?? cur.appearance.selectedId;
-    if (sid === "default" || cur.appearance.defaultTheme.id === sid) {
-      void pushConfigPatch({
-        appearance: {
-          ...cur.appearance,
-          defaultTheme: { ...cur.appearance.defaultTheme, ...partial },
-        },
-      });
-      return;
-    }
-    const hasCustom = cur.appearance.customThemes.some((t) => t.id === sid);
-    if (!hasCustom) {
-      // The target theme was deleted or reset while the caller's async work was running.
-      return;
-    }
-    void pushConfigPatch({
-      appearance: {
-        ...cur.appearance,
-        customThemes: cur.appearance.customThemes.map((t) => (t.id === sid ? { ...t, ...partial } : t)),
-      },
-    });
-  };
-
   const applyActiveTheme = (theme: OpenFluxConfig["appearance"]["defaultTheme"]) => {
     const curApp = configRef.current.appearance;
     const sid = curApp.selectedId;
@@ -588,33 +494,6 @@ export const App: React.FC<AppProps> = ({
     Math.max(0, activeProfiles.length - 1),
   );
 
-  const remapAppRulesForProfiles = (
-    oldProfs: NonNullable<OpenFluxConfig["profiles"]>,
-    newProfs: NonNullable<OpenFluxConfig["profiles"]>,
-    oldRules: OpenFluxConfig["appRules"],
-  ): OpenFluxConfig["appRules"] => {
-    const out: OpenFluxConfig["appRules"] = [];
-    for (const r of oldRules) {
-      const oldP = oldProfs[r.profile_index];
-      if (!oldP) continue;
-      const newIdx = newProfs.findIndex((np) => np.id === oldP.id);
-      if (newIdx < 0) continue;
-      const newP = newProfs[newIdx];
-      const oldM = (oldP.app_matcher ?? "").trim();
-      const newM = (newP.app_matcher ?? "").trim();
-      const wasGenerated = Boolean(oldM) && r.matcher === oldM && r.language_code == null;
-      if (wasGenerated && newM !== oldM) continue;
-      out.push({ ...r, profile_index: newIdx });
-    }
-    newProfs.forEach((p, idx) => {
-      const m = (p.app_matcher ?? "").trim();
-      if (m && !out.some((r) => r.profile_index === idx && r.matcher === m)) {
-        out.push({ matcher: m, profile_index: idx, language_code: null });
-      }
-    });
-    return out;
-  };
-
   const selectProfileIndex = (idx: number) => {
     const p = activeProfiles[idx];
     if (!p) return;
@@ -659,12 +538,6 @@ export const App: React.FC<AppProps> = ({
               </option>
             ))}
           </select>
-          <AutoProfileLockButton
-            client={client}
-            state={status?.autoProfileSwitch}
-            onChange={(next) => setStatus((prev) => (prev ? { ...prev, autoProfileSwitch: next } : prev))}
-            onError={setBanner}
-          />
         </div>
 
         <nav className="topbar-nav" aria-label="Studio Sections">
@@ -724,24 +597,6 @@ export const App: React.FC<AppProps> = ({
       {banner && <div className="topbar-banner">{banner}</div>}
 
       <main className="main-pane">
-        {needsConversion && tab !== "updates" && (
-          <section className="conversion-callout" aria-label="Convert keyboard to OpenFlux">
-            <div className="conversion-callout-copy">
-              <strong>Factory Flux keyboard detected — Convert to OpenFlux</strong>
-              <p className="muted">
-                {updatesStatus?.keyboard.components
-                  .filter((c) => c.installed)
-                  .map((c) => `${COMPONENT_LABELS[c.component]} ${c.installed}`)
-                  .join(" · ") || "This keyboard is running its original factory software."}
-                {" — "}Converting installs OpenFlux across the keyboard, keeps your factory calibration and settings,
-                and can be reset to factory software anytime.
-              </p>
-            </div>
-            <button type="button" className="btn-primary" onClick={() => setTab("updates")}>
-              Convert to OpenFlux…
-            </button>
-          </section>
-        )}
         {tab === "v2" && (
           <V2ModulesHub
             pickFile={(title) => client.pickFile(title)}
@@ -782,105 +637,7 @@ export const App: React.FC<AppProps> = ({
               />
             );
           })()}
-        {tab === "named_profiles" && (
-          <ProfilesPanel
-            client={client}
-            catalog={catalog}
-            platform={platform}
-            config={config}
-            previewNode={
-              <LivePreviewCanvas
-                client={client}
-                config={config}
-                syncedRevision={syncedRevision}
-                activeLayer={activeLayer}
-                selectedKeyIndex={selectedKeyIndex}
-                rects={previewRects}
-                onSelectKey={(k) => setSelectedKeyIndex(k)}
-              />
-            }
-            effectiveActiveIndex={effectiveProfileIndex}
-            onChangeProfiles={(profiles, nextDesired) => {
-              const curProfiles = configRef.current.profiles ?? activeProfiles;
-              const nextRules = remapAppRulesForProfiles(curProfiles, profiles, configRef.current.appRules);
-              const idx = nextDesired ?? manualProfileIndex;
-              const selP = profiles[idx];
-              const curApp = configRef.current.appearance;
-              const nextAppearance =
-                selP && (selP.theme_id === "default" || (curApp.customThemes ?? []).some((t) => t.id === selP.theme_id))
-                  ? { ...curApp, selectedId: selP.theme_id }
-                  : curApp;
-              void pushConfigPatch({
-                profiles,
-                appRules: nextRules,
-                ...(nextDesired !== undefined ? { desiredProfileIndex: nextDesired } : {}),
-                ...(nextAppearance !== curApp ? { appearance: nextAppearance } : {}),
-              });
-            }}
-            onSelectProfile={selectProfileIndex}
-          />
-        )}
-        {tab === "themes" && (
-          <ThemeBackgroundPanel
-            client={client}
-            catalog={catalog}
-            onRefreshCatalog={refreshCatalog}
-            config={config}
-            resetEpoch={sectionRevRef.current.explicitReset ?? 0}
-            previewNode={
-              <LivePreviewCanvas
-                client={client}
-                config={config}
-                syncedRevision={syncedRevision}
-                activeLayer={activeLayer}
-                selectedKeyIndex={selectedKeyIndex}
-                rects={previewRects}
-                onSelectKey={(k) => setSelectedKeyIndex(k)}
-              />
-            }
-            onChangeAppearance={applyActiveTheme}
-            onSelectTheme={(id) =>
-              void pushConfigPatch({
-                appearance: { ...configRef.current.appearance, selectedId: id },
-                themeSelection: true,
-              })
-            }
-            onCreateCustomTheme={(theme) =>
-              void pushConfigPatch({
-                appearance: {
-                  ...configRef.current.appearance,
-                  selectedId: theme.id,
-                  customThemes: [...(configRef.current.appearance.customThemes ?? []), theme],
-                },
-              })
-            }
-            onPatchDefaultTheme={patchActiveThemePartial}
-          />
-        )}
-        {tab === "keymap" && (
-          <VialKeymapTab
-            stylingView={
-              <>
-                {keymapBanner("Loading the keymap from the keyboard. You can edit it once it has loaded.")}
-                <KeymapStylemapEditor
-                  client={client}
-                  catalog={catalog}
-                  previewRects={previewRects}
-                  config={config}
-                  activeLayer={activeLayer}
-                  selectedKeyIndex={selectedKeyIndex}
-                  keymapBlocked={keymapLocked}
-                  onSelectLayer={setActiveLayer}
-                  onSelectKey={setSelectedKeyIndex}
-                  onChangeAppearance={applyActiveTheme}
-                  onChangeKeymap={(keymap) => void pushConfigPatch({ keymap })}
-                  onApplyConfigEdit={(patch) => void pushConfigPatch(patch)}
-                />
-              </>
-            }
-          />
-        )}
-        {tab === "actuation" && keymapBanner("Loading actuation modes and key legends from the keyboard…")}
+        {tab === "keymap" && <VialKeymapTab />}
         {tab === "actuation" && (
           <ActuationPanel
             config={config}
@@ -892,25 +649,6 @@ export const App: React.FC<AppProps> = ({
             onApplyConfigEdit={(patch) => void pushConfigPatch(patch)}
           />
         )}
-        {tab === "mosaic" && (
-          <MosaicBuilder
-            client={client}
-            mosaic={config.mosaic}
-            onChangeMosaic={(mosaic) => void pushConfigPatch({ mosaic })}
-            previewNode={
-              <LivePreviewCanvas
-                client={client}
-                config={config}
-                syncedRevision={syncedRevision}
-                activeLayer={activeLayer}
-                selectedKeyIndex={selectedKeyIndex}
-                rects={previewRects}
-                onSelectKey={(k) => setSelectedKeyIndex(k)}
-              />
-            }
-          />
-        )}
-        {tab === "profiles" && keymapLocked && keymapBanner("Syncing shortcuts from attached keyboard…")}
         {tab === "profiles" && (
           <ShortcutsProfilesPanel
             client={client}
@@ -937,24 +675,6 @@ export const App: React.FC<AppProps> = ({
             onChangeSettings={(settings) => void pushConfigPatch({ settings })}
             onRestoreDefaults={() => void restoreDefaults()}
           />
-        )}
-        {tab === "updates" && (
-          <UpdatesPage
-            updates={services.updates}
-            hostFlow={hostFlow}
-            service={services.daemonService}
-            pickFolder={(title) => client.pickFolder(title)}
-            onStatus={(s) => {
-              setUpdatesStatus(s);
-            }}
-            onKeyboardChanged={() => {
-              void refreshFromDaemon();
-              refreshCatalog();
-            }}
-          />
-        )}
-        {tab === "apps" && (
-          <ThirdPartyAppsPage client={services.thirdParty} onPendingCount={() => {}} platform={platform} />
         )}
       </main>
     </div>

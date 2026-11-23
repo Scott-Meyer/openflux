@@ -635,6 +635,27 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
                         ? "Hybrid"
                         : "Host-Driven"}
                   </span>
+                  {mod.state.enabled && mod.host_status && mod.host_status.state !== "not_required" && (
+                    <span
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 10,
+                        padding: "1px 6px",
+                        borderRadius: 99,
+                        background:
+                          mod.host_status.state === "running"
+                            ? "rgba(88, 242, 156, 0.14)"
+                            : "rgba(255, 92, 108, 0.22)",
+                        color: mod.host_status.state === "running" ? "#6ff7b0" : "#ff8a96",
+                      }}
+                    >
+                      {mod.host_status.state === "running"
+                        ? `Host PID ${mod.host_status.pid}`
+                        : mod.host_status.state === "exited"
+                          ? `Host Exited (${mod.host_status.code ?? "sig"})`
+                          : "Host Failed"}
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
                   <button type="button" onClick={() => void handleToggle(mod)}>

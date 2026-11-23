@@ -133,24 +133,56 @@ impl V2State {
             },
             PublishOptions::retained(),
         );
-        // Seed live `display/parallax` from persisted Studio settings on startup so the physical
-        // keyboard immediately receives your seating/parallax calibration over OFV2 CH_BUS!
-        if let Ok(raw) = std::fs::read_to_string(base.join("config/settings.json")) {
-            if let Ok(s) = serde_json::from_str::<serde_json::Value>(&raw) {
-                let _ = broker.publish(
-                    "display/parallax",
-                    serde_json::json!({
-                        "parallaxActive": s.get("parallaxActive").and_then(|v| v.as_bool()).unwrap_or(true),
-                        "eyeHeight": s.get("eyeHeight").and_then(|v| v.as_f64()).unwrap_or(425.0),
-                        "eyeDistanceFromFront": s.get("eyeDistanceFromFront").and_then(|v| v.as_f64()).unwrap_or(300.0),
-                        "footStandMode": s.get("footStandMode").and_then(|v| v.as_str()).unwrap_or("none"),
-                        "displayOffsetX": s.get("displayOffsetX").and_then(|v| v.as_i64()).unwrap_or(0),
-                        "displayOffsetY": s.get("displayOffsetY").and_then(|v| v.as_i64()).unwrap_or(0),
-                        "showAlignmentGrid": s.get("showAlignmentGrid").and_then(|v| v.as_bool()).unwrap_or(false),
-                    }),
-                    PublishOptions::retained(),
-                );
-            }
+        // Seed live `display/parallax` and `display/power` from pure-v2 `v2/display_prefs.json`
+        // (migrating once from legacy `config/settings.json` if present!).
+        let prefs_path = base.join("v2/display_prefs.json");
+        let prefs_doc: serde_json::Value = std::fs::read_to_string(&prefs_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .or_else(|| {
+                std::fs::read_to_string(base.join("config/settings.json"))
+                    .ok()
+                    .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+                    .map(|s| {
+                        json!({
+                            "parallax": {
+                                "parallaxActive": s.get("parallaxActive").and_then(|v| v.as_bool()).unwrap_or(true),
+                                "eyeHeight": s.get("eyeHeight").and_then(|v| v.as_f64()).unwrap_or(425.0),
+                                "eyeDistanceFromFront": s.get("eyeDistanceFromFront").and_then(|v| v.as_f64()).unwrap_or(300.0),
+                                "footStandMode": s.get("footStandMode").and_then(|v| v.as_str()).unwrap_or("none"),
+                                "displayOffsetX": s.get("displayOffsetX").and_then(|v| v.as_i64()).unwrap_or(0),
+                                "displayOffsetY": s.get("displayOffsetY").and_then(|v| v.as_i64()).unwrap_or(0),
+                                "showAlignmentGrid": s.get("showAlignmentGrid").and_then(|v| v.as_bool()).unwrap_or(false),
+                            },
+                            "power": {
+                                "brightness": s.get("brightness").and_then(|v| v.as_u64()).unwrap_or(80),
+                                "timeoutSec": s.get("displayTimeoutSec").and_then(|v| v.as_u64()).unwrap_or(300),
+                            }
+                        })
+                    })
+            })
+            .unwrap_or_else(|| {
+                json!({
+                    "parallax": {
+                        "parallaxActive": true,
+                        "eyeHeight": 425.0,
+                        "eyeDistanceFromFront": 300.0,
+                        "footStandMode": "none",
+                        "displayOffsetX": 0,
+                        "displayOffsetY": 0,
+                        "showAlignmentGrid": false,
+                    },
+                    "power": {
+                        "brightness": 80,
+                        "timeoutSec": 300,
+                    }
+                })
+            });
+        if let Some(p) = prefs_doc.get("parallax") {
+            let _ = broker.publish("display/parallax", p.clone(), PublishOptions::retained());
+        }
+        if let Some(pw) = prefs_doc.get("power") {
+            let _ = broker.publish("display/power", pw.clone(), PublishOptions::retained());
         }
 
         let mut runtime = ModuleRuntime::new(broker.clone(), geometry.clone());
@@ -284,8 +316,55 @@ impl V2State {
         parts.join("|")
     }
 
-    /// Publishes optical parallax settings onto retained `display/parallax` so the live
-    /// physical keyboard (via OFV2 CH_BUS) shifts every keycap legend in real time!
+    /// Stops all supervised host helper processes cleanly on daemon shutdown (zero orphans!).
+    pub fn shutdown(&self) {
+        self.host_procs.lock().unwrap().stop_all();
+    }
+
+    pub fn display_prefs_path(&self) -> PathBuf {
+        self.registry
+            .state_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("display_prefs.json")
+    }
+
+    pub fn load_display_prefs(&self) -> serde_json::Value {
+        std::fs::read_to_string(self.display_prefs_path())
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_else(|| {
+                json!({
+                    "parallax": self.broker.get_retained("display/parallax").map(|m| m.payload).unwrap_or_else(|| json!({
+                        "parallaxActive": true,
+                        "eyeHeight": 425.0,
+                        "eyeDistanceFromFront": 300.0,
+                        "footStandMode": "none",
+                        "displayOffsetX": 0,
+                        "displayOffsetY": 0,
+                        "showAlignmentGrid": false,
+                    })),
+                    "power": self.broker.get_retained("display/power").map(|m| m.payload).unwrap_or_else(|| json!({
+                        "brightness": 80,
+                        "timeoutSec": 300,
+                    })),
+                })
+            })
+    }
+
+    pub fn save_display_prefs(&self, doc: &serde_json::Value) {
+        let path = self.display_prefs_path();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(text) = serde_json::to_string_pretty(doc) {
+            let _ = std::fs::write(path, text);
+        }
+    }
+
+    /// Publishes optical parallax settings onto retained `display/parallax` and persists them to
+    /// pure-v2 `display_prefs.json` so the physical keyboard shifts keycaps in real time and
+    /// remembers calibration across reboots!
     pub fn publish_parallax_from_settings(&self, s: &serde_json::Value) {
         let payload = serde_json::json!({
             "parallaxActive": s.get("parallaxActive").and_then(|v| v.as_bool()).unwrap_or(true),
@@ -296,7 +375,25 @@ impl V2State {
             "displayOffsetY": s.get("displayOffsetY").and_then(|v| v.as_i64()).unwrap_or(0),
             "showAlignmentGrid": s.get("showAlignmentGrid").and_then(|v| v.as_bool()).unwrap_or(false),
         });
+        let mut prefs = self.load_display_prefs();
+        if let Some(obj) = prefs.as_object_mut() {
+            obj.insert("parallax".into(), payload.clone());
+        }
+        self.save_display_prefs(&prefs);
         let _ = self.broker.publish("display/parallax", payload, PublishOptions::retained());
+    }
+
+    pub fn publish_power_prefs(&self, p: &serde_json::Value) {
+        let payload = serde_json::json!({
+            "brightness": p.get("brightness").and_then(|v| v.as_u64()).unwrap_or(80).clamp(5, 100),
+            "timeoutSec": p.get("timeoutSec").and_then(|v| v.as_u64()).unwrap_or(300),
+        });
+        let mut prefs = self.load_display_prefs();
+        if let Some(obj) = prefs.as_object_mut() {
+            obj.insert("power".into(), payload.clone());
+        }
+        self.save_display_prefs(&prefs);
+        let _ = self.broker.publish("display/power", payload, PublishOptions::retained());
     }
 
     pub fn notify_modules_changed(&self, reason: &str, module_id: Option<&str>) {
@@ -525,6 +622,7 @@ async fn list_modules(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     let statuses = state.v2.runtime.lock().unwrap().statuses();
     let status_map: BTreeMap<String, _> = statuses.into_iter().map(|s| (s.id.clone(), s)).collect();
     let dep_issues = state.v2.registry.check_all_dependencies(&discovered, &saved);
+    let mut host_procs = state.v2.host_procs.lock().unwrap();
 
     let items: Vec<Value> = discovered
         .into_iter()
@@ -533,6 +631,18 @@ async fn list_modules(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
             let rt_status = status_map.get(&id);
             let origin = state.v2.registry.module_origin(&dm);
             let issues = dep_issues.get(&id).cloned().unwrap_or_default();
+            let has_host = dm.manifest.entrypoints.host.is_some();
+            let host_status = if inst.enabled {
+                host_procs.status(&id, has_host)
+            } else {
+                openflux_modules::HostProcessStatus::NotRequired
+            };
+            let rt_healthy = rt_status.map(|s| s.healthy).unwrap_or(true);
+            let host_healthy = !inst.enabled || host_status.is_healthy(dm.manifest.host_requirement);
+            let healthy = rt_healthy && host_healthy;
+            let last_error = rt_status
+                .and_then(|s| s.last_error.clone())
+                .or_else(|| if inst.enabled { host_status.error_message() } else { None });
             json!({
                 "id": id,
                 "manifest": dm.manifest,
@@ -541,8 +651,9 @@ async fn list_modules(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
                 "state": inst,
                 "origin": origin,
                 "dependency_issues": issues,
-                "healthy": rt_status.map(|s| s.healthy).unwrap_or(true),
-                "last_error": rt_status.and_then(|s| s.last_error.clone()),
+                "host_status": host_status,
+                "healthy": healthy,
+                "last_error": last_error,
             })
         })
         .collect();
@@ -1521,25 +1632,54 @@ async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespon
         let mut uploaded_files = Vec::new();
         let mut uploaded_bytes = 0usize;
 
-        // Upload non-bundled (local/installed) modules to `/home/root/openflux/v2/modules/<id>/`
+        // Single Source of Truth: upload ALL enabled modules (bundled, installed, AND local)
+        // directly to `/home/root/openflux/v2/modules/<id>/` (skipping host-only `host/` scripts,
+        // `.git`, `.DS_Store`, `__pycache__`), so the host is always authoritative and partial
+        // manual `local/` shadows are never needed!
         for (id, dm) in &discovered {
-            if dm.tier != openflux_modules::ModuleTier::Bundled {
-                let mut stack = vec![dm.path.clone()];
-                while let Some(dir) = stack.pop() {
-                    let Ok(rd) = std::fs::read_dir(&dir) else { continue };
-                    for entry in rd.flatten() {
-                        let p = entry.path();
-                        let name = entry.file_name().to_string_lossy().into_owned();
-                        if name == ".git" || name == ".DS_Store" {
-                            continue;
+            let is_enabled = kb_state.modules.get(id).map(|s| s.enabled).unwrap_or(false);
+            if !is_enabled && dm.tier == openflux_modules::ModuleTier::Bundled {
+                continue;
+            }
+            let mut stack = vec![dm.path.clone()];
+            while let Some(dir) = stack.pop() {
+                let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+                for entry in rd.flatten() {
+                    let p = entry.path();
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if name == ".git" || name == ".DS_Store" || name == "__pycache__" || name == "host" {
+                        continue;
+                    }
+                    if p.is_dir() {
+                        stack.push(p);
+                    } else if p.is_file() {
+                        if let Ok(rel) = p.strip_prefix(&dm.path) {
+                            let rel_str = rel.to_string_lossy().replace('\\', "/");
+                            let remote = format!("/home/root/openflux/v2/modules/{id}/{rel_str}");
+                            let bytes = std::fs::read(&p).map_err(|e| e.to_string())?;
+                            uploaded_bytes += bytes.len();
+                            device.put_file(&remote, &bytes)?;
+                            uploaded_files.push(remote);
                         }
-                        if p.is_dir() {
-                            stack.push(p);
-                        } else if p.is_file() {
-                            if let Ok(rel) = p.strip_prefix(&dm.path) {
-                                let rel_str = rel.to_string_lossy().replace('\\', "/");
-                                let remote = format!("/home/root/openflux/v2/modules/{id}/{rel_str}");
-                                let bytes = std::fs::read(&p).map_err(|e| e.to_string())?;
+                    }
+                }
+            }
+        }
+
+        // Sync bundled shortcut JSON packs straight to `/home/root/openflux/shortcuts/` too
+        // so updating `macos.json` or any app pack reaches the keyboard immediately without an .ipk rebuild!
+        let shortcut_dirs = [
+            kb_state_path.parent().and_then(|p| p.parent()).map(|p| p.join("assets/shortcuts")),
+            std::env::current_exe().ok().and_then(|e| e.parent().and_then(|p| p.parent()).map(|p| p.join("Resources/assets/shortcuts"))),
+        ];
+        if let Some(sc_dir) = shortcut_dirs.into_iter().flatten().find(|d| d.is_dir()) {
+            if let Ok(rd) = std::fs::read_dir(&sc_dir) {
+                for entry in rd.flatten() {
+                    let p = entry.path();
+                    if p.is_file() && p.extension().and_then(|e| e.to_str()) == Some("json") {
+                        if let Some(fname) = p.file_name().and_then(|n| n.to_str()) {
+                            let remote = format!("/home/root/openflux/shortcuts/{fname}");
+                            if let Ok(bytes) = std::fs::read(&p) {
                                 uploaded_bytes += bytes.len();
                                 device.put_file(&remote, &bytes)?;
                                 uploaded_files.push(remote);
@@ -1548,6 +1688,15 @@ async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespon
                     }
                 }
             }
+        }
+
+        // Sync pure-v2 `display_prefs.json` (parallax + brightness + sleep timeout) to keyboard!
+        let prefs_local = kb_state_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("display_prefs.json");
+        if let Ok(bytes) = std::fs::read(&prefs_local) {
+            let remote = "/home/root/openflux/v2/display_prefs.json".to_string();
+            uploaded_bytes += bytes.len();
+            device.put_file(&remote, &bytes)?;
+            uploaded_files.push(remote);
         }
 
         // For ANY enabled module with `kind = "file"` settings pointing at a local file,
@@ -1889,10 +2038,33 @@ async fn vial_sync_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse 
     }
 }
 
+async fn get_display_prefs(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    (StatusCode::OK, Json(state.v2.load_display_prefs()))
+}
+
+async fn put_display_parallax(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<Value>,
+) -> impl IntoResponse {
+    state.v2.publish_parallax_from_settings(&body);
+    (StatusCode::OK, Json(json!({ "ok": true, "parallax": state.v2.load_display_prefs()["parallax"] })))
+}
+
+async fn put_display_power(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<Value>,
+) -> impl IntoResponse {
+    state.v2.publish_power_prefs(&body);
+    (StatusCode::OK, Json(json!({ "ok": true, "power": state.v2.load_display_prefs()["power"] })))
+}
+
 /// Mounts all OpenFlux v2 routes (open localhost bus, module management, disclosure, lists, presets, GPU preview).
 pub fn router(state: Arc<ApiState>) -> Router {
     Router::new()
         .route("/v2/status", get(v2_status_api))
+        .route("/v2/display/prefs", get(get_display_prefs))
+        .route("/v2/display/parallax", put(put_display_parallax))
+        .route("/v2/display/power", put(put_display_power))
         .route("/v2/logs", get(get_all_logs_api))
         .route("/v2/vial/status", get(vial_status_api))
         .route("/v2/vial/xfer", post(vial_xfer_api))

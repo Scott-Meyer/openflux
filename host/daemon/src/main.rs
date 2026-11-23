@@ -1204,6 +1204,7 @@ fn run_daemon(args: &[String]) -> i32 {
         }
     });
     worker.shutdown_and_join();
+    api_state.v2.shutdown();
     openfluxd::preview::kill_and_reap_child(&api_state.preview_child);
     api_state
         .lifecycle

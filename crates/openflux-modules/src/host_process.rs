@@ -1,27 +1,85 @@
-//! Unrestricted host-side module process manager.
+//! Supervised host-side module process manager.
 //!
-//! Modules declaring `entrypoints.host` can run arbitrary host scripts, binaries, or local API
-//! servers on the user's computer (disclosed clearly on install/update).
+//! Modules declaring `entrypoints.host` run arbitrary host scripts, binaries, or local API
+//! helpers on the user's computer (disclosed clearly on install/update).
+//!
+//! Guarantees:
+//! 1. **No silent failures:** missing entrypoints, spawn failures, and unexpected child exits
+//!    are tracked explicitly via [`HostProcessStatus`] so callers mark the module unhealthy with
+//!    an actionable error message.
+//! 2. **No orphan leaks:** every child runs in its own Unix process group and holds an open
+//!    stdin pipe to this manager. Stopping a module or dropping the manager kills the entire
+//!    process group (including grandchild `ffmpeg`/`yt-dlp` processes), and even a hard crash of
+//!    the parent closes the stdin pipe immediately so children can exit cleanly.
 
 use crate::lua_runtime::ModuleLogEntry;
+use crate::manifest::HostRequirement;
 use crate::registry::{DiscoveredModule, ModuleInstanceState};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
 use std::io::{BufRead, BufReader};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 const MAX_HOST_LOGS: usize = 200;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum HostProcessStatus {
+    /// Module has no `entrypoints.host` script.
+    NotRequired,
+    /// Host helper process is currently alive.
+    Running { pid: u32 },
+    /// Host helper failed validation or could not be spawned (e.g. missing file).
+    Failed { error: String },
+    /// Host helper started but exited unexpectedly.
+    Exited {
+        code: Option<i32>,
+        last_stderr: Option<String>,
+    },
+}
+
+impl HostProcessStatus {
+    pub fn is_healthy(&self, requirement: HostRequirement) -> bool {
+        match self {
+            Self::NotRequired | Self::Running { .. } => true,
+            Self::Failed { .. } | Self::Exited { .. } => requirement != HostRequirement::Required,
+        }
+    }
+
+    pub fn error_message(&self) -> Option<String> {
+        match self {
+            Self::NotRequired | Self::Running { .. } => None,
+            Self::Failed { error } => Some(format!("host process error: {error}")),
+            Self::Exited { code, last_stderr } => {
+                let code_s = code
+                    .map(|c| format!("exit code {c}"))
+                    .unwrap_or_else(|| "terminated by signal".to_string());
+                match last_stderr {
+                    Some(line) if !line.is_empty() => {
+                        Some(format!("host process exited ({code_s}): {line}"))
+                    }
+                    _ => Some(format!("host process exited ({code_s})")),
+                }
+            }
+        }
+    }
+}
+
 struct RunningHostModule {
     child: Child,
+    /// Kept open until this module is stopped or the parent daemon dies; EOF signals clean exit.
+    _stdin_guard: Option<ChildStdin>,
     config_json: String,
     entry_path: std::path::PathBuf,
     logs: Arc<Mutex<VecDeque<ModuleLogEntry>>>,
+    exited: Option<Option<i32>>,
 }
 
 pub struct HostProcessManager {
     bus_url: String,
     running: BTreeMap<String, RunningHostModule>,
+    failures: BTreeMap<String, String>,
 }
 
 impl HostProcessManager {
@@ -29,6 +87,7 @@ impl HostProcessManager {
         Self {
             bus_url: bus_url.into(),
             running: BTreeMap::new(),
+            failures: BTreeMap::new(),
         }
     }
 
@@ -37,43 +96,64 @@ impl HostProcessManager {
         discovered: &DiscoveredModule,
         instance: &ModuleInstanceState,
     ) -> Result<(), String> {
+        let id = &discovered.manifest.id;
         let Some(host_rel) = &discovered.manifest.entrypoints.host else {
+            self.failures.remove(id);
             return Ok(());
         };
         let entry_path = discovered.path.join(host_rel);
         if !entry_path.is_file() {
-            return Err(format!(
-                "host entrypoint not found: {}",
-                entry_path.display()
-            ));
+            self.stop_module(id);
+            let err = format!("host entrypoint not found: {}", entry_path.display());
+            self.failures.insert(id.clone(), err.clone());
+            return Err(err);
         }
         let cfg_json = serde_json::to_string(&instance.config).unwrap_or_else(|_| "{}".into());
 
         // Keep already-running host process alive when neither its config nor entrypoint changed!
-        if let Some(existing) = self.running.get_mut(&discovered.manifest.id) {
-            if existing.config_json == cfg_json
+        if let Some(existing) = self.running.get_mut(id) {
+            if existing.exited.is_none()
+                && existing.config_json == cfg_json
                 && existing.entry_path == entry_path
                 && matches!(existing.child.try_wait(), Ok(None))
             {
+                self.failures.remove(id);
                 return Ok(());
             }
         }
-        self.stop_module(&discovered.manifest.id);
+        self.stop_module(id);
+        self.failures.remove(id);
 
         let mut cmd = build_host_command(&entry_path);
         cmd.current_dir(&discovered.path)
             .env("OPENFLUX_BUS_URL", &self.bus_url)
-            .env("OPENFLUX_MODULE_ID", &discovered.manifest.id)
+            .env("OPENFLUX_MODULE_ID", id)
             .env("OPENFLUX_MODULE_DIR", &discovered.path)
             .env("OPENFLUX_CONFIG_JSON", &cfg_json)
             .env("OPENFLUX_MODULE_CONFIG", &cfg_json)
+            .env("OPENFLUX_PARENT_PID", std::process::id().to_string())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("failed to spawn {}: {e}", entry_path.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            // Place each host helper and any subprocesses it spawns (e.g. ffmpeg/yt-dlp)
+            // in its own process group so stopping the module reaps the entire tree cleanly.
+            cmd.process_group(0);
+        }
 
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                let err = format!("failed to spawn {}: {e}", entry_path.display());
+                self.failures.insert(id.clone(), err.clone());
+                return Err(err);
+            }
+        };
+
+        let stdin_guard = child.stdin.take();
         let logs = Arc::new(Mutex::new(VecDeque::with_capacity(MAX_HOST_LOGS)));
         if let Some(out) = child.stdout.take() {
             spawn_log_reader(out, "info", logs.clone());
@@ -83,21 +163,25 @@ impl HostProcessManager {
         }
 
         self.running.insert(
-            discovered.manifest.id.clone(),
+            id.clone(),
             RunningHostModule {
                 child,
+                _stdin_guard: stdin_guard,
                 config_json: cfg_json,
                 entry_path,
                 logs,
+                exited: None,
             },
         );
         Ok(())
     }
 
     pub fn stop_module(&mut self, id: &str) {
+        self.failures.remove(id);
         if let Some(mut proc) = self.running.remove(id) {
-            let _ = proc.child.kill();
-            let _ = proc.child.wait();
+            // Drop stdin first so cooperative helpers watching EOF can shut down gracefully.
+            drop(proc._stdin_guard.take());
+            kill_child_tree(&mut proc.child);
         }
     }
 
@@ -106,13 +190,58 @@ impl HostProcessManager {
         for id in ids {
             self.stop_module(&id);
         }
+        self.failures.clear();
+    }
+
+    /// Inspects live status of a module's host process (refreshing `try_wait` so crashes are
+    /// surfaced immediately rather than silently hiding behind stale state).
+    pub fn status(&mut self, id: &str, has_host_entrypoint: bool) -> HostProcessStatus {
+        if !has_host_entrypoint {
+            return HostProcessStatus::NotRequired;
+        }
+        if let Some(err) = self.failures.get(id) {
+            return HostProcessStatus::Failed { error: err.clone() };
+        }
+        if let Some(proc) = self.running.get_mut(id) {
+            if proc.exited.is_none() {
+                if let Ok(Some(st)) = proc.child.try_wait() {
+                    proc.exited = Some(st.code());
+                }
+            }
+            if let Some(code) = proc.exited {
+                let last_stderr = proc
+                    .logs
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .rev()
+                    .find(|l| l.level == "stderr")
+                    .map(|l| l.message.clone());
+                return HostProcessStatus::Exited { code, last_stderr };
+            }
+            return HostProcessStatus::Running {
+                pid: proc.child.id(),
+            };
+        }
+        HostProcessStatus::Failed {
+            error: "host process is not running".to_string(),
+        }
     }
 
     pub fn logs(&self, id: &str) -> Vec<ModuleLogEntry> {
-        self.running
+        let mut out = self
+            .running
             .get(id)
-            .map(|r| r.logs.lock().unwrap().iter().cloned().collect())
-            .unwrap_or_default()
+            .map(|r| r.logs.lock().unwrap().iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        if let Some(err) = self.failures.get(id) {
+            out.push(ModuleLogEntry {
+                timestamp_ms: openflux_bus::now_unix_ms(),
+                level: "error".to_string(),
+                message: err.clone(),
+            });
+        }
+        out
     }
 }
 
@@ -120,6 +249,30 @@ impl Drop for HostProcessManager {
     fn drop(&mut self) {
         self.stop_all();
     }
+}
+
+fn kill_child_tree(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let pid = child.id() as i32;
+        if pid > 0 {
+            // Send SIGTERM to the entire process group first, then SIGKILL.
+            unsafe {
+                libc::kill(-pid, libc::SIGTERM);
+            }
+            for _ in 0..5 {
+                if matches!(child.try_wait(), Ok(Some(_))) {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            unsafe {
+                libc::kill(-pid, libc::SIGKILL);
+            }
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn build_host_command(entry: &std::path::Path) -> Command {

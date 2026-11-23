@@ -8,12 +8,13 @@ pub mod ir;
 pub mod lua_runtime;
 pub mod manifest;
 pub mod registry;
+pub mod validator;
 
 pub use disclosure::{
     diff_disclosure, inspect_module_dir, DisclosureReport, InspectedFile, InspectedFileKind,
     UpdateDisclosureDiff,
 };
-pub use host_process::HostProcessManager;
+pub use host_process::{HostProcessManager, HostProcessStatus};
 pub use installer::{
     check_module_dependencies, fetch_curated_list_document, stage_module_source, DependencyIssue,
     ModuleOrigin, StagedModuleSource,
@@ -33,3 +34,4 @@ pub use registry::{
     InstallPreview, MissingPresetModule, ModuleInstanceState, ModuleRegistry, ModuleTier,
     ModulesStateFile, PresetImportReport, PresetModuleRef, SetupPreset,
 };
+pub use validator::{validate_module_behavior, ModuleValidationReport};

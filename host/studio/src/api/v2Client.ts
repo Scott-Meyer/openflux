@@ -94,6 +94,12 @@ export interface DependencyIssue {
   reason: string;
 }
 
+export type HostProcessStatus =
+  | { state: "not_required" }
+  | { state: "running"; pid: number }
+  | { state: "failed"; error: string }
+  | { state: "exited"; code?: number | null; last_stderr?: string | null };
+
 export interface V2ModuleRecord {
   id: string;
   manifest: ModuleManifest;
@@ -102,6 +108,7 @@ export interface V2ModuleRecord {
   state: ModuleInstanceState;
   origin?: ModuleOrigin | null;
   dependency_issues?: DependencyIssue[];
+  host_status?: HostProcessStatus;
   healthy: boolean;
   last_error?: string | null;
 }
@@ -312,4 +319,24 @@ export const v2Client = {
       slot_count: number;
       warnings: string[];
     }>("POST", "/v2/vial/sync", {}),
+  getDisplayPrefs: () =>
+    v2Call<{
+      parallax: {
+        parallaxActive: boolean;
+        eyeHeight: number;
+        eyeDistanceFromFront: number;
+        footStandMode: "none" | "low" | "high";
+        displayOffsetX: number;
+        displayOffsetY: number;
+        showAlignmentGrid: boolean;
+      };
+      power: {
+        brightness: number;
+        timeoutSec: number;
+      };
+    }>("GET", "/v2/display/prefs"),
+  putDisplayParallax: (parallax: Record<string, unknown>) =>
+    v2Call<{ ok: boolean }>("PUT", "/v2/display/parallax", parallax),
+  putDisplayPower: (power: { brightness: number; timeoutSec: number }) =>
+    v2Call<{ ok: boolean }>("PUT", "/v2/display/power", power),
 };

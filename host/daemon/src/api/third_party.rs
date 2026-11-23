@@ -1288,7 +1288,7 @@ async fn add_generic_tile(
         while arr.len() <= index as usize {
             arr.push(serde_json::json!(0));
         }
-        arr[index as usize] = serde_json::json!(openflux_display::config::TileType::Generic as u64);
+        arr[index as usize] = serde_json::json!(8u64);
     }
     if let Some(cfgs) = g
         .mosaic

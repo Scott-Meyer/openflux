@@ -3,6 +3,7 @@ import type { DaemonClient, SocStatsSample } from "../api/daemonClient";
 import type { DeviceStatus, SettingsConfig } from "../types/openflux";
 import { ParallaxDiagram } from "./ParallaxDiagram";
 import { PressRefinementRow } from "./PressRefinementRow";
+import { v2Client } from "../api/v2Client";
 
 interface DevicePanelProps {
   client: DaemonClient;
@@ -46,9 +47,41 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
   const [socFreshness, setSocFreshness] = useState<"waiting" | "live" | "stale" | "offline">("waiting");
   const lastSampleKeyRef = React.useRef<string>("");
   const lastFreshAtRef = React.useRef<number>(0);
+  const [brightness, setBrightness] = useState<number>(80);
+  const [v2Timeout, setV2Timeout] = useState<number>(settings?.timeout ?? 300);
+
+  useEffect(() => {
+    let active = true;
+    void v2Client
+      .getDisplayPrefs()
+      .then((prefs) => {
+        if (!active) return;
+        if (typeof prefs?.power?.brightness === "number") setBrightness(prefs.power.brightness);
+        if (typeof prefs?.power?.timeoutSec === "number") setV2Timeout(prefs.power.timeoutSec);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const patchSettings = (partial: Partial<SettingsConfig>) => {
     if (settings && onChangeSettings) {
-      onChangeSettings({ ...settings, ...partial });
+      const next = { ...settings, ...partial };
+      onChangeSettings(next);
+      void v2Client.putDisplayParallax({
+        parallaxActive: next.parallaxActive,
+        eyeHeight: next.eyeHeight,
+        eyeDistanceFromFront: next.eyeDistanceFromFront,
+        footStandMode: next.footStandMode,
+        displayOffsetX: next.displayOffsetX,
+        displayOffsetY: next.displayOffsetY,
+        showAlignmentGrid: next.showAlignmentGrid,
+      });
+      if (typeof partial.timeout === "number") {
+        setV2Timeout(partial.timeout);
+        void v2Client.putDisplayPower({ brightness, timeoutSec: partial.timeout });
+      }
     }
   };
 
@@ -162,10 +195,25 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
         {settings && onChangeSettings && (
           <>
             <label className="field" style={{ marginTop: 12 }}>
+              <span>Display Backlight Brightness ({brightness}%)</span>
+              <input
+                type="range"
+                min={5}
+                max={100}
+                step={5}
+                value={brightness}
+                onChange={(e) => {
+                  const b = Number(e.target.value);
+                  setBrightness(b);
+                  void v2Client.putDisplayPower({ brightness: b, timeoutSec: v2Timeout });
+                }}
+              />
+            </label>
+            <label className="field" style={{ marginTop: 10 }}>
               <span>
                 Display Sleep After Inactivity{followsDisplaySleep ? " (also follows the Mac's display sleep)" : ""}
               </span>
-              <select value={settings.timeout} onChange={(e) => patchSettings({ timeout: Number(e.target.value) })}>
+              <select value={v2Timeout} onChange={(e) => patchSettings({ timeout: Number(e.target.value) })}>
                 <option value={0}>{followsDisplaySleep ? "With the Mac's display only" : "Never"}</option>
                 <option value={300}>5 minutes</option>
                 <option value={900}>15 minutes (Default)</option>
