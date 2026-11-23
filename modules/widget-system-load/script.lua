@@ -13,6 +13,11 @@ local metrics = {
   net_up = "0 KB/s",
 }
 
+function on_init()
+  local cur = bus.get("host/system/metrics")
+  if type(cur) == "table" then metrics = cur end
+end
+
 function on_event(topic, payload)
   if topic == "host/system/metrics" and type(payload) == "table" then
     metrics = payload

@@ -697,38 +697,28 @@ impl DeviceSink for UsbDeviceSink {
             .unwrap_or_else(openfluxd::api::state::empty_versions)
     }
 
-    fn send_live_json(&self, payload: &serde_json::Value) -> Result<(), String> {
-        let client = self.client()?;
-        let wire = encode_live_json(payload).map_err(|e| e.to_string())?;
-        client.send_live_data(&wire).map_err(|e| e.to_string())
+    fn send_live_json(&self, _payload: &serde_json::Value) -> Result<(), String> {
+        // Pure OFV2 mode: legacy v1 live_json is disabled (never contend on bridge flock!).
+        Err("legacy v1 live_json disabled in OFV2 mode".into())
     }
 
-    fn send_bus_frame(&self, frame: &openflux_bus::WireFrame) -> Result<(), String> {
-        let client = self.client()?;
-        let wire = encode_live_bus_frame(frame).map_err(|e| e.to_string())?;
-        client.send_live_data(&wire).map_err(|e| e.to_string())
+    fn send_bus_frame(&self, _frame: &openflux_bus::WireFrame) -> Result<(), String> {
+        Err("legacy v1 bus frame disabled in OFV2 mode".into())
     }
 
     fn poll_bus_frames(&self) -> Result<Vec<openflux_bus::WireFrame>, String> {
-        let client = self.client()?;
-        let raw = client.poll_bus_frames().map_err(|e| e.to_string())?;
-        if raw.is_empty() || raw == b"[]" {
-            return Ok(Vec::new());
-        }
-        serde_json::from_slice(&raw).map_err(|e| e.to_string())
+        Ok(Vec::new())
     }
 
-    fn set_system_time(&self, utc_timestamp: &str, zone: &str) -> Result<(), String> {
-        if let Some(m) = self.active_mux() {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64;
-            return m.set_clock(now, zone);
-        }
-        self.client()?
-            .set_system_time(utc_timestamp, zone)
-            .map_err(|e| e.to_string())
+    fn set_system_time(&self, _utc_timestamp: &str, zone: &str) -> Result<(), String> {
+        let Some(m) = self.active_mux() else {
+            return Err("OFV2 USB bridge not connected yet".into());
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        m.set_clock(now, zone)
     }
 
     fn set_active_profile(&self, profile_idx: u32) -> Result<(), String> {
@@ -834,44 +824,32 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn get_file(&self, path: &str) -> Result<Vec<u8>, String> {
-        if let Some(m) = self.active_mux() {
-            return m.get_file(path);
-        }
-        let client = self.client()?;
-        client.get_file(path).map_err(|e| e.to_string())
+        let Some(m) = self.active_mux() else {
+            return Err("OFV2 USB bridge not connected".into());
+        };
+        m.get_file(path)
     }
 
     fn put_file(&self, path: &str, data: &[u8]) -> Result<(), String> {
-        if let Some(m) = self.active_mux() {
-            return m.put_file(path, data);
-        }
-        let client = self.client()?;
-        client.put_file(path, data).map_err(|e| e.to_string())
+        let Some(m) = self.active_mux() else {
+            return Err("OFV2 USB bridge not connected".into());
+        };
+        m.put_file(path, data)
     }
 
     fn stat_file(&self, path: &str) -> Result<bool, String> {
-        if let Some(m) = self.active_mux() {
-            return m.stat_file(path);
-        }
-        let client = self.client()?;
-        client.stat_file(path).map_err(|e| e.to_string())
+        let Some(m) = self.active_mux() else {
+            return Err("OFV2 USB bridge not connected".into());
+        };
+        m.stat_file(path)
     }
 
     fn list_files(&self, dir: &str) -> Result<Vec<(String, u64)>, String> {
-        if let Some(m) = self.active_mux() {
-            let names = m.list_files(dir)?;
-            return Ok(names.into_iter().map(|n| (n, 0)).collect());
-        }
-        let client = self.client()?;
-        let listing = client.get_file_list(dir).map_err(|e| e.to_string())?;
-        Ok(listing
-            .split('\0')
-            .filter(|e| !e.is_empty())
-            .filter_map(|e| {
-                e.split_once(':')
-                    .map(|(size, name)| (name.to_string(), size.parse().unwrap_or(0)))
-            })
-            .collect())
+        let Some(m) = self.active_mux() else {
+            return Err("OFV2 USB bridge not connected".into());
+        };
+        let names = m.list_files(dir)?;
+        Ok(names.into_iter().map(|n| (n, 0)).collect())
     }
 
     fn read_firmware_keymap(&self) -> Result<Vec<u8>, String> {
@@ -959,17 +937,13 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn read_device_soc_stats(&self) -> Option<serde_json::Value> {
-        if let Some(m) = self.active_mux() {
-            if let Ok(raw) = m.get_file(device_paths::SOC_STATS_JSON) {
-                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&raw) {
-                    return Some(val);
-                }
+        let m = self.active_mux()?;
+        if let Ok(raw) = m.get_file(device_paths::SOC_STATS_JSON) {
+            if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&raw) {
+                return Some(val);
             }
-            return m.get_soc_stats().ok();
         }
-        let client = self.client.as_ref()?;
-        let raw = client.get_file(device_paths::SOC_STATS_JSON).ok()?;
-        serde_json::from_slice::<serde_json::Value>(&raw).ok()
+        m.get_soc_stats().ok()
     }
 }
 

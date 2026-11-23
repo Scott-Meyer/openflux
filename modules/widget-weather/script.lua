@@ -18,6 +18,11 @@ local weather = {
   hourly = {},
 }
 
+function on_init()
+  local cur = bus.get("host/weather/current")
+  if type(cur) == "table" then weather = cur end
+end
+
 function on_event(topic, payload)
   if topic == "host/weather/current" and type(payload) == "table" then
     weather = payload

@@ -475,6 +475,123 @@ fn spawn_macos_focus_watcher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
         });
 }
 
+/// Pure v2 host telemetry broadcaster (`openflux-host-telemetry`).
+/// Completely decoupled from USB — simply broadcasts `host/system/metrics`, `host/media/now_playing`,
+/// and `host/weather/current` onto the broker every ~1.5s regardless of USB state, so a USB
+/// reconnect/handshake can NEVER block computer stats or weather!
+fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
+    let _ = thread::Builder::new()
+        .name("openflux-host-telemetry".into())
+        .spawn(move || {
+            let mut bridge = crate::bridges::create_platform_bridge();
+            while running.load(Ordering::Relaxed) {
+                let hw = bridge.sample_hardware();
+                let media = bridge.media_snapshot();
+
+                let _ = state.v2.broker.publish_typed(
+                    openflux_bus::topics::HOST_SYSTEM_METRICS,
+                    &openflux_bus::SystemMetrics {
+                        cpu_percent: hw.cpu_pct as f32,
+                        memory_used_gb: hw.mem_used_gb as f32,
+                        memory_total_gb: hw.mem_total_gb as f32,
+                        gpu_percent: hw.gpu_pct as f32,
+                        gpu_unified: hw.gpu_unified_mem,
+                        vram_used_gb: hw.vram_used_gb.map(|v| v as f32),
+                        vram_total_gb: hw.vram_total_gb.map(|v| v as f32),
+                        net_down: hw.net_down.clone(),
+                        net_up: hw.net_up.clone(),
+                        net_down_kbps: 0.0,
+                        net_up_kbps: 0.0,
+                    },
+                    openflux_bus::PublishOptions::retained(),
+                );
+                let _ = state.v2.broker.publish_typed(
+                    openflux_bus::topics::HOST_MEDIA_NOW_PLAYING,
+                    &openflux_bus::MediaNowPlaying {
+                        title: media.title.clone(),
+                        artist: media.artists.clone(),
+                        album: media.album.clone(),
+                        playing: media.playing,
+                        position_sec: media.played_s as f32,
+                        length_sec: media.length_s as f32,
+                        art_base64: String::new(),
+                        track_id: String::new(),
+                    },
+                    openflux_bus::PublishOptions::retained(),
+                );
+
+                // Poll weather whenever ANY enabled module subscribes to `host/weather/#`
+                let saved = state.v2.registry.load_state();
+                let disc = state.v2.registry.discover();
+                let mut wants_weather = false;
+                let mut city = "Denver".to_string();
+                let mut celsius = false;
+                for (id, dm) in &disc {
+                    if let Some(inst) = saved.modules.get(id) {
+                        if !inst.enabled {
+                            continue;
+                        }
+                        if dm.manifest.channels.subscribes.iter().any(|p| {
+                            p == openflux_bus::topics::HOST_WEATHER_CURRENT
+                                || p == "host/weather/#"
+                                || p == "host/weather/+"
+                        }) {
+                            wants_weather = true;
+                            if let Some(c) = inst
+                                .config
+                                .get("city")
+                                .and_then(|x| x.as_str())
+                                .filter(|s| !s.trim().is_empty())
+                            {
+                                city = c.trim().to_string();
+                            }
+                            if let Some(cel) = inst.config.get("celsius").and_then(|x| x.as_bool())
+                            {
+                                celsius = cel;
+                            }
+                            break;
+                        }
+                    }
+                }
+                if wants_weather {
+                    let w = state.weather_bridge.poll_nonblocking(&city, celsius);
+                    let hourly = w
+                        .hourly
+                        .iter()
+                        .take(3)
+                        .map(|h| openflux_bus::WeatherHourly {
+                            hour: h.hour_label.clone(),
+                            temp: h.temp as f32,
+                            condition: h.condition.clone(),
+                            is_day: h.is_day,
+                        })
+                        .collect();
+                    let _ = state.v2.broker.publish_typed(
+                        openflux_bus::topics::HOST_WEATHER_CURRENT,
+                        &openflux_bus::WeatherState {
+                            city: w.city.clone(),
+                            temp: w.temp as f32,
+                            high: w.max_temp as f32,
+                            low: w.min_temp as f32,
+                            condition: w.condition.clone(),
+                            is_day: w.is_day,
+                            celsius: w.celsius,
+                            ready: w.ready,
+                            aqi: w.aqi.map(|a| a as u16),
+                            sunrise: w.sunrise.clone(),
+                            sunset: w.sunset.clone(),
+                            utc_offset_sec: w.utc_offset_seconds,
+                            hourly,
+                        },
+                        openflux_bus::PublishOptions::retained(),
+                    );
+                }
+
+                thread::sleep(Duration::from_millis(1500));
+            }
+        });
+}
+
 impl UsbWorkerHandle {
     pub fn spawn(
         state: Arc<ApiState>,
@@ -485,7 +602,7 @@ impl UsbWorkerHandle {
     ) -> Self {
         #[cfg(target_os = "macos")]
         spawn_macos_focus_watcher(state.clone(), running.clone());
-        spawn_v2_bus_bridge_thread(state.clone(), device.clone(), running.clone());
+        spawn_host_telemetry_publisher(state.clone(), running.clone());
         let (tx, mut rx) = mpsc::channel::<UsbCommand>(32);
         let accepting = Arc::new(AtomicBool::new(true));
         let state_bg = state.clone();
