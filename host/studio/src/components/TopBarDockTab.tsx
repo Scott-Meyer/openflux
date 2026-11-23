@@ -104,7 +104,10 @@ export function TopBarDockTab({
     }, 300);
   }, []);
 
-  const dock = modules.find((m) => m.id === "dock-top-bar");
+  const dock =
+    modules.find((m) => (m.manifest.provides ?? []).includes("top_bar_dock") && m.state.enabled) ??
+    modules.find((m) => (m.manifest.provides ?? []).includes("top_bar_dock")) ??
+    modules.find((m) => m.id === "dock-top-bar");
   const slotCount = Math.max(2, Math.min(4, Number(dock?.state.config.slot_count ?? 4) || 4));
   const totalHalf = slotCount * 2;
   const dimming = Number(dock?.state.config.module_dimming ?? 0);
@@ -112,7 +115,7 @@ export function TopBarDockTab({
 
   // All widgets that explicitly support top-bar placement
   const topBarWidgets = modules
-    .filter((m) => m.manifest.slot_capable && m.id !== "dock-top-bar")
+    .filter((m) => m.manifest.slot_capable && !(m.manifest.provides ?? []).includes("top_bar_dock"))
     .sort((a, b) => a.manifest.name.localeCompare(b.manifest.name));
 
   // Build collision-free occupied grid in half-slot units

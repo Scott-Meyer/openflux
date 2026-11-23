@@ -5,6 +5,7 @@
 //! presets, synthetic input simulation, and live GPU compositor previews (`openflux-compositor`).
 
 use crate::api::state::{default_data_dir, ApiState};
+use crate::usb::vial::{ModuleActionsMap, VialHidRelay, VIAL_RAW_EPSIZE};
 use axum::extract::ws::{Message as WsMessage, WebSocket};
 use axum::extract::{Path as AxumPath, Query, State, WebSocketUpgrade};
 use axum::http::StatusCode;
@@ -13,8 +14,9 @@ use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use base64::Engine;
 use openflux_bus::{
-    topics, AnalogKeyFrame, AnalogKeySample, Broker, FrameLayout, HostConnectionState, KeyEvent,
-    KeyEventKind, KeyboardGeometry, PublishOptions, SubscribeOptions, SurfaceImpulse, WireFrame,
+    topics, AnalogKeyFrame, AnalogKeySample, Broker, FluxActionEvent, FrameLayout,
+    HostConnectionState, KeyEvent, KeyEventKind, KeyboardGeometry, PublishOptions,
+    SubscribeOptions, SurfaceImpulse, WireFrame,
 };
 use openflux_compositor::{Compositor, CompositorOptions};
 use openflux_modules::{
@@ -37,6 +39,9 @@ pub struct V2State {
     last_disk_sig: Mutex<String>,
     compositor: Mutex<Option<Compositor>>,
     geometry: KeyboardGeometry,
+    pub vial_relay: VialHidRelay,
+    pub vial_actions: Mutex<ModuleActionsMap>,
+    vial_actions_path: PathBuf,
 }
 
 fn resolve_bundled_modules_dir() -> PathBuf {
@@ -187,6 +192,11 @@ impl V2State {
             }
         }
 
+        let vial_actions_path = base.join("v2/module_actions.json");
+        let mut vial_actions = ModuleActionsMap::load(&vial_actions_path);
+        vial_actions.reconcile_from_registry(&registry);
+        let _ = vial_actions.save(&vial_actions_path);
+
         let initial_sig = Self::compute_disk_sig(&registry);
         let state = Arc::new(Self {
             broker,
@@ -197,6 +207,9 @@ impl V2State {
             last_disk_sig: Mutex::new(initial_sig),
             compositor: Mutex::new(None),
             geometry,
+            vial_relay: VialHidRelay::new(),
+            vial_actions: Mutex::new(vial_actions),
+            vial_actions_path,
         });
 
         // Background watcher: detects direct edits to script.lua / module.toml / new local
@@ -265,6 +278,38 @@ impl V2State {
             }),
             PublishOptions::retained(),
         );
+    }
+
+    /// Dispatch a QK_KB_n Flux/module custom key event received from the RP2040 over USB IF 4.
+    pub fn dispatch_flux_action(&self, slot: u16, pressed: bool, mods: u8, layer: u8) {
+        let entry = self
+            .vial_actions
+            .lock()
+            .ok()
+            .and_then(|m| m.entries.get(&slot).cloned());
+        let ev = FluxActionEvent {
+            slot,
+            action_id: entry.as_ref().map(|e| e.action_id.clone()),
+            pressed,
+            mods,
+            layer,
+            profile: 0,
+        };
+        let _ = self
+            .broker
+            .publish_typed(topics::INPUT_FLUX_ACTION, &ev, PublishOptions::default());
+        if pressed {
+            if let Some(e) = entry {
+                if let Some(topic) = e.topic {
+                    let opts = if e.retain {
+                        PublishOptions::retained()
+                    } else {
+                        PublishOptions::default()
+                    };
+                    let _ = self.broker.publish(&topic, e.payload, opts);
+                }
+            }
+        }
     }
 
     pub fn poll_disk_and_hot_reload(&self) {
@@ -1470,15 +1515,29 @@ async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespon
             }
         }
 
-        // If `bg-media` points to a local video/image file, upload it to `/home/root/openflux/media/`
-        // if absent on the keyboard and rewrite the keyboard state path to the keyboard filename.
-        if let Some(bg_mod) = kb_state.modules.get_mut("bg-media") {
-            if let Some(media_str) = bg_mod
-                .config
-                .get("media_path")
-                .and_then(|v| v.as_str())
-                .map(str::to_string)
-            {
+        // For ANY enabled module with `kind = "file"` settings pointing at a local file,
+        // auto-upload the file to `/home/root/openflux/media/` (skipping if already present)
+        // and rewrite the keyboard copy of that setting to the remote filename.
+        // Works identically for bundled `bg-media` AND any third-party module!
+        for (id, dm) in &discovered {
+            let Some(inst) = kb_state.modules.get_mut(id) else {
+                continue;
+            };
+            if !inst.enabled {
+                continue;
+            }
+            for field in &dm.manifest.settings {
+                if field.kind != openflux_modules::SettingKind::File {
+                    continue;
+                }
+                let Some(media_str) = inst
+                    .config
+                    .get(&field.key)
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                else {
+                    continue;
+                };
                 let lp = std::path::Path::new(&media_str);
                 if lp.is_file() {
                     if let Some(fname) = lp.file_name().and_then(|n| n.to_str()) {
@@ -1490,9 +1549,7 @@ async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespon
                             device.put_file(&remote_media, &bytes)?;
                             uploaded_files.push(remote_media);
                         }
-                        bg_mod
-                            .config
-                            .insert("media_path".into(), json!(fname));
+                        inst.config.insert(field.key.clone(), json!(fname));
                     }
                 }
             }
@@ -1666,11 +1723,121 @@ async fn keyboard_read_file(
     }
 }
 
+#[derive(Deserialize)]
+struct VialXferBody {
+    data: Vec<u8>,
+}
+
+async fn vial_status_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let s = Arc::clone(&state);
+    match tokio::task::spawn_blocking(move || s.v2.vial_relay.status()).await {
+        Ok(st) => (StatusCode::OK, Json(json!(st))),
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+async fn vial_xfer_api(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<VialXferBody>,
+) -> impl IntoResponse {
+    if body.data.len() > VIAL_RAW_EPSIZE {
+        return err_resp(
+            StatusCode::BAD_REQUEST,
+            format!("Vial packet exceeds {VIAL_RAW_EPSIZE} bytes"),
+        );
+    }
+    let mut cmd = [0u8; VIAL_RAW_EPSIZE];
+    cmd[..body.data.len()].copy_from_slice(&body.data);
+    let s = Arc::clone(&state);
+    match tokio::task::spawn_blocking(move || s.v2.vial_relay.xfer(&cmd)).await {
+        Ok(Ok(reply)) => (StatusCode::OK, Json(json!({ "data": reply.to_vec() }))),
+        Ok(Err(e)) => err_resp(StatusCode::BAD_GATEWAY, e),
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+async fn vial_actions_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let mut map = state.v2.vial_actions.lock().unwrap();
+    map.reconcile_from_registry(&state.v2.registry);
+    let _ = map.save(&state.v2.vial_actions_path);
+    let vial_json = map.build_vial_json();
+    (
+        StatusCode::OK,
+        Json(json!({
+            "slots": map.slots,
+            "entries": map.entries,
+            "vial_json": vial_json,
+        })),
+    )
+}
+
+async fn vial_sync_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let (xz_bytes, map_bytes, slot_count) = {
+        let mut map = state.v2.vial_actions.lock().unwrap();
+        map.reconcile_from_registry(&state.v2.registry);
+        let _ = map.save(&state.v2.vial_actions_path);
+        let xz = match map.build_vial_xz() {
+            Ok(b) => b,
+            Err(e) => return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e),
+        };
+        let mb = match serde_json::to_vec_pretty(&*map) {
+            Ok(b) => b,
+            Err(e) => return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        };
+        (xz, mb, map.entries.len())
+    };
+
+    let s = Arc::clone(&state);
+    let res = tokio::task::spawn_blocking(move || {
+        let mut firmware_synced = false;
+        let mut soc_synced = false;
+        let mut warnings = Vec::<String>::new();
+
+        // 1. Upload XZ vial.json to RP2040 LittleFS over IF 1 bulk command (0x73).
+        match crate::usb::libusb::KeyboardUsbClient::new() {
+            Ok(t) => match t.put_vial_def(&xz_bytes) {
+                Ok(()) => firmware_synced = true,
+                Err(e) => warnings.push(format!("RP2040 vial.json upload failed: {e}")),
+            },
+            Err(e) => warnings.push(format!("USB transport unavailable: {e}")),
+        }
+
+        // 2. Sync module_actions.json to the Linux SoC so offline keyboard modules resolve slots.
+        if let Err(e) = s
+            .device
+            .put_file("/home/root/openflux/v2/module_actions.json", &map_bytes)
+        {
+            warnings.push(format!("SoC module_actions.json sync failed: {e}"));
+        } else {
+            soc_synced = true;
+        }
+
+        json!({
+            "ok": firmware_synced || soc_synced,
+            "firmware_synced": firmware_synced,
+            "soc_synced": soc_synced,
+            "xz_bytes": xz_bytes.len(),
+            "slot_count": slot_count,
+            "warnings": warnings,
+        })
+    })
+    .await;
+
+    match res {
+        Ok(payload) => (StatusCode::OK, Json(payload)),
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
 /// Mounts all OpenFlux v2 routes (open localhost bus, module management, disclosure, lists, presets, GPU preview).
 pub fn router(state: Arc<ApiState>) -> Router {
     Router::new()
         .route("/v2/status", get(v2_status_api))
         .route("/v2/logs", get(get_all_logs_api))
+        .route("/v2/vial/status", get(vial_status_api))
+        .route("/v2/vial/xfer", post(vial_xfer_api))
+        .route("/v2/vial/actions", get(vial_actions_api))
+        .route("/v2/vial/sync", post(vial_sync_api))
         .route("/v2/bus/pub", post(bus_pub))
         .route("/v2/bus/retained", get(bus_retained))
         .route("/v2/bus/events", get(bus_events_poll))

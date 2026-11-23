@@ -1888,13 +1888,26 @@ pub fn reconcile_tick_with_state(
             }
         }
     }
-    // Also poll weather when the v2 `widget-weather` module is enabled!
+    // Poll weather whenever ANY enabled module (built-in or third-party!) subscribes to
+    // `host/weather/current` or `host/weather/#`!
     {
         let v2_saved = state.v2.registry.load_state();
-        if let Some(wm) = v2_saved.modules.get("widget-weather") {
-            if wm.enabled {
+        let v2_disc = state.v2.registry.discover();
+        for (id, dm) in &v2_disc {
+            let Some(inst) = v2_saved.modules.get(id) else {
+                continue;
+            };
+            if !inst.enabled {
+                continue;
+            }
+            let wants_weather = dm.manifest.channels.subscribes.iter().any(|p| {
+                p == openflux_bus::topics::HOST_WEATHER_CURRENT
+                    || p == "host/weather/#"
+                    || p == "host/weather/+"
+            });
+            if wants_weather {
                 has_weather_tile = true;
-                if let Some(c) = wm
+                if let Some(c) = inst
                     .config
                     .get("city")
                     .and_then(|x| x.as_str())
@@ -1902,9 +1915,10 @@ pub fn reconcile_tick_with_state(
                 {
                     weather_city = c.trim().to_string();
                 }
-                if let Some(cel) = wm.config.get("celsius").and_then(|x| x.as_bool()) {
+                if let Some(cel) = inst.config.get("celsius").and_then(|x| x.as_bool()) {
                     weather_celsius = cel;
                 }
+                break;
             }
         }
     }

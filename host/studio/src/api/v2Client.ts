@@ -45,6 +45,7 @@ export interface ModuleManifest {
   author: string;
   category: ModuleCategory;
   tags?: string[];
+  provides?: string[];
   stages: string[];
   host_requirement: HostRequirement;
   slot_capable: boolean;
@@ -295,4 +296,20 @@ export const v2Client = {
     v2Call<{ ok: boolean; uploaded_files: string[]; uploaded_bytes: number }>("POST", "/v2/keyboard/sync", {}),
   renderPreviewFrame: (steps = 2, step_ms = 16.667, width = 960, height = 540) =>
     v2Call<PreviewFrameResponse>("POST", "/v2/preview/frame", { steps, step_ms, width, height }),
+  vialStatus: () =>
+    v2Call<{ connected: boolean; product_name: string; vendor_id: number; product_id: number }>(
+      "GET",
+      "/v2/vial/status",
+    ),
+  vialXfer: (data: number[]) =>
+    v2Call<{ data: number[] }>("POST", "/v2/vial/xfer", { data }),
+  vialSyncActions: () =>
+    v2Call<{
+      ok: boolean;
+      firmware_synced: boolean;
+      soc_synced: boolean;
+      xz_bytes: number;
+      slot_count: number;
+      warnings: string[];
+    }>("POST", "/v2/vial/sync", {}),
 };
