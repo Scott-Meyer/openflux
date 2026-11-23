@@ -123,6 +123,21 @@ pub trait DeviceSink: Send + Sync {
     fn is_v2_mux_active(&self) -> bool {
         false
     }
+    /// `SET_GAMEPAD_CONFIG` (0x74): configures RP2040 Hall-effect Analog Gamepad engine.
+    fn set_gamepad_config(
+        &self,
+        _mode: u8,
+        _deadzone_um: u16,
+        _saturation_um: u16,
+        _curve: u8,
+        _radial_clamp: bool,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+    /// `SET_LAYER_OVERRIDE` (0x75): switches QMK override layer (0..7) or clears override (`None`).
+    fn set_layer_override(&self, _layer: Option<u8>) -> Result<(), String> {
+        Ok(())
+    }
     /// Streams a real-time `CH_MEDIA` frame (raw H.264 Annex-B or JPEG) on Priority 1 with zero disk I/O.
     fn send_media_frame(
         &self,

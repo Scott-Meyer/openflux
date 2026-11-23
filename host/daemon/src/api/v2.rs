@@ -39,7 +39,11 @@ pub struct V2State {
     /// keyboard `keys/providers/*`, blank keycaps on unplug, or double-fire Flux actions!
     pub preview_broker: Broker,
     pub registry: ModuleRegistry,
+    /// Display Lua runtime for Studio Live Preview (strictly isolated on `preview_broker`).
     pub runtime: Mutex<ModuleRuntime>,
+    /// Non-display host-logic Lua runtime (`stages.is_empty()`, e.g. `analog-gamepad` App Linking)
+    /// running cleanly on the live `broker` without ever emitting `keys/providers/*` display clutter!
+    pub host_logic_runtime: Mutex<ModuleRuntime>,
     pub host_procs: Mutex<HostProcessManager>,
     pub modules_rev: AtomicU64,
     last_disk_sig: Mutex<String>,
@@ -201,6 +205,7 @@ impl V2State {
         // never write onto the live keyboard-mirrored `broker` (no split-brain `keys/providers/*`,
         // no unplug keycap blanking, no double-firing actions!).
         let mut runtime = ModuleRuntime::new(preview_broker.clone(), geometry.clone());
+        let mut host_logic_runtime = ModuleRuntime::new(broker.clone(), geometry.clone());
         let discovered = registry.discover();
         let mut state_file = registry.load_state();
 
@@ -248,6 +253,12 @@ impl V2State {
         }
 
         runtime.sync_modules(&discovered, &state_file.modules);
+        let host_logic_discovered: BTreeMap<String, _> = discovered
+            .iter()
+            .filter(|(_, dm)| dm.manifest.stages.is_empty() && dm.manifest.entrypoints.script.is_some())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        host_logic_runtime.sync_modules(&host_logic_discovered, &state_file.modules);
 
         let mut host_procs = HostProcessManager::new("http://127.0.0.1:52324").with_bus_token(bus_token);
         for (id, dm) in &discovered {
@@ -269,6 +280,7 @@ impl V2State {
             preview_broker,
             registry,
             runtime: Mutex::new(runtime),
+            host_logic_runtime: Mutex::new(host_logic_runtime),
             host_procs: Mutex::new(host_procs),
             modules_rev: AtomicU64::new(1),
             last_disk_sig: Mutex::new(initial_sig),
@@ -549,6 +561,12 @@ impl V2State {
             self.sync_all_with_reason("disk_changed", None);
             return;
         }
+        // Step non-display host-logic Lua modules (e.g. `analog-gamepad` App Linking on `host/app/active`)
+        {
+            let mut hrt = self.host_logic_runtime.lock().unwrap();
+            let _ = hrt.check_hot_reload();
+            let _ = hrt.step_frame(0.35, openflux_bus::now_unix_ms());
+        }
         let reloaded = self.runtime.lock().unwrap().check_hot_reload();
         if !reloaded.is_empty() {
             for id in &reloaded {
@@ -568,6 +586,15 @@ impl V2State {
             .lock()
             .unwrap()
             .sync_modules(&discovered, &state.modules);
+        let host_logic_discovered: BTreeMap<String, _> = discovered
+            .iter()
+            .filter(|(_, dm)| dm.manifest.stages.is_empty() && dm.manifest.entrypoints.script.is_some())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        self.host_logic_runtime
+            .lock()
+            .unwrap()
+            .sync_modules(&host_logic_discovered, &state.modules);
 
         let mut hp = self.host_procs.lock().unwrap();
         for (id, dm) in &discovered {

@@ -635,6 +635,25 @@ impl DeviceSink for UsbDeviceSink {
         self.active_mux().is_some()
     }
 
+    fn set_gamepad_config(
+        &self,
+        mode: u8,
+        deadzone_um: u16,
+        saturation_um: u16,
+        curve: u8,
+        radial_clamp: bool,
+    ) -> Result<(), String> {
+        self.client()?
+            .set_gamepad_config(mode, deadzone_um, saturation_um, curve, radial_clamp)
+            .map_err(|e| e.to_string())
+    }
+
+    fn set_layer_override(&self, layer: Option<u8>) -> Result<(), String> {
+        self.client()?
+            .set_layer_override(layer)
+            .map_err(|e| e.to_string())
+    }
+
     fn send_media_frame(
         &self,
         stream_name: &str,

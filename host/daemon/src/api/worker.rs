@@ -116,6 +116,8 @@ pub struct WorkerLoopState {
     /// Host broker subscription used for real-time Host -> Keyboard `WireFrame` streaming.
     pub v2_bus_sub: Option<openflux_bus::Subscription>,
     pub last_bus_poll_at: Option<Instant>,
+    pub last_gamepad_cfg_sig: Option<String>,
+    pub last_layer_override_sig: Option<String>,
 }
 
 /// The host's time zone and UTC offset, which the keyboard's clock follows.
@@ -1502,6 +1504,62 @@ pub fn reconcile_tick_with_state(
         wstate.last_live_sent = None;
         wstate.last_live_sent_at = None;
         wstate.clock_sync = None;
+    }
+    if !has_firmware {
+        wstate.last_gamepad_cfg_sig = None;
+        wstate.last_layer_override_sig = None;
+    } else {
+        // Push v2 `gamepad/config` -> RP2040 `FW_CMD_SET_GAMEPAD_CONFIG (0x74)` on change or connect!
+        if let Some(msg) = state.v2.broker.get_retained("gamepad/config") {
+            let sig = msg.payload.to_string();
+            if wstate.last_gamepad_cfg_sig.as_deref() != Some(&sig) {
+                let mode = match msg.payload.get("mode").and_then(|v| v.as_str()).unwrap_or("off") {
+                    "hid" => 1u8,
+                    "xinput" => 2u8,
+                    _ => 0u8,
+                };
+                let dz = msg
+                    .payload
+                    .get("deadzone_um")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(150)
+                    .clamp(20, 1500) as u16;
+                let sat = msg
+                    .payload
+                    .get("saturation_um")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(2600)
+                    .clamp(500, 2800) as u16;
+                let curve = match msg.payload.get("curve").and_then(|v| v.as_str()).unwrap_or("s_curve") {
+                    "linear" => 0u8,
+                    "snappy" => 2u8,
+                    "precision" => 3u8,
+                    _ => 1u8,
+                };
+                let radial = msg
+                    .payload
+                    .get("radial_clamp")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                if device.set_gamepad_config(mode, dz, sat, curve, radial).is_ok() {
+                    wstate.last_gamepad_cfg_sig = Some(sig);
+                }
+            }
+        }
+        // Push v2 `keyboard/layer_override` (App Linking!) -> RP2040 `FW_CMD_SET_LAYER_OVERRIDE (0x75)`
+        if let Some(msg) = state.v2.broker.get_retained("keyboard/layer_override") {
+            let sig = msg.payload.to_string();
+            if wstate.last_layer_override_sig.as_deref() != Some(&sig) {
+                let layer = msg
+                    .payload
+                    .get("layer")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| (v.min(7)) as u8);
+                if device.set_layer_override(layer).is_ok() {
+                    wstate.last_layer_override_sig = Some(sig);
+                }
+            }
+        }
     }
     // The bridge leaves the keyboard's clock to the host.
     if has_bridge
