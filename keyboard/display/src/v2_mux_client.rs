@@ -32,10 +32,19 @@ pub enum LiveMediaSlot {
 }
 
 #[cfg(unix)]
+pub struct V2MuxPollResult {
+    pub bus_frames: Vec<PeerBusFrame>,
+    pub stream_changes: Vec<(String, bool, &'static str)>,
+    pub connected_now: bool,
+    pub disconnected: bool,
+}
+
+#[cfg(unix)]
 pub struct V2MuxClient {
     stream: Option<UnixStream>,
     decoder: MuxDecoder,
     pub streams: HashMap<String, LiveMediaSlot>,
+    last_attempt: Option<std::time::Instant>,
 }
 
 #[cfg(unix)]
@@ -52,6 +61,7 @@ impl V2MuxClient {
             stream: None,
             decoder: MuxDecoder::new(),
             streams: HashMap::new(),
+            last_attempt: None,
         }
     }
 
@@ -65,10 +75,16 @@ impl V2MuxClient {
 
     /// Attempts a non-blocking connect to `/tmp/openflux_v2.sock`. Returns `true` ONLY on a
     /// fresh connection transition so the caller immediately sends its initial `Subscribe` frame.
-    pub fn ensure_connected(&mut self) -> bool {
+    fn ensure_connected(&mut self) -> bool {
         if self.stream.is_some() {
             return false;
         }
+        if let Some(prev) = self.last_attempt {
+            if prev.elapsed() < std::time::Duration::from_millis(250) {
+                return false;
+            }
+        }
+        self.last_attempt = Some(std::time::Instant::now());
         if let Ok(s) = UnixStream::connect(V2_MUX_SOCK_PATH) {
             let _ = s.set_nonblocking(true);
             self.decoder.clear();
@@ -91,8 +107,10 @@ impl V2MuxClient {
         }
     }
 
-    /// Polls all available binary `MuxFrame`s. Returns `(bus_frames, stream_state_changes, disconnected)`.
-    pub fn poll(&mut self) -> (Vec<PeerBusFrame>, Vec<(String, bool, &'static str)>, bool) {
+    /// Automatically connects/reconnects to `/tmp/openflux_v2.sock` and polls all available
+    /// binary `MuxFrame`s with an explicit, unambiguous [`V2MuxPollResult`].
+    pub fn poll(&mut self) -> V2MuxPollResult {
+        let connected_now = self.ensure_connected();
         let mut bus_out = Vec::new();
         let mut stream_events = Vec::new();
         let mut raw_frames = Vec::new();
@@ -118,7 +136,12 @@ impl V2MuxClient {
                 }
             }
         } else {
-            return (Vec::new(), Vec::new(), false);
+            return V2MuxPollResult {
+                bus_frames: Vec::new(),
+                stream_changes: Vec::new(),
+                connected_now,
+                disconnected: false,
+            };
         }
 
         for frame in raw_frames {
@@ -146,7 +169,12 @@ impl V2MuxClient {
             self.streams.clear();
         }
 
-        (bus_out, stream_events, disconnected)
+        V2MuxPollResult {
+            bus_frames: bus_out,
+            stream_changes: stream_events,
+            connected_now,
+            disconnected,
+        }
     }
 
     fn ingest_media(

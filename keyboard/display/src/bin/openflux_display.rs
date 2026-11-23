@@ -10,8 +10,8 @@
 #[cfg(target_os = "linux")]
 use openflux_display::device_paths::{
     BACKLIGHT_BL_POWER_PATH, BACKLIGHT_BRIGHTNESS_PATH, BACKLIGHT_MAX_BRIGHTNESS_PATH,
-    DISPLAY_ACTIVE_MARKER_DEFAULT, DISPLAY_LOG_DIR_DEFAULT, DISPLAY_MEDIA_DIR_DEFAULT,
-    SAVED_BRIGHTNESS_PATH,
+    BRIDGE_SOCK_DEFAULT, DISPLAY_ACTIVE_MARKER_DEFAULT, DISPLAY_LOG_DIR_DEFAULT,
+    DISPLAY_MEDIA_DIR_DEFAULT, SAVED_BRIGHTNESS_PATH,
 };
 use openflux_display::layout::{DISPLAY_HEIGHT, DISPLAY_WIDTH};
 #[cfg(target_os = "linux")]
@@ -201,8 +201,11 @@ fn main() {
             v2_font_bytes.as_deref(),
         );
 
-        let mut ipc = BridgeIpcClient::new();
+        let sock_path = std::env::var("OPENFLUX_BRIDGE_SOCK")
+            .unwrap_or_else(|_| BRIDGE_SOCK_DEFAULT.to_string());
+        let mut ipc = BridgeIpcClient::new(sock_path);
         let mut v2_mux = V2MuxClient::new();
+        let mut logged_ipc_conn = false;
 
         let mut rkmpp_stream: Option<RkmppVideoStream> = None;
         let mut rkmpp_path = String::new();
@@ -238,24 +241,35 @@ fn main() {
                 let _ = std::fs::write(&hb, format!("{now_sec}\n"));
             }
 
-            // 1. Drain UART / bridge IPC lines (key press/release, QMK resolved_keys, layer state)
+            // 1. Drain UART / bridge IPC lines (auto-connects to `/tmp/openflux_bridge.sock`!)
             for line in ipc.poll_lines() {
                 v2.ingest_bridge_ipc_line(&line);
             }
+            if ipc.is_connected() && !logged_ipc_conn {
+                logged_ipc_conn = true;
+                log_diag("Bridge IPC connected (/tmp/openflux_bridge.sock)");
+            } else if !ipc.is_connected() {
+                logged_ipc_conn = false;
+            }
 
-            // 2. Full-duplex OFV2 bus & live H.264 media mux (`/tmp/openflux_v2.sock`)
-            let (bus_frames, stream_changes, reconnected) = v2_mux.poll();
-            if reconnected {
+            // 2. Full-duplex OFV2 bus & live H.264 media mux (auto-connects to `/tmp/openflux_v2.sock`!)
+            let mux_res = v2_mux.poll();
+            if mux_res.connected_now {
+                log_diag("OFV2 mux connected (/tmp/openflux_v2.sock)");
                 if let Some(sub_frame) = v2.build_mirror_subscribe(true) {
                     v2_mux.send_bus_frame(&sub_frame);
                 }
             }
-            for frame in bus_frames {
+            if mux_res.disconnected {
+                log_diag("OFV2 mux disconnected; purging remote topics");
+                v2.on_host_disconnect();
+            }
+            for frame in mux_res.bus_frames {
                 for reply in v2.on_mirror_frame(frame) {
                     v2_mux.send_bus_frame(&reply);
                 }
             }
-            for (sname, active, codec) in stream_changes {
+            for (sname, active, codec) in mux_res.stream_changes {
                 v2.publish_stream_state(&sname, active, codec);
             }
             if let Some(sub_frame) = v2.build_mirror_subscribe(false) {

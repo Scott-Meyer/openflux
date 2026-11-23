@@ -73,23 +73,20 @@ impl LineStreamBuffer {
 
 #[cfg(unix)]
 pub struct BridgeIpcClient {
+    sock_path: String,
     stream: Option<UnixStream>,
     line_buf: LineStreamBuffer,
-}
-
-#[cfg(unix)]
-impl Default for BridgeIpcClient {
-    fn default() -> Self {
-        Self::new()
-    }
+    last_attempt: Option<std::time::Instant>,
 }
 
 #[cfg(unix)]
 impl BridgeIpcClient {
-    pub fn new() -> Self {
+    pub fn new(sock_path: impl Into<String>) -> Self {
         Self {
+            sock_path: sock_path.into(),
             stream: None,
             line_buf: LineStreamBuffer::new(),
+            last_attempt: None,
         }
     }
 
@@ -102,11 +99,17 @@ impl BridgeIpcClient {
         self.stream.as_ref().map(|s| s.as_raw_fd())
     }
 
-    pub fn connect(&mut self, sock_path: &str) -> bool {
+    fn ensure_connected(&mut self) -> bool {
         if self.stream.is_some() {
             return true;
         }
-        if let Ok(mut s) = UnixStream::connect(sock_path) {
+        if let Some(prev) = self.last_attempt {
+            if prev.elapsed() < std::time::Duration::from_millis(250) {
+                return false;
+            }
+        }
+        self.last_attempt = Some(std::time::Instant::now());
+        if let Ok(mut s) = UnixStream::connect(&self.sock_path) {
             let _ = s.set_nonblocking(true);
             let _ = s.write_all(b"{\"cmd\":\"get_state\"}\n{\"cmd\":\"set_analog\",\"enabled\":true}\n");
             self.line_buf.clear();
@@ -118,6 +121,7 @@ impl BridgeIpcClient {
     }
 
     pub fn send_bus_frame(&mut self, frame: &openflux_bus::WireFrame) {
+        self.ensure_connected();
         let Some(ref mut s) = self.stream else {
             return;
         };
@@ -127,7 +131,11 @@ impl BridgeIpcClient {
         }
     }
 
+    /// Automatically connects/reconnects to the bridge IPC socket and drains all available lines.
     pub fn poll_lines(&mut self) -> Vec<String> {
+        if !self.ensure_connected() {
+            return Vec::new();
+        }
         let Some(ref mut s) = self.stream else {
             return Vec::new();
         };
