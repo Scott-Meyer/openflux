@@ -134,6 +134,7 @@ pub struct Compositor {
     overlay_tex: wgpu::Texture,
     overlay_view: wgpu::TextureView,
     canvas: Canvas2D,
+    cached_under_key_draws: Vec<openflux_modules::DrawCommand>,
 
     // Uniforms & instance storage
     custom_uniform_buf: wgpu::Buffer,
@@ -542,6 +543,7 @@ impl Compositor {
             overlay_tex,
             overlay_view,
             canvas: Canvas2D::new(DISPLAY_WIDTH_PX, DISPLAY_HEIGHT_PX, font_bytes),
+            cached_under_key_draws: Vec::new(),
             custom_uniform_buf,
             custom_bgl,
             custom_stage_bgl,
@@ -1015,11 +1017,19 @@ impl Compositor {
             );
         }
 
-        // Rasterize 2D overlay stages (under_key_draws -> fallback legends or top-bar dividers -> tiles -> world_overlay)
+        // Rasterize 2D overlay stages (reusing cached under_key_draws when `keys-renderer` calls `ctx:keep_layer()`!)
         let t_c2d = Instant::now();
+        if !scene.keep_under_key_layer {
+            self.cached_under_key_draws = scene.under_key_draws.clone();
+        }
         self.canvas.clear();
-        if !scene.under_key_draws.is_empty() {
-            self.canvas.execute(&scene.under_key_draws);
+        let active_under = if scene.keep_under_key_layer && !self.cached_under_key_draws.is_empty() {
+            &self.cached_under_key_draws
+        } else {
+            &scene.under_key_draws
+        };
+        if !active_under.is_empty() {
+            self.canvas.execute(active_under);
         }
         if scene.has_custom_keys_renderer {
             if !scene.has_custom_dock {

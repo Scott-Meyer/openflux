@@ -211,6 +211,7 @@ export const v2Client = {
   getStatus: () =>
     v2Call<{
       pid: number;
+      usb_protocol?: string;
       modules_rev: number;
       latest_bus_seq: number;
       gpu_adapter: string;

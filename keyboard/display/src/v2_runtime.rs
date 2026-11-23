@@ -58,6 +58,7 @@ pub struct KeyboardV2Display {
     pub time_sec: f32,
     pub overlay_dirty: bool,
     last_keys_hash: u64,
+    cached_under_key_draws: Vec<openflux_modules::DrawCommand>,
     last_tiles_hash: u64,
     last_world_hash: u64,
     last_tiles_ms: u64,
@@ -226,6 +227,7 @@ impl KeyboardV2Display {
             time_sec: 0.0,
             overlay_dirty: true,
             last_keys_hash: 0,
+            cached_under_key_draws: Vec::new(),
             last_tiles_hash: 0,
             last_world_hash: 0,
             last_tiles_ms: 0,
@@ -668,16 +670,23 @@ impl KeyboardV2Display {
         }
 
         // Fast zero-allocation hash split by stage:
-        // - Key legends / Shift / Cmd / Fn (`under_key_draws`) and interactive world overlays
-        //   (`world_overlay_draws`, e.g. Mochi / Prusa glance) update IMMEDIATELY with ZERO throttle
-        //   so rapid-tapping Shift/Cmd runs at full 60 FPS!
-        // - Decorative top-bar tile updates (`tile_draws`, e.g. equalizer bars) gently rate-limit
-        //   to ~8 Hz when keys didn't change so CPU stays cool.
-        let keys_hash = hash_draw_list(&scene.under_key_draws);
+        // When `keys-renderer` signals `keep_under_key_layer`, reuse cached key commands without
+        // re-hashing or re-rasterizing 273+ key legends on every 60 FPS video frame!
+        let keys_changed = if scene.keep_under_key_layer && self.last_keys_hash != 0 {
+            false
+        } else {
+            let kh = hash_draw_list(&scene.under_key_draws);
+            if kh != self.last_keys_hash {
+                self.last_keys_hash = kh;
+                self.cached_under_key_draws = scene.under_key_draws.clone();
+                true
+            } else {
+                false
+            }
+        };
         let world_hash = hash_draw_list(&scene.world_overlay_draws);
         let tiles_hash = hash_draw_list(&scene.tile_draws);
 
-        let keys_changed = keys_hash != self.last_keys_hash;
         let world_changed = world_hash != self.last_world_hash;
         let tiles_changed = tiles_hash != self.last_tiles_hash;
 
@@ -687,13 +696,17 @@ impl KeyboardV2Display {
             || (tiles_changed && now_ms.saturating_sub(self.last_tiles_ms) >= 140);
 
         if due_for_overlay {
-            self.last_keys_hash = keys_hash;
             self.last_world_hash = world_hash;
             self.last_tiles_hash = tiles_hash;
             self.last_tiles_ms = now_ms;
             self.canvas.clear();
-            if !scene.under_key_draws.is_empty() {
-                self.canvas.execute(&scene.under_key_draws);
+            let active_under = if scene.keep_under_key_layer && !self.cached_under_key_draws.is_empty() {
+                &self.cached_under_key_draws
+            } else {
+                &scene.under_key_draws
+            };
+            if !active_under.is_empty() {
+                self.canvas.execute(active_under);
             }
             if scene.has_custom_keys_renderer {
                 if !scene.has_custom_dock {

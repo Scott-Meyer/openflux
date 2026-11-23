@@ -348,8 +348,27 @@ export const App: React.FC<AppProps> = ({
     return services.navigation.subscribe(open);
   }, [services]);
 
-  const keyboardConnected = isKeyboardConnected(status);
-  const needsConversion = updatesStatus?.keyboard.mode === "needsConversion";
+  const [v2UsbProtocol, setV2UsbProtocol] = useState<string>("legacy");
+  const keyboardConnected = v2UsbProtocol === "ofv2" || isKeyboardConnected(status);
+  // Pure v2 mode: never show the legacy v1 "Factory Flux / Setup Required" conversion banner!
+  const needsConversion = false;
+
+  useEffect(() => {
+    let alive = true;
+    const pollV2 = () =>
+      void v2Client
+        .getStatus()
+        .then((s) => {
+          if (alive && s.usb_protocol) setV2UsbProtocol(s.usb_protocol);
+        })
+        .catch(() => {});
+    pollV2();
+    const t = window.setInterval(pollV2, 3000);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyboardConnected triggers an immediate update/conversion check when a keyboard is plugged in.
   useEffect(() => {
@@ -739,8 +758,12 @@ export const App: React.FC<AppProps> = ({
         </nav>
 
         <div className="topbar-right">
-          <div className={`conn-pill ${needsConversion ? "needs-setup" : ""}`}>
-            {needsConversion ? "Setup Required" : keyboardConnected ? "Connected" : "Offline"}
+          <div className="conn-pill">
+            {v2UsbProtocol === "ofv2"
+              ? "Connected · OFV2"
+              : keyboardConnected
+                ? "Connected"
+                : "Offline"}
           </div>
           <button type="button" className={`btn-primary ${dirty ? "" : "is-clean"}`} onClick={handleSaveToKeyboard}>
             {dirty ? "Save Changes to Keyboard" : "Save to Keyboard"}

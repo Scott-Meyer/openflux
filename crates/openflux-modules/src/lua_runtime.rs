@@ -445,6 +445,10 @@ impl UserData for RenderCtxHandle {
             this.scene.lock().unwrap().top_fade = frac.clamp(0.0, 0.85);
             Ok(())
         });
+        methods.add_method("keep_layer", |_, this, ()| {
+            this.scene.lock().unwrap().keep_under_key_layer = true;
+            Ok(())
+        });
     }
 }
 

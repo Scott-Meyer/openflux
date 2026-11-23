@@ -1638,6 +1638,15 @@ struct KeyboardReadQuery {
     path: String,
 }
 
+async fn keyboard_soc_stats_v2(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let device = state.device.clone();
+    let res = tokio::task::spawn_blocking(move || device.read_device_soc_stats()).await;
+    match res {
+        Ok(Some(v)) => (StatusCode::OK, Json(v)),
+        _ => (StatusCode::OK, Json(json!({ "offline": true }))),
+    }
+}
+
 async fn keyboard_read_file(
     State(state): State<Arc<ApiState>>,
     Query(q): Query<KeyboardReadQuery>,
@@ -1689,6 +1698,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/simulate/burst", post(simulate_physics_burst))
         .route("/v2/preview/frame", post(render_preview_frame))
         .route("/v2/keyboard/sync", post(keyboard_sync_v2))
+        .route("/v2/keyboard/soc-stats", get(keyboard_soc_stats_v2))
         .route("/v2/keyboard/read", get(keyboard_read_file))
         .route("/v2/keyboard/upload-media", post(keyboard_upload_media))
         .route("/v2/keyboard/sideload", post(keyboard_sideload))

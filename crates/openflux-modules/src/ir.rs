@@ -223,4 +223,7 @@ pub struct FrameScene {
     /// True when a `dock-top-bar` module is active and owns top-bar slot layout & dividers.
     #[serde(default)]
     pub has_custom_dock: bool,
+    /// True when `keys-renderer` reports zero legend/state changes this frame (skips 273 FFI text draws!).
+    #[serde(default)]
+    pub keep_under_key_layer: bool,
 }

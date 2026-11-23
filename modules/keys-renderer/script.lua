@@ -13,6 +13,8 @@ local active_layer = 0
 local active_app = { app_id = "", process_name = "", window_title = "", profile_name = "" }
 local active_profile = { index = 0, id = "", name = "" }
 local anim_t = 0.0
+local needs_redraw = true
+local has_animated_rule = false
 
 -- Logical keyCode -> ANSI physical key_index lookup (declared BEFORE apply_hardware_keymap!)
 local KEYCODE_TO_INDEX = {
@@ -205,6 +207,7 @@ function on_event(topic, payload)
     else
       providers[topic] = nil
     end
+    needs_redraw = true
   elseif topic == "input/keys/event" and type(payload) == "table" then
     local ki = payload.key_index
     if ki ~= nil then
@@ -213,33 +216,47 @@ function on_event(topic, payload)
       elseif payload.kind == "release" then
         held_by_idx[ki] = nil
       end
+      local prev_mask = current_mod_mask()
+      local prev_fn = held.fn
       held.ctrl, held.shift, held.alt, held.cmd, held.fn = false, false, false, false, false
       for hki, _ in pairs(held_by_idx) do
         local mk = MOD_KEYS[hki]
         if mk then held[mk] = true end
       end
+      if current_mod_mask() ~= prev_mask or held.fn ~= prev_fn then
+        needs_redraw = true
+      end
     end
   elseif topic == "keyboard/state" and type(payload) == "table" then
-    caps_lock = payload.caps_lock == true
+    local next_caps = payload.caps_lock == true
     local bf = tonumber(payload.active_layer_bitfield) or 1
+    local next_layer = 0
     if bf >= 2 then
-      -- Highest active layer bit > 0
-      local lyr = 0
       local v = bf
-      while v >= 2 do v = math.floor(v / 2); lyr = lyr + 1 end
-      active_layer = lyr
-    else
-      active_layer = 0
+      while v >= 2 do v = math.floor(v / 2); next_layer = next_layer + 1 end
+    end
+    if next_caps ~= caps_lock or next_layer ~= active_layer then
+      caps_lock = next_caps
+      active_layer = next_layer
+      needs_redraw = true
     end
   elseif topic == "keyboard/geometry" and type(payload) == "table" then
     geom = payload
     publish_layout_regions()
+    needs_redraw = true
   elseif topic == "keyboard/keymap" and type(payload) == "table" then
     apply_hardware_keymap(payload)
+    needs_redraw = true
   elseif topic == "host/app/active" and type(payload) == "table" then
-    active_app = payload
+    if active_app.app_id ~= payload.app_id or active_app.process_name ~= payload.process_name then
+      active_app = payload
+      needs_redraw = true
+    end
   elseif topic == "host/profile/active" and type(payload) == "table" then
-    active_profile = payload
+    if active_profile.id ~= payload.id or active_profile.name ~= payload.name then
+      active_profile = payload
+      needs_redraw = true
+    end
   end
 end
 
@@ -368,6 +385,14 @@ end
 
 function on_render(ctx, stage)
   if stage ~= "under_key" or not geom or not geom.keys then return end
+  -- Zero-allocation fast path: when no modifiers, providers, app, or animated cooldowns changed,
+  -- tell the compositor to keep the cached keycap overlay as-is (saves ~273 FFI text draws/frame!).
+  if not needs_redraw and not has_animated_rule then
+    ctx:keep_layer()
+    return
+  end
+  needs_redraw = false
+  has_animated_rule = false
   local default_col = module.color("legend_color", "#f2f7ff")
   local mod_mask = current_mod_mask()
 
@@ -428,6 +453,7 @@ function on_render(ctx, stage)
       local col = parse_hex(rule.color, default_col)
       local on_cd = (tonumber(rule.cd) or 0) > 0 and ((tonumber(rule.max_charges) or 0) == 0 or (tonumber(rule.charges) or 0) == 0)
       local ult_ready = (rule.ult_pct ~= nil and tonumber(rule.ult_pct) >= 100)
+      if on_cd or ult_ready then has_animated_rule = true end
       local pulse = ult_ready and (0.55 + 0.45 * math.sin(anim_t * 7.5)) or 0.0
 
       -- Optional subtle translucent tile frame (ONLY when a module explicitly asks for tile_bg = true!)
