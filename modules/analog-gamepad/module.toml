@@ -1,0 +1,79 @@
+id = "analog-gamepad"
+name = "Analog Gamepad (Wooting / HID / XInput)"
+version = "2.0.0"
+description = "Turns Hall-effect keys bound to GP_* keycodes in Vialite into 1000 Hz analog controller sticks, triggers, and buttons (Off / Classic HID for macOS & Steam / XInput for Windows) with deadzone, response curves, and automatic per-game App Linking"
+author = "OpenFlux"
+category = "host_service"
+tags = ["gaming", "gamepad", "analog", "xinput", "hid", "hall-effect"]
+depends = [{ role = "keys_renderer", optional = true }]
+stages = []
+host_requirement = "none"
+slot_capable = false
+stackable = true
+
+[entrypoints]
+script = "script.lua"
+
+[channels]
+subscribes = ["host/app/active", "modules/analog-gamepad/#"]
+publishes = ["gamepad/config", "keyboard/layer_override", "ui/toast"]
+
+[[settings]]
+key = "mode"
+label = "USB Gamepad Mode (Off = No Phantom Controller)"
+kind = "select"
+default = "off"
+options = ["off", "hid", "xinput"]
+
+[[settings]]
+key = "deadzone_mm"
+label = "Deadzone (mm)"
+kind = "number"
+default = 0.15
+min = 0.05
+max = 1.0
+
+[[settings]]
+key = "saturation_mm"
+label = "Full Press / Saturation (mm)"
+kind = "number"
+default = 2.6
+min = 1.2
+max = 2.8
+
+[[settings]]
+key = "curve"
+label = "Analog Response Curve"
+kind = "select"
+default = "s_curve"
+options = ["linear", "s_curve", "snappy", "precision"]
+
+[[settings]]
+key = "radial_clamp"
+label = "Circular Radial Stick Clamp (Normalize Diagonals)"
+kind = "boolean"
+default = true
+
+[[settings]]
+key = "linked_apps"
+label = "App Linking — Auto-Switch Layer for Games (comma-separated)"
+kind = "string"
+default = ""
+
+[[settings]]
+key = "linked_layer"
+label = "App Linking — Target QMK Layer (0..7)"
+kind = "number"
+default = 2
+min = 0
+max = 7
+
+[[actions]]
+id = "cycle_mode"
+label = "Cycle Gamepad Mode (Off / HID / XInput)"
+short_label = "Pad"
+icon = "star"
+accent = "#58f29c"
+mode = "tap"
+topic = "modules/analog-gamepad/cycle_mode"
+payload = { cycle = true }
