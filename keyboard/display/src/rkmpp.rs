@@ -593,7 +593,9 @@ pub fn open_rkmpp_stream(path: &str) -> Option<RkmppVideoStream> {
 /// ffmpeg subprocess and ZERO disk writes!
 pub struct LiveRkmppDecoder {
     in_tx: Option<mpsc::SyncSender<Vec<u8>>>,
-    latest_frame: Arc<Mutex<Option<Nv12Frame>>>,
+    /// Small 3-frame jitter FIFO so smoothly-arriving frames never overwrite each other
+    /// while still dropping oldest if decode ever outruns display (> 100ms).
+    frame_queue: Arc<Mutex<std::collections::VecDeque<Nv12Frame>>>,
     stop: Arc<AtomicBool>,
     join: Option<JoinHandle<()>>,
 }
@@ -601,9 +603,10 @@ pub struct LiveRkmppDecoder {
 impl LiveRkmppDecoder {
     pub fn open_h264() -> Option<Self> {
         let mpp = MppLib::load()?;
-        let (in_tx, in_rx) = mpsc::sync_channel::<Vec<u8>>(32);
-        let latest_frame: Arc<Mutex<Option<Nv12Frame>>> = Arc::new(Mutex::new(None));
-        let latest_bg = latest_frame.clone();
+        let (in_tx, in_rx) = mpsc::sync_channel::<Vec<u8>>(64);
+        let frame_queue: Arc<Mutex<std::collections::VecDeque<Nv12Frame>>> =
+            Arc::new(Mutex::new(std::collections::VecDeque::with_capacity(4)));
+        let queue_bg = frame_queue.clone();
         let stop = Arc::new(AtomicBool::new(false));
         let stop_bg = stop.clone();
 
@@ -722,7 +725,11 @@ impl LiveRkmppDecoder {
                                             ));
                                         }
                                         frame_idx += 1;
-                                        *latest_bg.lock().unwrap() = Some(Nv12Frame {
+                                        let mut q = queue_bg.lock().unwrap();
+                                        while q.len() >= 3 {
+                                            q.pop_front();
+                                        }
+                                        q.push_back(Nv12Frame {
                                             pts_ms: frame_idx * 16,
                                             width: w,
                                             height: h,
@@ -745,7 +752,7 @@ impl LiveRkmppDecoder {
 
         Some(Self {
             in_tx: Some(in_tx),
-            latest_frame,
+            frame_queue,
             stop,
             join: Some(join),
         })
@@ -758,7 +765,7 @@ impl LiveRkmppDecoder {
     }
 
     pub fn take_latest(&self) -> Option<Nv12Frame> {
-        self.latest_frame.lock().unwrap().take()
+        self.frame_queue.lock().unwrap().pop_front()
     }
 }
 

@@ -163,17 +163,19 @@ def main():
             "-vf",
             f"fps={fps},scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,format=yuv420p",
             *vcodec,
+            "-flush_packets", "1",
             "-f",
             "h264",
-            "-",
+            "pipe:1",
         ]
 
-        print(f"[bg-stream] streaming live 1080p@{fps}fps H.264 ({how}) -> /v2/streams/{STREAM_NAME}", flush=True)
+        print(f"[bg-stream] streaming live 720p@{fps}fps H.264 ({how}, low-latency flush) -> /v2/streams/{STREAM_NAME}", flush=True)
         proc = subprocess.Popen(
             cmd,
             stdin=yt_proc.stdout if yt_proc is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            bufsize=0,
         )
         if yt_proc is not None and yt_proc.stdout is not None:
             yt_proc.stdout.close()
@@ -194,8 +196,11 @@ def main():
                 conn.putheader("Authorization", f"Bearer {tok}")
             conn.endheaders()
 
+            # Use unbuffered os.read() so EVERY single flushed H.264 frame is sent the
+            # millisecond ffmpeg emits it (no 32KB Python BufferedReader frame batching!).
+            out_fd = proc.stdout.fileno()
             while True:
-                chunk = proc.stdout.read(32768)
+                chunk = os.read(out_fd, 16384)
                 if not chunk:
                     break
                 bytes_sent += len(chunk)
