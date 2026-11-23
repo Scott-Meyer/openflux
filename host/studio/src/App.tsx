@@ -50,27 +50,153 @@ const SIDEBAR_ORDER: Record<string, number> = {
   "widget-pomodoro": 45,
 };
 
-function moduleGlyph(m: V2ModuleRecord): string {
-  if (m.id === "keys-keymap") return "⌨";
-  if (m.id === "keys-custom" || m.id === "keys-renderer") return "◈";
-  if (m.id === "keys-shortcuts") return "⌘";
-  if (m.id === "dock-top-bar") return "▭";
-  if (m.id === "analog-gamepad") return "⊕";
-  if (m.id === "widget-prusa-connect") return "▣";
-  if (m.manifest.category === "background") return "≈";
-  if (m.manifest.category === "effect") return "✦";
-  if (m.manifest.category === "widget") return "◫";
-  return "●";
-}
+const ModuleIcon: React.FC<{ mod: V2ModuleRecord }> = ({ mod }) => {
+  const props = {
+    width: 15,
+    height: 15,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  if (mod.id === "keys-keymap") {
+    return (
+      <svg {...props}>
+        <rect x="2" y="5" width="20" height="14" rx="2" />
+        <path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M7 13h10" />
+      </svg>
+    );
+  }
+  if (mod.id === "keys-custom" || mod.id === "keys-renderer") {
+    return (
+      <svg {...props}>
+        <rect x="3" y="3" width="18" height="18" rx="3" />
+        <circle cx="8.5" cy="8.5" r="1.5" />
+        <path d="m21 15-5-5L5 21" />
+      </svg>
+    );
+  }
+  if (mod.id === "keys-shortcuts") {
+    return (
+      <svg {...props}>
+        <path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z" />
+      </svg>
+    );
+  }
+  if (mod.id === "dock-top-bar") {
+    return (
+      <svg {...props}>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M3 10h18M9 4v6M15 4v6" />
+      </svg>
+    );
+  }
+  if (mod.id === "analog-gamepad") {
+    return (
+      <svg {...props}>
+        <line x1="6" y1="12" x2="10" y2="12" />
+        <line x1="8" y1="10" x2="8" y2="14" />
+        <circle cx="15" cy="13" r="0.8" fill="currentColor" />
+        <circle cx="17" cy="11" r="0.8" fill="currentColor" />
+        <rect x="2" y="6" width="20" height="12" rx="4" />
+      </svg>
+    );
+  }
+  if (mod.id === "widget-prusa-connect") {
+    return (
+      <svg {...props}>
+        <path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+        <rect x="6" y="14" width="12" height="7" rx="1" />
+      </svg>
+    );
+  }
+  if (mod.id === "widget-clock") {
+    return (
+      <svg {...props}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </svg>
+    );
+  }
+  if (mod.id === "widget-weather") {
+    return (
+      <svg {...props}>
+        <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+      </svg>
+    );
+  }
+  if (mod.id === "widget-system-load") {
+    return (
+      <svg {...props}>
+        <path d="M3 12h4l3-7 4 14 3-7h4" />
+      </svg>
+    );
+  }
+  if (mod.id === "widget-media") {
+    return (
+      <svg {...props}>
+        <path d="M9 18V5l12-2v13" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="18" cy="16" r="3" />
+      </svg>
+    );
+  }
+  if (mod.id === "host-volume-osd" || mod.id === "ui-osd-toast") {
+    return (
+      <svg {...props}>
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" />
+      </svg>
+    );
+  }
+  if (mod.manifest.category === "background") {
+    return (
+      <svg {...props}>
+        <path d="M2 12c2-3 4-3 6 0s4 3 6 0 4-3 6 0" />
+        <path d="M2 17c2-3 4-3 6 0s4 3 6 0 4-3 6 0" />
+      </svg>
+    );
+  }
+  if (mod.manifest.category === "effect") {
+    return (
+      <svg {...props}>
+        <circle cx="12" cy="12" r="3" />
+        <circle cx="12" cy="12" r="8" strokeDasharray="3 3" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...props}>
+      <rect x="4" y="4" width="16" height="16" rx="3" />
+      <circle cx="12" cy="12" r="2.5" />
+    </svg>
+  );
+};
 
 function sidebarLabel(m: V2ModuleRecord): string {
-  if (m.id === "keys-keymap") return "QMK Keymap";
-  if (m.id === "keys-custom") return "Keycap Visuals";
-  if (m.id === "dock-top-bar") return "Top Bar Dock";
-  if (m.id === "keys-shortcuts") return "Shortcuts";
-  if (m.id === "analog-gamepad") return "Analog Gamepad";
-  if (m.id === "widget-prusa-connect") return "Prusa Printer";
-  return m.manifest.ui?.top_tab_label || m.manifest.name;
+  const clean: Record<string, string> = {
+    "keys-keymap": "QMK Keymap",
+    "keys-custom": "Keycap Visuals",
+    "dock-top-bar": "Top Bar & Bays",
+    "keys-shortcuts": "Shortcuts",
+    "analog-gamepad": "Analog Gamepad",
+    "widget-prusa-connect": "Prusa Printer",
+    "widget-clock": "Clock",
+    "widget-weather": "Weather",
+    "widget-system-load": "System Load",
+    "widget-media": "Now Playing",
+    "widget-pomodoro": "Pomodoro",
+    "bg-media": "Background",
+    "bg-aurora-shader": "Aurora Shader",
+    "bg-stream": "Live Stream",
+    "fx-classic-ripple": "Ripple Effect",
+    "fx-water-ripple-3d": "Water Surface",
+    "host-volume-osd": "Volume Watcher",
+    "ui-osd-toast": "Notifications",
+  };
+  return clean[m.id] || m.manifest.ui?.top_tab_label || m.manifest.name;
 }
 
 export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig, platform }) => {
@@ -231,7 +357,9 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
                 className={`kg-nav-item ${isSel ? "is-active" : ""}`}
                 onClick={() => openModule(m.id)}
               >
-                <span className="kg-nav-glyph">{moduleGlyph(m)}</span>
+                <span className="kg-nav-glyph">
+                  <ModuleIcon mod={m} />
+                </span>
                 <span className="kg-nav-label">{sidebarLabel(m)}</span>
                 {!m.healthy && <span className="kg-err-dot" title={m.last_error ?? "Module error"} />}
               </button>

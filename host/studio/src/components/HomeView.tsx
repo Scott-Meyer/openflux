@@ -102,9 +102,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const topBarWidgets = enabledModules
     .filter((m) => m.manifest.slot_capable && (m.state.slot_pos != null || m.state.slot != null))
     .sort((a, b) => (a.state.slot_pos ?? a.state.slot ?? 0) - (b.state.slot_pos ?? b.state.slot ?? 0));
-  const bgModules = enabledModules.filter(
-    (m) => m.manifest.category === "background" || m.manifest.stages.includes("background"),
-  );
+  const bgModules = enabledModules.filter((m) => m.manifest.category === "background");
 
   const selResolved = selectedKey != null ? resolved[selectedKey] : undefined;
   const selDecoded = selResolved ? decodeQmkKeycode(selResolved.keycode, actionsBySlot) : null;

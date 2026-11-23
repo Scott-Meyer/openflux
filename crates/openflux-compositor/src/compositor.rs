@@ -663,7 +663,52 @@ impl Compositor {
     }
 
     fn ensure_bg_image(&mut self, path: &str) {
-        let mtime = std::fs::metadata(path).ok().and_then(|m| m.modified().ok());
+        let lower = path.to_ascii_lowercase();
+        let is_video = lower.ends_with(".mp4")
+            || lower.ends_with(".mov")
+            || lower.ends_with(".mkv")
+            || lower.ends_with(".webm");
+        let resolved_path: std::path::PathBuf = if is_video {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            path.hash(&mut h);
+            let thumb = std::env::temp_dir().join(format!("keyglass_vid_poster_{:016x}.jpg", h.finish()));
+            if !thumb.is_file() {
+                let ff = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "ffmpeg"]
+                    .into_iter()
+                    .find(|c| *c == "ffmpeg" || Path::new(c).is_file())
+                    .unwrap_or("ffmpeg");
+                let _ = std::process::Command::new(ff)
+                    .args([
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-ss",
+                        "1.5",
+                        "-i",
+                        path,
+                        "-frames:v",
+                        "1",
+                        "-q:v",
+                        "3",
+                        "-y",
+                    ])
+                    .arg(&thumb)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status();
+            }
+            if thumb.is_file() {
+                thumb
+            } else {
+                Path::new(path).to_path_buf()
+            }
+        } else {
+            Path::new(path).to_path_buf()
+        };
+
+        let mtime = std::fs::metadata(&resolved_path).ok().and_then(|m| m.modified().ok());
         if self
             .bg_rgba_tex
             .as_ref()
@@ -671,7 +716,7 @@ impl Compositor {
         {
             return;
         }
-        let Ok(img) = image::open(Path::new(path)) else {
+        let Ok(img) = image::open(&resolved_path) else {
             return;
         };
         let rgba = img.to_rgba8();
