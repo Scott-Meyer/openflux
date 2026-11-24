@@ -17,6 +17,7 @@ local anim_t = 0.0
 local needs_redraw = true
 local has_animated_rule = false
 local parallax_refresh_frames = 0
+local show_alignment_grid = false
 
 -- Logical keyCode -> ANSI physical key_index lookup (declared BEFORE apply_hardware_keymap!)
 local KEYCODE_TO_INDEX = {
@@ -123,6 +124,10 @@ function on_init()
   local km = bus.get("keyboard/keymap")
   if type(km) == "table" then
     apply_hardware_keymap(km)
+  end
+  local px = bus.get("display/parallax")
+  if type(px) == "table" then
+    show_alignment_grid = (px.showAlignmentGrid == true)
   end
   -- Hydrate any already-retained providers immediately
   local existing = bus.list("keys/providers/#")
@@ -264,6 +269,9 @@ function on_event(topic, payload)
     publish_layout_regions()
     needs_redraw = true
   elseif topic == "display/parallax" then
+    if type(payload) == "table" and payload.showAlignmentGrid ~= nil then
+      show_alignment_grid = (payload.showAlignmentGrid == true)
+    end
     -- Refresh live optical parallax from shared `keyboard.layout()` immediately and over the
     -- next few frames (in case `apply_parallax_settings` runs right after event dispatch).
     geom = keyboard.layout()
@@ -672,6 +680,20 @@ function on_render(ctx, stage)
     local vy = (key.visual_y and key.visual_y > 0) and key.visual_y or (key.center_y + dy)
     local rx = key.visual_rect and r.x or (r.x + dx)
     local ry = key.visual_rect and r.y or (r.y + dy)
+
+    -- Optical Parallax Alignment Grid: crisp cyan keycap boundary + center crosshair (`+`)
+    -- aligned to each key's parallax-shifted visual_rect so you can dial in Eye Height /
+    -- Eye Distance / Display Offset through the physical clear keycaps.
+    if show_alignment_grid then
+      ctx:round_rect(
+        rx + 2, ry + 2, r.w - 4, r.h - 4, 10,
+        { 0.0, 0.85, 1.0, 0.07 },
+        2.0,
+        { 0.20, 0.92, 1.0, 0.90 }
+      )
+      ctx:line(vx - 10, vy, vx + 10, vy, 1.8, { 1.0, 0.82, 0.25, 0.92 })
+      ctx:line(vx, vy - 10, vx, vy + 10, 1.8, { 1.0, 0.82, 0.25, 0.92 })
+    end
 
     if w and w.mode ~= "hide" then
       local rule = w.rule
