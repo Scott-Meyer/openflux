@@ -464,7 +464,15 @@ export const v2Client = {
     v2Call("POST", "/v2/simulate/impulse", { x, y, radius, force, kind: "ripple", source: "studio" }),
   simulateBurst: () => v2Call("POST", "/v2/simulate/burst", {}),
   syncToKeyboard: () =>
-    v2Call<{ ok: boolean; uploaded_files: string[]; uploaded_bytes: number }>("POST", "/v2/keyboard/sync", {}),
+    v2Call<{
+      ok: boolean;
+      uploaded_files: string[];
+      uploaded_bytes: number;
+      skipped_unchanged?: number;
+      persisted_verified?: boolean;
+      persisted_error?: string | null;
+      runtime_applied?: boolean | null;
+    }>("POST", "/v2/keyboard/sync", {}),
   renderPreviewFrame: (steps = 2, step_ms = 16.667, width = 960, height = 540, overlay_only = false) =>
     v2Call<PreviewFrameResponse>("POST", "/v2/preview/frame", { steps, step_ms, width, height, overlay_only }),
   getMediaUrl: (name: string) => invoke<string>("v2_media_url", { name }),

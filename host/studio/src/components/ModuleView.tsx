@@ -143,9 +143,8 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
   }, [showLogs, mod.id]);
 
   const handleSettingChange = async (key: string, value: unknown) => {
-    const nextCfg = { ...(mod.state.config ?? {}), [key]: value };
     try {
-      await v2Client.updateModuleState(mod.id, { config: nextCfg });
+      await v2Client.updateModuleState(mod.id, { config: { [key]: value } });
       await onUpdated();
       setPreviewTick((t) => t + 1);
       setStatusMsg("Saved");
@@ -497,13 +496,20 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
             return (
               <div key={field.key} className="kg-setting-row">
                 <div className="kg-setting-meta">
-                  <div className="kg-setting-label">{field.label}</div>
+                  {field.kind === "boolean" ? (
+                    <label className="kg-setting-label" htmlFor={`module-setting-${field.key}`}>
+                      {field.label}
+                    </label>
+                  ) : (
+                    <div className="kg-setting-label">{field.label}</div>
+                  )}
                   {field.description && <div className="kg-muted">{field.description}</div>}
                 </div>
                 <div className="kg-setting-ctrl">
                   {field.kind === "boolean" ? (
                     <input
                       type="checkbox"
+                      id={`module-setting-${field.key}`}
                       checked={Boolean(cur)}
                       onChange={(e) => void handleSettingChange(field.key, e.target.checked)}
                     />

@@ -221,6 +221,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
   const [previewTick, setPreviewTick] = useState(0);
   const [htmlSdPlugins, setHtmlSdPlugins] = useState<Array<{ id: string; url: string }>>([]);
   const configRef = useRef<OpenFluxConfig>(config);
+  const modulesRevRef = useRef<number | null>(null);
   configRef.current = config;
 
   // Keep any imported HTML/JS `.sdPlugin` runtimes (like Task Timer's `index.html`) alive inside
@@ -267,6 +268,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
   const refreshModules = useCallback(async () => {
     try {
       const res = await v2Client.listModules();
+      modulesRevRef.current = res.modules_rev;
       setModules(res.modules);
       setPreviewTick((t) => t + 1);
     } catch {
@@ -339,11 +341,19 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
 
   useEffect(() => {
     let alive = true;
+    let daemonPid: number | undefined;
     const poll = () => {
       void v2Client
         .getStatus()
         .then((s) => {
-          if (alive && s.usb_protocol) setV2UsbProtocol(s.usb_protocol);
+          if (!alive) return;
+          if (s.usb_protocol) setV2UsbProtocol(s.usb_protocol);
+          // CLI/API edits change the same daemon state as Studio's own controls.
+          // A restarted daemon can reuse a revision number, so check its PID too.
+          const daemonChanged = daemonPid !== undefined && daemonPid !== s.pid;
+          daemonPid = s.pid;
+          if (daemonChanged) modulesRevRef.current = null;
+          if (modulesRevRef.current !== s.modules_rev) void refreshModules();
         })
         .catch(() => {});
       void client
@@ -359,7 +369,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
       alive = false;
       window.clearInterval(id);
     };
-  }, [client]);
+  }, [client, refreshModules]);
 
   const keyboardConnected = v2UsbProtocol === "ofv2" || isKeyboardConnected(status);
 
@@ -381,8 +391,20 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
     setToastMsg(null);
     try {
       const res = await v2Client.syncToKeyboard();
-      setToastMsg(`Synced ${res.uploaded_files.length} files to keyboard.`);
-      window.setTimeout(() => setToastMsg(null), 3500);
+      if (!res.ok || res.persisted_verified === false) {
+        setToastMsg(res.persisted_error ?? "Couldn't verify the settings on the keyboard.");
+        return;
+      }
+      if (res.persisted_verified !== true) {
+        setToastMsg(`Sent ${res.uploaded_files.length} files; not verified on the keyboard.`);
+        return;
+      }
+      const changed = `${res.uploaded_files.length} sent, ${res.skipped_unchanged ?? 0} unchanged`;
+      if (res.runtime_applied === true) {
+        setToastMsg(`Settings active on keyboard (${changed}).`);
+      } else {
+        setToastMsg(`Settings verified on keyboard; display activation not confirmed (${changed}).`);
+      }
     } catch (err) {
       setToastMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -465,7 +487,9 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
             disabled={syncing}
             onClick={() => void handleSyncToKeyboard()}
           >
-            <span className="kg-nav-glyph">↻</span>
+            <span className="kg-nav-glyph" aria-hidden="true">
+              ↻
+            </span>
             <span className="kg-nav-label">{syncing ? "Syncing…" : "Sync to Keyboard"}</span>
           </button>
           <button
@@ -489,7 +513,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
 
       {/* Expansive, Calm Single-Focus Main Canvas */}
       <main className="kg-canvas">
-        {toastMsg && <div className="kg-toast-banner">{toastMsg}</div>}
+        {toastMsg && <div className="kg-toast-banner" role="status">{toastMsg}</div>}
 
         {view.kind === "home" && (
           <HomeView
