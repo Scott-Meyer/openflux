@@ -1,9 +1,8 @@
 -- Analog Gamepad Controller Module (`analog-gamepad`)
--- Follows the Wooting / Keychron Q1 HE pattern:
---   1. Key bindings (`GP_LS_UP..GP_GUIDE`, 0x7E27..0x7E3F) live natively inside QMK / Vialite layers.
+--   1. Key bindings (`GP_LS_UP..GP_GUIDE`, 0x7E27..0x7E3F) live natively inside QMK / Vial layers.
 --   2. This module owns the 3-way USB output mode (`off` | `hid` | `xinput`), deadzone/saturation/curve
 --      tuning pushed via retained `gamepad/config` -> RP2040 `FW_CMD_SET_GAMEPAD_CONFIG (0x74)`,
---      and Wootility-style App Linking (`host/app/active` -> `keyboard/layer_override` -> `0x75`).
+--      and App Linking (`host/app/active` -> `keyboard/layer_override` -> `0x75`).
 
 local active_mode = nil
 local last_linked_match = false

@@ -351,7 +351,7 @@ impl V2State {
                 let official_path = registry.bundled_dir.join("official-list.json");
                 state_file.curated_lists.push(CuratedListSubscription {
                     id: "official".into(),
-                    name: "OpenFlux Official Curated List".into(),
+                    name: "Keyglass Bundled Catalog".into(),
                     source: official_path.to_string_lossy().into_owned(),
                     official: true,
                 });

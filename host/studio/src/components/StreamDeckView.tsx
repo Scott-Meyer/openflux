@@ -42,7 +42,7 @@ const BUILTIN_ACTIONS: Array<{
     desc: "Executes any script or CLI command",
     defaultTitle: "Run",
     defaultColor: "#f59e0b",
-    defaultSettings: { command: "say 'Hello from KeyGlass'" },
+    defaultSettings: { command: "say 'Hello from Keyglass'" },
   },
   {
     uuid: "builtin.toggle_command",

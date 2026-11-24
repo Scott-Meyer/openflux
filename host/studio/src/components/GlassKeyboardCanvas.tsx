@@ -570,7 +570,7 @@ export const GlassKeyboardCanvas: React.FC<GlassKeyboardCanvasProps> = ({
   }, [videoUrl]);
 
   if (webglFailed && fallbackSrc) {
-    return <img src={fallbackSrc} alt="KeyGlass Preview" className="kb-surface-preview-img" draggable={false} />;
+    return <img src={fallbackSrc} alt="Keyglass Preview" className="kb-surface-preview-img" draggable={false} />;
   }
 
   return (

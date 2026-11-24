@@ -1,7 +1,7 @@
 id = "analog-gamepad"
-name = "Analog Gamepad (Wooting / HID / XInput)"
+name = "Analog Gamepad"
 version = "2.0.0"
-description = "Turns Hall-effect keys bound to GP_* keycodes in Vialite into 1000 Hz analog controller sticks, triggers, and buttons (Off / Classic HID for macOS & Steam / XInput for Windows) with deadzone, response curves, and automatic per-game App Linking"
+description = "Turns Hall-effect keys bound to GP_* keycodes in QMK Keymap into 1000 Hz analog controller sticks, triggers, and buttons (Off / Classic HID for macOS, Linux & Steam / XInput) with deadzone, response curves, and automatic per-game App Linking"
 author = "Keyglass"
 category = "host_service"
 tags = ["gaming", "gamepad", "analog", "xinput", "hid", "hall-effect"]

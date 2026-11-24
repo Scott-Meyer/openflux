@@ -243,7 +243,7 @@ export class HostUpdateFlow {
             new DaemonError({
               kind: "local",
               message: "The background service agreed to stop but is still running.",
-              recovery: "Quit OpenFlux Studio and open it again, then retry the update.",
+              recovery: "Quit Keyglass Studio and open it again, then retry the update.",
             })
           );
         }

@@ -299,7 +299,7 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
 
   const handleExportPreset = async () => {
     try {
-      const res = await v2Client.exportPreset("My OpenFlux v2 Setup", "Exported from OpenFlux Studio");
+      const res = await v2Client.exportPreset("My Keyglass Setup", "Exported from Keyglass Studio");
       const blob = new Blob([JSON.stringify(res.preset, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -396,7 +396,7 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
           <div>
-            <strong>OpenFlux v2 Live GPU Compositor Preview</strong>
+            <strong>Keyglass Live GPU Compositor Preview</strong>
             {gpuAdapter && (
               <span style={{ marginLeft: 10, fontSize: 12, opacity: 0.72 }}>GPU: {gpuAdapter}</span>
             )}
@@ -460,7 +460,7 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
           {previewPng ? (
             <img
               src={previewPng}
-              alt="OpenFlux v2 GPU Preview (click to ripple)"
+              alt="Keyglass GPU Preview (click to ripple)"
               onClick={(e) => void handleCanvasClick(e)}
               style={{
                 width: "100%",
@@ -1118,7 +1118,7 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
               {installPreview.disclosure.name}
             </h3>
             <div style={{ fontSize: 13, opacity: 0.85 }}>
-              OpenFlux modules are not capability-sandboxed. Review what this bundle contains before installing:
+              Review what this module contains before installing. Review what this bundle contains before installing:
             </div>
             <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
               {installPreview.disclosure.summary_lines.map((line) => (

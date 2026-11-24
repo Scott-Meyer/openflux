@@ -213,7 +213,7 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
   };
 
   const handleUninstall = async () => {
-    if (!window.confirm(`Uninstall "${mod.manifest.name}" (${mod.tier})? This deletes its folder from KeyGlass.`)) {
+    if (!window.confirm(`Uninstall "${mod.manifest.name}" (${mod.tier})? This deletes its folder from Keyglass.`)) {
       return;
     }
     setBusyOp("uninstall");
@@ -246,7 +246,7 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
       .map((l) => `[${l.level}] ${l.message}`)
       .join("\n");
     const report = [
-      `### KeyGlass Module Diagnostics`,
+      `### Keyglass Module Diagnostics`,
       `- **Module:** ${mod.manifest.name} (\`${mod.id}\`) v${mod.manifest.version} (${mod.tier})`,
       `- **Author:** ${mod.manifest.author || "Unknown"}${mod.manifest.license ? ` · License: ${mod.manifest.license}` : ""}`,
       `- **Healthy:** ${mod.healthy}${mod.last_error ? ` — \`${mod.last_error}\`` : ""}`,

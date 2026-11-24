@@ -2093,6 +2093,18 @@ input[type="text"],
   box-shadow: 0 0 16px rgba(139, 92, 246, 0.4);
   z-index: 2;
 }
+.kb-key.is-drop-target {
+  box-shadow: 0 0 0 2.5px #58f29c, 0 0 22px rgba(88, 242, 156, 0.55) !important;
+  background: rgba(88, 242, 156, 0.18) !important;
+  transform: scale(1.03);
+  z-index: 6;
+}
+.kg-kc-chip[draggable="true"] {
+  cursor: grab;
+}
+.kg-kc-chip[draggable="true"]:active {
+  cursor: grabbing;
+}
 .kb-key.is-muted {
   opacity: 0.45;
 }

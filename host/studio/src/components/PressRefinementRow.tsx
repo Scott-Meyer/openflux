@@ -104,7 +104,7 @@ export const PressRefinementRow: React.FC<{ client: PressRefinementRowClient; fi
       </div>
       {canInstall && <p style={{ fontSize: 12, marginTop: 0 }}>{PRESS_REFINEMENT_NOT_INSTALLED}</p>}
       <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-        OpenFlux installs press-refinement data from the keyboard maker's published software. Download it or choose a
+        Keyglass installs press-refinement data from the keyboard maker's published software. Download it or choose a
         copy on your computer.
       </p>
       {refusal && <p className="muted">{refusal}</p>}

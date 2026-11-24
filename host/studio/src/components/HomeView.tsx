@@ -141,7 +141,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div>
                 <strong>No modules enabled yet</strong>
                 <div className="kg-muted">
-                  KeyGlass is a thin modular shell — enable a keymap, visuals, or widgets to make the keyboard yours.
+                  Keyglass is a thin modular shell — enable a keymap, visuals, or widgets to make the keyboard yours.
                 </div>
               </div>
               <button type="button" className="kg-btn-primary" onClick={onOpenStore}>

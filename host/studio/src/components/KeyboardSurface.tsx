@@ -29,8 +29,10 @@ interface KeyboardSurfaceProps {
   selectedKey: number | null;
   topBarSelected?: boolean;
   onSelectKey?: (keyIndex: number) => void;
+  /** Optional drag-and-drop handler: allows dragging keycodes/actions straight onto any keycap. */
+  onDropOnKey?: (keyIndex: number, dt: DataTransfer) => void;
   onSelectTopBar?: () => void;
-  /** When true, renders the live GPU-composited KeyGlass keyboard frame underneath sculpted refractive glass keycaps! */
+  /** When true, renders the live GPU-composited Keyglass keyboard frame underneath sculpted refractive glass keycaps! */
   showLivePreview?: boolean;
   /** Optional refresh token to re-capture a live preview frame when configs change. */
   previewTick?: number;
@@ -116,6 +118,7 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
   selectedKey,
   topBarSelected = false,
   onSelectKey,
+  onDropOnKey,
   onSelectTopBar,
   showLivePreview = false,
   previewTick = 0,
@@ -124,6 +127,7 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
   attachments: propAttachments,
 }) => {
   const [hoveredKey, setHoveredKey] = useState<number | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<number | null>(null);
   const [loadedBays, setLoadedBays] = useState<HardwareAttachmentBay[]>(DEFAULT_BAYS);
 
   useEffect(() => {
@@ -193,6 +197,7 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
         {/* Interactive 85-Key Sculpted Clear Glass Keycaps */}
         {keys.map((k) => {
           const isSel = selectedKey === k.index;
+          const isDrop = dragOverKey === k.index;
           const vis = renderKey?.(k);
           const leftPct = (k.rect.x / DISPLAY_W) * 100;
           const topPct = (k.rect.y / DISPLAY_H) * 100;
@@ -206,8 +211,33 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
               onClick={() => onSelectKey?.(k.index)}
               onMouseEnter={() => setHoveredKey(k.index)}
               onMouseLeave={() => setHoveredKey((prev) => (prev === k.index ? null : prev))}
+              onDragOver={
+                onDropOnKey
+                  ? (e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "copy";
+                      if (dragOverKey !== k.index) setDragOverKey(k.index);
+                    }
+                  : undefined
+              }
+              onDragLeave={
+                onDropOnKey
+                  ? () => {
+                      setDragOverKey((prev) => (prev === k.index ? null : prev));
+                    }
+                  : undefined
+              }
+              onDrop={
+                onDropOnKey
+                  ? (e) => {
+                      e.preventDefault();
+                      setDragOverKey(null);
+                      onDropOnKey(k.index, e.dataTransfer);
+                    }
+                  : undefined
+              }
               title={vis?.title ?? `Key ${k.index} (R${k.row} C${k.col})`}
-              className={`kb-key ${isSel ? "is-selected" : ""} ${showLivePreview ? "is-webgl-hit" : ""} ${vis?.muted ? "is-muted" : ""}`}
+              className={`kb-key ${isSel ? "is-selected" : ""} ${isDrop ? "is-drop-target" : ""} ${showLivePreview ? "is-webgl-hit" : ""} ${vis?.muted ? "is-muted" : ""}`}
               style={{
                 left: `calc(${leftPct}% + 2px)`,
                 top: `calc(${topPct}% + 2px)`,

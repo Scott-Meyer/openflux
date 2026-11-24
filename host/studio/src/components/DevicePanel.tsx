@@ -437,7 +437,7 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
               type="button"
               className="btn-danger"
               onClick={() => {
-                if (window.confirm("Restore all keyboard theme, font, and layout settings to the OpenFlux defaults?")) {
+                if (window.confirm("Restore all keyboard theme, font, and layout settings to the Keyglass defaults?")) {
                   onRestoreDefaults();
                 }
               }}
@@ -474,12 +474,12 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
               disabled={switchingSw}
               onClick={async () => {
                 const ok = window.confirm(
-                  "Switch a Stock keyboard to KeyGlass?\n\nThis installs KeyGlass packages cleanly (factory Hall-effect calibration is preserved; stock profiles & settings are NOT migrated).",
+                  "Switch a Stock keyboard to Keyglass?\n\nThis installs Keyglass packages cleanly (factory Hall-effect calibration is preserved; stock profiles & settings are NOT migrated).",
                 );
                 if (!ok) return;
                 setSwitchingSw(true);
                 try {
-                  const pkg = await client.pickFile("Select KeyGlass Keyboard Package (.ipk or .uf2)", ["ipk", "uf2"]);
+                  const pkg = await client.pickFile("Select Keyglass Keyboard Package (.ipk or .uf2)", ["ipk", "uf2"]);
                   if (!pkg?.trim()) return;
                   const res = pkg.toLowerCase().endsWith(".uf2")
                     ? await client.flashFirmwareUf2(pkg.trim())
@@ -492,7 +492,7 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
                 }
               }}
             >
-              Switch Stock → KeyGlass… (Current: {swMode === "keyglass" ? "KeyGlass" : swMode === "stock" ? "Stock" : "Offline"})
+              Switch Stock → Keyglass… (Current: {swMode === "keyglass" ? "Keyglass" : swMode === "stock" ? "Stock" : "Offline"})
             </button>
 
             <button
@@ -501,7 +501,7 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
               disabled={switchingSw}
               onClick={async () => {
                 const ok = window.confirm(
-                  "Return this keyboard to Stock Factory software?\n\nRestores signed factory bridge, display, and firmware (preserving calibration; KeyGlass modules & settings will not carry over).",
+                  "Return this keyboard to Stock Factory software?\n\nRestores signed factory bridge, display, and firmware (preserving calibration; Keyglass modules & settings will not carry over).",
                 );
                 if (!ok) return;
                 setSwitchingSw(true);
@@ -541,9 +541,9 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
 
         <div className="rail-divider" style={{ margin: "18px 0 12px" }} />
         <div className="kg-about-disclaimer">
-          <strong>About KeyGlass</strong>
+          <strong>About Keyglass</strong>
           <p className="muted" style={{ margin: "6px 0 0", fontSize: 12, lineHeight: 1.5 }}>
-            KeyGlass is an independent, community-driven open-source modular keyboard software project. It is not
+            Keyglass is an independent, community-driven open-source modular keyboard software project. It is not
             affiliated with, endorsed by, sponsored by, or an official product of Flux.
           </p>
         </div>

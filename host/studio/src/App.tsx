@@ -399,7 +399,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
   return (
     <div className="kg-shell">
       {/* Ultra-Calm Narrow Thin-Shell Left Sidebar (5a / 5b) */}
-      <aside className="kg-sidebar" aria-label="KeyGlass Modules">
+      <aside className="kg-sidebar" aria-label="Keyglass Modules">
         <button
           type="button"
           className={`kg-brand-pill ${view.kind === "home" ? "is-active" : ""}`}
@@ -407,7 +407,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
           title="Return to live keyboard overview"
         >
           <span className="kg-brand-icon">◇</span>
-          <span className="kg-brand-name">KeyGlass</span>
+          <span className="kg-brand-name">Keyglass</span>
           <span className={`kg-conn-dot ${keyboardConnected ? "is-on" : ""}`} />
           <span className={`kg-conn-text ${keyboardConnected ? "is-on" : ""}`}>
             {keyboardConnected ? "Connected" : "Offline"}
@@ -607,7 +607,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
             <div className="kg-page-header">
               <div className="kg-page-title-row">
                 <h1>Device &amp; About</h1>
-                <span className="kg-pill-subtle">KeyGlass · Hardware &amp; Optical Calibration</span>
+                <span className="kg-pill-subtle">Keyglass · Hardware &amp; Optical Calibration</span>
               </div>
             </div>
             <DevicePanel

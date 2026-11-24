@@ -158,31 +158,62 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
   }, [selectedKey, activeLayer, currentKeycode]);
 
   const assignKeycode = useCallback(
-    async (kc: number, labelHint?: string) => {
-      if (!selGeom) return;
+    async (kc: number, labelHint?: string, targetKeyIndex?: number) => {
+      const targetGeom =
+        targetKeyIndex != null ? keys.find((k) => k.index === targetKeyIndex) ?? selGeom : selGeom;
+      if (!targetGeom) return;
+      if (targetKeyIndex != null) {
+        setSelectedKey(targetKeyIndex);
+      }
       if (!connected) {
         setStatusNote("Connect your keyboard via USB to write live QMK bindings.");
         return;
       }
       try {
-        await vialSetKeycode(activeLayer, selGeom.row, selGeom.col, kc);
+        await vialSetKeycode(activeLayer, targetGeom.row, targetGeom.col, kc);
         setKeymaps((prev) => {
           const next = prev.map((lyr) => lyr.map((row) => [...row]));
-          if (next[activeLayer]?.[selGeom.row]) {
-            next[activeLayer][selGeom.row][selGeom.col] = kc;
+          if (next[activeLayer]?.[targetGeom.row]) {
+            next[activeLayer][targetGeom.row][targetGeom.col] = kc;
           }
           return next;
         });
         const dec = decodeQmkKeycode(kc, actionsBySlot);
         setStatusNote(
-          `Saved Key ${selGeom.index} (${LAYER_NAMES[activeLayer] ?? `L${activeLayer}`}) → ${labelHint || dec.label} (0x${kc.toString(16).toUpperCase().padStart(4, "0")})`,
+          `Saved Key ${targetGeom.index} (${LAYER_NAMES[activeLayer] ?? `L${activeLayer}`}) → ${labelHint || dec.label} (0x${kc.toString(16).toUpperCase().padStart(4, "0")})`,
         );
         onSynced?.();
       } catch (err) {
         setStatusNote(err instanceof Error ? err.message : String(err));
       }
     },
-    [selGeom, connected, activeLayer, actionsBySlot, onSynced],
+    [keys, selGeom, connected, activeLayer, actionsBySlot, onSynced],
+  );
+
+  const makeDragProps = (kc: number, label: string) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      e.dataTransfer.setData("application/x-keyglass-keycode", JSON.stringify({ kc, label }));
+      e.dataTransfer.setData("text/plain", label);
+      e.dataTransfer.effectAllowed = "copy";
+    },
+    title: `Click to assign to Key ${selectedKey}, or drag onto any keycap above`,
+  });
+
+  const handleDropOnKey = useCallback(
+    (keyIndex: number, dt: DataTransfer) => {
+      const raw = dt.getData("application/x-keyglass-keycode");
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw) as { kc?: number; label?: string };
+        if (typeof parsed.kc === "number") {
+          void assignKeycode(parsed.kc, parsed.label, keyIndex);
+        }
+      } catch {
+        // ignore invalid drop payload
+      }
+    },
+    [assignKeycode],
   );
 
   // Live "Press any key..." capture mode
@@ -318,7 +349,8 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
           keys={keys}
           selectedKey={selectedKey}
           onSelectKey={(k) => setSelectedKey(k)}
-          topBarSummary={`Editing Layer ${activeLayer} (${LAYER_NAMES[activeLayer] ?? `L${activeLayer}`}) — Click any key below to remap`}
+          onDropOnKey={handleDropOnKey}
+          topBarSummary={`Editing Layer ${activeLayer} (${LAYER_NAMES[activeLayer] ?? `L${activeLayer}`}) — Click any key or drag any binding below onto a keycap`}
           renderKey={(k) => {
             const kc = keymaps[activeLayer]?.[k.row]?.[k.col] ?? 0;
             const dec = decodeQmkKeycode(kc, actionsBySlot);
@@ -424,6 +456,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                           key={k.code}
                           type="button"
                           className={`kg-kc-chip ${currentKeycode === k.code ? "is-selected" : ""}`}
+                          {...makeDragProps(k.code, k.label)}
                           onClick={() => void assignKeycode(k.code, k.label)}
                         >
                           {k.label}
@@ -477,9 +510,10 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                   type="button"
                   className="kg-btn-primary"
                   disabled={comboMask === 0}
+                  {...(comboMask !== 0 ? makeDragProps(encodeModifiedKey(comboMask, comboBaseHid), "Mod+Key") : {})}
                   onClick={() => void assignKeycode(encodeModifiedKey(comboMask, comboBaseHid))}
                 >
-                  Assign Mod + Key
+                  Assign (or Drag) Mod + Key
                 </button>
               </div>
             </div>
@@ -535,13 +569,17 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                 <button
                   type="button"
                   className="kg-btn-primary"
+                  {...makeDragProps(
+                    htType === "mt" ? encodeModTap(htHoldMod, htTapHid) : encodeLayerTap(htHoldLayer, htTapHid),
+                    `${tapKeyLabel}/${htType === "mt" ? holdModLabel : `L${htHoldLayer}`}`,
+                  )}
                   onClick={() =>
                     void assignKeycode(
                       htType === "mt" ? encodeModTap(htHoldMod, htTapHid) : encodeLayerTap(htHoldLayer, htTapHid),
                     )
                   }
                 >
-                  Assign Tap / Hold
+                  Assign (or Drag) Tap / Hold
                 </button>
               </div>
               <div className="kg-muted" style={{ fontSize: 12 }}>
@@ -559,6 +597,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                     key={td}
                     type="button"
                     className={`kg-kc-chip ${currentKeycode === encodeTapDance(td) ? "is-selected" : ""}`}
+                    {...makeDragProps(encodeTapDance(td), `TD(${td})`)}
                     onClick={() => void assignKeycode(encodeTapDance(td), `TD(${td})`)}
                   >
                     TD({td})
@@ -585,7 +624,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span className="kg-muted">Click a target layer to assign immediately:</span>
+                <span className="kg-muted">Click a target layer (or drag it onto any key above):</span>
                 {Array.from({ length: Math.min(layerCount, 8) }, (_, i) => {
                   const kc = encodeLayerOp(layerOpBase, i);
                   return (
@@ -593,6 +632,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                       key={i}
                       type="button"
                       className={`kg-kc-chip ${currentKeycode === kc ? "is-selected" : ""}`}
+                      {...makeDragProps(kc, `L${i}`)}
                       onClick={() => {
                         setLayerTarget(i);
                         void assignKeycode(kc);
@@ -632,6 +672,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                       type="button"
                       className={`kg-kc-chip kg-kc-wide ${currentKeycode === a.keycode ? "is-selected" : ""}`}
                       style={{ borderColor: a.accent ? `${a.accent}66` : undefined }}
+                      {...makeDragProps(a.keycode, lbl)}
                       onClick={() => void assignKeycode(a.keycode, lbl)}
                     >
                       <span>{lbl}</span>
@@ -658,6 +699,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                     key={g.code}
                     type="button"
                     className={`kg-kc-chip kg-kc-wide ${currentKeycode === g.code ? "is-selected" : ""}`}
+                    {...makeDragProps(g.code, g.name)}
                     onClick={() => void assignKeycode(g.code, g.name)}
                   >
                     <span style={{ color: "#58f29c" }}>{g.label}</span>
