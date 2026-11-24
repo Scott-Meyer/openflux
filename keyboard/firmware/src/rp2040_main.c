@@ -1,7 +1,6 @@
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
 #include "hardware/uart.h"
-#include "hardware/watchdog.h"
 #include "pico/bootrom.h"
 #include "pico/stdlib.h"
 #include "tusb.h"
@@ -645,7 +644,10 @@ int main(void) {
         if (g_usb_reenumerate && !fw_usb_tx_busy(&g_usb_tx)) {
             g_usb_reenumerate = 0U;
             g_usb_gamepad_mounted = 0U;
-            /* Flush gamepad config + any pending QMK EEPROM before clean hardware USB reset. */
+            /* Flush gamepad config + any pending QMK EEPROM before resetting ONLY the USBCTRL peripheral.
+             * NEVER call watchdog_reboot() here: an RP2040 reset floats FW_SOC_PWR_GPIO high-Z and
+             * hard-power-cuts the RK3566 Linux SoC! tud_deinit(0) resets USBCTRL in isolation while
+             * keeping FW_SOC_PWR_GPIO held HIGH continuously. */
             if (g_gamepad_cfg_dirty) {
                 uint8_t gp_buf[FW_GP_CONFIG_WIRE_LEN];
                 fw_gamepad_config_encode(&g_gamepad_cfg, gp_buf);
@@ -653,17 +655,18 @@ int main(void) {
                 g_gamepad_cfg_dirty = false;
             }
             (void)fw_qmk_poll_eeprom_flush(to_ms_since_boot(get_absolute_time()), 0U, true);
-            /* Pump tud_task briefly so the 0x74 ACK ZLP reaches the host before resetting USB. */
+            /* Pump tud_task briefly so the 0x74 ACK ZLP reaches the host before disconnecting USB. */
             for (int i = 0; i < 40; i++) {
                 tud_task();
                 sleep_ms(1);
             }
-            tud_disconnect();
-            sleep_ms(80);
-            watchdog_reboot(0, 0, 10);
-            for (;;) {
-                tight_loop_contents();
-            }
+            tud_deinit(0);
+            sleep_ms(120);
+            tusb_init();
+            g_vial_rx_head = g_vial_rx_tail = 0U;
+            g_vial_tx_head = g_vial_tx_tail = 0U;
+            g_gp_has_sent = false;
+            g_usb_config_changed = 1U;
         }
         if (g_reboot_soc && !fw_usb_tx_busy(&g_usb_tx)) {
             g_reboot_soc = 0U;
