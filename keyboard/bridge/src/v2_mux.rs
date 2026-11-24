@@ -441,9 +441,18 @@ impl V2BridgeMux {
                 let _ = active.file.sync_all();
                 drop(active.file);
                 match std::fs::rename(&active.tmp_path, &active.target_path) {
-                    Ok(()) => BulkRpcResponse::Ok {
-                        data: serde_json::json!({ "path": active.target_path.to_string_lossy() }),
-                    },
+                    Ok(()) => {
+                        // Fsync parent directory so ext4 commits the directory entry immediately
+                        // and sudden power loss cannot roll the renamed file back to its old inode!
+                        if let Some(parent) = active.target_path.parent() {
+                            if let Ok(dir) = File::open(parent) {
+                                let _ = dir.sync_all();
+                            }
+                        }
+                        BulkRpcResponse::Ok {
+                            data: serde_json::json!({ "path": active.target_path.to_string_lossy() }),
+                        }
+                    }
                     Err(e) => {
                         let _ = std::fs::remove_file(&active.tmp_path);
                         BulkRpcResponse::Err {

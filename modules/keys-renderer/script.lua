@@ -684,18 +684,23 @@ function on_render(ctx, stage)
     local rx = key.visual_rect and r.x or (r.x + dx)
     local ry = key.visual_rect and r.y or (r.y + dy)
 
-    -- Optical Parallax Alignment Grid: crisp cyan keycap boundary + center crosshair (`+`)
-    -- aligned to each key's parallax-shifted visual_rect so you can dial in Eye Height /
-    -- Eye Distance / Display Offset through the physical clear keycaps.
+    -- Optical Parallax Alignment Grid: crisp cyan inner-window calibration box + center
+    -- crosshair (`+`) inset to match the physical clear acrylic window inside each keycap
+    -- (inset 15px from the outer 105.5px skirt so the box sits cleanly inside the clear cap).
     if show_alignment_grid then
+      local inset = 15
+      local gx = rx + inset
+      local gy = ry + inset
+      local gw = math.max(16, r.w - inset * 2)
+      local gh = math.max(16, r.h - inset * 2)
       ctx:round_rect(
-        rx + 2, ry + 2, r.w - 4, r.h - 4, 10,
-        { 0.0, 0.85, 1.0, 0.07 },
+        gx, gy, gw, gh, 7,
+        { 0.0, 0.85, 1.0, 0.08 },
         2.0,
-        { 0.20, 0.92, 1.0, 0.90 }
+        { 0.20, 0.92, 1.0, 0.92 }
       )
-      ctx:line(vx - 10, vy, vx + 10, vy, 1.8, { 1.0, 0.82, 0.25, 0.92 })
-      ctx:line(vx, vy - 10, vx, vy + 10, 1.8, { 1.0, 0.82, 0.25, 0.92 })
+      ctx:line(vx - 7, vy, vx + 7, vy, 1.8, { 1.0, 0.82, 0.25, 0.95 })
+      ctx:line(vx, vy - 7, vx, vy + 7, 1.8, { 1.0, 0.82, 0.25, 0.95 })
     end
 
     if w and w.mode ~= "hide" then

@@ -2739,253 +2739,382 @@ async fn keyboard_flash_uf2(
     }
 }
 
-/// Pushes enabled local/installed v2 modules, `modules_state.json`, and any referenced media video
-/// straight to `/home/root/openflux/v2/` on the connected Flux keyboard via USB `PUT_FILE`.
+/// Pushes ONLY changed enabled v2 modules, shortcuts, prefs, media, and `modules_state.json`
+/// to `/home/root/openflux/v2/` on the connected Flux keyboard (differential SHA-256 sync),
+/// then reads back `/home/root/openflux/v2/modules_state.json` to verify on-device persistence.
+/// Keeps file persistence (`persisted_verified`) strictly distinct from renderer acknowledgment
+/// (`runtime_applied`) and publishes the same structured status to retained `keyboard/sync/status`.
 async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     let discovered = state.v2.registry.discover();
     let mut kb_state = state.v2.registry.load_state();
     let kb_state_path = state.v2.registry.state_path.clone();
     let host_id_for_sync = state.v2.load_host_identity().host_id;
     let device = state.device.clone();
+    let broker = state.v2.broker.clone();
 
     let res = tokio::task::spawn_blocking(move || {
-        let (has_bridge, _) = device.is_connected();
-        if !has_bridge {
-            return Err("Keyboard USB bridge is not connected".to_string());
-        }
-        let mut uploaded_files = Vec::new();
-        let mut uploaded_bytes = 0usize;
-
-        // Single Source of Truth: upload ALL enabled modules (bundled, installed, AND local)
-        // directly to `/home/root/openflux/v2/modules/<id>/` (skipping host-only `host/` scripts,
-        // `.git`, `.DS_Store`, `__pycache__`), so the host is always authoritative and partial
-        // manual `local/` shadows are never needed!
-        for (id, dm) in &discovered {
-            let is_enabled = kb_state.modules.get(id).map(|s| s.enabled).unwrap_or(false);
-            if !is_enabled && dm.tier == openflux_modules::ModuleTier::Bundled {
-                continue;
-            }
-            let mut stack = vec![dm.path.clone()];
-            while let Some(dir) = stack.pop() {
-                let Ok(rd) = std::fs::read_dir(&dir) else { continue };
-                for entry in rd.flatten() {
-                    let p = entry.path();
-                    let name = entry.file_name().to_string_lossy().into_owned();
-                    if name == ".git" || name == ".DS_Store" || name == "__pycache__" || name == "host" {
-                        continue;
-                    }
-                    if p.is_dir() {
-                        stack.push(p);
-                    } else if p.is_file() {
-                        if let Ok(rel) = p.strip_prefix(&dm.path) {
-                            let rel_str = rel.to_string_lossy().replace('\\', "/");
-                            let remote = format!("/home/root/openflux/v2/modules/{id}/{rel_str}");
-                            let bytes = std::fs::read(&p).map_err(|e| e.to_string())?;
-                            uploaded_bytes += bytes.len();
-                            device.put_file(&remote, &bytes)?;
-                            uploaded_files.push(remote);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Sync bundled shortcut JSON packs straight to `/home/root/openflux/shortcuts/` too
-        // so updating `macos.json` or any app pack reaches the keyboard immediately without an .ipk rebuild!
-        let shortcut_dirs = [
-            kb_state_path.parent().and_then(|p| p.parent()).map(|p| p.join("assets/shortcuts")),
-            std::env::current_exe().ok().and_then(|e| e.parent().and_then(|p| p.parent()).map(|p| p.join("Resources/assets/shortcuts"))),
-        ];
-        if let Some(sc_dir) = shortcut_dirs.into_iter().flatten().find(|d| d.is_dir()) {
-            if let Ok(rd) = std::fs::read_dir(&sc_dir) {
-                for entry in rd.flatten() {
-                    let p = entry.path();
-                    if p.is_file() && p.extension().and_then(|e| e.to_str()) == Some("json") {
-                        if let Some(fname) = p.file_name().and_then(|n| n.to_str()) {
-                            let remote = format!("/home/root/openflux/shortcuts/{fname}");
-                            if let Ok(bytes) = std::fs::read(&p) {
-                                uploaded_bytes += bytes.len();
-                                device.put_file(&remote, &bytes)?;
-                                uploaded_files.push(remote);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Sync pure-v2 `display_prefs.json` (parallax + brightness + sleep timeout) to keyboard!
-        let prefs_local = kb_state_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("display_prefs.json");
-        if let Ok(bytes) = std::fs::read(&prefs_local) {
-            let remote = "/home/root/openflux/v2/display_prefs.json".to_string();
-            uploaded_bytes += bytes.len();
-            device.put_file(&remote, &bytes)?;
-            uploaded_files.push(remote);
-        }
-
-        // Sync `profiles.json` + per-host backup `/home/root/openflux/v2/hosts/<host_id>/profiles.json`
-        let prof_local = kb_state_path
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-            .join("profiles.json");
-        if let Ok(bytes) = std::fs::read(&prof_local) {
-            for remote in [
-                "/home/root/openflux/v2/profiles.json".to_string(),
-                format!("/home/root/openflux/v2/hosts/{host_id_for_sync}/profiles.json"),
-            ] {
-                uploaded_bytes += bytes.len();
-                device.put_file(&remote, &bytes)?;
-                uploaded_files.push(remote);
-            }
-        }
-
-        // Sync `modules/streamdeck` custom button icons (from `streamdeck/buttons.json`) to keyboard!
-        let sd_btns_path = kb_state_path
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-            .join("streamdeck/buttons.json");
-        if let Ok(raw) = std::fs::read_to_string(&sd_btns_path) {
-            if let Ok(doc) = serde_json::from_str::<StreamDeckButtonsFile>(&raw) {
-                let media_dir = default_data_dir().join("media");
-                for b in &doc.buttons {
-                    if let Some(ref fname) = b.icon_media {
-                        let clean = std::path::Path::new(fname)
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or(fname);
-                        let lp = media_dir.join(clean);
-                        if lp.is_file() {
-                            let remote = format!("/home/root/openflux/media/{clean}");
-                            if !device.stat_file(&remote).unwrap_or(false) {
-                                if let Ok(bytes) = std::fs::read(&lp) {
-                                    uploaded_bytes += bytes.len();
-                                    device.put_file(&remote, &bytes)?;
-                                    uploaded_files.push(remote);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Sync `module_actions.json` (64-slot QMK action registry) to keyboard for offline use!
-        let actions_local = kb_state_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("module_actions.json");
-        if let Ok(bytes) = std::fs::read(&actions_local) {
-            let remote = "/home/root/openflux/v2/module_actions.json".to_string();
-            uploaded_bytes += bytes.len();
-            device.put_file(&remote, &bytes)?;
-            uploaded_files.push(remote);
-        }
-
-        // Sync custom PNG keycap icons referenced by `keys-custom` (`by_key` / `by_action`)
-        if let Some(custom_inst) = kb_state.modules.get("keys-custom") {
-            let media_dir = default_data_dir().join("media");
-            for map_key in ["by_key", "by_action"] {
-                if let Some(obj) = custom_inst.config.get(map_key).and_then(|v| v.as_object()) {
-                    for ov in obj.values() {
-                        if let Some(img_name) = ov.get("image").and_then(|v| v.as_str()) {
-                            let fname = std::path::Path::new(img_name)
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or(img_name);
-                            let lp = media_dir.join(fname);
-                            if lp.is_file() {
-                                let remote = format!("/home/root/openflux/media/{fname}");
-                                if !device.stat_file(&remote).unwrap_or(false) {
-                                    if let Ok(bytes) = std::fs::read(&lp) {
-                                        uploaded_bytes += bytes.len();
-                                        device.put_file(&remote, &bytes)?;
-                                        uploaded_files.push(remote);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // For ANY enabled module with `kind = "file"` settings pointing at a local file,
-        // auto-upload the file to `/home/root/openflux/media/` (skipping if already present)
-        // and rewrite the keyboard copy of that setting to the remote filename.
-        // Works identically for bundled `bg-media` AND any third-party module!
-        for (id, dm) in &discovered {
-            let Some(inst) = kb_state.modules.get_mut(id) else {
-                continue;
-            };
-            if !inst.enabled {
-                continue;
-            }
-            for field in &dm.manifest.settings {
-                if field.kind != openflux_modules::SettingKind::File {
-                    continue;
-                }
-                let Some(media_str) = inst
-                    .config
-                    .get(&field.key)
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string)
-                else {
-                    continue;
-                };
-                let lp = std::path::Path::new(&media_str);
-                if lp.is_file() {
-                    if let Some(fname) = lp.file_name().and_then(|n| n.to_str()) {
-                        let remote_media = format!("/home/root/openflux/media/{fname}");
-                        let already_there = device.stat_file(&remote_media).unwrap_or(false);
-                        if !already_there {
-                            let bytes = std::fs::read(lp).map_err(|e| e.to_string())?;
-                            uploaded_bytes += bytes.len();
-                            device.put_file(&remote_media, &bytes)?;
-                            uploaded_files.push(remote_media);
-                        }
-                        inst.config.insert(field.key.clone(), json!(fname));
-                    }
-                }
-            }
-        }
-
-        // Sync user-edited custom shortcuts (from Studio's Shortcuts tab) if present
-        if let Some(cfg_dir) = kb_state_path
-            .parent()
-            .and_then(|v2_dir| v2_dir.parent())
-            .map(|data_dir| data_dir.join("config"))
-        {
-            let cs = cfg_dir.join("custom_shortcuts.json");
-            if cs.is_file() {
-                if let Ok(bytes) = std::fs::read(&cs) {
-                    let remote_cs = "/home/root/openflux/v2/custom_shortcuts.json";
-                    uploaded_bytes += bytes.len();
-                    let _ = device.put_file(remote_cs, &bytes);
-                    uploaded_files.push(remote_cs.to_string());
-                }
-            }
-        }
-
-        // Write `modules_state.json` atomically last so the keyboard hot-reloads cleanly.
-        let state_bytes = serde_json::to_vec_pretty(&kb_state).map_err(|e| e.to_string())?;
-        uploaded_bytes += state_bytes.len();
-        let remote_state = "/home/root/openflux/v2/modules_state.json";
-        device.put_file(remote_state, &state_bytes)?;
-        uploaded_files.push(remote_state.to_string());
-
-        Ok::<(Vec<String>, usize), String>((uploaded_files, uploaded_bytes))
+        sync_v2_to_device(
+            &*device,
+            &discovered,
+            &mut kb_state,
+            &kb_state_path,
+            &host_id_for_sync,
+        )
     })
     .await;
 
     match res {
-        Ok(Ok((files, bytes))) => (
-            StatusCode::OK,
-            Json(json!({
-                "ok": true,
-                "uploaded_files": files,
-                "uploaded_bytes": bytes,
-            })),
-        ),
-        Ok(Err(e)) => err_resp(StatusCode::BAD_GATEWAY, e),
+        Ok(Ok(report)) => {
+            // Check whether the running keyboard display has explicitly acknowledged this exact
+            // state hash on `display/runtime_state`; stay honest (`null`) if unsupported/pending.
+            let runtime_applied = broker
+                .get_retained("display/runtime_state")
+                .and_then(|m| {
+                    m.payload
+                        .get("modules_state_sha256")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s == report.expected_state_sha256)
+                });
+            let status_payload = json!({
+                "ok": report.persisted_verified,
+                "persisted_verified": report.persisted_verified,
+                "persisted_error": report.persisted_error,
+                "runtime_applied": runtime_applied,
+                "uploaded_files": report.uploaded_files,
+                "uploaded_bytes": report.uploaded_bytes,
+                "skipped_unchanged": report.skipped_unchanged,
+                "expected_state_sha256": report.expected_state_sha256,
+                "readback_state_sha256": report.readback_state_sha256,
+                "synced_at_ms": openflux_bus::now_unix_ms(),
+            });
+            let _ = broker.publish(
+                "keyboard/sync/status",
+                status_payload.clone(),
+                PublishOptions::retained().with_origin("host"),
+            );
+            (StatusCode::OK, Json(status_payload))
+        }
+        Ok(Err(e)) => {
+            let err_payload = json!({
+                "ok": false,
+                "persisted_verified": false,
+                "persisted_error": e,
+                "runtime_applied": null,
+                "synced_at_ms": openflux_bus::now_unix_ms(),
+            });
+            let _ = broker.publish(
+                "keyboard/sync/status",
+                err_payload,
+                PublishOptions::retained().with_origin("host"),
+            );
+            err_resp(StatusCode::BAD_GATEWAY, e)
+        }
         Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     }
+}
+
+#[derive(Debug, Clone)]
+struct KeyboardSyncReport {
+    uploaded_files: Vec<String>,
+    uploaded_bytes: usize,
+    skipped_unchanged: usize,
+    expected_state_sha256: String,
+    readback_state_sha256: Option<String>,
+    persisted_verified: bool,
+    persisted_error: Option<String>,
+}
+
+fn sha256_hex_bytes(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    format!("{:x}", h.finalize())
+}
+
+fn sync_v2_to_device(
+    device: &dyn crate::api::state::DeviceSink,
+    discovered: &BTreeMap<String, openflux_modules::DiscoveredModule>,
+    kb_state: &mut openflux_modules::ModulesStateFile,
+    kb_state_path: &std::path::Path,
+    host_id_for_sync: &str,
+) -> Result<KeyboardSyncReport, String> {
+    let (has_bridge, _) = device.is_connected();
+    if !has_bridge {
+        return Err("Keyboard USB bridge is not connected".to_string());
+    }
+    // Ground-truth differential sync for all small managed files (modules, shortcuts, prefs,
+    // profiles, actions, state): reads actual remote bytes from the attached keyboard and skips
+    // writing ONLY when the remote SHA-256 matches bit-for-bit. No host-local manifest cache, so
+    // switching keyboards, out-of-band edits, or ext4 journal rollbacks can never cause false skips.
+    struct SyncAcc<'a> {
+        device: &'a dyn crate::api::state::DeviceSink,
+        uploaded_files: Vec<String>,
+        uploaded_bytes: usize,
+        skipped_unchanged: usize,
+    }
+
+    fn is_remote_missing_err(err: &str) -> bool {
+        let low = err.to_ascii_lowercase();
+        low.contains("no such file")
+            || low.contains("not found")
+            || low.contains("os error 2")
+            || low.contains("enoent")
+    }
+
+    impl<'a> SyncAcc<'a> {
+        fn put_if_changed(&mut self, remote: &str, bytes: &[u8]) -> Result<(), String> {
+            let sha = sha256_hex_bytes(bytes);
+            match self.device.get_file(remote) {
+                Ok(existing) => {
+                    if sha256_hex_bytes(&existing) == sha {
+                        self.skipped_unchanged += 1;
+                        return Ok(());
+                    }
+                }
+                Err(e) if is_remote_missing_err(&e) => {
+                    // File is genuinely absent on this keyboard -> upload it.
+                }
+                Err(e) => {
+                    // Transport/permission/bridge error -> surface honestly instead of guessing.
+                    return Err(format!("read remote {remote} before sync: {e}"));
+                }
+            }
+            self.uploaded_bytes += bytes.len();
+            self.device.put_file(remote, bytes)?;
+            self.uploaded_files.push(remote.to_string());
+            Ok(())
+        }
+
+        // Large media assets (`/home/root/openflux/media/*`, e.g. 50 MB video loops and icon files)
+        // are treated as immutable by filename: checked via `stat_file` so we avoid streaming
+        // multi-megabyte files back over USB just to hash them.
+        fn put_media_if_missing(&mut self, remote: &str, local_path: &std::path::Path) -> Result<(), String> {
+            if self.device.stat_file(remote)? {
+                self.skipped_unchanged += 1;
+                return Ok(());
+            }
+            let bytes = std::fs::read(local_path).map_err(|e| e.to_string())?;
+            self.uploaded_bytes += bytes.len();
+            self.device.put_file(remote, &bytes)?;
+            self.uploaded_files.push(remote.to_string());
+            Ok(())
+        }
+    }
+
+    let mut acc = SyncAcc {
+        device,
+        uploaded_files: Vec::new(),
+        uploaded_bytes: 0,
+        skipped_unchanged: 0,
+    };
+
+    // Single Source of Truth: sync ALL enabled modules (bundled, installed, AND local)
+    // to `/home/root/openflux/v2/modules/<id>/` (skipping host-only `host/` scripts,
+    // `.git`, `.DS_Store`, `__pycache__`), uploading ONLY changed files!
+    for (id, dm) in discovered {
+        let is_enabled = kb_state.modules.get(id).map(|s| s.enabled).unwrap_or(false);
+        if !is_enabled && dm.tier == openflux_modules::ModuleTier::Bundled {
+            continue;
+        }
+        let mut stack = vec![dm.path.clone()];
+        while let Some(dir) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            for entry in rd.flatten() {
+                let p = entry.path();
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name == ".git" || name == ".DS_Store" || name == "__pycache__" || name == "host" {
+                    continue;
+                }
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.is_file() {
+                    if let Ok(rel) = p.strip_prefix(&dm.path) {
+                        let rel_str = rel.to_string_lossy().replace('\\', "/");
+                        let remote = format!("/home/root/openflux/v2/modules/{id}/{rel_str}");
+                        let bytes = std::fs::read(&p).map_err(|e| e.to_string())?;
+                        acc.put_if_changed(&remote, &bytes)?;
+                    }
+                }
+            }
+        }
+    }
+
+    // Sync bundled shortcut JSON packs straight to `/home/root/openflux/shortcuts/`
+    let shortcut_dirs = [
+        kb_state_path.parent().and_then(|p| p.parent()).map(|p| p.join("assets/shortcuts")),
+        std::env::current_exe().ok().and_then(|e| e.parent().and_then(|p| p.parent()).map(|p| p.join("Resources/assets/shortcuts"))),
+    ];
+    if let Some(sc_dir) = shortcut_dirs.into_iter().flatten().find(|d| d.is_dir()) {
+        if let Ok(rd) = std::fs::read_dir(&sc_dir) {
+            for entry in rd.flatten() {
+                let p = entry.path();
+                if p.is_file() && p.extension().and_then(|e| e.to_str()) == Some("json") {
+                    if let Some(fname) = p.file_name().and_then(|n| n.to_str()) {
+                        let remote = format!("/home/root/openflux/shortcuts/{fname}");
+                        if let Ok(bytes) = std::fs::read(&p) {
+                            acc.put_if_changed(&remote, &bytes)?;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Sync pure-v2 `display_prefs.json` (parallax + brightness + sleep timeout) to keyboard
+    let prefs_local = kb_state_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("display_prefs.json");
+    if let Ok(bytes) = std::fs::read(&prefs_local) {
+        acc.put_if_changed("/home/root/openflux/v2/display_prefs.json", &bytes)?;
+    }
+
+    // Sync `profiles.json` + per-host backup `/home/root/openflux/v2/hosts/<host_id>/profiles.json`
+    let prof_local = kb_state_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("profiles.json");
+    if let Ok(bytes) = std::fs::read(&prof_local) {
+        for remote in [
+            "/home/root/openflux/v2/profiles.json".to_string(),
+            format!("/home/root/openflux/v2/hosts/{host_id_for_sync}/profiles.json"),
+        ] {
+            acc.put_if_changed(&remote, &bytes)?;
+        }
+    }
+
+    // Sync `modules/streamdeck` custom button icons (from `streamdeck/buttons.json`) to keyboard
+    let sd_btns_path = kb_state_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("streamdeck/buttons.json");
+    if let Ok(raw) = std::fs::read_to_string(&sd_btns_path) {
+        if let Ok(doc) = serde_json::from_str::<StreamDeckButtonsFile>(&raw) {
+            let media_dir = default_data_dir().join("media");
+            for b in &doc.buttons {
+                if let Some(ref fname) = b.icon_media {
+                    let clean = std::path::Path::new(fname)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(fname);
+                    let lp = media_dir.join(clean);
+                    if lp.is_file() {
+                        let remote = format!("/home/root/openflux/media/{clean}");
+                        acc.put_media_if_missing(&remote, &lp)?;
+                    }
+                }
+            }
+        }
+    }
+
+    // Sync `module_actions.json` (64-slot QMK action registry) to keyboard for offline use
+    let actions_local = kb_state_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("module_actions.json");
+    if let Ok(bytes) = std::fs::read(&actions_local) {
+        acc.put_if_changed("/home/root/openflux/v2/module_actions.json", &bytes)?;
+    }
+
+    // Sync custom PNG keycap icons referenced by `keys-custom` (`by_key` / `by_action`)
+    if let Some(custom_inst) = kb_state.modules.get("keys-custom") {
+        let media_dir = default_data_dir().join("media");
+        for map_key in ["by_key", "by_action"] {
+            if let Some(obj) = custom_inst.config.get(map_key).and_then(|v| v.as_object()) {
+                for ov in obj.values() {
+                    if let Some(img_name) = ov.get("image").and_then(|v| v.as_str()) {
+                        let fname = std::path::Path::new(img_name)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or(img_name);
+                        let lp = media_dir.join(fname);
+                        if lp.is_file() {
+                            let remote = format!("/home/root/openflux/media/{fname}");
+                            acc.put_media_if_missing(&remote, &lp)?;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // For ANY enabled module with `kind = "file"` settings pointing at a local file,
+    // auto-upload the file to `/home/root/openflux/media/` (skipping if already present)
+    // and rewrite the keyboard copy of that setting to the remote filename.
+    for (id, dm) in discovered {
+        let Some(inst) = kb_state.modules.get_mut(id) else {
+            continue;
+        };
+        if !inst.enabled {
+            continue;
+        }
+        for field in &dm.manifest.settings {
+            if field.kind != openflux_modules::SettingKind::File {
+                continue;
+            }
+            let Some(media_str) = inst
+                .config
+                .get(&field.key)
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+            else {
+                continue;
+            };
+            let lp = std::path::Path::new(&media_str);
+            if lp.is_file() {
+                if let Some(fname) = lp.file_name().and_then(|n| n.to_str()) {
+                    let remote_media = format!("/home/root/openflux/media/{fname}");
+                    acc.put_media_if_missing(&remote_media, lp)?;
+                    inst.config.insert(field.key.clone(), json!(fname));
+                }
+            }
+        }
+    }
+
+    // Sync user-edited custom shortcuts (from Studio's Shortcuts tab) if present
+    if let Some(cfg_dir) = kb_state_path
+        .parent()
+        .and_then(|v2_dir| v2_dir.parent())
+        .map(|data_dir| data_dir.join("config"))
+    {
+        let cs = cfg_dir.join("custom_shortcuts.json");
+        if cs.is_file() {
+            if let Ok(bytes) = std::fs::read(&cs) {
+                acc.put_if_changed("/home/root/openflux/v2/custom_shortcuts.json", &bytes)?;
+            }
+        }
+    }
+
+    // Write `modules_state.json` atomically last and verify via direct readback.
+    let state_bytes = serde_json::to_vec_pretty(kb_state).map_err(|e| e.to_string())?;
+    let expected_state_sha256 = sha256_hex_bytes(&state_bytes);
+    let remote_state = "/home/root/openflux/v2/modules_state.json";
+    acc.put_if_changed(remote_state, &state_bytes)?;
+
+    // Honest device readback check: confirms bytes actually persisted on the keyboard filesystem.
+    let (readback_state_sha256, persisted_verified, persisted_error) = match device.get_file(remote_state) {
+        Ok(rb) => {
+            let rb_sha = sha256_hex_bytes(&rb);
+            if rb_sha == expected_state_sha256 {
+                (Some(rb_sha), true, None)
+            } else {
+                (
+                    Some(rb_sha),
+                    false,
+                    Some("device modules_state.json readback did not match uploaded bytes".to_string()),
+                )
+            }
+        }
+        Err(e) => (
+            None,
+            false,
+            Some(format!("failed to read back device modules_state.json: {e}")),
+        ),
+    };
+
+    Ok(KeyboardSyncReport {
+        uploaded_files: acc.uploaded_files,
+        uploaded_bytes: acc.uploaded_bytes,
+        skipped_unchanged: acc.skipped_unchanged,
+        expected_state_sha256,
+        readback_state_sha256,
+        persisted_verified,
+        persisted_error,
+    })
 }
 
 /// Real-time live video/frame streaming ingest (`POST /v2/streams/:name`).
@@ -4414,4 +4543,185 @@ pub fn router(state: Arc<ApiState>) -> Router {
             v2_auth_middleware,
         ))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod sync_tests {
+    use super::*;
+    use crate::api::state::DeviceSink;
+    use openflux_modules::{ModuleInstanceState, ModuleRegistry};
+
+    struct FakeKeyboardDevice {
+        files: Mutex<BTreeMap<String, Vec<u8>>>,
+        put_calls: Mutex<Vec<String>>,
+        rollback_state_on_readback: bool,
+    }
+
+    impl FakeKeyboardDevice {
+        fn new() -> Self {
+            Self {
+                files: Mutex::new(BTreeMap::new()),
+                put_calls: Mutex::new(Vec::new()),
+                rollback_state_on_readback: false,
+            }
+        }
+    }
+
+    impl DeviceSink for FakeKeyboardDevice {
+        fn is_connected(&self) -> (bool, bool) {
+            (true, true)
+        }
+        fn versions(&self) -> serde_json::Value {
+            json!({})
+        }
+        fn send_live_json(&self, _payload: &serde_json::Value) -> Result<(), String> {
+            Ok(())
+        }
+        fn set_active_profile(&self, _profile_idx: u32) -> Result<(), String> {
+            Ok(())
+        }
+        fn set_language(&self, _lang_code: u32) -> Result<(), String> {
+            Ok(())
+        }
+        fn set_platform(&self, _platform_code: u32) -> Result<(), String> {
+            Ok(())
+        }
+        fn save_config_dir(&self, _save_plan: &serde_json::Value) -> Result<(), String> {
+            Ok(())
+        }
+        fn get_file(&self, path: &str) -> Result<Vec<u8>, String> {
+            if self.rollback_state_on_readback && path == "/home/root/openflux/v2/modules_state.json" {
+                return Ok(br#"{"modules":{}}"#.to_vec());
+            }
+            self.files
+                .lock()
+                .unwrap()
+                .get(path)
+                .cloned()
+                .ok_or_else(|| format!("not found: {path}"))
+        }
+        fn put_file(&self, path: &str, data: &[u8]) -> Result<(), String> {
+            self.put_calls.lock().unwrap().push(path.to_string());
+            self.files
+                .lock()
+                .unwrap()
+                .insert(path.to_string(), data.to_vec());
+            Ok(())
+        }
+        fn stat_file(&self, path: &str) -> Result<bool, String> {
+            Ok(self.files.lock().unwrap().contains_key(path))
+        }
+    }
+
+    #[test]
+    fn differential_sync_skips_unchanged_and_detects_state_rollback() {
+        let tmp = std::env::temp_dir().join(format!(
+            "openflux-diff-sync-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mod_dir = tmp.join("local/demo-mod");
+        std::fs::create_dir_all(&mod_dir).unwrap();
+        let toml_bytes = br#"
+id = "demo-mod"
+name = "Demo Mod"
+version = "1.0.0"
+author = "Keyglass"
+category = "widget"
+description = "Test diff sync"
+stages = ["tile"]
+host_requirement = "none"
+[entrypoints]
+script = "script.lua"
+[channels]
+subscribes = []
+publishes = []
+"#;
+        let lua_bytes = b"function on_render(ctx, stage) end\n";
+        std::fs::write(mod_dir.join("module.toml"), toml_bytes).unwrap();
+        std::fs::write(mod_dir.join("script.lua"), lua_bytes).unwrap();
+
+        let state_path = tmp.join("v2/modules_state.json");
+        std::fs::create_dir_all(state_path.parent().unwrap()).unwrap();
+        let reg = ModuleRegistry::new(
+            tmp.join("bundled"),
+            tmp.join("installed"),
+            tmp.join("local"),
+            state_path.clone(),
+        );
+        let discovered = reg.discover();
+        let mut kb_state = openflux_modules::ModulesStateFile::default();
+        kb_state.modules.insert(
+            "demo-mod".into(),
+            ModuleInstanceState {
+                enabled: true,
+                ..Default::default()
+            },
+        );
+
+        // Pre-seed device with identical script.lua (even with NO host manifest yet!)
+        let dev = FakeKeyboardDevice::new();
+        dev.files.lock().unwrap().insert(
+            "/home/root/openflux/v2/modules/demo-mod/script.lua".into(),
+            lua_bytes.to_vec(),
+        );
+
+        // 1. First sync skips already-identical script.lua and uploads only module.toml + modules_state.json
+        let r1 = sync_v2_to_device(&dev, &discovered, &mut kb_state, &state_path, "host-1").unwrap();
+        assert!(r1.persisted_verified);
+        assert!(r1.persisted_error.is_none());
+        assert_eq!(r1.skipped_unchanged, 1);
+        assert_eq!(r1.uploaded_files.len(), 2);
+        assert!(!r1
+            .uploaded_files
+            .iter()
+            .any(|p| p.ends_with("script.lua")));
+
+        // 2. Second sync with no changes writes ZERO files!
+        dev.put_calls.lock().unwrap().clear();
+        let r2 = sync_v2_to_device(&dev, &discovered, &mut kb_state, &state_path, "host-1").unwrap();
+        assert!(r2.persisted_verified);
+        assert_eq!(r2.uploaded_files.len(), 0);
+        assert_eq!(r2.skipped_unchanged, 3);
+        assert!(dev.put_calls.lock().unwrap().is_empty());
+
+        // 3. Out-of-band device edit / different keyboard with stale bytes is ALWAYS detected & rewritten!
+        dev.files.lock().unwrap().insert(
+            "/home/root/openflux/v2/modules/demo-mod/script.lua".into(),
+            b"-- stale bytes on another keyboard\n".to_vec(),
+        );
+        dev.put_calls.lock().unwrap().clear();
+        let r_oob = sync_v2_to_device(&dev, &discovered, &mut kb_state, &state_path, "host-1").unwrap();
+        assert!(r_oob.persisted_verified);
+        assert_eq!(r_oob.uploaded_files.len(), 1);
+        assert!(r_oob.uploaded_files[0].ends_with("script.lua"));
+
+        // 4. Simulated ext4 journal rollback on readback MUST report persisted_verified = false!
+        let mut rb_dev = FakeKeyboardDevice::new();
+        rb_dev.rollback_state_on_readback = true;
+        let r3 = sync_v2_to_device(&rb_dev, &discovered, &mut kb_state, &state_path, "host-1").unwrap();
+        assert!(!r3.persisted_verified);
+        assert!(r3.persisted_error.is_some());
+
+        // 5. Genuine USB transport read error (not ENOENT) fails fast instead of blindly writing!
+        struct TransportErrDevice;
+        impl DeviceSink for TransportErrDevice {
+            fn is_connected(&self) -> (bool, bool) { (true, true) }
+            fn versions(&self) -> serde_json::Value { json!({}) }
+            fn send_live_json(&self, _: &serde_json::Value) -> Result<(), String> { Ok(()) }
+            fn set_active_profile(&self, _: u32) -> Result<(), String> { Ok(()) }
+            fn set_language(&self, _: u32) -> Result<(), String> { Ok(()) }
+            fn set_platform(&self, _: u32) -> Result<(), String> { Ok(()) }
+            fn save_config_dir(&self, _: &serde_json::Value) -> Result<(), String> { Ok(()) }
+            fn get_file(&self, _: &str) -> Result<Vec<u8>, String> { Err("OFV2 bulk RPC timed out".into()) }
+            fn put_file(&self, _: &str, _: &[u8]) -> Result<(), String> { panic!("must not write after transport error") }
+        }
+        let err = sync_v2_to_device(&TransportErrDevice, &discovered, &mut kb_state, &state_path, "host-1").unwrap_err();
+        assert!(err.contains("OFV2 bulk RPC timed out"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

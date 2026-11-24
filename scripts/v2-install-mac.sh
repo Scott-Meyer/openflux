@@ -44,8 +44,6 @@ cat > "$APP_STAGE/Contents/Info.plist" <<'PLIST'
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
-	<key>CFBundleDisplayName</key>
-	<string>OpenFlux Studio</string>
 	<key>CFBundleExecutable</key>
 	<string>openflux-studio</string>
 	<key>CFBundleIdentifier</key>

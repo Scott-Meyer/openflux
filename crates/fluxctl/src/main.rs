@@ -1065,11 +1065,24 @@ fn handle_keyboard(cli: &Cli, cmd: &KeyboardCmd) -> Result<(), String> {
                 120_000,
             )?;
             let count = val["uploaded_files"].as_array().map(|a| a.len()).unwrap_or(0);
+            let skipped = val["skipped_unchanged"].as_u64().unwrap_or(0);
             let bytes = val["uploaded_bytes"].as_u64().unwrap_or(0);
+            let verified = val["persisted_verified"].as_bool().unwrap_or(false);
+            let rt_applied = match val["runtime_applied"].as_bool() {
+                Some(true) => "applied",
+                Some(false) => "pending",
+                None => "unconfirmed",
+            };
+            let err_note = val["persisted_error"]
+                .as_str()
+                .map(|e| format!(" · ERROR: {e}"))
+                .unwrap_or_default();
             print_out(
                 cli.json,
                 &val,
-                &format!("Synced v2 setup to keyboard ({count} files, {bytes} bytes)"),
+                &format!(
+                    "Synced v2 setup to keyboard ({count} uploaded, {skipped} unchanged, {bytes} bytes · persisted_verified={verified} · runtime_applied={rt_applied}{err_note})"
+                ),
             );
             Ok(())
         }
