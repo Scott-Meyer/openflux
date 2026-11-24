@@ -113,9 +113,16 @@ export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile }) => {
         v2Client.listModules(),
       ]);
 
-      const gPayload = geomRes.messages[0]?.payload as { keys?: KeyGeom[] } | undefined;
+      const gPayload = geomRes.messages[0]?.payload as {
+        keys?: Array<KeyGeom & { key_index?: number }>;
+      } | undefined;
       if (Array.isArray(gPayload?.keys)) {
-        setKeys(gPayload.keys);
+        setKeys(
+          gPayload.keys.map((k, idx) => ({
+            ...k,
+            index: typeof k.key_index === "number" ? k.key_index : typeof k.index === "number" ? k.index : idx,
+          })),
+        );
       }
 
       const rkPayload = rkRes.messages[0]?.payload as

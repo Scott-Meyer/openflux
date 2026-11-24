@@ -8,7 +8,9 @@ import {
   domCodeToHid,
   encodeLayerOp,
   encodeLayerTap,
+  encodeModifiedKey,
   encodeModTap,
+  encodeTapDance,
   HOLD_MOD_OPTIONS,
   KEY_PICKER_GROUPS,
   LAYER_OP_OPTIONS,
@@ -25,16 +27,22 @@ interface QmkKeymapViewProps {
   onSynced?: () => void;
 }
 
-type EditorMode = "key" | "hold_tap" | "layer" | "action" | "gamepad";
+type EditorMode = "key" | "combo" | "hold_tap" | "layer" | "action" | "gamepad";
 
 const LAYER_NAMES = ["Base", "Fn", "Gaming", "Layer 3", "Layer 4", "Layer 5", "Layer 6", "Layer 7"];
 
+const TAP_KEY_CHOICES = KEY_PICKER_GROUPS.filter(
+  (g) => g.group !== "Special" && g.group !== "Media & System",
+)
+  .flatMap((g) => g.keys)
+  .filter((k) => k.code <= 0xff);
+
 export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, onSynced }) => {
   const [connected, setConnected] = useState<boolean | null>(null);
-  const [layerCount, setLayerCount] = useState<number>(6);
+  const [layerCount, setLayerCount] = useState<number>(8);
   const [keymaps, setKeymaps] = useState<number[][][]>([]);
   const [activeLayer, setActiveLayer] = useState<number>(0);
-  const [selectedKey, setSelectedKey] = useState<number>(initialKey ?? 32); // Key W default
+  const [selectedKey, setSelectedKey] = useState<number>(initialKey ?? 33); // Key W default
   const [editorMode, setEditorMode] = useState<EditorMode>("key");
   const [actionsBySlot, setActionsBySlot] = useState<Record<number, ActionSlotInfo>>({});
   const [search, setSearch] = useState("");
@@ -42,13 +50,22 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
   const [statusNote, setStatusNote] = useState<string | null>(null);
   const [syncingActions, setSyncingActions] = useState(false);
 
-  // Hold/Tap composer state
-  const [htType, setHtType] = useState<"mt" | "lt">("mt");
-  const [htTapHid, setHtTapHid] = useState<number>(0x04); // A
+  // Mod+Key combo composer state (e.g. Cmd+C, Ctrl+Shift+Cmd+4)
+  const [comboMods, setComboMods] = useState<{ ctrl: boolean; shift: boolean; opt: boolean; cmd: boolean }>({
+    ctrl: false,
+    shift: false,
+    opt: false,
+    cmd: true,
+  });
+  const [comboBaseHid, setComboBaseHid] = useState<number>(0x06); // C
+
+  // Tap/Hold composer state (MT / LT)
+  const [htType, setHtType] = useState<"mt" | "lt">("lt");
+  const [htTapHid, setHtTapHid] = useState<number>(0x2c); // Space
   const [htHoldMod, setHtHoldMod] = useState<number>(0x01); // LCtrl
   const [htHoldLayer, setHtHoldLayer] = useState<number>(1); // Fn
 
-  // Layer key composer state
+  // Layer switch composer state (MO / TG / DF / OSL / TT)
   const [layerOpBase, setLayerOpBase] = useState<number>(0x5220); // MO
   const [layerTarget, setLayerTarget] = useState<number>(1);
 
@@ -107,13 +124,38 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
     [currentKeycode, actionsBySlot],
   );
 
-  // Sync editor sub-tab naturally to match whatever is bound on the clicked key
+  // Pre-populate Hold/Tap, Layer, or Combo composers when clicking an existing key of that type
   useEffect(() => {
-    if (currentDecoded.kind === "gamepad") setEditorMode("gamepad");
-    else if (currentDecoded.kind === "action") setEditorMode("action");
-    else if (currentDecoded.kind === "layer") setEditorMode("layer");
-    else if (currentDecoded.kind === "hold_tap") setEditorMode("hold_tap");
-  }, [selectedKey, activeLayer]);
+    if (currentKeycode >= 0x2000 && currentKeycode <= 0x3fff) {
+      setHtType("mt");
+      setHtHoldMod((currentKeycode >> 8) & 0x1f);
+      setHtTapHid(currentKeycode & 0xff);
+      setEditorMode("hold_tap");
+    } else if (currentKeycode >= 0x4000 && currentKeycode <= 0x4fff) {
+      setHtType("lt");
+      setHtHoldLayer((currentKeycode >> 8) & 0x0f);
+      setHtTapHid(currentKeycode & 0xff);
+      setEditorMode("hold_tap");
+    } else if (currentKeycode >= 0x5220 && currentKeycode <= 0x52ff) {
+      setLayerOpBase(currentKeycode & 0xffe0);
+      setLayerTarget(currentKeycode & 0x1f);
+      setEditorMode("layer");
+    } else if (currentKeycode >= 0x7e27 && currentKeycode <= 0x7e3f) {
+      setEditorMode("gamepad");
+    } else if (currentKeycode >= 0x7e00 && currentKeycode <= 0x7e5f) {
+      setEditorMode("action");
+    } else if (currentKeycode >= 0x0100 && currentKeycode <= 0x1fff) {
+      const m = (currentKeycode >> 8) & 0x1f;
+      setComboMods({
+        ctrl: Boolean(m & 1),
+        shift: Boolean(m & 2),
+        opt: Boolean(m & 4),
+        cmd: Boolean(m & 8),
+      });
+      setComboBaseHid(currentKeycode & 0xff);
+      setEditorMode("combo");
+    }
+  }, [selectedKey, activeLayer, currentKeycode]);
 
   const assignKeycode = useCallback(
     async (kc: number, labelHint?: string) => {
@@ -133,7 +175,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
         });
         const dec = decodeQmkKeycode(kc, actionsBySlot);
         setStatusNote(
-          `Saved Key ${selGeom.index} (${LAYER_NAMES[activeLayer] ?? `L${activeLayer}`}) → ${labelHint || dec.label}`,
+          `Saved Key ${selGeom.index} (${LAYER_NAMES[activeLayer] ?? `L${activeLayer}`}) → ${labelHint || dec.label} (0x${kc.toString(16).toUpperCase().padStart(4, "0")})`,
         );
         onSynced?.();
       } catch (err) {
@@ -154,7 +196,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
       if (hid != null) {
         void assignKeycode(hid);
       } else {
-        setStatusNote(`Unrecognized key "${e.code}" — pick from the list below.`);
+        setStatusNote(`Unrecognized key "${e.code}" — pick from the grid below.`);
       }
     };
     window.addEventListener("keydown", onKeyDown, true);
@@ -181,28 +223,62 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
 
   const actionList = useMemo(() => {
     return Object.values(actionsBySlot)
-      .filter((a) => a.slot < 39) // slots 0..13 built-in + 14..38 dynamic module actions (39..63 are Gamepad)
+      .filter((a) => a.slot < 39)
       .sort((a, b) => a.slot - b.slot);
   }, [actionsBySlot]);
 
   const filteredGroups = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return KEY_PICKER_GROUPS;
-    return KEY_PICKER_GROUPS.map((g) => ({
+    const base = KEY_PICKER_GROUPS.map((g) => ({
       ...g,
       keys: g.keys.filter((k) => k.label.toLowerCase().includes(q)),
     })).filter((g) => g.keys.length > 0);
-  }, [search]);
+
+    // Oryx-style unified search: typing "prusa", "layer", "stick", "pomo", etc. surfaces ALL categories!
+    const layerHits = Array.from({ length: Math.min(layerCount, 8) }, (_, i) => ({
+      code: encodeLayerOp(0x5220, i),
+      label: `Hold L${i} (${LAYER_NAMES[i] ?? `L${i}`})`,
+    })).filter((k) => k.label.toLowerCase().includes(q));
+    if (layerHits.length > 0) base.push({ group: "Layers (Hold MO)", keys: layerHits });
+
+    const actHits = actionList
+      .map((a) => ({ code: a.keycode, label: a.label || a.short_label || a.action_id }))
+      .filter((k) => k.label.toLowerCase().includes(q));
+    if (actHits.length > 0) base.push({ group: "Module Actions", keys: actHits });
+
+    const gpHits = ANALOG_GAMEPAD_KEYS.filter(
+      (g) => g.name.toLowerCase().includes(q) || g.label.toLowerCase().includes(q),
+    ).map((g) => ({ code: g.code, label: `${g.label} · ${g.name}` }));
+    if (gpHits.length > 0) base.push({ group: "Analog Gamepad", keys: gpHits });
+
+    return base;
+  }, [search, layerCount, actionList]);
+
+  // If the selected key points to another layer (MO/TG/DF/OSL/TT or LT), offer Oryx's 1-click jump!
+  const linkedLayerTarget = useMemo(() => {
+    if (currentKeycode >= 0x4000 && currentKeycode <= 0x4fff) return (currentKeycode >> 8) & 0x0f;
+    if (currentKeycode >= 0x5220 && currentKeycode <= 0x52ff) return currentKeycode & 0x1f;
+    return null;
+  }, [currentKeycode]);
+
+  const tapKeyLabel = TAP_KEY_CHOICES.find((k) => k.code === htTapHid)?.label ?? "Key";
+  const holdModLabel = HOLD_MOD_OPTIONS.find((m) => m.bit === htHoldMod)?.label ?? "Mod";
+  const comboMask =
+    (comboMods.ctrl ? 1 : 0) |
+    (comboMods.shift ? 2 : 0) |
+    (comboMods.opt ? 4 : 0) |
+    (comboMods.cmd ? 8 : 0);
 
   return (
     <div className="kg-module-page">
-      {/* Calm Module Header (5b aesthetic) */}
+      {/* Calm Module Header */}
       <div className="kg-page-header">
         <div className="kg-page-title-row">
           <h1>QMK Keymap</h1>
-          <span className="kg-pill-subtle">Module · Native Vial</span>
+          <span className="kg-pill-subtle">Native Live EEPROM</span>
           <span className={`kg-status-badge ${connected ? "is-ok" : "is-warn"}`}>
-            {connected === null ? "Checking…" : connected ? "Live EEPROM" : "Keyboard Offline"}
+            {connected === null ? "Checking…" : connected ? "Live Connected" : "Keyboard Offline"}
           </span>
         </div>
         <div className="kg-header-actions">
@@ -215,12 +291,12 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
             {syncingActions ? "Syncing…" : "Sync Module Actions"}
           </button>
           <button type="button" className="kg-btn-ghost" onClick={() => void loadFromKeyboard()}>
-            Reload
+            Reload from Keyboard
           </button>
         </div>
       </div>
 
-      {/* Centered Calm Layer Pills (5b aesthetic) */}
+      {/* Layer Switcher Pills */}
       <div className="kg-layer-pills" role="tablist" aria-label="QMK Layers">
         {Array.from({ length: Math.min(layerCount, 8) }, (_, idx) => (
           <button
@@ -231,18 +307,18 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
             className={`kg-layer-pill ${activeLayer === idx ? "is-active" : ""}`}
             onClick={() => setActiveLayer(idx)}
           >
-            {LAYER_NAMES[idx] ?? `L${idx}`}
+            L{idx} · {LAYER_NAMES[idx] ?? `Layer ${idx}`}
           </button>
         ))}
       </div>
 
-      {/* Shared Interactive 85-Key Keyboard Centerpiece */}
+      {/* Shared Interactive 85-Key Keyboard */}
       <div className="kg-surface-wrap">
         <KeyboardSurface
           keys={keys}
           selectedKey={selectedKey}
           onSelectKey={(k) => setSelectedKey(k)}
-          topBarSummary={`Layer ${activeLayer} · ${LAYER_NAMES[activeLayer] ?? `L${activeLayer}`} — Click any key below to edit its QMK binding`}
+          topBarSummary={`Editing Layer ${activeLayer} (${LAYER_NAMES[activeLayer] ?? `L${activeLayer}`}) — Click any key below to remap`}
           renderKey={(k) => {
             const kc = keymaps[activeLayer]?.[k.row]?.[k.col] ?? 0;
             const dec = decodeQmkKeycode(kc, actionsBySlot);
@@ -259,30 +335,49 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                     : dec.kind === "layer" || dec.kind === "hold_tap"
                       ? "#a78bfa"
                       : undefined,
-              title: `Key ${k.index} (R${k.row}C${k.col}) · ${dec.label} (0x${kc.toString(16).toUpperCase().padStart(4, "0")})`,
+              title: `Key ${k.index} (R${k.row} C${k.col}) · ${dec.label} (0x${kc.toString(16).toUpperCase().padStart(4, "0")})`,
             };
           }}
         />
       </div>
 
-      {/* Single Calm Horizontal Editor Strip Directly Below the Keyboard (5b aesthetic) */}
+      {/* Focused Single-Key Binding Strip */}
       <div className="kg-keymap-strip">
         <div className="kg-strip-top">
           <div className="kg-strip-id">
-            <strong>Edit Key {selectedKey}</strong>
+            <strong>Key {selectedKey}</strong>
+            {selGeom && (
+              <span className="kg-muted">
+                (R{selGeom.row} C{selGeom.col})
+              </span>
+            )}
             <span className="kg-pill-accent">{LAYER_NAMES[activeLayer] ?? `L${activeLayer}`}</span>
             <span className="kg-muted">
-              Current: <strong style={{ color: currentDecoded.accent || "#eef4ff" }}>{currentDecoded.label}</strong>
-              {currentDecoded.sub ? ` (${currentDecoded.sub})` : ""}
+              Bound to:{" "}
+              <strong style={{ color: currentDecoded.accent || "#eef4ff" }}>{currentDecoded.label}</strong>
+              {currentDecoded.sub ? ` (${currentDecoded.sub})` : ""}{" "}
+              <code style={{ opacity: 0.65 }}>
+                0x{currentKeycode.toString(16).toUpperCase().padStart(4, "0")}
+              </code>
             </span>
+            {linkedLayerTarget != null && linkedLayerTarget !== activeLayer && (
+              <button
+                type="button"
+                className="kg-btn-ghost"
+                onClick={() => setActiveLayer(linkedLayerTarget)}
+              >
+                Edit {LAYER_NAMES[linkedLayerTarget] ?? `L${linkedLayerTarget}`} →
+              </button>
+            )}
           </div>
 
           <div className="kg-segmented" role="tablist">
             {(
               [
-                ["key", "Key"],
-                ["hold_tap", "Hold / Tap"],
-                ["layer", "Layer"],
+                ["key", "Basic Key"],
+                ["combo", "Mod + Key"],
+                ["hold_tap", "Tap / Hold"],
+                ["layer", "Layer Switch"],
                 ["action", "Module Action"],
                 ["gamepad", "Analog Gamepad"],
               ] as Array<[EditorMode, string]>
@@ -299,8 +394,8 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
           </div>
         </div>
 
-        {/* Focused Body for Active Mode */}
         <div className="kg-strip-body">
+          {/* 1. Basic Key */}
           {editorMode === "key" && (
             <div className="kg-picker-wrap">
               <div className="kg-picker-toolbar">
@@ -309,12 +404,12 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                   className={capturing ? "kg-btn-primary" : "kg-btn-ghost"}
                   onClick={() => setCapturing((v) => !v)}
                 >
-                  {capturing ? "Press any key now…" : "Press Key to Bind"}
+                  {capturing ? "Press any key now…" : "⌨ Press Key to Bind"}
                 </button>
                 <input
                   type="text"
                   className="kg-search-inline"
-                  placeholder="Filter keys (e.g. F13, Enter, Vol, Esc)…"
+                  placeholder="Search keys (e.g. Esc, F13, Enter, Vol, Del, Trans)…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -341,97 +436,181 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
             </div>
           )}
 
-          {editorMode === "hold_tap" && (
-            <div className="kg-inline-form">
-              <label className="kg-field-inline">
-                <span>Type</span>
-                <select value={htType} onChange={(e) => setHtType(e.target.value as "mt" | "lt")}>
-                  <option value="mt">Mod-Tap (Tap key, Hold modifier)</option>
-                  <option value="lt">Layer-Tap (Tap key, Hold layer)</option>
-                </select>
-              </label>
-              <label className="kg-field-inline">
-                <span>Tap Key</span>
-                <select value={htTapHid} onChange={(e) => setHtTapHid(Number(e.target.value))}>
-                  {KEY_PICKER_GROUPS.filter((g) => g.group !== "Special" && g.group !== "Media & System")
-                    .flatMap((g) => g.keys)
-                    .filter((k) => k.code <= 0xff)
-                    .map((k) => (
+          {/* 2. Modified Shortcut Key (e.g. Cmd+C, Ctrl+Shift+Cmd+4, Shift+Symbol) */}
+          {editorMode === "combo" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="kg-muted">
+                Emit a key combined with modifiers in one press (e.g. <strong>⌃⇧⌘4</strong> screenshot,{" "}
+                <strong>⌘C</strong> copy, or <strong>⇧Tab</strong>).
+              </div>
+              <div className="kg-inline-form">
+                <div style={{ display: "flex", gap: 12, alignItems: "center", paddingBottom: 6 }}>
+                  {(
+                    [
+                      ["ctrl", "⌃ Ctrl"],
+                      ["shift", "⇧ Shift"],
+                      ["opt", "⌥ Opt"],
+                      ["cmd", "⌘ Cmd"],
+                    ] as Array<[keyof typeof comboMods, string]>
+                  ).map(([k, lbl]) => (
+                    <label key={k} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={comboMods[k]}
+                        onChange={(e) => setComboMods((p) => ({ ...p, [k]: e.target.checked }))}
+                      />
+                      {lbl}
+                    </label>
+                  ))}
+                </div>
+                <label className="kg-field-inline">
+                  <span>Key</span>
+                  <select value={comboBaseHid} onChange={(e) => setComboBaseHid(Number(e.target.value))}>
+                    {TAP_KEY_CHOICES.map((k) => (
                       <option key={k.code} value={k.code}>
                         {k.label}
                       </option>
                     ))}
-                </select>
-              </label>
-              {htType === "mt" ? (
-                <label className="kg-field-inline">
-                  <span>Hold Modifier</span>
-                  <select value={htHoldMod} onChange={(e) => setHtHoldMod(Number(e.target.value))}>
-                    {HOLD_MOD_OPTIONS.map((m) => (
-                      <option key={m.bit} value={m.bit}>
-                        {m.label}
-                      </option>
-                    ))}
                   </select>
                 </label>
-              ) : (
-                <label className="kg-field-inline">
-                  <span>Hold Layer</span>
-                  <select value={htHoldLayer} onChange={(e) => setHtHoldLayer(Number(e.target.value))}>
-                    {Array.from({ length: Math.min(layerCount, 8) }, (_, i) => (
-                      <option key={i} value={i}>
-                        {LAYER_NAMES[i] ?? `L${i}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <button
-                type="button"
-                className="kg-btn-primary"
-                onClick={() =>
-                  void assignKeycode(
-                    htType === "mt" ? encodeModTap(htHoldMod, htTapHid) : encodeLayerTap(htHoldLayer, htTapHid),
-                  )
-                }
-              >
-                Apply Hold / Tap
-              </button>
+                <button
+                  type="button"
+                  className="kg-btn-primary"
+                  disabled={comboMask === 0}
+                  onClick={() => void assignKeycode(encodeModifiedKey(comboMask, comboBaseHid))}
+                >
+                  Assign Mod + Key
+                </button>
+              </div>
             </div>
           )}
 
+          {/* 3. Tap / Hold (Mod-Tap & Layer-Tap) + Tap Dance */}
+          {editorMode === "hold_tap" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="kg-inline-form">
+                <label className="kg-field-inline">
+                  <span>When TAPPED, send key:</span>
+                  <select value={htTapHid} onChange={(e) => setHtTapHid(Number(e.target.value))}>
+                    {TAP_KEY_CHOICES.map((k) => (
+                      <option key={k.code} value={k.code}>
+                        {k.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="kg-field-inline">
+                  <span>When HELD, act as:</span>
+                  <select value={htType} onChange={(e) => setHtType(e.target.value as "mt" | "lt")}>
+                    <option value="lt">Hold a Layer (Layer-Tap)</option>
+                    <option value="mt">Hold a Modifier (Mod-Tap)</option>
+                  </select>
+                </label>
+
+                {htType === "mt" ? (
+                  <label className="kg-field-inline">
+                    <span>Held Modifier</span>
+                    <select value={htHoldMod} onChange={(e) => setHtHoldMod(Number(e.target.value))}>
+                      {HOLD_MOD_OPTIONS.map((m) => (
+                        <option key={m.bit} value={m.bit}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <label className="kg-field-inline">
+                    <span>Held Layer</span>
+                    <select value={htHoldLayer} onChange={(e) => setHtHoldLayer(Number(e.target.value))}>
+                      {Array.from({ length: Math.min(layerCount, 8) }, (_, i) => (
+                        <option key={i} value={i}>
+                          L{i} · {LAYER_NAMES[i] ?? `Layer ${i}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
+                <button
+                  type="button"
+                  className="kg-btn-primary"
+                  onClick={() =>
+                    void assignKeycode(
+                      htType === "mt" ? encodeModTap(htHoldMod, htTapHid) : encodeLayerTap(htHoldLayer, htTapHid),
+                    )
+                  }
+                >
+                  Assign Tap / Hold
+                </button>
+              </div>
+              <div className="kg-muted" style={{ fontSize: 12 }}>
+                Preview: Tap quickly → sends <strong>{tapKeyLabel}</strong> · Hold down → activates{" "}
+                <strong>
+                  {htType === "mt" ? holdModLabel : `L${htHoldLayer} (${LAYER_NAMES[htHoldLayer] ?? `Layer ${htHoldLayer}`})`}
+                </strong>
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", paddingTop: 4 }}>
+                <span className="kg-group-label" style={{ marginRight: 6 }}>
+                  Tap Dance Slots:
+                </span>
+                {[0, 1, 2, 3, 4, 5, 6, 7].map((td) => (
+                  <button
+                    key={td}
+                    type="button"
+                    className={`kg-kc-chip ${currentKeycode === encodeTapDance(td) ? "is-selected" : ""}`}
+                    onClick={() => void assignKeycode(encodeTapDance(td), `TD(${td})`)}
+                  >
+                    TD({td})
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 4. Layer Switch (MO / TG / DF / OSL / TT) */}
           {editorMode === "layer" && (
-            <div className="kg-inline-form">
-              <label className="kg-field-inline">
-                <span>Behavior</span>
-                <select value={layerOpBase} onChange={(e) => setLayerOpBase(Number(e.target.value))}>
-                  {LAYER_OP_OPTIONS.map((op) => (
-                    <option key={op.base} value={op.base}>
-                      {op.name} — {op.desc}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="kg-field-inline">
-                <span>Target Layer</span>
-                <select value={layerTarget} onChange={(e) => setLayerTarget(Number(e.target.value))}>
-                  {Array.from({ length: Math.min(layerCount, 8) }, (_, i) => (
-                    <option key={i} value={i}>
-                      {LAYER_NAMES[i] ?? `L${i}`}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className="kg-btn-primary"
-                onClick={() => void assignKeycode(encodeLayerOp(layerOpBase, layerTarget))}
-              >
-                Apply Layer Key
-              </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="kg-chip-grid">
+                {LAYER_OP_OPTIONS.map((op) => (
+                  <button
+                    key={op.base}
+                    type="button"
+                    className={`kg-kc-chip kg-kc-wide ${layerOpBase === op.base ? "is-selected" : ""}`}
+                    onClick={() => setLayerOpBase(op.base)}
+                  >
+                    <span>{op.name}</span>
+                    <small className="kg-muted">{op.desc}</small>
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span className="kg-muted">Click a target layer to assign immediately:</span>
+                {Array.from({ length: Math.min(layerCount, 8) }, (_, i) => {
+                  const kc = encodeLayerOp(layerOpBase, i);
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      className={`kg-kc-chip ${currentKeycode === kc ? "is-selected" : ""}`}
+                      onClick={() => {
+                        setLayerTarget(i);
+                        void assignKeycode(kc);
+                      }}
+                    >
+                      L{i} · {LAYER_NAMES[i] ?? `Layer ${i}`}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="kg-muted" style={{ fontSize: 11 }}>
+                Tip: Switch the active layer pills above to edit what keys live on{" "}
+                <strong>L{layerTarget} ({LAYER_NAMES[layerTarget] ?? `Layer ${layerTarget}`})</strong>!
+              </div>
             </div>
           )}
 
+          {/* 5. Module Actions */}
           {editorMode === "action" && (
             <div className="kg-picker-wrap">
               <div className="kg-chip-grid">
@@ -456,6 +635,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
             </div>
           )}
 
+          {/* 6. Analog Gamepad */}
           {editorMode === "gamepad" && (
             <div className="kg-picker-wrap">
               <div className="kg-muted" style={{ marginBottom: 8, fontSize: 12 }}>

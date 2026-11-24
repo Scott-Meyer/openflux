@@ -232,9 +232,29 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
   const loadGeometry = useCallback(async () => {
     try {
       const res = await v2Client.getBusRetained("keyboard/geometry");
-      const g = res.messages[0]?.payload as { keys?: SurfaceKeyGeom[] } | undefined;
+      const g = res.messages[0]?.payload as {
+        keys?: Array<{
+          key_index?: number;
+          index?: number;
+          row: number;
+          col: number;
+          center_x: number;
+          center_y: number;
+          rect: { x: number; y: number; w: number; h: number };
+        }>;
+      } | undefined;
       if (Array.isArray(g?.keys) && g.keys.length > 0) {
-        setGeomKeys(g.keys);
+        // Normalize Rust `key_index` field -> `index` so clicking selects ONLY the single clicked key!
+        setGeomKeys(
+          g.keys.map((k, idx) => ({
+            index: typeof k.key_index === "number" ? k.key_index : typeof k.index === "number" ? k.index : idx,
+            row: k.row,
+            col: k.col,
+            center_x: k.center_x,
+            center_y: k.center_y,
+            rect: k.rect,
+          })),
+        );
       }
     } catch {
       // ignore

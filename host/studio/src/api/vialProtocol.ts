@@ -210,6 +210,15 @@ export function encodeLayerOp(base: number, layer: number): number {
   return base | (layer & 0x1f);
 }
 
+/** Encodes a modified QMK keycode (`0x0100..0x1FFF`: e.g. `S(KC_1)` = `!`, `C(S(G(KC_4)))` = screenshot). */
+export function encodeModifiedKey(modMask: number, tapHid: number): number {
+  return ((modMask & 0x1f) << 8) | (tapHid & 0xff);
+}
+
+export function encodeTapDance(index: number): number {
+  return 0x5700 | (index & 0xff);
+}
+
 export function decodeQmkKeycode(
   kc: number,
   actionsBySlot: Record<number, ActionSlotInfo> = {},
@@ -223,6 +232,18 @@ export function decodeQmkKeycode(
     const lbl = HID_LABELS[kc] ?? `0x${kc.toString(16).toUpperCase()}`;
     const isMod = kc >= 0xe0 && kc <= 0xe7;
     return { label: lbl, kind: isMod ? "mod" : "basic" };
+  }
+  // Modified keycodes: 0x0100..0x1FFF (S(kc), C(kc), A(kc), G(kc), combos like Ctrl+Shift+Cmd+4!)
+  if (kc >= 0x0100 && kc <= 0x1fff) {
+    const mods = (kc >> 8) & 0x1f;
+    const base = kc & 0xff;
+    const baseDec = decodeQmkKeycode(base, actionsBySlot);
+    const pfx: string[] = [];
+    if (mods & 1) pfx.push("⌃");
+    if (mods & 2) pfx.push("⇧");
+    if (mods & 4) pfx.push("⌥");
+    if (mods & 8) pfx.push("⌘");
+    return { label: `${pfx.join("")}${baseDec.label}`, sub: "Mod", kind: "mod", accent: "#60a5fa" };
   }
   // Mod-Tap: MT(mod, kc)
   if (kc >= 0x2000 && kc <= 0x3fff) {
@@ -245,6 +266,10 @@ export function decodeQmkKeycode(
     if (kc < 0x5280) return { label: `TG(${lyr})`, kind: "layer", accent: "#c084fc" };
     if (kc < 0x52a0) return { label: `OSL(${lyr})`, kind: "layer", accent: "#c084fc" };
     return { label: `TT(${lyr})`, kind: "layer", accent: "#c084fc" };
+  }
+  // Tap Dance: TD(n) (0x5700..0x57FF)
+  if (kc >= 0x5700 && kc <= 0x57ff) {
+    return { label: `TD(${kc & 0xff})`, sub: "Dance", kind: "hold_tap", accent: "#f472b6" };
   }
   // Fixed 25-slot Analog Gamepad block (0x7E27..0x7E3F)
   const gp = GP_BY_CODE.get(kc);
