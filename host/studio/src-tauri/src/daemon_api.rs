@@ -508,6 +508,41 @@ pub async fn v2_media_url(st: State<'_, DesktopState>, name: String) -> Result<S
     Ok(url.to_string())
 }
 
+/// Returns an authenticated Property Inspector URL for an imported `.sdPlugin` HTML settings page.
+#[tauri::command]
+pub async fn v2_streamdeck_pi_url(
+    st: State<'_, DesktopState>,
+    plugin_id: String,
+    rel_path: String,
+    ws_port: u16,
+    btn_id: String,
+    action_uuid: String,
+) -> Result<String, CommandError> {
+    if plugin_id.contains("..") || rel_path.contains("..") || plugin_id.contains('/') {
+        return Err(CommandError::local("invalid plugin path"));
+    }
+    let tok_path = st.data_dir.join("config/desktop_token.txt");
+    let tok = std::fs::read_to_string(&tok_path)
+        .map_err(|e| CommandError::local(format!("failed to read daemon token: {e}")))?;
+    let base = format!(
+        "http://127.0.0.1:52324/v2/streamdeck/plugin-asset/{}/{}",
+        plugin_id.trim(),
+        rel_path.trim_start_matches('/')
+    );
+    let url = reqwest::Url::parse_with_params(
+        &base,
+        &[
+            ("token", tok.trim()),
+            ("pi_boot", "1"),
+            ("ws_port", &ws_port.to_string()),
+            ("btn_id", btn_id.as_str()),
+            ("action_uuid", action_uuid.as_str()),
+        ],
+    )
+    .map_err(|e| CommandError::local(e.to_string()))?;
+    Ok(url.to_string())
+}
+
 /// The link `open_url` hands to the browser: a well-formed `https` URL with a host, in its
 /// normalized form, so the opener receives no spaces, quotes or other raw text.
 fn browser_link(url: &str) -> Result<String, CommandError> {

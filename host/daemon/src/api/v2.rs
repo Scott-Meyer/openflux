@@ -1114,7 +1114,7 @@ impl V2State {
                         "action_id": entry.action_id,
                         "module_id": entry.module_id,
                         "module_dir": module_dir,
-                        "label": entry.name,
+                        "label": if !entry.title.is_empty() { entry.title.clone() } else { entry.name.clone() },
                         "short_label": entry.short_label,
                         "icon": entry.icon,
                         "accent": entry.accent,
@@ -3178,6 +3178,10 @@ fn parse_sd_plugin_dir(plugin_dir: &std::path::Path) -> Option<Value> {
         .or_else(|| m.get("CodePath"))
         .and_then(|v| v.as_str())
         .map(str::to_string);
+    let property_inspector = m
+        .get("PropertyInspectorPath")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
 
     let actions: Vec<Value> = m
         .get("Actions")
@@ -3225,6 +3229,7 @@ fn parse_sd_plugin_dir(plugin_dir: &std::path::Path) -> Option<Value> {
         "version": version,
         "description": description,
         "code_path": code_path,
+        "property_inspector": property_inspector,
         "path": plugin_dir.to_string_lossy(),
         "actions": actions,
     }))
@@ -3274,6 +3279,12 @@ async fn get_streamdeck_state_api(State(state): State<Arc<ApiState>>) -> impl In
         .get_retained("modules/streamdeck/faces")
         .map(|m| m.payload)
         .unwrap_or_else(|| json!({}));
+    let ws_port = state
+        .v2
+        .broker
+        .get_retained("modules/streamdeck/host_info")
+        .and_then(|m| m.payload.get("ws_port").and_then(|v| v.as_u64()))
+        .unwrap_or(0);
 
     (
         StatusCode::OK,
@@ -3282,6 +3293,7 @@ async fn get_streamdeck_state_api(State(state): State<Arc<ApiState>>) -> impl In
             "elgato_detected": elgato_detected,
             "buttons": buttons_doc.buttons,
             "faces": faces,
+            "ws_port": ws_port,
         })),
     )
 }
@@ -3483,7 +3495,166 @@ async fn put_streamdeck_buttons_api(
         json!({ "buttons": body.buttons }),
         PublishOptions::retained(),
     );
+    // Immediately upload any button PNG icons to `/home/root/openflux/media/` on the connected
+    // keyboard so newly added Stream Deck keys show their real icon right away!
+    let icon_files: Vec<String> = body
+        .buttons
+        .iter()
+        .filter_map(|b| b.icon_media.clone())
+        .collect();
+    if !icon_files.is_empty() {
+        let dev = state.device.clone();
+        let media_dir = default_data_dir().join("media");
+        tokio::task::spawn_blocking(move || {
+            for fname in icon_files {
+                let clean = std::path::Path::new(&fname)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&fname);
+                let lp = media_dir.join(clean);
+                if lp.is_file() {
+                    let remote = format!("/home/root/openflux/media/{clean}");
+                    if !dev.stat_file(&remote).unwrap_or(false) {
+                        if let Ok(bytes) = std::fs::read(&lp) {
+                            let _ = dev.put_file(&remote, &bytes);
+                        }
+                    }
+                }
+            }
+        });
+    }
     (StatusCode::OK, Json(json!({ "ok": true, "buttons": body.buttons })))
+}
+
+#[derive(Deserialize)]
+struct SdPluginAssetQuery {
+    #[serde(default)]
+    ws_port: Option<u16>,
+    #[serde(default)]
+    btn_id: Option<String>,
+    #[serde(default)]
+    action_uuid: Option<String>,
+    #[serde(default)]
+    pi_boot: Option<u8>,
+}
+
+/// Serves static files inside an imported `.sdPlugin` directory (HTML/CSS/JS/PNG/SVG) so KeyGlass
+/// can render every Elgato plugin's native `PropertyInspectorPath` settings UI (e.g. Audio Device
+/// picker, OBS Scene picker, Hue Light picker) connected live to `sd_host.py`'s WebSocket server!
+async fn serve_streamdeck_plugin_asset_api(
+    State(state): State<Arc<ApiState>>,
+    AxumPath((plugin_id, rel)): AxumPath<(String, String)>,
+    Query(q): Query<SdPluginAssetQuery>,
+) -> Response {
+    let clean_id: String = plugin_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+        .collect();
+    if clean_id.is_empty() || clean_id.contains("..") || rel.contains("..") || rel.contains('\0') {
+        return err_resp(StatusCode::BAD_REQUEST, "invalid plugin asset path").into_response();
+    }
+    let plugins_dir = streamdeck_root(&state).join("plugins");
+    let pdir = plugins_dir.join(if clean_id.ends_with(".sdPlugin") {
+        clean_id.clone()
+    } else {
+        format!("{clean_id}.sdPlugin")
+    });
+    let file_path = pdir.join(rel.trim_start_matches('/'));
+    if !file_path.is_file() {
+        return err_resp(StatusCode::NOT_FOUND, "plugin asset not found").into_response();
+    }
+    let Ok(bytes) = std::fs::read(&file_path) else {
+        return err_resp(StatusCode::INTERNAL_SERVER_ERROR, "failed to read asset").into_response();
+    };
+    let lower = rel.to_ascii_lowercase();
+    let mime = if lower.ends_with(".html") || lower.ends_with(".htm") {
+        "text/html; charset=utf-8"
+    } else if lower.ends_with(".js") || lower.ends_with(".mjs") {
+        "application/javascript; charset=utf-8"
+    } else if lower.ends_with(".css") {
+        "text/css; charset=utf-8"
+    } else if lower.ends_with(".svg") {
+        "image/svg+xml"
+    } else if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if lower.ends_with(".json") {
+        "application/json"
+    } else {
+        "application/octet-stream"
+    };
+
+    // Inject Elgato's official `connectElgatoStreamDeckSocket(...)` bootstrap into Property Inspector HTML!
+    if (lower.ends_with(".html") || lower.ends_with(".htm")) && q.pi_boot == Some(1) {
+        if let (Some(ws_port), Some(btn_id), Some(action_uuid)) = (q.ws_port, q.btn_id, q.action_uuid) {
+            let mut html = String::from_utf8_lossy(&bytes).into_owned();
+            // Load saved settings for this button so the PI renders current state immediately
+            let buttons_doc: StreamDeckButtonsFile =
+                std::fs::read_to_string(streamdeck_root(&state).join("buttons.json"))
+                    .ok()
+                    .and_then(|r| serde_json::from_str(&r).ok())
+                    .unwrap_or_default();
+            let cur_settings = buttons_doc
+                .buttons
+                .iter()
+                .find(|b| b.id == btn_id)
+                .map(|b| b.settings.clone())
+                .unwrap_or_else(|| json!({}));
+            let info_json = json!({
+                "application": { "language": "en", "platform": "mac", "platformVersion": "14.0", "version": "6.5.0" },
+                "plugin": { "uuid": clean_id, "version": "1.0.0" },
+                "devicePixelRatio": 2,
+                "devices": [{ "id": "keyglass-main", "name": "KeyGlass", "size": { "columns": 15, "rows": 6 }, "type": 0 }]
+            });
+            let action_info_json = json!({
+                "action": action_uuid,
+                "context": btn_id,
+                "device": "keyglass-main",
+                "payload": {
+                    "settings": cur_settings,
+                    "coordinates": { "column": 0, "row": 0 }
+                }
+            });
+            let boot_script = format!(
+                r#"<script>
+window.addEventListener('load', function() {{
+  try {{
+    if (typeof window.connectElgatoStreamDeckSocket === 'function') {{
+      window.connectElgatoStreamDeckSocket(
+        {ws_port},
+        {btn_id_js},
+        'registerPropertyInspector',
+        {info_js},
+        {action_info_js}
+      );
+    }}
+  }} catch (e) {{ console.error('KeyGlass PI boot error:', e); }}
+}});
+</script>"#,
+                ws_port = ws_port,
+                btn_id_js = serde_json::to_string(&btn_id).unwrap_or_else(|_| "\"\"".into()),
+                info_js = serde_json::to_string(&info_json.to_string()).unwrap_or_else(|_| "\"{}\"".into()),
+                action_info_js = serde_json::to_string(&action_info_json.to_string()).unwrap_or_else(|_| "\"{}\"".into()),
+            );
+            if let Some(pos) = html.rfind("</body>") {
+                html.insert_str(pos, &boot_script);
+            } else {
+                html.push_str(&boot_script);
+            }
+            return axum::http::Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", mime)
+                .body(axum::body::Body::from(html))
+                .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
+        }
+    }
+
+    axum::http::Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", mime)
+        .body(axum::body::Body::from(bytes))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 async fn get_host_identity_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
@@ -3887,6 +4058,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/streamdeck/state", get(get_streamdeck_state_api))
         .route("/v2/streamdeck/import", post(import_streamdeck_plugin_api))
         .route("/v2/streamdeck/plugins/:id", delete(delete_streamdeck_plugin_api))
+        .route("/v2/streamdeck/plugin-asset/:plugin_id/*rel", get(serve_streamdeck_plugin_asset_api))
         .route("/v2/streamdeck/buttons", put(put_streamdeck_buttons_api))
         .route("/v2/context/rules", get(get_context_rules).put(put_context_rules))
         .route("/v2/keyboard/software-status", get(get_keyboard_software_status))

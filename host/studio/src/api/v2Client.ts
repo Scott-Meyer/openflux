@@ -183,6 +183,7 @@ export interface StreamDeckPluginInfo {
   version?: string;
   description?: string;
   code_path?: string | null;
+  property_inspector?: string | null;
   path: string;
   actions: StreamDeckPluginAction[];
 }
@@ -491,7 +492,22 @@ export const v2Client = {
       elgato_detected: StreamDeckPluginInfo[];
       buttons: StreamDeckButton[];
       faces: Record<string, { title?: string; image?: string; color?: string; state?: number }>;
+      ws_port?: number;
     }>("GET", "/v2/streamdeck/state"),
+  getStreamDeckPiUrl: (
+    plugin_id: string,
+    rel_path: string,
+    ws_port: number,
+    btn_id: string,
+    action_uuid: string,
+  ) =>
+    invoke<string>("v2_streamdeck_pi_url", {
+      pluginId: plugin_id,
+      relPath: rel_path,
+      wsPort: ws_port,
+      btnId: btn_id,
+      actionUuid: action_uuid,
+    }),
   importStreamDeckPlugin: (path: string) =>
     v2Call<{ ok: boolean; plugin?: StreamDeckPluginInfo }>("POST", "/v2/streamdeck/import", { path }),
   deleteStreamDeckPlugin: (id: string) =>

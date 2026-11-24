@@ -26,7 +26,7 @@ local function resolve_action_image(entry, icon_str)
   if not (lower:match("%.png$") or lower:match("%.jpg$") or lower:match("%.jpeg$") or lower:match("%.svg$")) then
     return nil
   end
-  if string.sub(icon_str, 1, 1) == "/" or string.sub(icon_str, 1, 9) == "module://" then
+  if string.sub(icon_str, 1, 1) == "/" or string.sub(icon_str, 1, 9) == "module://" or string.sub(icon_str, 1, 8) == "media://" then
     return icon_str
   end
   local mid = tostring(entry.module_id or "")

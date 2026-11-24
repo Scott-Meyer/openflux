@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; media-src 'self' http://127.0.0.1:52324 data: blob:; img-src 'self' http://127.0.0.1:52324 https://aerial-videos.netlify.app data: blob:; font-src 'self' data: blob:; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; frame-src 'self' http://127.0.0.1:52324; media-src 'self' http://127.0.0.1:52324 data: blob:; img-src 'self' http://127.0.0.1:52324 https://aerial-videos.netlify.app data: blob:; font-src 'self' data: blob:; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {

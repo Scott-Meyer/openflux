@@ -616,6 +616,16 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
               <div className="kg-chip-grid">
                 {actionList.map((a) => {
                   const lbl = a.label || a.short_label || a.action_id;
+                  const modName =
+                    a.module_id === "streamdeck-bridge"
+                      ? "Stream Deck"
+                      : a.module_id === "widget-prusa-connect"
+                        ? "Prusa Printer"
+                        : a.module_id === "profiles"
+                          ? "Profiles"
+                          : a.module_id === "ui-osd-toast"
+                            ? "Notifications"
+                            : a.module_id || "Built-in";
                   return (
                     <button
                       key={a.slot}
@@ -626,7 +636,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                     >
                       <span>{lbl}</span>
                       <small className="kg-muted">
-                        {a.module_id ? `${a.module_id} · ${a.mode ?? "tap"}` : "Built-in"}
+                        {modName} · {a.mode ?? "tap"}
                       </small>
                     </button>
                   );

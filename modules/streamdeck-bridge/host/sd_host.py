@@ -3,19 +3,9 @@
 KeyGlass Stream Deck SDK v2 Host Bridge (`modules/streamdeck-bridge/host/sd_host.py`)
 
 Runs real Elgato `.sdPlugin` packages using Elgato's official Stream Deck WebSocket JSON protocol
-(zero third-party pip dependencies — pure Python stdlib RFC 6455 WebSocket server!) AND native
-built-in starter actions (`builtin.open_url`, `builtin.launch_app`, `builtin.run_command`,
-`builtin.toggle_command`, `builtin.counter`).
-
-Flow:
-  1. Reads configured buttons from `~/.local/share/openflux/v2/streamdeck/buttons.json`
-     and watches `modules/streamdeck/buttons` + `modules/streamdeck/key` on the authenticated v2 bus.
-  2. Spawns any referenced `.sdPlugin` `CodePathMac`/`CodePath` binaries with official Elgato flags:
-     `-port <ws_port> -pluginUUID <uuid> -registerEvent registerPlugin -info <json>`.
-  3. Sends `willAppear`, `keyDown`, and `keyUp` JSON events over WebSocket; receives live `setImage`,
-     `setTitle`, `setState`, `showAlert`, `showOk`, and `setSettings` from plugins!
-  4. Saves live PNGs to `~/.local/share/openflux/media/sd_<btn_id>.png`, uploads to the keyboard
-     over OFV2 `/v2/keyboard/upload-media`, and publishes retained `modules/streamdeck/faces`!
+(pure Python stdlib RFC 6455 WebSocket server — zero external pip dependencies!), including full
+Property Inspector (`registerPropertyInspector`, `sendToPlugin`, `sendToPropertyInspector`,
+`getSettings`, `setSettings`, `getGlobalSettings`, `setGlobalSettings`) AND built-in native actions.
 """
 
 import base64
@@ -39,6 +29,7 @@ DATA_ROOT = os.path.expanduser("~/.local/share/openflux")
 SD_ROOT = os.path.join(DATA_ROOT, "v2", "streamdeck")
 PLUGINS_DIR = os.path.join(SD_ROOT, "plugins")
 BUTTONS_PATH = os.path.join(SD_ROOT, "buttons.json")
+GLOBAL_SETTINGS_PATH = os.path.join(SD_ROOT, "global_settings.json")
 MEDIA_DIR = os.path.join(DATA_ROOT, "media")
 os.makedirs(PLUGINS_DIR, exist_ok=True)
 os.makedirs(MEDIA_DIR, exist_ok=True)
@@ -134,9 +125,9 @@ def ws_recv_frame(conn: socket.socket) -> str | None:
             return None
         if masked and mask_key:
             data = bytes(b ^ mask_key[i % 4] for i, b in enumerate(data))
-        if opcode == 0x8:  # Close
+        if opcode == 0x8:
             return None
-        if opcode == 0x9:  # Ping -> Pong
+        if opcode == 0x9:
             conn.sendall(bytes([0x8A, len(data)]) + data)
             continue
         if opcode in (0x1, 0x2):
@@ -148,20 +139,49 @@ class StreamDeckHost:
         self.lock = threading.Lock()
         self.buttons: dict[str, dict] = {}
         self.faces: dict[str, dict] = {}
+        self.global_settings: dict[str, dict] = {}
         self.toggle_states: dict[str, bool] = {}
         self.counters: dict[str, int] = {}
-        self.plugin_sockets: dict[str, socket.socket] = {}  # plugin_uuid -> ws socket
+        self.plugin_sockets: dict[str, socket.socket] = {}  # plugin_id -> ws socket
+        self.pi_sockets: dict[str, socket.socket] = {}      # button_id (context) -> PI ws socket
         self.plugin_procs: dict[str, subprocess.Popen] = {}
         self.last_img_hash: dict[str, str] = {}
         self.ws_port = 0
+        self._load_global_settings()
+
+    def _load_global_settings(self):
+        try:
+            with open(GLOBAL_SETTINGS_PATH, "r", encoding="utf-8") as f:
+                self.global_settings = json.load(f) or {}
+        except Exception:
+            self.global_settings = {}
+
+    def _save_global_settings(self):
+        try:
+            with open(GLOBAL_SETTINGS_PATH, "w", encoding="utf-8") as f:
+                json.dump(self.global_settings, f, indent=2)
+        except Exception:
+            pass
+
+    def _persist_buttons_locked(self):
+        try:
+            arr = list(self.buttons.values())
+            with open(BUTTONS_PATH, "w", encoding="utf-8") as f:
+                json.dump({"buttons": arr}, f, indent=2)
+        except Exception:
+            pass
 
     def start_ws_server(self):
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         srv.bind(("127.0.0.1", 0))
         self.ws_port = srv.getsockname()[1]
-        srv.listen(16)
+        srv.listen(32)
         print(f"[streamdeck] SDK WebSocket host listening on ws://127.0.0.1:{self.ws_port}", flush=True)
+        bus_post(
+            "/v2/bus/pub",
+            {"topic": "modules/streamdeck/host_info", "payload": {"ws_port": self.ws_port}, "retain": True},
+        )
 
         def accept_loop():
             while True:
@@ -174,7 +194,8 @@ class StreamDeckHost:
         threading.Thread(target=accept_loop, daemon=True).start()
 
     def _handle_ws_client(self, conn: socket.socket):
-        plugin_uuid = None
+        role = None
+        reg_uuid = None
         try:
             req = b""
             while b"\r\n\r\n" not in req and len(req) < 8192:
@@ -208,22 +229,86 @@ class StreamDeckHost:
                     continue
                 ev = msg.get("event", "")
                 if ev == "registerPlugin":
-                    plugin_uuid = msg.get("uuid", "")
+                    role = "plugin"
+                    reg_uuid = msg.get("uuid", "")
                     with self.lock:
-                        self.plugin_sockets[plugin_uuid] = conn
-                    print(f"[streamdeck] plugin registered: {plugin_uuid}", flush=True)
-                    self._send_will_appear_for_plugin(plugin_uuid, conn)
+                        self.plugin_sockets[reg_uuid] = conn
+                    print(f"[streamdeck] plugin registered: {reg_uuid}", flush=True)
+                    self._send_will_appear_for_plugin(reg_uuid, conn)
+                elif ev == "registerPropertyInspector":
+                    role = "pi"
+                    reg_uuid = msg.get("uuid", "")
+                    with self.lock:
+                        self.pi_sockets[reg_uuid] = conn
+                    print(f"[streamdeck] Property Inspector registered for context: {reg_uuid}", flush=True)
+                    self._notify_pi_appear(reg_uuid, conn)
                 else:
-                    self._handle_plugin_event(msg)
+                    self._handle_sdk_event(role, reg_uuid, msg, conn)
         except Exception:
             pass
         finally:
-            if plugin_uuid:
+            if reg_uuid:
                 with self.lock:
-                    if self.plugin_sockets.get(plugin_uuid) is conn:
-                        del self.plugin_sockets[plugin_uuid]
+                    if role == "plugin" and self.plugin_sockets.get(reg_uuid) is conn:
+                        del self.plugin_sockets[reg_uuid]
+                    elif role == "pi" and self.pi_sockets.get(reg_uuid) is conn:
+                        del self.pi_sockets[reg_uuid]
+                        b = self.buttons.get(reg_uuid)
+                        pws = self.plugin_sockets.get(b.get("plugin_id", "")) if b else None
+                        if b and pws:
+                            try:
+                                ws_send_text(
+                                    pws,
+                                    json.dumps({
+                                        "action": b.get("action_uuid", ""),
+                                        "event": "propertyInspectorDidDisappear",
+                                        "context": reg_uuid,
+                                        "device": "keyglass-main",
+                                    }),
+                                )
+                            except Exception:
+                                pass
             try:
                 conn.close()
+            except Exception:
+                pass
+
+    def _notify_pi_appear(self, btn_id: str, pi_conn: socket.socket):
+        with self.lock:
+            b = self.buttons.get(btn_id)
+            pws = self.plugin_sockets.get(b.get("plugin_id", "")) if b else None
+        if not b:
+            return
+        # Send current settings to PI right away
+        try:
+            ws_send_text(
+                pi_conn,
+                json.dumps({
+                    "action": b.get("action_uuid", ""),
+                    "event": "didReceiveSettings",
+                    "context": btn_id,
+                    "device": "keyglass-main",
+                    "payload": {
+                        "settings": b.get("settings") or {},
+                        "coordinates": {"column": 0, "row": 0},
+                        "isInMultiAction": False,
+                    },
+                }),
+            )
+        except Exception:
+            pass
+        # Notify the running plugin that its Property Inspector opened!
+        if pws:
+            try:
+                ws_send_text(
+                    pws,
+                    json.dumps({
+                        "action": b.get("action_uuid", ""),
+                        "event": "propertyInspectorDidAppear",
+                        "context": btn_id,
+                        "device": "keyglass-main",
+                    }),
+                )
             except Exception:
                 pass
 
@@ -248,10 +333,123 @@ class StreamDeckHost:
             except Exception:
                 pass
 
-    def _handle_plugin_event(self, msg: dict):
+    def _handle_sdk_event(self, role: str | None, reg_uuid: str | None, msg: dict, sender_conn: socket.socket):
         ev = msg.get("event", "")
-        ctx_id = msg.get("context", "")
+        ctx_id = msg.get("context", "") or (reg_uuid or "")
         payload = msg.get("payload") or {}
+
+        # Property Inspector <-> Plugin two-way relay!
+        if ev == "sendToPlugin":
+            with self.lock:
+                b = self.buttons.get(ctx_id)
+                pws = self.plugin_sockets.get(b.get("plugin_id", "")) if b else None
+            if b and pws:
+                try:
+                    ws_send_text(
+                        pws,
+                        json.dumps({
+                            "action": msg.get("action") or b.get("action_uuid", ""),
+                            "event": "sendToPlugin",
+                            "context": ctx_id,
+                            "payload": payload,
+                        }),
+                    )
+                except Exception:
+                    pass
+            return
+
+        if ev == "sendToPropertyInspector":
+            with self.lock:
+                piws = self.pi_sockets.get(ctx_id)
+                b = self.buttons.get(ctx_id)
+            if piws:
+                try:
+                    ws_send_text(
+                        piws,
+                        json.dumps({
+                            "action": msg.get("action") or (b.get("action_uuid", "") if b else ""),
+                            "event": "sendToPropertyInspector",
+                            "context": ctx_id,
+                            "payload": payload,
+                        }),
+                    )
+                except Exception:
+                    pass
+            return
+
+        if ev == "getSettings":
+            with self.lock:
+                b = self.buttons.get(ctx_id)
+            if b:
+                try:
+                    ws_send_text(
+                        sender_conn,
+                        json.dumps({
+                            "action": b.get("action_uuid", ""),
+                            "event": "didReceiveSettings",
+                            "context": ctx_id,
+                            "device": "keyglass-main",
+                            "payload": {
+                                "settings": b.get("settings") or {},
+                                "coordinates": {"column": 0, "row": 0},
+                                "isInMultiAction": False,
+                            },
+                        }),
+                    )
+                except Exception:
+                    pass
+            return
+
+        if ev == "setSettings":
+            with self.lock:
+                b = self.buttons.get(ctx_id)
+                if b and isinstance(payload, dict):
+                    b["settings"] = payload
+                    self._persist_buttons_locked()
+                pws = self.plugin_sockets.get(b.get("plugin_id", "")) if b else None
+                piws = self.pi_sockets.get(ctx_id)
+            if b:
+                ev_out = json.dumps({
+                    "action": b.get("action_uuid", ""),
+                    "event": "didReceiveSettings",
+                    "context": ctx_id,
+                    "device": "keyglass-main",
+                    "payload": {
+                        "settings": b.get("settings") or {},
+                        "coordinates": {"column": 0, "row": 0},
+                        "isInMultiAction": False,
+                    },
+                })
+                for target in (pws, piws):
+                    if target and target is not sender_conn:
+                        try:
+                            ws_send_text(target, ev_out)
+                        except Exception:
+                            pass
+            return
+
+        if ev == "getGlobalSettings":
+            pid = reg_uuid or ""
+            with self.lock:
+                if role == "pi" and pid in self.buttons:
+                    pid = self.buttons[pid].get("plugin_id", pid)
+                gs = self.global_settings.get(pid, {})
+            try:
+                ws_send_text(sender_conn, json.dumps({"event": "didReceiveGlobalSettings", "payload": {"settings": gs}}))
+            except Exception:
+                pass
+            return
+
+        if ev == "setGlobalSettings":
+            pid = reg_uuid or ""
+            with self.lock:
+                if role == "pi" and pid in self.buttons:
+                    pid = self.buttons[pid].get("plugin_id", pid)
+                if isinstance(payload, dict):
+                    self.global_settings[pid] = payload
+                    self._save_global_settings()
+            return
+
         if not ctx_id:
             return
         changed = False
@@ -261,7 +459,14 @@ class StreamDeckHost:
                 face["title"] = str(payload.get("title", ""))
                 changed = True
             elif ev == "setState":
-                face["state"] = int(payload.get("state", 0))
+                st_idx = int(payload.get("state", 0))
+                face["state"] = st_idx
+                # Also swap to States[st_idx].Image if available in plugin manifest!
+                b = self.buttons.get(ctx_id)
+                if b:
+                    img_name = self._ensure_state_icon_uploaded(b, st_idx)
+                    if img_name:
+                        face["image"] = f"media://{img_name}"
                 changed = True
             elif ev == "showAlert":
                 face["alert"] = True
@@ -296,6 +501,37 @@ class StreamDeckHost:
         if changed:
             self.publish_faces()
 
+    def _ensure_state_icon_uploaded(self, b: dict, state_idx: int) -> str | None:
+        pid = b.get("plugin_id", "")
+        auuid = b.get("action_uuid", "")
+        pdir = os.path.join(PLUGINS_DIR, f"{pid}.sdPlugin")
+        mpath = os.path.join(pdir, "manifest.json")
+        if not os.path.isfile(mpath):
+            return None
+        try:
+            with open(mpath, "r", encoding="utf-8") as f:
+                m = json.load(f)
+            for a in m.get("Actions", []):
+                if a.get("UUID") == auuid:
+                    states = a.get("States", [])
+                    if 0 <= state_idx < len(states):
+                        stem = states[state_idx].get("Image", "")
+                        for suf in ("@2x.png", ".png"):
+                            cand = os.path.join(pdir, f"{stem}{suf}")
+                            if os.path.isfile(cand):
+                                fname = f"sd_{pid}_{b['id']}_s{state_idx}.png"
+                                dst = os.path.join(MEDIA_DIR, fname)
+                                shutil.copyfile(cand, dst)
+                                bus_post(
+                                    "/v2/keyboard/upload-media",
+                                    {"local_path": dst, "remote_name": fname},
+                                    timeout=4.0,
+                                )
+                                return fname
+        except Exception:
+            pass
+        return None
+
     def publish_faces(self):
         with self.lock:
             snap = dict(self.faces)
@@ -322,6 +558,11 @@ class StreamDeckHost:
                     face["color"] = b["color"]
         self.publish_faces()
         self._ensure_plugins_running()
+        # Send willAppear to any already-connected plugins for newly added buttons!
+        with self.lock:
+            connected = list(self.plugin_sockets.items())
+        for pid, sock in connected:
+            self._send_will_appear_for_plugin(pid, sock)
 
     def _ensure_plugins_running(self):
         needed_plugins = {
@@ -341,6 +582,9 @@ class StreamDeckHost:
                     m = json.load(f)
                 code_rel = m.get("CodePathMac") or m.get("CodePath")
                 if not code_rel:
+                    continue
+                # HTML-based plugins (`index.html` / `app.html`) run inside KeyGlass WebView, not subprocess!
+                if code_rel.lower().endswith((".html", ".htm")):
                     continue
                 code_abs = os.path.join(pdir, code_rel)
                 if not os.path.isfile(code_abs):
@@ -380,7 +624,6 @@ class StreamDeckHost:
         auuid = b.get("action_uuid", "")
         settings = b.get("settings") or {}
 
-        # Built-in native Stream Deck actions (work immediately with zero external plugins!)
         if pid == "builtin":
             if not pressed:
                 return
@@ -416,7 +659,6 @@ class StreamDeckHost:
                 self.publish_faces()
             return
 
-        # Real Elgato .sdPlugin WebSocket event dispatch (`keyDown` / `keyUp`)!
         with self.lock:
             ws = self.plugin_sockets.get(pid)
         if ws is not None:

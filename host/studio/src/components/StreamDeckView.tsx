@@ -70,6 +70,8 @@ export const StreamDeckView: React.FC<StreamDeckViewProps> = ({
   const [plugins, setPlugins] = useState<StreamDeckPluginInfo[]>([]);
   const [elgatoDetected, setElgatoDetected] = useState<StreamDeckPluginInfo[]>([]);
   const [buttons, setButtons] = useState<StreamDeckButton[]>([]);
+  const [wsPort, setWsPort] = useState<number>(0);
+  const [piUrl, setPiUrl] = useState<string | null>(null);
   const [selectedBtnId, setSelectedBtnId] = useState<string | null>(null);
   const [boundByBtnId, setBoundByBtnId] = useState<Record<string, { keyIndex: number; layer: number }>>({});
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -85,6 +87,9 @@ export const StreamDeckView: React.FC<StreamDeckViewProps> = ({
       setPlugins(sdRes.plugins ?? []);
       setElgatoDetected(sdRes.elgato_detected ?? []);
       setButtons(sdRes.buttons ?? []);
+      if (typeof sdRes.ws_port === "number" && sdRes.ws_port > 0) {
+        setWsPort(sdRes.ws_port);
+      }
 
       const slots = (saRes.messages[0]?.payload as { slots?: Record<string, { action_id: string; keycode: number }> })
         ?.slots;
@@ -218,6 +223,33 @@ export const StreamDeckView: React.FC<StreamDeckViewProps> = ({
   };
 
   const selected = buttons.find((b) => b.id === selectedBtnId) ?? buttons[0] ?? null;
+  const selectedPlugin = selected ? plugins.find((p) => p.id === selected.plugin_id) ?? null : null;
+
+  // Load real Elgato Property Inspector HTML URL whenever a `.sdPlugin` button is selected!
+  useEffect(() => {
+    let alive = true;
+    if (!selected || !selectedPlugin?.property_inspector || wsPort <= 0) {
+      setPiUrl(null);
+      return;
+    }
+    void v2Client
+      .getStreamDeckPiUrl(
+        selectedPlugin.id,
+        selectedPlugin.property_inspector,
+        wsPort,
+        selected.id,
+        selected.action_uuid,
+      )
+      .then((url) => {
+        if (alive) setPiUrl(url);
+      })
+      .catch(() => {
+        if (alive) setPiUrl(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selected?.id, selected?.action_uuid, selectedPlugin?.id, selectedPlugin?.property_inspector, wsPort]);
 
   return (
     <div className="kg-module-page">
@@ -391,6 +423,35 @@ export const StreamDeckView: React.FC<StreamDeckViewProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* Real Native Elgato Property Inspector iframe for imported `.sdPlugin` actions! */}
+                {selected.plugin_id !== "builtin" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div className="kg-setting-label">
+                      Plugin Settings ({selectedPlugin?.name ?? selected.plugin_id})
+                    </div>
+                    {piUrl ? (
+                      <iframe
+                        key={`${selected.id}-${wsPort}`}
+                        src={piUrl}
+                        title={`${selected.title} Settings`}
+                        style={{
+                          width: "100%",
+                          minHeight: 280,
+                          border: "1px solid rgba(255,255,255,0.1)",
+                          borderRadius: 10,
+                          background: "#1c1f28",
+                        }}
+                      />
+                    ) : (
+                      <div className="kg-muted">
+                        {selectedPlugin?.property_inspector
+                          ? "Connecting to Stream Deck plugin WebSocket…"
+                          : "This .sdPlugin does not declare a PropertyInspectorPath settings UI."}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Action-specific Settings */}
                 {selected.action_uuid === "builtin.open_url" && (
