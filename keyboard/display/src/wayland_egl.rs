@@ -1131,7 +1131,9 @@ impl WaylandGpuPresenter {
                 return Err("eglMakeCurrent failed".into());
             }
             if let Some(si) = gl.egl_swap_interval {
-                let _ = si(egl_disp, 1);
+                // Use swap interval 0 because we pace explicitly via `wl_surface.frame()` callbacks;
+                // setting swap interval 1 on top of `wl_surface.frame()` double-serializes Mali/Weston!
+                let _ = si(egl_disp, 0);
             }
 
             let prog_bg = build_program(&gl, "bg_nv12", VS_QUAD, FS_BG_NV12)?;

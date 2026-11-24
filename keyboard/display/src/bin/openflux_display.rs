@@ -225,28 +225,49 @@ fn main() {
         let start = std::time::Instant::now();
         let mut last_step_ms: u64 = 0;
         let mut last_frame_inst: Option<std::time::Instant> = None;
-        let mut last_hb_sec: u64 = 0;
         let mut last_soc_ms: u64 = 0;
-        let mut prev_cpu: Option<(u64, u64)> = None;
-        let mut last_render_ms: u64 = 0;
+
+        // Offload 1 Hz eMMC writes (`display_heartbeat.log` + `soc_stats.json` atomic rename) to a
+        // dedicated background thread so ext4 journal flushes (~120 ms!) NEVER hitch the 60 Hz render loop!
+        let stat_render_ms = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let stat_rkmpp = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        {
+            let bg_log_dir = log_dir.clone();
+            let bg_render_ms = stat_render_ms.clone();
+            let bg_rkmpp = stat_rkmpp.clone();
+            let bg_start = start;
+            let _ = std::thread::Builder::new()
+                .name("openflux-soc-stats".into())
+                .spawn(move || {
+                    let mut prev_cpu: Option<(u64, u64)> = None;
+                    while RUNNING.load(Ordering::SeqCst) {
+                        let now_sec = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs() as i64;
+                        let mono_ms = bg_start.elapsed().as_millis() as u64;
+                        let hb = Path::new(&bg_log_dir).join("display_heartbeat.log");
+                        let _ = std::fs::write(&hb, format!("{now_sec}\n"));
+                        write_soc_stats(
+                            &bg_log_dir,
+                            &mut prev_cpu,
+                            bg_render_ms.load(Ordering::Relaxed),
+                            bg_rkmpp.load(Ordering::Relaxed),
+                            now_sec,
+                            mono_ms,
+                        );
+                        std::thread::sleep(Duration::from_secs(1));
+                    }
+                });
+        }
 
         // Rolling 120-frame latency & hitch profiler (published 1 Hz to `display/perf`)
         let mut perf = PerfWindow::new();
 
         while RUNNING.load(Ordering::SeqCst) {
             let iter_start = std::time::Instant::now();
-            let now_sec = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64;
             let mono_ms = start.elapsed().as_millis() as u64;
             let _unix_ms = openflux_bus::now_unix_ms();
-
-            if now_sec as u64 != last_hb_sec {
-                last_hb_sec = now_sec as u64;
-                let hb = Path::new(&log_dir).join("display_heartbeat.log");
-                let _ = std::fs::write(&hb, format!("{now_sec}\n"));
-            }
 
             // 1. Drain UART / bridge IPC lines (auto-connects to `/tmp/openflux_bridge.sock`!)
             for line in ipc.poll_lines() {
@@ -537,7 +558,11 @@ fn main() {
                 }
                 let gpu_swap_us = t_gpu.elapsed().as_micros() as u64;
                 let total_render_us = frame_start.elapsed().as_micros() as u64;
-                last_render_ms = (total_render_us + 500) / 1000;
+                stat_render_ms.store((total_render_us + 500) / 1000, Ordering::Relaxed);
+                stat_rkmpp.store(
+                    rkmpp_stream.is_some() || v2.active_stream_name.is_some(),
+                    Ordering::Relaxed,
+                );
                 let rkmpp_q = rkmpp_stream.as_ref().map(|s| s.queued_len()).unwrap_or(0);
                 perf.record_frame(
                     mono_ms,
@@ -555,14 +580,6 @@ fn main() {
 
             if mono_ms.saturating_sub(last_soc_ms) >= 1000 {
                 last_soc_ms = mono_ms;
-                write_soc_stats(
-                    &log_dir,
-                    &mut prev_cpu,
-                    last_render_ms,
-                    rkmpp_stream.is_some() || v2.active_stream_name.is_some(),
-                    now_sec,
-                    mono_ms,
-                );
                 let mod_perf = v2.take_module_perf_snapshot();
                 let vfps = rkmpp_stream.as_ref().map(|s| s.fps).unwrap_or(0.0);
                 let rkmpp_q = rkmpp_stream.as_ref().map(|s| s.queued_len()).unwrap_or(0);
