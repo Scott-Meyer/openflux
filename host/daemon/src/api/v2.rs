@@ -3529,6 +3529,8 @@ async fn put_streamdeck_buttons_api(
 #[derive(Deserialize)]
 struct SdPluginAssetQuery {
     #[serde(default)]
+    token: Option<String>,
+    #[serde(default)]
     ws_port: Option<u16>,
     #[serde(default)]
     btn_id: Option<String>,
@@ -3669,9 +3671,16 @@ window.addEventListener('load', function() {{
             } else {
                 html.push_str(&boot_script);
             }
-            return axum::http::Response::builder()
+            let mut builder = axum::http::Response::builder()
                 .status(StatusCode::OK)
-                .header("Content-Type", mime)
+                .header("Content-Type", mime);
+            if let Some(tok) = q.token.as_deref().filter(|t| !t.is_empty()) {
+                builder = builder.header(
+                    "Set-Cookie",
+                    format!("openflux_sd_token={tok}; Path=/v2/streamdeck/plugin-asset/; HttpOnly; SameSite=Lax"),
+                );
+            }
+            return builder
                 .body(axum::body::Body::from(html))
                 .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
         }
@@ -4061,6 +4070,25 @@ async fn v2_auth_middleware(
                         .map(|v| format!("Bearer {v}"))
                 })
             })
+        })
+        .or_else(|| {
+            // Allow scoped HttpOnly cookie ONLY for static sub-resources (JS/CSS/audio) loaded
+            // inside an authenticated `.sdPlugin` Property Inspector or HTML plugin iframe!
+            if req.uri().path().starts_with("/v2/streamdeck/plugin-asset/") {
+                req.headers()
+                    .get("cookie")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|c| {
+                        c.split(';').find_map(|part| {
+                            part.trim()
+                                .strip_prefix("openflux_sd_token=")
+                                .filter(|v| !v.is_empty())
+                                .map(|v| format!("Bearer {v}"))
+                        })
+                    })
+            } else {
+                None
+            }
         });
 
     if let Err((code, msg)) = state.verify_bearer(auth_owned.as_deref()) {
