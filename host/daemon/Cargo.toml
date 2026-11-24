@@ -40,7 +40,7 @@ semver = "1"
 sha2 = "0.10"
 tar = { version = "0.4", default-features = false }
 time = { version = "0.3", features = ["formatting", "parsing"] }
-tokio = { version = "1", features = ["rt", "net", "sync", "time", "macros"] }
+tokio = { version = "1", features = ["rt", "net", "sync", "time", "macros", "process", "io-util"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 tower = "0.5"
 zip = { version = "9", default-features = false, features = ["deflate"] }

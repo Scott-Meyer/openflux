@@ -484,8 +484,12 @@ pub async fn v2_request(
     if m == reqwest::Method::GET {
         st.get_api(&path).await
     } else {
-        st.send_api(m, &path, body.unwrap_or_else(|| json!({})), Duration::from_secs(20))
-            .await
+        let timeout = if path.starts_with("/v2/modules/") && path.ends_with("/binding-layout") {
+            Duration::from_secs(120)
+        } else {
+            Duration::from_secs(20)
+        };
+        st.send_api(m, &path, body.unwrap_or_else(|| json!({})), timeout).await
     }
 }
 

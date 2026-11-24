@@ -6,6 +6,7 @@ import {
   type V2ModuleRecord,
   v2Client,
 } from "../api/v2Client";
+import { BindingImportPanel } from "./BindingImportPanel";
 import { KeyboardSurface, type SurfaceKeyGeom } from "./KeyboardSurface";
 
 interface ModuleViewProps {
@@ -484,6 +485,10 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
         <div className="kg-surface-wrap kg-surface-compact">
           <KeyboardSurface keys={keys} selectedKey={null} showLivePreview previewTick={previewTick} />
         </div>
+      )}
+
+      {mod.manifest.ui?.builtin_view === "binding-import" && (
+        <BindingImportPanel key={mod.id} moduleId={mod.id} moduleSnapshot={mod} />
       )}
 
       {/* Clean Settings Card */}

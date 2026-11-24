@@ -254,6 +254,12 @@ enum ModulesCmd {
         #[arg(long = "set")]
         sets: Vec<String>,
     },
+    /// Inspect a module's imported bindings, or replace them from an export file.
+    BindingLayout {
+        id: String,
+        #[arg(long, value_name = "FILE")]
+        import: Option<PathBuf>,
+    },
     /// Hot-reload a module inside the running openfluxd daemon immediately.
     Reload { id: String },
     /// Trigger a declared action button on a module (publishes its bus event).
@@ -1693,6 +1699,28 @@ fn handle_modules(
                 &val,
                 &serde_json::to_string_pretty(&cfg_clone).unwrap(),
             );
+            Ok(())
+        }
+        ModulesCmd::BindingLayout { id, import } => {
+            use std::io::Read;
+            let base = require_live_daemon(cli)?;
+            let path = format!("{base}/v2/modules/{id}/binding-layout");
+            let val = if let Some(file) = import {
+                const MAX_BYTES: u64 = 512 * 1024;
+                let mut bytes = Vec::new();
+                std::fs::File::open(&file)
+                    .and_then(|f| f.take(MAX_BYTES + 1).read_to_end(&mut bytes))
+                    .map_err(|e| format!("read {}: {e}", file.display()))?;
+                if bytes.len() as u64 > MAX_BYTES {
+                    return Err("Binding export exceeds 512 KiB".into());
+                }
+                let contents = String::from_utf8(bytes).map_err(|_| "Binding export must be UTF-8")?;
+                daemon_json(reqwest::Method::POST, &path, Some(&json!({ "contents": contents })), 120_000)?
+            } else {
+                daemon_json(reqwest::Method::GET, &path, None, 5000)?
+            };
+            let text = serde_json::to_string_pretty(&val).map_err(|e| e.to_string())?;
+            print_out(cli.json, &val, &text);
             Ok(())
         }
         ModulesCmd::Reload { id } => {

@@ -1,4 +1,5 @@
 pub mod assets;
+mod binding_import;
 pub mod keyboard_edits;
 pub mod lifecycle_client;
 pub mod press_refinement;

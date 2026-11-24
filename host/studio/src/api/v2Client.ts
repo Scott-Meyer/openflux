@@ -246,6 +246,17 @@ export interface V2ModuleRecord {
   last_error?: string | null;
 }
 
+export interface BindingLayout {
+  schema: 1;
+  faces: Array<{ key: string; mods: number; name: string; icon?: string }>;
+  flavor?: string;
+  skipped?: number;
+}
+
+interface BindingLayoutResponse {
+  layout: BindingLayout | null;
+}
+
 export interface MediaLibraryFile {
   name: string;
   path: string;
@@ -380,6 +391,10 @@ export const v2Client = {
     }>("GET", `/v2/modules/${encodeURIComponent(id)}`),
   getModuleLogs: (id: string) =>
     v2Call<{ id: string; logs: ModuleLogEntry[] }>("GET", `/v2/modules/${encodeURIComponent(id)}/logs`),
+  getBindingLayout: (id: string) =>
+    v2Call<BindingLayoutResponse>("GET", `/v2/modules/${encodeURIComponent(id)}/binding-layout`),
+  importBindingLayout: (id: string, contents: string) =>
+    v2Call<BindingLayoutResponse>("POST", `/v2/modules/${encodeURIComponent(id)}/binding-layout`, { contents }),
   pollBusEvents: (pattern: string, sinceSeq: number, waitMs = 2000) =>
     v2Call<{ events: Array<{ seq: number; topic: string; payload: unknown }>; latest_seq: number }>(
       "GET",
