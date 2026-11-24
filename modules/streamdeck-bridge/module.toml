@@ -1,0 +1,25 @@
+id = "streamdeck-bridge"
+name = "Stream Deck"
+version = "2.0.0"
+description = "Import Elgato .streamDeckPlugin / .sdPlugin packages or create live programmable Stream Deck buttons and bind them to ANY key on ANY QMK layer (Base, Fn, Gaming, Layer 3+) with live dynamic icons, titles, and multi-state toggles"
+author = "KeyGlass"
+license = "MIT"
+category = "host_service"
+tags = ["streamdeck", "sdplugin", "keys", "macros", "live-icons", "elgato"]
+depends = [{ role = "keys_renderer" }]
+stages = ["under_key"]
+host_requirement = "required"
+slot_capable = false
+stackable = true
+
+[ui]
+top_tab = false
+builtin_view = "streamdeck"
+
+[entrypoints]
+script = "script.lua"
+host = "host/sd_host.py"
+
+[channels]
+subscribes = ["keyboard/resolved_keys", "system/actions", "modules/streamdeck/#"]
+publishes = ["keys/providers/streamdeck", "modules/streamdeck/faces", "modules/streamdeck/key"]

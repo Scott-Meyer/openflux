@@ -476,11 +476,59 @@ impl ModuleActionsMap {
     pub fn reconcile_from_registry(&mut self, registry: &ModuleRegistry) {
         let discovered = registry.discover();
         let state_file = registry.load_state();
-        let enabled: Vec<ModuleManifest> = discovered
+        let mut enabled: Vec<ModuleManifest> = discovered
             .into_iter()
             .filter(|(id, _)| state_file.modules.get(id).map(|s| s.enabled).unwrap_or(false))
             .map(|(_, dm)| dm.manifest)
             .collect();
+
+        // Inject dynamic user-configured Stream Deck buttons (`streamdeck/buttons.json`) as real
+        // bindable QMK `mode = "hold"` actions on `streamdeck-bridge` so they can be placed on
+        // ANY key, on ANY layer (Base, Fn, Layer 2..7, Tap-Hold) in QMK Keymap!
+        if let Some(sd_manifest) = enabled.iter_mut().find(|m| m.id == "streamdeck-bridge") {
+            let sd_buttons_path = registry
+                .state_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .join("streamdeck/buttons.json");
+            if let Ok(raw) = std::fs::read_to_string(&sd_buttons_path) {
+                if let Ok(doc) = serde_json::from_str::<Value>(&raw) {
+                    if let Some(arr) = doc.get("buttons").and_then(|v| v.as_array()) {
+                        for b in arr {
+                            let Some(bid) = b.get("id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) else {
+                                continue;
+                            };
+                            let title = b
+                                .get("title")
+                                .and_then(|v| v.as_str())
+                                .filter(|s| !s.is_empty())
+                                .unwrap_or(bid);
+                            let icon = b
+                                .get("icon_media")
+                                .and_then(|v| v.as_str())
+                                .filter(|s| !s.is_empty())
+                                .map(|f| format!("media://{f}"));
+                            let accent = b
+                                .get("color")
+                                .and_then(|v| v.as_str())
+                                .map(str::to_string);
+                            sd_manifest.actions.push(openflux_modules::ModuleActionField {
+                                id: bid.to_string(),
+                                label: format!("SD: {title}"),
+                                topic: "modules/streamdeck/key".to_string(),
+                                payload: json!({ "button_id": bid, "pressed": true }),
+                                retain: false,
+                                short_label: Some(title.chars().take(8).collect()),
+                                icon,
+                                accent,
+                                mode: "hold".to_string(),
+                                release_payload: Some(json!({ "button_id": bid, "pressed": false })),
+                            });
+                        }
+                    }
+                }
+            }
+        }
         self.reconcile_from_manifests(&enabled);
     }
 

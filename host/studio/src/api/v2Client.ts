@@ -169,6 +169,34 @@ export interface ActiveProfileState {
   module_overrides: Record<string, Record<string, unknown>>;
 }
 
+export interface StreamDeckPluginAction {
+  uuid: string;
+  name: string;
+  tooltip?: string;
+  icon?: string | null;
+}
+
+export interface StreamDeckPluginInfo {
+  id: string;
+  name: string;
+  author?: string;
+  version?: string;
+  description?: string;
+  code_path?: string | null;
+  path: string;
+  actions: StreamDeckPluginAction[];
+}
+
+export interface StreamDeckButton {
+  id: string;
+  title: string;
+  plugin_id: string;
+  action_uuid: string;
+  icon_media?: string | null;
+  color?: string | null;
+  settings: Record<string, unknown>;
+}
+
 export interface V2ModuleRecord {
   id: string;
   manifest: ModuleManifest;
@@ -457,6 +485,19 @@ export const v2Client = {
     v2Call<{ ok: boolean; active?: ActiveProfileState }>("POST", "/v2/profiles/select", {
       profile_id,
     }),
+  getStreamDeckState: () =>
+    v2Call<{
+      plugins: StreamDeckPluginInfo[];
+      elgato_detected: StreamDeckPluginInfo[];
+      buttons: StreamDeckButton[];
+      faces: Record<string, { title?: string; image?: string; color?: string; state?: number }>;
+    }>("GET", "/v2/streamdeck/state"),
+  importStreamDeckPlugin: (path: string) =>
+    v2Call<{ ok: boolean; plugin?: StreamDeckPluginInfo }>("POST", "/v2/streamdeck/import", { path }),
+  deleteStreamDeckPlugin: (id: string) =>
+    v2Call<{ ok: boolean; deleted: string }>("DELETE", `/v2/streamdeck/plugins/${encodeURIComponent(id)}`),
+  putStreamDeckButtons: (buttons: StreamDeckButton[]) =>
+    v2Call<{ ok: boolean; buttons: StreamDeckButton[] }>("PUT", "/v2/streamdeck/buttons", { buttons }),
   getKeyboardSoftwareStatus: () =>
     v2Call<{
       mode: "offline" | "stock" | "keyglass";

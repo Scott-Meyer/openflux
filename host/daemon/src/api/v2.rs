@@ -44,6 +44,26 @@ fn default_ctx_span() -> f32 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamDeckButton {
+    pub id: String,
+    pub title: String,
+    pub plugin_id: String,
+    pub action_uuid: String,
+    #[serde(default)]
+    pub icon_media: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub settings: Value,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StreamDeckButtonsFile {
+    #[serde(default)]
+    pub buttons: Vec<StreamDeckButton>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HostIdentity {
     pub host_id: String,
     pub host_name: String,
@@ -2692,6 +2712,36 @@ async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespon
             }
         }
 
+        // Sync `modules/streamdeck` custom button icons (from `streamdeck/buttons.json`) to keyboard!
+        let sd_btns_path = kb_state_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("streamdeck/buttons.json");
+        if let Ok(raw) = std::fs::read_to_string(&sd_btns_path) {
+            if let Ok(doc) = serde_json::from_str::<StreamDeckButtonsFile>(&raw) {
+                let media_dir = default_data_dir().join("media");
+                for b in &doc.buttons {
+                    if let Some(ref fname) = b.icon_media {
+                        let clean = std::path::Path::new(fname)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or(fname);
+                        let lp = media_dir.join(clean);
+                        if lp.is_file() {
+                            let remote = format!("/home/root/openflux/media/{clean}");
+                            if !device.stat_file(&remote).unwrap_or(false) {
+                                if let Ok(bytes) = std::fs::read(&lp) {
+                                    uploaded_bytes += bytes.len();
+                                    device.put_file(&remote, &bytes)?;
+                                    uploaded_files.push(remote);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Sync `module_actions.json` (64-slot QMK action registry) to keyboard for offline use!
         let actions_local = kb_state_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("module_actions.json");
         if let Ok(bytes) = std::fs::read(&actions_local) {
@@ -3066,6 +3116,374 @@ async fn vial_sync_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse 
         Ok(payload) => (StatusCode::OK, Json(payload)),
         Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     }
+}
+
+fn streamdeck_root(state: &ApiState) -> PathBuf {
+    state
+        .v2
+        .registry
+        .state_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("streamdeck")
+}
+
+fn copy_dir_recursive_safe(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+    for entry in std::fs::read_dir(src).map_err(|e| e.to_string())?.flatten() {
+        let p = entry.path();
+        let name = entry.file_name();
+        let target = dst.join(&name);
+        if p.is_dir() {
+            copy_dir_recursive_safe(&p, &target)?;
+        } else if p.is_file() {
+            std::fs::copy(&p, &target).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn find_sd_icon_file(plugin_dir: &std::path::Path, icon_stem: &str) -> Option<PathBuf> {
+    if icon_stem.is_empty() || icon_stem.contains("..") {
+        return None;
+    }
+    for suffix in ["@2x.png", ".png", ".svg", ""] {
+        let cand = plugin_dir.join(format!("{icon_stem}{suffix}"));
+        if cand.is_file() {
+            return Some(cand);
+        }
+    }
+    None
+}
+
+fn parse_sd_plugin_dir(plugin_dir: &std::path::Path) -> Option<Value> {
+    let manifest_path = plugin_dir.join("manifest.json");
+    let raw = std::fs::read_to_string(&manifest_path).ok()?;
+    let m: Value = serde_json::from_str(&raw).ok()?;
+    let dir_name = plugin_dir.file_name()?.to_string_lossy().into_owned();
+    let plugin_id = dir_name
+        .strip_suffix(".sdPlugin")
+        .unwrap_or(&dir_name)
+        .to_string();
+    let name = m
+        .get("Name")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&plugin_id)
+        .to_string();
+    let author = m.get("Author").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let version = m.get("Version").and_then(|v| v.as_str()).unwrap_or("1.0").to_string();
+    let description = m.get("Description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let code_path = m
+        .get("CodePathMac")
+        .or_else(|| m.get("CodePath"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let actions: Vec<Value> = m
+        .get("Actions")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|a| {
+                    let uuid = a.get("UUID").and_then(|v| v.as_str())?;
+                    let aname = a.get("Name").and_then(|v| v.as_str()).unwrap_or(uuid);
+                    let tooltip = a.get("Tooltip").and_then(|v| v.as_str()).unwrap_or("");
+                    let icon_stem = a
+                        .get("Icon")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| {
+                            a.get("States")
+                                .and_then(|s| s.as_array())
+                                .and_then(|arr| arr.first())
+                                .and_then(|st| st.get("Image"))
+                                .and_then(|v| v.as_str())
+                        })
+                        .unwrap_or("");
+                    let icon_file = find_sd_icon_file(plugin_dir, icon_stem)
+                        .and_then(|p| p.strip_prefix(plugin_dir).ok().map(|r| r.to_string_lossy().into_owned()));
+                    let states: Vec<Value> = a
+                        .get("States")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default();
+                    Some(json!({
+                        "uuid": uuid,
+                        "name": aname,
+                        "tooltip": tooltip,
+                        "icon": icon_file,
+                        "states": states,
+                    }))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Some(json!({
+        "id": plugin_id,
+        "name": name,
+        "author": author,
+        "version": version,
+        "description": description,
+        "code_path": code_path,
+        "path": plugin_dir.to_string_lossy(),
+        "actions": actions,
+    }))
+}
+
+async fn get_streamdeck_state_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let root = streamdeck_root(&state);
+    let plugins_dir = root.join("plugins");
+    let _ = std::fs::create_dir_all(&plugins_dir);
+
+    let mut plugins = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&plugins_dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                if let Some(parsed) = parse_sd_plugin_dir(&p) {
+                    plugins.push(parsed);
+                }
+            }
+        }
+    }
+
+    // Also scan standard macOS Elgato Stream Deck Plugins folder so users can import with 1 click!
+    let mut elgato_detected = Vec::new();
+    if let Ok(home) = std::env::var("HOME") {
+        let elgato_dir = PathBuf::from(home).join("Library/Application Support/com.elgato.StreamDeck/Plugins");
+        if let Ok(rd) = std::fs::read_dir(&elgato_dir) {
+            for entry in rd.flatten() {
+                let p = entry.path();
+                if p.is_dir() && p.extension().and_then(|e| e.to_str()) == Some("sdPlugin") {
+                    if let Some(parsed) = parse_sd_plugin_dir(&p) {
+                        elgato_detected.push(parsed);
+                    }
+                }
+            }
+        }
+    }
+
+    let buttons_doc: StreamDeckButtonsFile = std::fs::read_to_string(root.join("buttons.json"))
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default();
+
+    let faces = state
+        .v2
+        .broker
+        .get_retained("modules/streamdeck/faces")
+        .map(|m| m.payload)
+        .unwrap_or_else(|| json!({}));
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "plugins": plugins,
+            "elgato_detected": elgato_detected,
+            "buttons": buttons_doc.buttons,
+            "faces": faces,
+        })),
+    )
+}
+
+#[derive(Deserialize)]
+struct ImportStreamDeckBody {
+    path: String,
+}
+
+async fn import_streamdeck_plugin_api(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<ImportStreamDeckBody>,
+) -> impl IntoResponse {
+    let src = PathBuf::from(body.path.trim());
+    if !src.exists() {
+        return err_resp(StatusCode::BAD_REQUEST, format!("path not found: {}", src.display()));
+    }
+    let root = streamdeck_root(&state);
+    let plugins_dir = root.join("plugins");
+    let media_dir = state
+        .v2
+        .registry
+        .state_path
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("media"))
+        .unwrap_or_else(|| default_data_dir().join("media"));
+    let _ = std::fs::create_dir_all(&plugins_dir);
+    let _ = std::fs::create_dir_all(&media_dir);
+
+    let installed_dir: PathBuf = if src.is_dir() {
+        if !src.join("manifest.json").is_file() {
+            return err_resp(
+                StatusCode::BAD_REQUEST,
+                "folder is not a valid .sdPlugin (missing manifest.json)",
+            );
+        }
+        let name = src
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("imported.sdPlugin");
+        let safe_name: String = name
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+            .collect();
+        let dest = plugins_dir.join(if safe_name.ends_with(".sdPlugin") {
+            safe_name
+        } else {
+            format!("{safe_name}.sdPlugin")
+        });
+        if dest.exists() {
+            let _ = std::fs::remove_dir_all(&dest);
+        }
+        if let Err(e) = copy_dir_recursive_safe(&src, &dest) {
+            return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e);
+        }
+        dest
+    } else {
+        // `.streamDeckPlugin` ZIP archive: extract safely into temp dir with zip-slip checks!
+        let file = match std::fs::File::open(&src) {
+            Ok(f) => f,
+            Err(e) => return err_resp(StatusCode::BAD_REQUEST, format!("open failed: {e}")),
+        };
+        let mut archive = match zip::ZipArchive::new(file) {
+            Ok(a) => a,
+            Err(e) => return err_resp(StatusCode::BAD_REQUEST, format!("not a valid .streamDeckPlugin zip: {e}")),
+        };
+        let tmp_extract = std::env::temp_dir().join(format!("keyglass-sd-{}", openflux_bus::now_unix_ms()));
+        let _ = std::fs::create_dir_all(&tmp_extract);
+        for i in 0..archive.len() {
+            let Ok(mut entry) = archive.by_index(i) else { continue };
+            let Some(enclosed) = entry.enclosed_name().map(|p| p.to_path_buf()) else {
+                continue;
+            };
+            let out_path = tmp_extract.join(&enclosed);
+            if entry.is_dir() {
+                let _ = std::fs::create_dir_all(&out_path);
+            } else {
+                if let Some(parent) = out_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                if let Ok(mut out_f) = std::fs::File::create(&out_path) {
+                    let _ = std::io::copy(&mut entry, &mut out_f);
+                }
+            }
+        }
+        // Locate the `.sdPlugin` directory inside the extracted archive
+        let found_sd = std::fs::read_dir(&tmp_extract)
+            .ok()
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .find(|p| p.is_dir() && p.join("manifest.json").is_file())
+            .or_else(|| {
+                if tmp_extract.join("manifest.json").is_file() {
+                    Some(tmp_extract.clone())
+                } else {
+                    None
+                }
+            });
+        let Some(sd_src) = found_sd else {
+            let _ = std::fs::remove_dir_all(&tmp_extract);
+            return err_resp(StatusCode::BAD_REQUEST, "archive does not contain a valid .sdPlugin/manifest.json");
+        };
+        let raw_name = sd_src
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("plugin.sdPlugin");
+        let safe_name: String = raw_name
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+            .collect();
+        let dest = plugins_dir.join(if safe_name.ends_with(".sdPlugin") {
+            safe_name
+        } else {
+            format!("{safe_name}.sdPlugin")
+        });
+        if dest.exists() {
+            let _ = std::fs::remove_dir_all(&dest);
+        }
+        let copy_res = copy_dir_recursive_safe(&sd_src, &dest);
+        let _ = std::fs::remove_dir_all(&tmp_extract);
+        if let Err(e) = copy_res {
+            return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e);
+        }
+        dest
+    };
+
+    // Copy any action PNG icons from the imported `.sdPlugin` into `~/.local/share/openflux/media/`
+    let parsed = parse_sd_plugin_dir(&installed_dir);
+    if let Some(ref pdoc) = parsed {
+        let pid = pdoc["id"].as_str().unwrap_or("sd");
+        if let Some(acts) = pdoc["actions"].as_array() {
+            for a in acts {
+                if let Some(rel) = a["icon"].as_str() {
+                    let src_img = installed_dir.join(rel);
+                    if src_img.is_file() && rel.to_ascii_lowercase().ends_with(".png") {
+                        let uuid_slug: String = a["uuid"]
+                            .as_str()
+                            .unwrap_or("act")
+                            .chars()
+                            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                            .collect();
+                        let dst_name = format!("sd_{pid}_{uuid_slug}.png");
+                        let _ = std::fs::copy(&src_img, media_dir.join(&dst_name));
+                    }
+                }
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(json!({ "ok": true, "plugin": parsed })))
+}
+
+async fn delete_streamdeck_plugin_api(
+    State(state): State<Arc<ApiState>>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let clean: String = id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+        .collect();
+    if clean.is_empty() || clean.contains("..") {
+        return err_resp(StatusCode::BAD_REQUEST, "invalid plugin id");
+    }
+    let plugins_dir = streamdeck_root(&state).join("plugins");
+    let target = plugins_dir.join(if clean.ends_with(".sdPlugin") {
+        clean
+    } else {
+        format!("{clean}.sdPlugin")
+    });
+    if !target.is_dir() {
+        return err_resp(StatusCode::NOT_FOUND, "plugin not found");
+    }
+    if let Err(e) = std::fs::remove_dir_all(&target) {
+        return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+    }
+    (StatusCode::OK, Json(json!({ "ok": true, "deleted": id })))
+}
+
+async fn put_streamdeck_buttons_api(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<StreamDeckButtonsFile>,
+) -> impl IntoResponse {
+    let root = streamdeck_root(&state);
+    let _ = std::fs::create_dir_all(&root);
+    let txt = match serde_json::to_string_pretty(&body) {
+        Ok(t) => t,
+        Err(e) => return err_resp(StatusCode::BAD_REQUEST, e.to_string()),
+    };
+    if let Err(e) = std::fs::write(root.join("buttons.json"), txt) {
+        return err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string());
+    }
+    // Reconcile QMK custom slots + publish `system/actions` + broadcast `modules/streamdeck/buttons`!
+    state.v2.publish_system_actions();
+    let _ = state.v2.broker.publish(
+        "modules/streamdeck/buttons",
+        json!({ "buttons": body.buttons }),
+        PublishOptions::retained(),
+    );
+    (StatusCode::OK, Json(json!({ "ok": true, "buttons": body.buttons })))
 }
 
 async fn get_host_identity_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
@@ -3466,6 +3884,10 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/host/identity", get(get_host_identity_api).put(put_host_identity_api))
         .route("/v2/profiles", get(get_profiles_api).put(put_profiles_api))
         .route("/v2/profiles/select", post(select_profile_api))
+        .route("/v2/streamdeck/state", get(get_streamdeck_state_api))
+        .route("/v2/streamdeck/import", post(import_streamdeck_plugin_api))
+        .route("/v2/streamdeck/plugins/:id", delete(delete_streamdeck_plugin_api))
+        .route("/v2/streamdeck/buttons", put(put_streamdeck_buttons_api))
         .route("/v2/context/rules", get(get_context_rules).put(put_context_rules))
         .route("/v2/keyboard/software-status", get(get_keyboard_software_status))
         .route("/v2/keyboard/return-to-stock", post(return_keyboard_to_stock))

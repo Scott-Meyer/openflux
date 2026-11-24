@@ -708,13 +708,24 @@ function on_render(ctx, stage)
       local has_img = type(rule.image) == "string" and #rule.image > 0
       local has_icon = type(rule.icon) == "string" and #rule.icon > 0
       if has_img then
-        -- Resolve portable `module://<id>/<rel>` asset refs locally on BOTH Mac and keyboard
-        -- so cross-device BrokerMirror messages never break image paths!
+        -- Resolve portable `module://<id>/<rel>` and `media://<fname>` asset refs locally on
+        -- BOTH Mac and keyboard so cross-device BrokerMirror messages never break image paths!
         local img_path = rule.image
         if string.sub(img_path, 1, 9) == "module://" then
           local rest = string.sub(img_path, 10)
           local parent = module.dir():gsub("/[^/]+$", "")
           img_path = parent .. "/" .. rest
+        elseif string.sub(img_path, 1, 8) == "media://" then
+          local fname = string.sub(img_path, 9)
+          local mdir = module.dir()
+          if string.sub(mdir, 1, 5) == "/usr/" or string.sub(mdir, 1, 6) == "/home/" then
+            img_path = "/home/root/openflux/media/" .. fname
+          else
+            local home = os.getenv("HOME")
+            if home and #home > 0 then
+              img_path = home .. "/.local/share/openflux/media/" .. fname
+            end
+          end
         end
         -- Real PNG/image icon right inside the keycap (unlocks Stream Deck buttons & custom icons!)
         local pad = 10

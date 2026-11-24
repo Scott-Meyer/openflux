@@ -13,6 +13,7 @@ import { ModuleView } from "./components/ModuleView";
 import { ProfilesView } from "./components/ProfilesView";
 import { QmkKeymapView } from "./components/QmkKeymapView";
 import { ShortcutsProfilesPanel } from "./components/ShortcutsProfilesPanel";
+import { StreamDeckView } from "./components/StreamDeckView";
 import { TopBarDockTab } from "./components/TopBarDockTab";
 import type { AssetCatalog, DeviceStatus, OpenFluxConfig, PreviewKeyRect } from "./types/openflux";
 import { isKeyboardConnected, PLACEHOLDER_CONFIG } from "./types/openflux";
@@ -35,7 +36,8 @@ const SIDEBAR_ORDER: Record<string, number> = {
   "keys-keymap": 1,
   "keys-custom": 2,
   "keys-shortcuts": 3,
-  "dock-top-bar": 4,
+  "streamdeck-bridge": 4,
+  "dock-top-bar": 5,
   "bg-media": 10,
   "bg-aurora-shader": 11,
   "bg-stream": 12,
@@ -184,6 +186,7 @@ function sidebarLabel(m: V2ModuleRecord): string {
     "keys-custom": "Custom Legends",
     "dock-top-bar": "Top Bar & Attachments",
     "keys-shortcuts": "Modifier Legends",
+    "streamdeck-bridge": "Stream Deck",
     "analog-gamepad": "Analog Gamepad",
     "widget-prusa-connect": "Prusa Printer",
     "widget-clock": "Clock",
@@ -508,9 +511,17 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
           <ProfilesView modules={modules} />
         )}
 
+        {view.kind === "module" && view.moduleId === "streamdeck-bridge" && (
+          <StreamDeckView
+            pickFile={(title, exts) => client.pickFile(title, exts)}
+            pickFolder={(title) => client.pickFolder(title)}
+            onOpenKeymap={(k) => openModule("keys-keymap", k)}
+          />
+        )}
+
         {view.kind === "module" &&
           activeMod &&
-          !["keys-keymap", "keys-custom", "dock-top-bar", "keys-shortcuts", "profiles"].includes(view.moduleId) && (
+          !["keys-keymap", "keys-custom", "dock-top-bar", "keys-shortcuts", "profiles", "streamdeck-bridge"].includes(view.moduleId) && (
             <ModuleView
               mod={activeMod}
               keys={geomKeys}
