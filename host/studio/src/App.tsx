@@ -324,6 +324,20 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
   }, [client, refreshModules, loadGeometry]);
 
   useEffect(() => {
+    if (geomKeys.length > 0) return;
+    let alive = true;
+    const retry = () => {
+      if (!alive) return;
+      void loadGeometry();
+    };
+    const id = window.setInterval(retry, 1500);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [geomKeys.length, loadGeometry]);
+
+  useEffect(() => {
     let alive = true;
     const poll = () => {
       void v2Client

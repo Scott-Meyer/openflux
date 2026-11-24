@@ -238,6 +238,11 @@ impl V2State {
             &geometry,
             PublishOptions::retained(),
         );
+        let _ = broker.publish_typed(
+            topics::KEYBOARD_GEOMETRY,
+            &geometry,
+            PublishOptions::retained(),
+        );
         let _ = preview_broker.publish_typed(
             topics::KEYBOARD_GEOMETRY,
             &geometry,
