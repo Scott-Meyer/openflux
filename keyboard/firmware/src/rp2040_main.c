@@ -1,6 +1,7 @@
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
 #include "hardware/uart.h"
+#include "hardware/watchdog.h"
 #include "pico/bootrom.h"
 #include "pico/stdlib.h"
 #include "tusb.h"
@@ -27,6 +28,7 @@ static volatile uint8_t g_usb_config_changed = 0;
 /* Hall-effect Analog Gamepad state + App-Linking layer override. */
 static fw_gamepad_config_t g_gamepad_cfg;
 static bool g_gamepad_cfg_dirty = false;
+static volatile uint8_t g_usb_gamepad_mounted = 0U;
 static uint8_t g_layer_override = 0xFFU; /* 0..7 = active App-Linking layer, 0xFF = profile default */
 static uint16_t g_gp_resolved_kc[FW_MAX_KEYS_PER_LAYOUT];
 static bool g_gp_resolved_valid = false;
@@ -87,9 +89,11 @@ static uint64_t g_bridge_ack_expires_us;
  * reset or unplugged. */
 void tud_mount_cb(void) {
     g_usb_config_changed = 1U;
+    g_usb_gamepad_mounted = fw_usb_gamepad_enabled() ? 1U : 0U;
 }
 void tud_umount_cb(void) {
     g_usb_config_changed = 1U;
+    g_usb_gamepad_mounted = 0U;
 }
 
 static void init_hardware(void) {
@@ -489,6 +493,8 @@ static int on_gamepad_config(const uint8_t *data, size_t len, void *ctx) {
     g_gamepad_cfg_dirty = true;
     g_gp_has_sent = false;
     if (was_enabled != now_enabled) {
+        /* Never touch HID instance 3 until the host mounts the new USB configuration after reboot. */
+        g_usb_gamepad_mounted = 0U;
         g_usb_reenumerate = 1U;
     }
     return 0;
@@ -638,16 +644,26 @@ int main(void) {
         }
         if (g_usb_reenumerate && !fw_usb_tx_busy(&g_usb_tx)) {
             g_usb_reenumerate = 0U;
+            g_usb_gamepad_mounted = 0U;
+            /* Flush gamepad config + any pending QMK EEPROM before clean hardware USB reset. */
             if (g_gamepad_cfg_dirty) {
                 uint8_t gp_buf[FW_GP_CONFIG_WIRE_LEN];
                 fw_gamepad_config_encode(&g_gamepad_cfg, gp_buf);
                 (void)fw_lfs_save_gamepad_cfg(gp_buf, sizeof(gp_buf));
                 g_gamepad_cfg_dirty = false;
             }
-            sleep_ms(20);
+            (void)fw_qmk_poll_eeprom_flush(to_ms_since_boot(get_absolute_time()), 0U, true);
+            /* Pump tud_task briefly so the 0x74 ACK ZLP reaches the host before resetting USB. */
+            for (int i = 0; i < 40; i++) {
+                tud_task();
+                sleep_ms(1);
+            }
             tud_disconnect();
-            sleep_ms(120);
-            tud_connect();
+            sleep_ms(80);
+            watchdog_reboot(0, 0, 10);
+            for (;;) {
+                tight_loop_contents();
+            }
         }
         if (g_reboot_soc && !fw_usb_tx_busy(&g_usb_tx)) {
             g_reboot_soc = 0U;
@@ -799,8 +815,10 @@ int main(void) {
             resolved_dirty = true;
             g_gp_resolved_valid = false;
         }
-        /* 1000 Hz Hall-effect Analog Gamepad evaluation & USB HID transmission (IF 6, instance 3). */
-        if (g_gamepad_cfg.mode != FW_GP_MODE_OFF) {
+        /* 1000 Hz Hall-effect Analog Gamepad evaluation & USB HID transmission (IF 6, instance 3).
+         * Strictly gated on g_usb_gamepad_mounted && !g_usb_reenumerate so HID instance 3 is never
+         * accessed when the active USB configuration only opened HID instances 0..2. */
+        if (g_gamepad_cfg.mode != FW_GP_MODE_OFF && g_usb_gamepad_mounted && !g_usb_reenumerate) {
             uint8_t glid = (g_rt.keyframe_layout >= 1U && g_rt.keyframe_layout <= 3U) ? g_rt.keyframe_layout : 1U;
             uint16_t gn_keys = 0U;
             for (uint8_t r = 0U; r < FW_MATRIX_ROWS; r++) {

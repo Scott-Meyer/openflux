@@ -284,6 +284,9 @@ static const uint8_t desc_configuration_gp[] = {
 };
 // clang-format on
 
+TU_VERIFY_STATIC(sizeof(desc_configuration_base) == CONFIG_TOTAL_LEN_BASE, "Base USB config length mismatch");
+TU_VERIFY_STATIC(sizeof(desc_configuration_gp) == CONFIG_TOTAL_LEN_GP, "Gamepad USB config length mismatch");
+
 const uint8_t *tud_descriptor_configuration_cb(uint8_t index) {
     (void)index;
     return fw_usb_gamepad_enabled() ? desc_configuration_gp : desc_configuration_base;
