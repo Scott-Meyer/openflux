@@ -449,11 +449,12 @@ export const v2Client = {
       power: {
         brightness: number;
         timeoutSec: number;
+        followHostDisplay?: boolean;
       };
     }>("GET", "/v2/display/prefs"),
   putDisplayParallax: (parallax: Record<string, unknown>) =>
     v2Call<{ ok: boolean }>("PUT", "/v2/display/parallax", parallax),
-  putDisplayPower: (power: { brightness: number; timeoutSec: number }) =>
+  putDisplayPower: (power: { brightness: number; timeoutSec: number; followHostDisplay?: boolean }) =>
     v2Call<{ ok: boolean }>("PUT", "/v2/display/power", power),
   getDisplayAttachments: () => v2Call<KeyboardAttachmentsState>("GET", "/v2/display/attachments"),
   putDisplayAttachments: (bays: HardwareAttachmentBay[]) =>

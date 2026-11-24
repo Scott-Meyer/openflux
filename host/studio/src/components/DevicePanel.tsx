@@ -49,6 +49,7 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
   const lastFreshAtRef = React.useRef<number>(0);
   const [brightness, setBrightness] = useState<number>(80);
   const [v2Timeout, setV2Timeout] = useState<number>(settings?.timeout ?? 300);
+  const [followHostDisplay, setFollowHostDisplay] = useState<boolean>(true);
   const [swMode, setSwMode] = useState<"offline" | "stock" | "keyglass">("offline");
   const [switchingSw, setSwitchingSw] = useState(false);
 
@@ -60,6 +61,9 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
         if (!active) return;
         if (typeof prefs?.power?.brightness === "number") setBrightness(prefs.power.brightness);
         if (typeof prefs?.power?.timeoutSec === "number") setV2Timeout(prefs.power.timeoutSec);
+        if (typeof prefs?.power?.followHostDisplay === "boolean") {
+          setFollowHostDisplay(prefs.power.followHostDisplay);
+        }
       })
       .catch(() => {});
     void v2Client
@@ -88,7 +92,7 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
       });
       if (typeof partial.timeout === "number") {
         setV2Timeout(partial.timeout);
-        void v2Client.putDisplayPower({ brightness, timeoutSec: partial.timeout });
+        void v2Client.putDisplayPower({ brightness, timeoutSec: partial.timeout, followHostDisplay });
       }
     }
   };
@@ -213,21 +217,40 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
                 onChange={(e) => {
                   const b = Number(e.target.value);
                   setBrightness(b);
-                  void v2Client.putDisplayPower({ brightness: b, timeoutSec: v2Timeout });
+                  void v2Client.putDisplayPower({ brightness: b, timeoutSec: v2Timeout, followHostDisplay });
                 }}
               />
             </label>
             <label className="field" style={{ marginTop: 10 }}>
-              <span>
-                Display Sleep After Inactivity{followsDisplaySleep ? " (also follows the Mac's display sleep)" : ""}
-              </span>
+              <span>Auto-Sleep After Inactivity</span>
               <select value={v2Timeout} onChange={(e) => patchSettings({ timeout: Number(e.target.value) })}>
-                <option value={0}>{followsDisplaySleep ? "With the Mac's display only" : "Never"}</option>
-                <option value={300}>5 minutes</option>
-                <option value={900}>15 minutes (Default)</option>
+                <option value={0}>Never (timeout off)</option>
+                <option value={60}>1 minute</option>
+                <option value={120}>2 minutes</option>
+                <option value={300}>5 minutes (Default)</option>
+                <option value={600}>10 minutes</option>
+                <option value={900}>15 minutes</option>
                 <option value={1800}>30 minutes</option>
                 <option value={3600}>60 minutes</option>
               </select>
+            </label>
+            <label className="checkbox-field" style={{ marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={followHostDisplay}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setFollowHostDisplay(next);
+                  void v2Client.putDisplayPower({
+                    brightness,
+                    timeoutSec: v2Timeout,
+                    followHostDisplay: next,
+                  });
+                }}
+              />
+              <span>
+                Match computer display sleep{followsDisplaySleep ? " (follows macOS monitor sleep & wake)" : " (when supported by host)"}
+              </span>
             </label>
 
             <div className="rail-divider" style={{ margin: "14px 0" }} />

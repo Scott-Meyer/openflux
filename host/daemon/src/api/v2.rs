@@ -295,6 +295,7 @@ impl V2State {
                     "power": {
                         "brightness": 80,
                         "timeoutSec": 300,
+                        "followHostDisplay": true,
                     }
                 })
             });
@@ -1027,6 +1028,7 @@ impl V2State {
                     "power": self.broker.get_retained("display/power").map(|m| m.payload).unwrap_or_else(|| json!({
                         "brightness": 80,
                         "timeoutSec": 300,
+                        "followHostDisplay": true,
                     })),
                 })
             })
@@ -1064,9 +1066,16 @@ impl V2State {
     }
 
     pub fn publish_power_prefs(&self, p: &serde_json::Value) {
+        let existing_follow = self
+            .load_display_prefs()
+            .get("power")
+            .and_then(|pw| pw.get("followHostDisplay"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
         let payload = serde_json::json!({
             "brightness": p.get("brightness").and_then(|v| v.as_u64()).unwrap_or(80).clamp(5, 100),
             "timeoutSec": p.get("timeoutSec").and_then(|v| v.as_u64()).unwrap_or(300),
+            "followHostDisplay": p.get("followHostDisplay").and_then(|v| v.as_bool()).unwrap_or(existing_follow),
         });
         let mut prefs = self.load_display_prefs();
         if let Some(obj) = prefs.as_object_mut() {

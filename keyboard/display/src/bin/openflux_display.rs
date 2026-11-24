@@ -285,11 +285,12 @@ fn main() {
                 v2_img_path.clear();
             }
 
-            // 4. Apply pure-v2 display power (brightness + sleep timeout)
+            // 4. Apply pure-v2 display power (brightness + monotonic idle sleep + match host display sleep)
+            v2.poll_power_and_host_state();
             if let Some(pct) = v2.pending_brightness_pct.take() {
                 apply_brightness_pct(pct, cached_suspended, &mut saved_backlight_brightness, &mut log_diag);
             }
-            let susp = v2.is_display_asleep(unix_ms);
+            let susp = v2.is_display_asleep();
             if susp != cached_suspended {
                 cached_suspended = susp;
                 if !susp {
@@ -426,6 +427,12 @@ fn main() {
             }
 
             // 7. Step v2 Lua modules + water PDE + particles + GPU composite & swap!
+            // While panel is asleep, skip GPU/Lua rendering and yield cleanly at 20 Hz so the
+            // RK3566 stays cool and wakes within <50 ms on real keypress or host monitor wake.
+            if cached_suspended {
+                std::thread::sleep(Duration::from_millis(50));
+                continue;
+            }
             if !gpu.is_frame_pending() {
                 let frame_start = std::time::Instant::now();
                 let dt_sec = if last_step_ms == 0 {
@@ -487,6 +494,7 @@ fn main() {
                     &v2.distortion_shaders,
                     &v2.under_key_shaders,
                     &v2.glows,
+                    &v2.particle_dots,
                     &v2.overlay_rgba,
                     v2.overlay_dirty,
                     &stream_overlay_rects,

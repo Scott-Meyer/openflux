@@ -373,13 +373,51 @@ fn spawn_macos_focus_watcher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
 /// Completely decoupled from USB — simply broadcasts `host/system/metrics`, `host/media/now_playing`,
 /// and `host/weather/current` onto the broker every ~1.5s regardless of USB state, so a USB
 /// reconnect/handshake can NEVER block computer stats or weather!
+#[cfg(target_os = "macos")]
+fn is_host_display_asleep() -> bool {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGMainDisplayID() -> u32;
+        fn CGDisplayIsAsleep(display: u32) -> u32;
+    }
+    unsafe { CGDisplayIsAsleep(CGMainDisplayID()) != 0 }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn is_host_display_asleep() -> bool {
+    false
+}
+
 fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
     let _ = thread::Builder::new()
         .name("openflux-host-telemetry".into())
         .spawn(move || {
             let mut bridge = crate::bridges::create_platform_bridge();
             let mut last_time_pub: Option<Instant> = None;
+            let mut last_display_asleep: Option<bool> = None;
             while running.load(Ordering::Relaxed) {
+                let display_asleep = is_host_display_asleep();
+                if last_display_asleep != Some(display_asleep) {
+                    last_display_asleep = Some(display_asleep);
+                    let _ = state.v2.broker.publish(
+                        "host/display/state",
+                        serde_json::json!({
+                            "asleep": display_asleep,
+                            "platform": std::env::consts::OS,
+                        }),
+                        openflux_bus::PublishOptions::retained().with_origin("host-telemetry"),
+                    );
+                    let _ = state.v2.broker.publish_typed(
+                        openflux_bus::topics::HOST_CONNECTION,
+                        &openflux_bus::HostConnectionState {
+                            connected: true,
+                            host_asleep: display_asleep,
+                            last_seen_ms: openflux_bus::now_unix_ms(),
+                            host_platform: Some(std::env::consts::OS.to_string()),
+                        },
+                        openflux_bus::PublishOptions::retained().with_origin("host-telemetry"),
+                    );
+                }
                 if last_time_pub.map(|t| t.elapsed() >= Duration::from_secs(30)).unwrap_or(true) {
                     last_time_pub = Some(Instant::now());
                     let hc = HostClock::current();

@@ -186,12 +186,16 @@ pub struct KeyboardV2Display {
     pub top_fade: f32,
     parallax_rx: openflux_bus::Subscription,
     power_rx: openflux_bus::Subscription,
+    host_display_rx: openflux_bus::Subscription,
     last_parallax_sig: String,
     pub brightness_pct: u32,
     pub sleep_timeout_sec: u64,
+    pub follow_host_display: bool,
+    pub host_display_asleep: bool,
     pub pending_brightness_pct: Option<u32>,
     pub pending_brightness_steps: Vec<i8>,
     prefs_path: PathBuf,
+    resolved_keys_cache_path: PathBuf,
     pub dt_sec: f32,
     pub background_shaders: Vec<openflux_modules::ShaderPassCmd>,
     pub distortion_shaders: Vec<openflux_modules::ShaderPassCmd>,
@@ -209,6 +213,7 @@ pub struct KeyboardV2Display {
     last_key_seq: Option<u32>,
     last_key_press_ms: [u64; 256],
     last_input_ms: u64,
+    last_input_mono: std::time::Instant,
     last_state_mtime: Option<SystemTime>,
     pub mirror: openflux_bus::BrokerMirror,
 }
@@ -339,10 +344,11 @@ impl KeyboardV2Display {
             PublishOptions::retained(),
         );
         let last_state_mtime = file_mtime(&state_path);
-        let prefs_path = state_path
+        let base_v2_dir = state_path
             .parent()
-            .unwrap_or_else(|| std::path::Path::new("/home/root/openflux/v2"))
-            .join("display_prefs.json");
+            .unwrap_or_else(|| std::path::Path::new("/home/root/openflux/v2"));
+        let prefs_path = base_v2_dir.join("display_prefs.json");
+        let resolved_keys_cache_path = base_v2_dir.join("resolved_keys.json");
         let registry = ModuleRegistry::new(bundled_dir, installed_dir, local_dir, state_path);
         let mut runtime = ModuleRuntime::new(broker.clone(), geometry.clone());
         let discovered = registry.discover();
@@ -358,6 +364,9 @@ impl KeyboardV2Display {
         let power_rx = broker
             .subscribe("display/power", openflux_bus::SubscribeOptions::default())
             .expect("valid power topic");
+        let host_display_rx = broker
+            .subscribe("host/display/state", openflux_bus::SubscribeOptions::default())
+            .expect("valid host display state topic");
         let mirror = openflux_bus::BrokerMirror::new(broker.clone(), "host");
 
         let mut this = Self {
@@ -379,12 +388,16 @@ impl KeyboardV2Display {
             top_fade: 0.0,
             parallax_rx,
             power_rx,
+            host_display_rx,
             last_parallax_sig: String::new(),
             brightness_pct: 80,
             sleep_timeout_sec: 300,
+            follow_host_display: true,
+            host_display_asleep: false,
             pending_brightness_pct: None,
             pending_brightness_steps: Vec::new(),
             prefs_path,
+            resolved_keys_cache_path,
             dt_sec: 0.016,
             background_shaders: Vec::new(),
             distortion_shaders: Vec::new(),
@@ -402,10 +415,12 @@ impl KeyboardV2Display {
             last_key_seq: None,
             last_key_press_ms: [0u64; 256],
             last_input_ms: openflux_bus::now_unix_ms(),
+            last_input_mono: std::time::Instant::now(),
             last_state_mtime,
             mirror,
         };
         this.load_persisted_prefs();
+        this.load_cached_resolved_keys();
         this
     }
 
@@ -425,6 +440,23 @@ impl KeyboardV2Display {
                     if let Some(t) = pw.get("timeoutSec").and_then(|v| v.as_u64()) {
                         self.sleep_timeout_sec = t;
                     }
+                    if let Some(f) = pw.get("followHostDisplay").and_then(|v| v.as_bool()) {
+                        self.follow_host_display = f;
+                    }
+                }
+            }
+        }
+    }
+
+    fn load_cached_resolved_keys(&self) {
+        if let Ok(raw) = std::fs::read_to_string(&self.resolved_keys_cache_path) {
+            if let Ok(state) = serde_json::from_str::<ResolvedKeysState>(&raw) {
+                if !state.keys.is_empty() {
+                    let _ = self.broker.publish_typed(
+                        topics::KEYBOARD_RESOLVED_KEYS,
+                        &state,
+                        PublishOptions::retained(),
+                    );
                 }
             }
         }
@@ -475,6 +507,9 @@ impl KeyboardV2Display {
 
     pub fn on_host_disconnect(&mut self) {
         self.mirror.on_disconnect();
+        // When detached from host, stop deferring to host display sleep and fall back cleanly
+        // to the keyboard's own idle timeout.
+        self.host_display_asleep = false;
     }
 
     pub fn publish_stream_state(&self, name: &str, active: bool, codec: &str) {
@@ -564,6 +599,7 @@ impl KeyboardV2Display {
                         self.last_key_press_ms[k] = now_ms;
                     }
                     self.last_input_ms = now_ms;
+                    self.last_input_mono = std::time::Instant::now();
                     if let Some(key) = self.geometry.key(k as u16) {
                         let ev = KeyEvent {
                             key_index: k as u16,
@@ -785,6 +821,9 @@ impl KeyboardV2Display {
             &state,
             PublishOptions::retained(),
         );
+        if let Ok(txt) = serde_json::to_string(&state) {
+            let _ = std::fs::write(&self.resolved_keys_cache_path, txt);
+        }
     }
 
     fn handle_key_analog(&mut self, val: &Value, now_ms: u64) {
@@ -799,8 +838,11 @@ impl KeyboardV2Display {
                     let depth_um = triple[1].as_u64().unwrap_or(0) as u16;
                     let vel = triple[2].as_i64().unwrap_or(0) as i32;
                     if let Some(key) = self.geometry.key(key_index) {
-                        if depth_um > 0 {
+                        // Ignore tiny Hall-effect magnetic noise (<0.4 mm) so desk vibration or
+                        // thermal sensor drift never causes phantom wakes while sleeping!
+                        if depth_um >= 400 {
                             self.last_input_ms = now_ms;
+                            self.last_input_mono = std::time::Instant::now();
                         }
                         samples.push(AnalogKeySample::from_raw(
                             key_index,
@@ -992,6 +1034,47 @@ impl KeyboardV2Display {
         }
     }
 
+    /// Drains live `display/power` and `host/display/state` messages on every main-loop tick
+    /// (including while asleep!) so host monitor sleep/wake and brightness/timeout updates apply
+    /// within milliseconds without waiting for a rendered frame.
+    pub fn poll_power_and_host_state(&mut self) {
+        let mut latest_power: Option<serde_json::Value> = None;
+        while let Some(msg) = self.power_rx.try_recv() {
+            latest_power = Some(msg.payload);
+        }
+        if let Some(pw) = latest_power {
+            if let Some(b) = pw.get("brightness").and_then(|v| v.as_u64()) {
+                let pct = (b as u32).clamp(5, 100);
+                if pct != self.brightness_pct {
+                    self.brightness_pct = pct;
+                    self.pending_brightness_pct = Some(pct);
+                }
+            }
+            if let Some(t) = pw.get("timeoutSec").and_then(|v| v.as_u64()) {
+                self.sleep_timeout_sec = t;
+            }
+            if let Some(f) = pw.get("followHostDisplay").and_then(|v| v.as_bool()) {
+                self.follow_host_display = f;
+            }
+            self.persist_prefs_field("power", &pw);
+        }
+        let mut latest_host_disp: Option<bool> = None;
+        while let Some(msg) = self.host_display_rx.try_recv() {
+            if let Some(asleep) = msg.payload.get("asleep").and_then(|v| v.as_bool()) {
+                latest_host_disp = Some(asleep);
+            }
+        }
+        if let Some(asleep) = latest_host_disp {
+            let was_asleep = self.host_display_asleep;
+            self.host_display_asleep = asleep;
+            if was_asleep && !asleep {
+                // Computer screen woke up -> wake the keyboard display immediately too!
+                self.last_input_ms = openflux_bus::now_unix_ms();
+                self.last_input_mono = std::time::Instant::now();
+            }
+        }
+    }
+
     /// Steps Lua modules, 2D wave simulation, Key-SDF colliding/refracting particles, and 2D overlay.
     pub fn step_frame(&mut self, dt_sec: f32, now_ms: u64) {
         // Apply any live `display/parallax` updates pushed from Studio over OFV2 CH_BUS!
@@ -1010,24 +1093,7 @@ impl KeyboardV2Display {
                 self.overlay_dirty = true;
             }
         }
-        // Apply any live `display/power` updates (brightness / sleep timeout) pushed over OFV2 CH_BUS!
-        let mut latest_power: Option<serde_json::Value> = None;
-        while let Some(msg) = self.power_rx.try_recv() {
-            latest_power = Some(msg.payload);
-        }
-        if let Some(pw) = latest_power {
-            if let Some(b) = pw.get("brightness").and_then(|v| v.as_u64()) {
-                let pct = (b as u32).clamp(5, 100);
-                if pct != self.brightness_pct {
-                    self.brightness_pct = pct;
-                    self.pending_brightness_pct = Some(pct);
-                }
-            }
-            if let Some(t) = pw.get("timeoutSec").and_then(|v| v.as_u64()) {
-                self.sleep_timeout_sec = t;
-            }
-            self.persist_prefs_field("power", &pw);
-        }
+        self.poll_power_and_host_state();
         let dt = dt_sec.clamp(0.001, 0.06);
         self.time_sec += dt;
         let scene = self.runtime.step_frame(dt, now_ms);
@@ -1162,10 +1228,13 @@ impl KeyboardV2Display {
         );
     }
 
-    pub fn is_display_asleep(&self, now_ms: u64) -> bool {
+    pub fn is_display_asleep(&self) -> bool {
+        if self.follow_host_display && self.host_display_asleep {
+            return true;
+        }
         if self.sleep_timeout_sec == 0 {
             return false;
         }
-        now_ms.saturating_sub(self.last_input_ms) >= self.sleep_timeout_sec.saturating_mul(1000)
+        self.last_input_mono.elapsed().as_secs() >= self.sleep_timeout_sec
     }
 }
