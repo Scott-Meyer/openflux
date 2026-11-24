@@ -452,21 +452,34 @@ impl V2State {
         let mut state_file = registry.load_state();
 
         // Seed a clean, ready-to-use Core Built-In stack on first run (brand-new user experience!)
-        // ensuring a bundled default background (`aurora_velvet.png`), legends, clock, profiles,
-        // keypress sparks, and OSD notifications all work immediately with zero black screen!
+        // copying all 6 lightweight bundled default backgrounds (~1.2 MB total) into `<data_dir>/media/`
+        // so Background Media Library, WebGL2 preview, and keyboard sync all shine immediately!
         if state_file.modules.is_empty() && !discovered.is_empty() {
             let media_dir = base.join("media");
             let _ = std::fs::create_dir_all(&media_dir);
             let mut default_bg_path: Option<String> = None;
-            if let Some(src_bg) = resolve_bundled_asset_path("assets/default_backgrounds/aurora_velvet.png") {
-                let dst_bg = media_dir.join("aurora_velvet.png");
-                if !dst_bg.is_file() {
-                    let _ = std::fs::copy(&src_bg, &dst_bg);
-                }
-                if dst_bg.is_file() {
-                    default_bg_path = Some(dst_bg.to_string_lossy().into_owned());
-                } else {
-                    default_bg_path = Some(src_bg.to_string_lossy().into_owned());
+            for fname in [
+                "aurora_velvet.png",
+                "emerald_dusk.png",
+                "deep_ocean.png",
+                "solar_ember.png",
+                "cyber_slate.png",
+                "obsidian_carbon.png",
+            ] {
+                if let Some(src_bg) =
+                    resolve_bundled_asset_path(&format!("assets/default_backgrounds/{fname}"))
+                {
+                    let dst_bg = media_dir.join(fname);
+                    if !dst_bg.is_file() {
+                        let _ = std::fs::copy(&src_bg, &dst_bg);
+                    }
+                    if fname == "aurora_velvet.png" {
+                        default_bg_path = Some(if dst_bg.is_file() {
+                            dst_bg.to_string_lossy().into_owned()
+                        } else {
+                            src_bg.to_string_lossy().into_owned()
+                        });
+                    }
                 }
             }
 
@@ -488,7 +501,7 @@ impl V2State {
                         if let Some(ref bg) = default_bg_path {
                             cfg.insert("media_path".into(), json!(bg));
                         }
-                        cfg.insert("bg_dimming".into(), json!(20));
+                        cfg.insert("bg_dimming".into(), json!(0));
                     }
                     state_file.modules.insert(
                         id.to_string(),
