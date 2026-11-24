@@ -4,13 +4,13 @@ import type { DaemonClient } from "./api/daemonClient";
 import { createDaemonClient } from "./api/daemonClient";
 import { type V2ModuleRecord, v2Client } from "./api/v2Client";
 import { ActuationPanel } from "./components/ActuationPanel";
-import { AppContextView } from "./components/AppContextView";
 import { DevicePanel } from "./components/DevicePanel";
 import { HomeView } from "./components/HomeView";
 import { KeycapsTab } from "./components/KeycapsTab";
 import { type SurfaceKeyGeom } from "./components/KeyboardSurface";
 import { ModuleStoreView } from "./components/ModuleStoreView";
 import { ModuleView } from "./components/ModuleView";
+import { ProfilesView } from "./components/ProfilesView";
 import { QmkKeymapView } from "./components/QmkKeymapView";
 import { ShortcutsProfilesPanel } from "./components/ShortcutsProfilesPanel";
 import { TopBarDockTab } from "./components/TopBarDockTab";
@@ -31,11 +31,11 @@ interface AppProps {
 }
 
 const SIDEBAR_ORDER: Record<string, number> = {
+  "profiles": 0,
   "keys-keymap": 1,
   "keys-custom": 2,
   "keys-shortcuts": 3,
-  "app-context": 4,
-  "dock-top-bar": 5,
+  "dock-top-bar": 4,
   "bg-media": 10,
   "bg-aurora-shader": 11,
   "bg-stream": 12,
@@ -179,11 +179,11 @@ const ModuleIcon: React.FC<{ mod: V2ModuleRecord }> = ({ mod }) => {
 
 function sidebarLabel(m: V2ModuleRecord): string {
   const clean: Record<string, string> = {
+    "profiles": "Profiles",
     "keys-keymap": "QMK Keymap",
-    "keys-custom": "Keycap Visuals",
+    "keys-custom": "Custom Legends",
     "dock-top-bar": "Top Bar & Attachments",
-    "keys-shortcuts": "Shortcuts",
-    "app-context": "App Context",
+    "keys-shortcuts": "Modifier Legends",
     "analog-gamepad": "Analog Gamepad",
     "widget-prusa-connect": "Prusa Printer",
     "widget-clock": "Clock",
@@ -484,13 +484,13 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
           </div>
         )}
 
-        {view.kind === "module" && view.moduleId === "app-context" && (
-          <AppContextView modules={modules} />
+        {view.kind === "module" && view.moduleId === "profiles" && (
+          <ProfilesView modules={modules} />
         )}
 
         {view.kind === "module" &&
           activeMod &&
-          !["keys-keymap", "keys-custom", "dock-top-bar", "keys-shortcuts", "app-context"].includes(view.moduleId) && (
+          !["keys-keymap", "keys-custom", "dock-top-bar", "keys-shortcuts", "profiles"].includes(view.moduleId) && (
             <ModuleView
               mod={activeMod}
               keys={geomKeys}

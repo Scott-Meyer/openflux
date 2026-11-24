@@ -135,6 +135,40 @@ export interface ContextRule {
   top_bar_slots?: ContextTopBarSlot[] | null;
 }
 
+export interface HostIdentity {
+  host_id: string;
+  host_name: string;
+  os: string;
+}
+
+export interface ProfileEntry {
+  id: string;
+  name: string;
+  parent?: string | null;
+  enabled: boolean;
+  match_apps: string[];
+  match_hosts: string[];
+  match_os: string[];
+  tags: string[];
+  qmk_layer?: number | null;
+  top_bar_slots?: ContextTopBarSlot[] | null;
+  module_overrides: Record<string, Record<string, unknown>>;
+}
+
+export interface ActiveProfileState {
+  profile_id: string;
+  profile_name: string;
+  chain: string[];
+  source: string;
+  manual_override: boolean;
+  host?: HostIdentity;
+  app_name?: string;
+  tags: string[];
+  qmk_layer?: number | null;
+  top_bar_slots?: ContextTopBarSlot[] | null;
+  module_overrides: Record<string, Record<string, unknown>>;
+}
+
 export interface V2ModuleRecord {
   id: string;
   manifest: ModuleManifest;
@@ -403,6 +437,26 @@ export const v2Client = {
     }>("GET", "/v2/context/rules"),
   putContextRules: (rules: ContextRule[]) =>
     v2Call<{ ok: boolean; rules: ContextRule[] }>("PUT", "/v2/context/rules", { rules }),
+  getHostIdentity: () => v2Call<HostIdentity>("GET", "/v2/host/identity"),
+  putHostIdentity: (host: HostIdentity) =>
+    v2Call<{ ok: boolean; host: HostIdentity }>("PUT", "/v2/host/identity", host),
+  getProfiles: () =>
+    v2Call<{
+      manual_profile_id?: string | null;
+      profiles: ProfileEntry[];
+      active: ActiveProfileState;
+      host: HostIdentity;
+      current_app?: { process_name?: string; app_id?: string; window_title?: string } | null;
+    }>("GET", "/v2/profiles"),
+  putProfiles: (manual_profile_id: string | null, profiles: ProfileEntry[]) =>
+    v2Call<{ ok: boolean; profiles: ProfileEntry[] }>("PUT", "/v2/profiles", {
+      manual_profile_id,
+      profiles,
+    }),
+  selectProfile: (profile_id: string | null) =>
+    v2Call<{ ok: boolean; active?: ActiveProfileState }>("POST", "/v2/profiles/select", {
+      profile_id,
+    }),
   getKeyboardSoftwareStatus: () =>
     v2Call<{
       mode: "offline" | "stock" | "keyglass";

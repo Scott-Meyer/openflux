@@ -776,7 +776,7 @@ impl LoadedLuaModule {
         let mod_dir = self.discovered.path.to_string_lossy().into_owned();
         let slot_pos = self.instance.effective_slot_pos();
         let slot_span = self.instance.slot_span.unwrap_or(1.0).clamp(0.5, 4.0);
-        let fallback_slot_rect = slot_pos.and_then(|p| geometry.slot(p.floor() as u8).map(|s| s.rect));
+        let fallback_hdr = geometry.header_rect;
 
         // Merge manifest defaults with instance overrides.
         let mut merged_cfg = self.discovered.manifest.default_config();
@@ -784,11 +784,42 @@ impl LoadedLuaModule {
             merged_cfg.insert(k.clone(), v.clone());
         }
         let cfg_clone = merged_cfg.clone();
+        let cfg_base_clone = merged_cfg.clone();
 
         mod_tbl.set("id", self.lua.create_function(move |_, ()| Ok(mod_id.clone()))?)?;
         mod_tbl.set(
             "dir",
             self.lua.create_function(move |_, ()| Ok(mod_dir.clone()))?,
+        )?;
+        // Profile-aware `module.config()`: automatically overlays any per-profile setting
+        // overrides from `profiles/active.module_overrides[mod_id]` on top of global config
+        // (with automatic parent fall-through!), so ANY module supports per-profile config for free!
+        {
+            let broker_cfg = broker.clone();
+            let my_id_cfg = self.discovered.manifest.id.clone();
+            mod_tbl.set(
+                "config",
+                self.lua.create_function(move |lua, ()| {
+                    let mut effective = cfg_clone.clone();
+                    if let Some(pmsg) = broker_cfg.get_retained("profiles/active") {
+                        if let Some(ov) = pmsg
+                            .payload
+                            .get("module_overrides")
+                            .and_then(|m| m.get(&my_id_cfg))
+                            .and_then(|v| v.as_object())
+                        {
+                            for (k, v) in ov {
+                                effective.insert(k.clone(), v.clone());
+                            }
+                        }
+                    }
+                    lua.to_value(&effective)
+                })?,
+            )?;
+        }
+        mod_tbl.set(
+            "base_config",
+            self.lua.create_function(move |lua, ()| lua.to_value(&cfg_base_clone))?,
         )?;
         let slot_idx = slot_pos.map(|p| p.floor() as u8);
         mod_tbl.set("slot", self.lua.create_function(move |_, ()| Ok(slot_idx))?)?;
@@ -884,30 +915,26 @@ impl LoadedLuaModule {
                                 return lua.to_value(&compute_rect(hx, hy, hw, hh, count, gap, sw));
                             }
                         }
-                        if let Some(mut r) = fallback_slot_rect {
-                            let gap = 89.4_f32;
-                            if (pos - pos.floor()) >= 0.25 {
-                                r.x += r.w * 0.5 + 5.0;
-                            }
-                            r.w = if slot_span <= 0.75 {
-                                r.w * 0.5 - 5.0
-                            } else {
-                                r.w * slot_span + gap * (slot_span - 1.0)
-                            };
-                            return lua.to_value(&r);
-                        }
+                        let gap = 20.0_f32;
+                        let sw = (fallback_hdr.w - gap * 3.0) / 4.0;
+                        return lua.to_value(&compute_rect(
+                            fallback_hdr.x,
+                            fallback_hdr.y,
+                            fallback_hdr.w,
+                            fallback_hdr.h,
+                            4.0,
+                            gap,
+                            sw,
+                        ));
                     }
                     Ok(LuaValue::Nil)
                 })?,
             )?;
         }
-        mod_tbl.set(
-            "config",
-            self.lua
-                .create_function(move |lua, ()| lua.to_value(&cfg_clone))?,
-        )?;
         {
             let cfg_for_col = merged_cfg.clone();
+            let broker_col = broker.clone();
+            let my_id_col = self.discovered.manifest.id.clone();
             mod_tbl.set(
                 "color",
                 self.lua.create_function(
@@ -916,11 +943,20 @@ impl LoadedLuaModule {
                             .as_deref()
                             .map(|h| parse_hex_color(h, [1.0, 1.0, 1.0, 1.0]))
                             .unwrap_or([1.0, 1.0, 1.0, 1.0]);
-                        let rgba = cfg_for_col
-                            .get(&key)
-                            .and_then(|v| v.as_str())
-                            .map(|h| parse_hex_color(h, fb))
-                            .unwrap_or(fb);
+                        let prof_hex = broker_col
+                            .get_retained("profiles/active")
+                            .and_then(|m| {
+                                m.payload
+                                    .get("module_overrides")
+                                    .and_then(|o| o.get(&my_id_col))
+                                    .and_then(|o| o.get(&key))
+                                    .and_then(|v| v.as_str())
+                                    .map(str::to_string)
+                            });
+                        let hex_opt = prof_hex
+                            .as_deref()
+                            .or_else(|| cfg_for_col.get(&key).and_then(|v| v.as_str()));
+                        let rgba = hex_opt.map(|h| parse_hex_color(h, fb)).unwrap_or(fb);
                         let t = lua.create_table()?;
                         t.set(1, rgba[0])?;
                         t.set(2, rgba[1])?;
@@ -1001,6 +1037,124 @@ impl LoadedLuaModule {
             })?,
         )?;
         globals.set("fs", fs_tbl)?;
+
+        // First-class `profile` API: gives EVERY module clean, read-only access to the active
+        // profile, its inheritance fall-through chain, tags, host computer identity, and scoped
+        // per-profile data without hardcoding any profile internals!
+        let prof_tbl = self.lua.create_table()?;
+        {
+            let b = broker.clone();
+            prof_tbl.set(
+                "active",
+                self.lua.create_function(move |lua, ()| {
+                    match b.get_retained("profiles/active") {
+                        Some(msg) => lua.to_value(&msg.payload),
+                        None => Ok(LuaValue::Nil),
+                    }
+                })?,
+            )?;
+        }
+        {
+            let b = broker.clone();
+            prof_tbl.set(
+                "id",
+                self.lua.create_function(move |_, ()| {
+                    Ok(b.get_retained("profiles/active")
+                        .and_then(|m| m.payload.get("profile_id").and_then(|v| v.as_str()).map(str::to_string))
+                        .unwrap_or_else(|| "default".to_string()))
+                })?,
+            )?;
+        }
+        {
+            let b = broker.clone();
+            prof_tbl.set(
+                "name",
+                self.lua.create_function(move |_, ()| {
+                    Ok(b.get_retained("profiles/active")
+                        .and_then(|m| m.payload.get("profile_name").and_then(|v| v.as_str()).map(str::to_string))
+                        .unwrap_or_else(|| "Default".to_string()))
+                })?,
+            )?;
+        }
+        {
+            let b = broker.clone();
+            prof_tbl.set(
+                "chain",
+                self.lua.create_function(move |lua, ()| {
+                    let t = lua.create_table()?;
+                    if let Some(msg) = b.get_retained("profiles/active") {
+                        if let Some(arr) = msg.payload.get("chain").and_then(|v| v.as_array()) {
+                            for (i, v) in arr.iter().enumerate() {
+                                if let Some(s) = v.as_str() {
+                                    t.set(i + 1, s)?;
+                                }
+                            }
+                            return Ok(t);
+                        }
+                    }
+                    t.set(1, "default")?;
+                    Ok(t)
+                })?,
+            )?;
+        }
+        {
+            let b = broker.clone();
+            prof_tbl.set(
+                "has_tag",
+                self.lua.create_function(move |_, tag: String| {
+                    let needle = tag.trim().to_ascii_lowercase();
+                    let found = b
+                        .get_retained("profiles/active")
+                        .and_then(|m| m.payload.get("tags").and_then(|v| v.as_array()).cloned())
+                        .map(|arr| {
+                            arr.iter().any(|v| {
+                                v.as_str()
+                                    .is_some_and(|s| s.eq_ignore_ascii_case(&needle))
+                            })
+                        })
+                        .unwrap_or(false);
+                    Ok(found)
+                })?,
+            )?;
+        }
+        {
+            let b = broker.clone();
+            prof_tbl.set(
+                "host",
+                self.lua.create_function(move |lua, ()| {
+                    if let Some(msg) = b.get_retained("host/identity") {
+                        return lua.to_value(&msg.payload);
+                    }
+                    if let Some(msg) = b.get_retained("profiles/active") {
+                        if let Some(h) = msg.payload.get("host") {
+                            return lua.to_value(h);
+                        }
+                    }
+                    Ok(LuaValue::Nil)
+                })?,
+            )?;
+        }
+        {
+            let b = broker.clone();
+            let my_id = self.discovered.manifest.id.clone();
+            prof_tbl.set(
+                "data",
+                self.lua.create_function(move |lua, (key, fallback): (String, Option<LuaValue>)| {
+                    if let Some(msg) = b.get_retained("profiles/active") {
+                        if let Some(val) = msg
+                            .payload
+                            .get("module_overrides")
+                            .and_then(|m| m.get(&my_id))
+                            .and_then(|m| m.get(&key))
+                        {
+                            return lua.to_value(val);
+                        }
+                    }
+                    Ok(fallback.unwrap_or(LuaValue::Nil))
+                })?,
+            )?;
+        }
+        globals.set("profile", prof_tbl)?;
 
         Ok(())
     }

@@ -44,6 +44,45 @@ fn default_ctx_span() -> f32 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostIdentity {
+    pub host_id: String,
+    pub host_name: String,
+    pub os: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileEntry {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub parent: Option<String>,
+    #[serde(default = "default_ctx_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub match_apps: Vec<String>,
+    #[serde(default)]
+    pub match_hosts: Vec<String>,
+    #[serde(default)]
+    pub match_os: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub qmk_layer: Option<u8>,
+    #[serde(default)]
+    pub top_bar_slots: Option<Vec<ContextTopBarSlot>>,
+    #[serde(default)]
+    pub module_overrides: BTreeMap<String, BTreeMap<String, Value>>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProfilesFile {
+    #[serde(default)]
+    pub manual_profile_id: Option<String>,
+    #[serde(default)]
+    pub profiles: Vec<ProfileEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextRule {
     pub id: String,
     pub name: String,
@@ -96,6 +135,7 @@ pub struct V2State {
     vial_actions_path: PathBuf,
     staged_installs: Mutex<BTreeMap<String, StagedInstallTicket>>,
     last_context_sig: Mutex<String>,
+    profile_cmd_rx: Mutex<openflux_bus::Subscription>,
 }
 
 fn resolve_bundled_modules_dir() -> PathBuf {
@@ -321,6 +361,9 @@ impl V2State {
         let _ = vial_actions.save(&vial_actions_path);
 
         let initial_sig = Self::compute_disk_sig(&registry);
+        let profile_cmd_rx = broker
+            .subscribe("profiles/command/#", SubscribeOptions::default())
+            .expect("valid profile command sub");
         let state = Arc::new(Self {
             broker,
             preview_broker,
@@ -337,6 +380,7 @@ impl V2State {
             vial_actions_path,
             staged_installs: Mutex::new(BTreeMap::new()),
             last_context_sig: Mutex::new(String::new()),
+            profile_cmd_rx: Mutex::new(profile_cmd_rx),
         });
 
         // Background watcher: detects direct edits to script.lua / module.toml / new local
@@ -354,6 +398,8 @@ impl V2State {
             })
             .ok();
 
+        state.publish_host_identity();
+        state.evaluate_profiles();
         state.publish_system_actions();
         state
     }
@@ -412,6 +458,379 @@ impl V2State {
     /// Stops all supervised host helper processes cleanly on daemon shutdown (zero orphans!).
     pub fn shutdown(&self) {
         self.host_procs.lock().unwrap().stop_all();
+    }
+
+    pub fn host_identity_path(&self) -> PathBuf {
+        self.registry
+            .state_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("host_identity.json")
+    }
+
+    pub fn load_host_identity(&self) -> HostIdentity {
+        let p = self.host_identity_path();
+        if let Ok(raw) = std::fs::read_to_string(&p) {
+            if let Ok(id) = serde_json::from_str::<HostIdentity>(&raw) {
+                if !id.host_id.trim().is_empty() {
+                    return id;
+                }
+            }
+        }
+        let os = std::env::consts::OS.to_string();
+        let raw_host = std::process::Command::new("hostname")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().trim_end_matches(".local").to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| format!("{os}-host"));
+        let slug: String = raw_host
+            .to_ascii_lowercase()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect::<String>()
+            .trim_matches('-')
+            .to_string();
+        let identity = HostIdentity {
+            host_id: format!("{}-{}", os, if slug.is_empty() { "host" } else { &slug }),
+            host_name: raw_host,
+            os,
+        };
+        let _ = self.save_host_identity(&identity);
+        identity
+    }
+
+    pub fn save_host_identity(&self, id: &HostIdentity) -> Result<(), String> {
+        let p = self.host_identity_path();
+        if let Some(parent) = p.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let txt = serde_json::to_string_pretty(id).map_err(|e| e.to_string())?;
+        std::fs::write(&p, txt).map_err(|e| e.to_string())?;
+        let _ = self
+            .broker
+            .publish("host/identity", json!(id), PublishOptions::retained());
+        Ok(())
+    }
+
+    pub fn publish_host_identity(&self) {
+        let id = self.load_host_identity();
+        let _ = self
+            .broker
+            .publish("host/identity", json!(id), PublishOptions::retained());
+    }
+
+    pub fn profiles_path(&self) -> PathBuf {
+        self.registry
+            .state_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("profiles.json")
+    }
+
+    pub fn load_profiles(&self) -> ProfilesFile {
+        let mut doc: ProfilesFile = std::fs::read_to_string(self.profiles_path())
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_else(|| {
+                let legacy = self.load_context_rules();
+                let mut profiles = vec![ProfileEntry {
+                    id: "default".into(),
+                    name: "Default".into(),
+                    parent: None,
+                    enabled: true,
+                    match_apps: vec![],
+                    match_hosts: vec![],
+                    match_os: vec![],
+                    tags: vec!["base".into()],
+                    qmk_layer: None,
+                    top_bar_slots: None,
+                    module_overrides: BTreeMap::new(),
+                }];
+                for r in legacy.rules {
+                    profiles.push(ProfileEntry {
+                        id: r.id,
+                        name: r.name,
+                        parent: Some("default".into()),
+                        enabled: r.enabled,
+                        match_apps: r.match_apps,
+                        match_hosts: vec![],
+                        match_os: vec![],
+                        tags: vec![],
+                        qmk_layer: r.qmk_layer,
+                        top_bar_slots: r.top_bar_slots,
+                        module_overrides: BTreeMap::new(),
+                    });
+                }
+                ProfilesFile {
+                    manual_profile_id: None,
+                    profiles,
+                }
+            });
+        if !doc.profiles.iter().any(|p| p.id == "default") {
+            doc.profiles.insert(
+                0,
+                ProfileEntry {
+                    id: "default".into(),
+                    name: "Default".into(),
+                    parent: None,
+                    enabled: true,
+                    match_apps: vec![],
+                    match_hosts: vec![],
+                    match_os: vec![],
+                    tags: vec!["base".into()],
+                    qmk_layer: None,
+                    top_bar_slots: None,
+                    module_overrides: BTreeMap::new(),
+                },
+            );
+        }
+        doc
+    }
+
+    pub fn save_profiles(&self, doc: &ProfilesFile) -> Result<(), String> {
+        let p = self.profiles_path();
+        if let Some(parent) = p.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let txt = serde_json::to_string_pretty(doc).map_err(|e| e.to_string())?;
+        std::fs::write(&p, txt).map_err(|e| e.to_string())?;
+        *self.last_context_sig.lock().unwrap() = String::new();
+        self.evaluate_profiles();
+        Ok(())
+    }
+
+    fn process_profile_commands(&self) {
+        let msgs: Vec<openflux_bus::BusMessage> = self.profile_cmd_rx.lock().unwrap().drain();
+        if msgs.is_empty() {
+            return;
+        }
+        let mut doc = self.load_profiles();
+        let enabled_ids: Vec<String> = doc
+            .profiles
+            .iter()
+            .filter(|p| p.enabled)
+            .map(|p| p.id.clone())
+            .collect();
+        if enabled_ids.is_empty() {
+            return;
+        }
+        let mut changed = false;
+        let mut toast_name: Option<String> = None;
+        for msg in msgs {
+            if msg.topic == "profiles/command/auto" {
+                doc.manual_profile_id = None;
+                changed = true;
+                toast_name = Some("Auto Profile Mode".into());
+            } else if msg.topic == "profiles/command/cycle" {
+                let dir = msg.payload.get("dir").and_then(|v| v.as_i64()).unwrap_or(1);
+                let active_id = self
+                    .broker
+                    .get_retained("profiles/active")
+                    .and_then(|m| {
+                        m.payload
+                            .get("profile_id")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string)
+                    })
+                    .unwrap_or_else(|| "default".into());
+                let cur = doc.manual_profile_id.as_deref().unwrap_or(&active_id);
+                let cur_idx = enabled_ids.iter().position(|id| id == cur).unwrap_or(0) as isize;
+                let n = enabled_ids.len() as isize;
+                let next_idx = ((cur_idx + (dir as isize)).rem_euclid(n)) as usize;
+                let next_id = enabled_ids[next_idx].clone();
+                let next_name = doc
+                    .profiles
+                    .iter()
+                    .find(|p| p.id == next_id)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| next_id.clone());
+                doc.manual_profile_id = Some(next_id);
+                changed = true;
+                toast_name = Some(format!("Profile: {next_name}"));
+            }
+        }
+        if changed {
+            let _ = self.save_profiles(&doc);
+            if let Some(title) = toast_name {
+                let _ = self.broker.publish(
+                    "ui/toast",
+                    json!({
+                        "id": "profile-switch",
+                        "icon": "star",
+                        "title": title,
+                        "color": "#a78bfa",
+                        "duration_ms": 2000,
+                    }),
+                    PublishOptions::default(),
+                );
+            }
+        }
+    }
+
+    pub fn evaluate_profiles(&self) {
+        let host = self.load_host_identity();
+        let doc = self.load_profiles();
+        let app_msg = self.broker.get_retained("host/app/active");
+        let app_hay = app_msg
+            .as_ref()
+            .map(|m| {
+                format!(
+                    "{} {} {}",
+                    m.payload.get("process_name").and_then(|v| v.as_str()).unwrap_or(""),
+                    m.payload.get("app_id").and_then(|v| v.as_str()).unwrap_or(""),
+                    m.payload.get("window_title").and_then(|v| v.as_str()).unwrap_or(""),
+                )
+                .to_ascii_lowercase()
+            })
+            .unwrap_or_default();
+        let app_display = app_msg
+            .as_ref()
+            .and_then(|m| m.payload.get("process_name").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string();
+
+        let by_id: BTreeMap<&str, &ProfileEntry> =
+            doc.profiles.iter().map(|p| (p.id.as_str(), p)).collect();
+
+        let host_matches = |p: &ProfileEntry| -> bool {
+            let ok_os = p.match_os.is_empty()
+                || p.match_os.iter().any(|o| o.eq_ignore_ascii_case(&host.os));
+            let ok_host = p.match_hosts.is_empty()
+                || p.match_hosts.iter().any(|h| {
+                    h.eq_ignore_ascii_case(&host.host_id) || h.eq_ignore_ascii_case(&host.host_name)
+                });
+            ok_os && ok_host
+        };
+
+        let (selected_id, source, manual_override): (&str, String, bool) =
+            if let Some(ref mid) = doc.manual_profile_id {
+                if by_id.contains_key(mid.as_str()) {
+                    (mid.as_str(), "manual".to_string(), true)
+                } else {
+                    ("default", "default".to_string(), false)
+                }
+            } else if let Some(app_hit) = doc.profiles.iter().find(|p| {
+                p.enabled
+                    && p.id != "default"
+                    && !p.match_apps.is_empty()
+                    && host_matches(p)
+                    && p.match_apps.iter().any(|tok| {
+                        let t = tok.trim().to_ascii_lowercase();
+                        !t.is_empty() && app_hay.contains(&t)
+                    })
+            }) {
+                (app_hit.id.as_str(), format!("app:{app_display}"), false)
+            } else if let Some(host_hit) = doc.profiles.iter().find(|p| {
+                p.enabled
+                    && p.id != "default"
+                    && p.match_apps.is_empty()
+                    && (!p.match_hosts.is_empty() || !p.match_os.is_empty())
+                    && host_matches(p)
+            }) {
+                (host_hit.id.as_str(), format!("host:{}", host.host_name), false)
+            } else {
+                ("default", "default".to_string(), false)
+            };
+
+        // Cycle-safe inheritance fall-through chain: child -> parent -> ... -> default
+        let mut chain_entries: Vec<&ProfileEntry> = Vec::new();
+        let mut cur_opt = by_id.get(selected_id).copied();
+        let mut visited = std::collections::HashSet::new();
+        while let Some(entry) = cur_opt {
+            if !visited.insert(entry.id.as_str()) || chain_entries.len() >= 16 {
+                break;
+            }
+            chain_entries.push(entry);
+            cur_opt = entry
+                .parent
+                .as_deref()
+                .and_then(|pid| by_id.get(pid).copied());
+        }
+        if !visited.contains("default") {
+            if let Some(def) = by_id.get("default").copied() {
+                chain_entries.push(def);
+            }
+        }
+
+        let chain_ids: Vec<String> = chain_entries.iter().map(|e| e.id.clone()).collect();
+        let mut tags: Vec<String> = Vec::new();
+        let mut qmk_layer: Option<u8> = None;
+        let mut top_bar_slots: Option<Vec<ContextTopBarSlot>> = None;
+        let mut merged_overrides: BTreeMap<String, BTreeMap<String, Value>> = BTreeMap::new();
+
+        for e in &chain_entries {
+            for t in &e.tags {
+                if !tags.iter().any(|x| x.eq_ignore_ascii_case(t)) {
+                    tags.push(t.clone());
+                }
+            }
+            if qmk_layer.is_none() && e.qmk_layer.is_some() {
+                qmk_layer = e.qmk_layer;
+            }
+            if top_bar_slots.is_none() && e.top_bar_slots.is_some() {
+                top_bar_slots = e.top_bar_slots.clone();
+            }
+        }
+        for e in chain_entries.iter().rev() {
+            for (mod_id, kv) in &e.module_overrides {
+                let target = merged_overrides.entry(mod_id.clone()).or_default();
+                for (k, v) in kv {
+                    target.insert(k.clone(), v.clone());
+                }
+            }
+        }
+
+        let profile_name = chain_entries
+            .first()
+            .map(|e| e.name.clone())
+            .unwrap_or_else(|| "Default".into());
+
+        let payload = json!({
+            "profile_id": selected_id,
+            "profile_name": profile_name,
+            "chain": chain_ids,
+            "source": source,
+            "manual_override": manual_override,
+            "host": host,
+            "app_name": app_display,
+            "tags": tags,
+            "qmk_layer": qmk_layer,
+            "top_bar_slots": top_bar_slots,
+            "module_overrides": merged_overrides,
+        });
+
+        let sig = payload.to_string();
+        {
+            let mut prev = self.last_context_sig.lock().unwrap();
+            if *prev == sig {
+                return;
+            }
+            *prev = sig;
+        }
+
+        let _ = self
+            .broker
+            .publish("profiles/active", payload, PublishOptions::retained());
+        let _ = self.broker.publish(
+            "keyboard/layer_override",
+            json!({ "layer": qmk_layer, "reason": profile_name }),
+            PublishOptions::retained(),
+        );
+        if let Some(slots) = top_bar_slots {
+            let _ = self.broker.publish(
+                "layout/top_bar/context_override",
+                json!({ "active": true, "rule_name": profile_name, "slots": slots }),
+                PublishOptions::retained(),
+            );
+        } else {
+            let _ = self.broker.publish(
+                "layout/top_bar/context_override",
+                json!({ "active": false }),
+                PublishOptions::retained(),
+            );
+        }
     }
 
     pub fn context_rules_path(&self) -> PathBuf {
@@ -779,8 +1198,9 @@ impl V2State {
             let _ = hrt.check_hot_reload();
             let _ = hrt.step_frame(0.35, openflux_bus::now_unix_ms());
         }
-        // Evaluate Per-App Context Rules (Touch Bar top-bar swaps + Per-App QMK layer overrides!)
-        self.evaluate_context_rules();
+        // Evaluate Profiles & Multi-Computer Context (`profiles/active`, Touch Bar swaps, QMK layers!)
+        self.process_profile_commands();
+        self.evaluate_profiles();
         let reloaded = self.runtime.lock().unwrap().check_hot_reload();
         if !reloaded.is_empty() {
             for id in &reloaded {
@@ -2178,6 +2598,7 @@ async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespon
     let discovered = state.v2.registry.discover();
     let mut kb_state = state.v2.registry.load_state();
     let kb_state_path = state.v2.registry.state_path.clone();
+    let host_id_for_sync = state.v2.load_host_identity().host_id;
     let device = state.device.clone();
 
     let res = tokio::task::spawn_blocking(move || {
@@ -2253,6 +2674,22 @@ async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespon
             uploaded_bytes += bytes.len();
             device.put_file(&remote, &bytes)?;
             uploaded_files.push(remote);
+        }
+
+        // Sync `profiles.json` + per-host backup `/home/root/openflux/v2/hosts/<host_id>/profiles.json`
+        let prof_local = kb_state_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("profiles.json");
+        if let Ok(bytes) = std::fs::read(&prof_local) {
+            for remote in [
+                "/home/root/openflux/v2/profiles.json".to_string(),
+                format!("/home/root/openflux/v2/hosts/{host_id_for_sync}/profiles.json"),
+            ] {
+                uploaded_bytes += bytes.len();
+                device.put_file(&remote, &bytes)?;
+                uploaded_files.push(remote);
+            }
         }
 
         // Sync `module_actions.json` (64-slot QMK action registry) to keyboard for offline use!
@@ -2631,6 +3068,84 @@ async fn vial_sync_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse 
     }
 }
 
+async fn get_host_identity_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    (StatusCode::OK, Json(json!(state.v2.load_host_identity())))
+}
+
+async fn put_host_identity_api(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<HostIdentity>,
+) -> impl IntoResponse {
+    match state.v2.save_host_identity(&body) {
+        Ok(()) => {
+            *state.v2.last_context_sig.lock().unwrap() = String::new();
+            state.v2.evaluate_profiles();
+            (StatusCode::OK, Json(json!({ "ok": true, "host": body })))
+        }
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn get_profiles_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let doc = state.v2.load_profiles();
+    let active = state
+        .v2
+        .broker
+        .get_retained("profiles/active")
+        .map(|m| m.payload)
+        .unwrap_or_else(|| json!({ "profile_id": "default", "profile_name": "Default", "chain": ["default"] }));
+    let host = state.v2.load_host_identity();
+    let current_app = state
+        .v2
+        .broker
+        .get_retained("host/app/active")
+        .map(|m| m.payload);
+    (
+        StatusCode::OK,
+        Json(json!({
+            "manual_profile_id": doc.manual_profile_id,
+            "profiles": doc.profiles,
+            "active": active,
+            "host": host,
+            "current_app": current_app,
+        })),
+    )
+}
+
+async fn put_profiles_api(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<ProfilesFile>,
+) -> impl IntoResponse {
+    match state.v2.save_profiles(&body) {
+        Ok(()) => (StatusCode::OK, Json(json!({ "ok": true, "profiles": body.profiles }))),
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+#[derive(Deserialize)]
+struct SelectProfileBody {
+    profile_id: Option<String>,
+}
+
+async fn select_profile_api(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<SelectProfileBody>,
+) -> impl IntoResponse {
+    let mut doc = state.v2.load_profiles();
+    doc.manual_profile_id = body.profile_id.filter(|s| !s.trim().is_empty());
+    match state.v2.save_profiles(&doc) {
+        Ok(()) => {
+            let active = state
+                .v2
+                .broker
+                .get_retained("profiles/active")
+                .map(|m| m.payload);
+            (StatusCode::OK, Json(json!({ "ok": true, "active": active })))
+        }
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
 async fn get_context_rules(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     let doc = state.v2.load_context_rules();
     let active = state
@@ -2948,6 +3463,9 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/display/parallax", put(put_display_parallax))
         .route("/v2/display/power", put(put_display_power))
         .route("/v2/display/attachments", get(get_display_attachments).put(put_display_attachments))
+        .route("/v2/host/identity", get(get_host_identity_api).put(put_host_identity_api))
+        .route("/v2/profiles", get(get_profiles_api).put(put_profiles_api))
+        .route("/v2/profiles/select", post(select_profile_api))
         .route("/v2/context/rules", get(get_context_rules).put(put_context_rules))
         .route("/v2/keyboard/software-status", get(get_keyboard_software_status))
         .route("/v2/keyboard/return-to-stock", post(return_keyboard_to_stock))

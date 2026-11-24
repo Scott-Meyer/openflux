@@ -445,6 +445,7 @@ impl KeyboardV2Display {
         let extra = vec![
             "host/#".to_string(),
             "modules/#".to_string(),
+            "profiles/#".to_string(),
             "system/actions".to_string(),
             "keyboard/attachments".to_string(),
             "layout/#".to_string(),

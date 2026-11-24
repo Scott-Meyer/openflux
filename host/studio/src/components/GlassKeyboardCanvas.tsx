@@ -12,8 +12,8 @@ interface GlassKeyboardCanvasProps {
 
 const DISPLAY_W = 1920;
 const DISPLAY_H = 1080;
-const MAP_W = 960;
-const MAP_H = 540;
+const MAP_W = 1920;
+const MAP_H = 1080;
 
 const VERT_SRC = `#version 300 es
 in vec2 a_pos;
@@ -32,7 +32,7 @@ out vec4 out_color;
 
 uniform sampler2D u_video;      // Live 60 FPS background video (or fallback background)
 uniform sampler2D u_overlay;    // Crisp transparent 2D overlay (key legends, top bar widgets, toasts)
-uniform sampler2D u_glass_map;  // Precomputed 3D acrylic normal (RG), height (B), region (A)
+uniform sampler2D u_glass_map;  // 1920x1080 continuous SDF (B), key-local UV (RG), maglev post/corner mask (A)
 uniform float u_has_video;
 uniform float u_has_overlay;
 uniform float u_bg_dim;
@@ -41,23 +41,30 @@ uniform float u_time;
 uniform vec4 u_sel_rect;        // normalized (x0, y0, x1, y1) of selected key
 uniform vec4 u_hov_rect;        // normalized (x0, y0, x1, y1) of hovered key
 
-vec3 sample_screen(vec2 uv) {
+vec3 sample_bg(vec2 uv) {
   vec2 suv = clamp(uv, vec2(0.001), vec2(0.999));
   vec3 bg = vec3(0.03, 0.05, 0.09);
   if (u_has_video > 0.5) {
     bg = texture(u_video, suv).rgb;
-    bg *= (1.0 - clamp(u_bg_dim, 0.0, 0.85));
+    // Slight vibrant IPS backlight boost matching real Flux panel brightness
+    bg *= (1.0 - clamp(u_bg_dim * 0.72, 0.0, 0.72));
   }
-  // Full-bleed uniform GPU top-bar dimming matching the RK3566 compositor
-  if (u_top_fade > 0.001 && suv.y < 0.27) {
-    float fade_t = 1.0 - smoothstep(0.24, 0.27, suv.y);
+  if (u_top_fade > 0.001 && suv.y < 0.255) {
+    float fade_t = 1.0 - smoothstep(0.22, 0.255, suv.y);
     bg *= (1.0 - u_top_fade * fade_t);
   }
-  if (u_has_overlay > 0.5) {
-    vec4 ov = texture(u_overlay, suv);
-    bg = mix(bg, ov.rgb, ov.a);
-  }
   return bg;
+}
+
+vec4 sample_ov(vec2 uv) {
+  if (u_has_overlay < 0.5) return vec4(0.0);
+  return texture(u_overlay, clamp(uv, vec2(0.001), vec2(0.999)));
+}
+
+vec3 sample_full(vec2 uv) {
+  vec3 bg = sample_bg(uv);
+  vec4 ov = sample_ov(uv);
+  return mix(bg, ov.rgb, ov.a);
 }
 
 float in_rect(vec2 uv, vec4 r) {
@@ -66,133 +73,169 @@ float in_rect(vec2 uv, vec4 r) {
 }
 
 void main() {
+  // 1. Top Display Strip + Bright Metallic Horizontal Divider Rail (y = 0..268 in 1080p)
+  float y_px = v_uv.y * 1080.0;
+  if (y_px < 268.0) {
+    vec3 scr = sample_full(v_uv);
+    // Crisp clear acrylic top window with subtle top sheen + glossy lower internal-reflection lip
+    float top_sheen = smoothstep(70.0, 0.0, y_px) * 0.045;
+    // Lower acrylic bottom-edge internal-reflection band (like the bright strip just above the divider in photo)
+    float lower_lip = smoothstep(14.0, 0.0, abs(y_px - 246.0)) * 0.14;
+    // Horizontal brushed metallic/chrome divider rail at y = 258..264
+    float bar_trench = smoothstep(8.5, 3.0, abs(y_px - 260.0));
+    float bar_metal = smoothstep(3.2, 0.6, abs(y_px - 260.0));
+    float bar_spec = smoothstep(1.2, 0.0, abs(y_px - 259.4));
+
+    vec3 col = scr * (1.04 - bar_trench * 0.80);
+    col += vec3(0.92, 0.94, 0.96) * (top_sheen + lower_lip * 0.7);
+    // Warm-silver anodized/chrome divider bar matching real hardware
+    vec3 chrome = mix(vec3(0.28, 0.27, 0.25), vec3(0.84, 0.82, 0.76), bar_spec);
+    col = mix(col, chrome, bar_metal * 0.92);
+    out_color = vec4(clamp(col, 0.0, 1.0), 1.0);
+    return;
+  }
+
+  // 2. Keycap Deck: sample continuous 1920x1080 SDF + key-local coordinates
   vec4 gm = texture(u_glass_map, v_uv);
-  vec2 nxy = gm.rg * 2.0 - 1.0;
-  float h = gm.b;
-  float reg = gm.a; // ~0.0=trench, ~0.4=bevel wall, ~0.75=keycap face, ~1.0=top clear strip
+  vec2 ku = gm.rg * 2.0 - 1.0;        // key-local (-1..1, -1..1), 0 outside keys
+  // Decode exact signed distance in 1080p pixels: > 0 inside keycap, < 0 outside keycap
+  float dist_in_px = (gm.b - 0.5) * 42.0;
+  float post_mask = gm.a;             // >0.5 = dark vertical maglev guide post inside left/right wall
 
-  // Construct 3D unit normal for acrylic surface
-  float nz = sqrt(max(0.08, 1.0 - dot(nxy, nxy)));
-  vec3 N = normalize(vec3(nxy, nz));
-  vec3 V = vec3(0.0, 0.14, 0.99);
+  // Outward unit normal approximation for wall refraction (smooth everywhere via key-local coords)
+  vec2 abs_ku = abs(ku);
+  vec2 wall_n = normalize(vec2(
+    sign(ku.x) * smoothstep(0.45, 0.95, abs_ku.x),
+    sign(ku.y) * smoothstep(0.45, 0.95, abs_ku.y)
+  ) + vec2(1e-4, 0.0));
+  float corner_fac = smoothstep(0.68, 0.96, abs_ku.x) * smoothstep(0.68, 0.96, abs_ku.y);
 
-  // Two soft studio overhead lights (main key softbox top-left + subtle cool rim light top-right)
-  vec3 L1 = normalize(vec3(-0.28, -0.52, 0.81));
-  vec3 L2 = normalize(vec3(0.42, -0.35, 0.84));
-  vec3 H1 = normalize(L1 + V);
-  vec3 H2 = normalize(L2 + V);
-
-  float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.2);
-  float spec1 = pow(max(dot(N, H1), 0.0), 56.0);
-  float spec2 = pow(max(dot(N, H2), 0.0), 28.0);
+  // Wall geometry in exact 1080p pixels (calibrated from 1:1 macro photo of Scott's middle keys!)
+  // Side walls are slightly thicker (~9.5px) to house the maglev guide posts; top/bottom rims are
+  // sleek (~6.2px) so dual-shift symbols (! @ # $ %) & icons stay 100% crisp and unclipped!
+  float wall_w = mix(6.2, 9.5, abs(wall_n.x));
 
   vec3 col;
+  if (dist_in_px <= 0.0) {
+    // 2A. Outside keycaps: BRIGHT, CLEAR acrylic apron & inter-row spaces!
+    // Narrow 2.5px structural optical shadow hugging the outer keycap base
+    float gap_px = -dist_in_px;
+    float edge_shadow = smoothstep(2.8, 0.0, gap_px);
+    vec3 bg = sample_bg(v_uv);
+    float frame_glint = smoothstep(5.0, 2.2, gap_px) * smoothstep(0.6, 2.2, gap_px) * 0.16;
+    col = bg * mix(1.04, 0.34, edge_shadow) + vec3(0.88, 0.92, 0.96) * frame_glint;
+  } else if (dist_in_px < wall_w) {
+    // 2B. Thick Vertical Clear Acrylic Keycap Wall (Total Internal Reflection + Optical Scramble)
+    // Optically scrambles ONLY background ocean (sample_bg — never ghosts key legends!)
+    float wt = dist_in_px / wall_w; // 0 = outer edge, 1 = inner crystal window edge
+    vec2 perp = vec2(-wall_n.y, wall_n.x);
 
-  if (reg > 0.90) {
-    // 1. Clear Acrylic Top Display Strip (photo-calibrated: crisp luminous transmission,
-    // subtle acrylic bottom-edge total-internal-reflection lip, and bright metallic divider bar!)
-    vec3 scr = sample_screen(v_uv);
-    float top_sheen = smoothstep(0.14, 0.0, v_uv.y) * 0.06;
-    // Glossy horizontal refraction glint along the lower edge of the clear top acrylic block
-    float lower_acrylic_lip = smoothstep(0.016, 0.0, abs(v_uv.y - 0.228)) * 0.14;
-    // Crisp bright metallic/silver horizontal divider rail between Top Strip and Keycap Deck
-    float bar_dark = smoothstep(0.007, 0.002, abs(v_uv.y - 0.244));
-    float bar_chrome = smoothstep(0.0026, 0.0, abs(v_uv.y - 0.244));
-    col = scr * (1.06 - bar_dark * 0.72) + vec3(0.88, 0.93, 1.0) * (top_sheen + lower_acrylic_lip);
-    col = mix(col, vec3(0.76, 0.79, 0.84), bar_chrome * 0.85);
-  } else if (reg < 0.18) {
-    // 2. Razor-thin structural keyframe seam between crystal keycaps
-    vec3 refr_a = sample_screen(v_uv + vec2(0.014, -0.012));
-    vec3 refr_b = sample_screen(v_uv + vec2(-0.012, 0.014));
-    col = (refr_a + refr_b) * 0.16 + vec3(0.03, 0.035, 0.045);
-  } else if (reg < 0.58) {
-    // 3. Luminous Crystal-Clear Acrylic Keycap Bevel Walls (calibrated from real overhead photo!)
-    // Thick vertical clear acrylic walls trap bright internal-reflection light from the glowing IPS
-    // display underneath, creating glistening silver-tinted crystal rims around every keycap!
-    vec2 perp = vec2(-nxy.y, nxy.x);
-    vec2 r1 = nxy * 0.032 + perp * 0.010;
-    vec2 r2 = -nxy * 0.024 - perp * 0.010;
-    vec3 s1 = vec3(
-      sample_screen(v_uv + r1 * 1.14).r,
-      sample_screen(v_uv + r1).g,
-      sample_screen(v_uv + r1 * 0.86).b
+    // Multi-bounce crisp internal acrylic refraction (obscures direct reading through thick edges)
+    vec3 s1 = sample_bg(v_uv - wall_n * 0.018 + perp * 0.006);
+    vec3 s2 = sample_bg(v_uv + wall_n * 0.022 - perp * 0.006);
+    vec3 s3 = sample_bg(v_uv - wall_n * 0.008 - perp * 0.010);
+    vec3 s_mix = s1 * 0.45 + s2 * 0.35 + s3 * 0.20;
+    float luma = dot(s_mix, vec3(0.299, 0.587, 0.114));
+    vec3 piped = mix(s_mix, vec3(luma), 0.16) * 1.15;
+
+    // Physical acrylic skirt shading: crisp dark base edge -> bright internal glass band -> subtle inner lip
+    float base_dark = smoothstep(0.24, 0.0, wt);
+    float mid_band = smoothstep(0.14, 0.48, wt) * smoothstep(0.95, 0.58, wt);
+    float inner_lip = smoothstep(0.76, 0.98, wt);
+
+    // Overhead directional specular (horizontal top/bottom bevels & 45-deg corners catch bright silver light)
+    float horiz_catch = max(0.0, -wall_n.y) * 0.28 + max(0.0, wall_n.y) * 0.20;
+    float vert_catch = abs(wall_n.x) * 0.10;
+
+    col = piped * mix(0.55, 1.06, smoothstep(0.0, 0.35, wt));
+    col *= (1.0 - base_dark * 0.42);
+    col += vec3(0.90, 0.94, 0.98) * (
+      mid_band * (0.14 + horiz_catch + vert_catch) +
+      inner_lip * (0.14 + horiz_catch * 0.5) +
+      corner_fac * 0.34
     );
-    vec3 s2 = sample_screen(v_uv + r2);
-    vec3 internal_glow = (s1 * 0.55 + s2 * 0.45);
-    // Bright luminous crystal total-internal-reflection (high luma, never muddy dark grey!)
-    float wall_t = smoothstep(0.04, 0.95, h);
-    float tir_band = smoothstep(0.18, 0.52, h) * smoothstep(0.96, 0.62, h);
-    vec3 crystal_rim = vec3(0.90, 0.95, 1.0) * (fresnel * 0.42 + spec1 * 0.65 + spec2 * 0.28 + tir_band * 0.22);
-    col = internal_glow * mix(0.62, 1.15, wall_t) + crystal_rim;
-  } else {
-    // 4. Uniform Middle-Key Convex-Bottom Fisheye Crystal Top Face!
-    // Pulls in ~6% extra surrounding screen uniformly across every key (no harsh edge distortion)
-    // so the whole board stitches into one luminous, vivid, jewel-like continuous image!
-    float r2 = dot(nxy, nxy);
-    vec2 fisheye_uv = v_uv + vec2(0.0, 0.0025) - nxy * (0.014 + 0.028 * r2);
-    vec3 scr = sample_screen(fisheye_uv);
 
-    // Subtle crisp inner acrylic lip where flat top meets vertical crystal wall
-    float inner_lip = smoothstep(0.89, 0.83, h) * 0.22;
-    float dish_sheen = spec1 * 0.14 + spec2 * 0.06 + fresnel * 0.07;
-    col = scr * 1.12 + vec3(0.90, 0.95, 1.0) * (dish_sheen + inner_lip);
+    // Signature Flux Maglev Side-Wall Guide Posts (crisp dark vertical blocks inside L/R acrylic walls!)
+    if (post_mask > 0.02) {
+      vec3 post_col = vec3(0.04, 0.045, 0.055) + s_mix * 0.08;
+      col = mix(col, post_col, clamp(post_mask * 1.05, 0.0, 0.94));
+    }
+
+    // Keep any legend/icon glyphs that approach the inner edge (wt > 0.65) crisp and unclipped!
+    if (wt > 0.65) {
+      vec4 ov_edge = sample_ov(v_uv);
+      col = mix(col, ov_edge.rgb, ov_edge.a * smoothstep(0.65, 0.95, wt));
+    }
+  } else {
+    // 2C. Uniform Middle-Key Convex-Bottom Fisheye Crystal Top Window
+    // Gently pulls in ~6% extra surrounding screen uniformly across every keycap so the brain
+    // stitches one complete, vivid, jewel-like continuous image across the whole board!
+    float r2 = dot(ku, ku);
+    vec2 fisheye_shift = ku * (0.0042 + 0.0038 * r2);
+    vec2 bg_uv = v_uv + fisheye_shift;
+    vec2 ov_uv = v_uv + ku * 0.0010;
+
+    vec3 bg = sample_bg(bg_uv);
+    vec4 ov = sample_ov(ov_uv);
+    vec3 scr = mix(bg, ov.rgb, ov.a);
+
+    // Crystal-clear zero-haze transmission + ultra-fine inner bevel catch-light
+    float inner_edge = smoothstep(wall_w + 2.8, wall_w, dist_in_px);
+    float micro_sheen = smoothstep(0.85, -0.85, ku.y) * 0.022;
+    col = scr * 1.06 + vec3(0.92, 0.96, 1.0) * (micro_sheen + inner_edge * 0.09);
   }
 
   // Interactive 3D internal acrylic edge glow on Hovered / Selected key
   float is_hov = in_rect(v_uv, u_hov_rect);
   float is_sel = in_rect(v_uv, u_sel_rect);
-  if (is_hov > 0.5 && reg >= 0.18 && reg < 0.90) {
-    float wall_boost = (reg < 0.58) ? 0.34 : 0.07;
-    col += vec3(0.62, 0.52, 1.0) * wall_boost;
+  if (is_hov > 0.5 && dist_in_px > 0.0) {
+    float boost = (dist_in_px < wall_w) ? 0.40 : 0.06;
+    col += vec3(0.62, 0.52, 1.0) * boost;
   }
-  if (is_sel > 0.5 && reg >= 0.18 && reg < 0.90) {
-    float wall_boost = (reg < 0.58) ? 0.55 : 0.12;
-    col += vec3(0.45, 0.72, 1.0) * wall_boost;
+  if (is_sel > 0.5 && dist_in_px > 0.0) {
+    float boost = (dist_in_px < wall_w) ? 0.62 : 0.10;
+    col += vec3(0.45, 0.72, 1.0) * boost;
   }
 
-  // Subtle physical vignette toward outer bezel edges
+  // Subtle physical outer bezel edge vignette
   vec2 edge = min(v_uv, 1.0 - v_uv);
-  float vig = smoothstep(0.0, 0.015, edge.x) * smoothstep(0.0, 0.02, edge.y);
-  col *= mix(0.76, 1.0, vig);
+  float vig = smoothstep(0.0, 0.010, edge.x) * smoothstep(0.0, 0.014, edge.y);
+  col *= mix(0.80, 1.0, vig);
 
   out_color = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
 `;
 
-/** Precomputes a 960x540 3D normal/bevel/region texture for all 85 sculpted Flux acrylic keycaps. */
+/** Precomputes a native 1920x1080 continuous SDF + key-local UV + maglev guide-post map. */
 function buildGlassNormalMap(keys: SurfaceKeyGeom[]): Uint8Array {
   const data = new Uint8Array(MAP_W * MAP_H * 4);
   const sx = MAP_W / DISPLAY_W;
   const sy = MAP_H / DISPLAY_H;
 
-  // Initialize everything to clear glass apron (nx=0, ny=0, h=255, reg=1.0) so areas OUTSIDE
-  // the keycap array stay 100% bright & clear — only keycap walls & narrow inter-key gaps obscure!
+  // Initialize every pixel to far-outside clear apron (ku=(0,0), dist_in=-21px -> B=0, post=0)
   for (let i = 0; i < MAP_W * MAP_H; i++) {
     const o = i * 4;
     data[o] = 128;
     data[o + 1] = 128;
-    data[o + 2] = 255;
-    data[o + 3] = 255;
+    data[o + 2] = 0;
+    data[o + 3] = 0;
   }
 
-  const topH = Math.round(264 * sy);
+  const topH = Math.round(268 * sy);
 
-  // Rasterize each of the 85 sculpted acrylic keycaps:
-  // - Tight 3px dark optical perimeter frame (`reg = 0`) right around each keycap (the keyframe gap)
-  // - Thick vertical acrylic bevel walls (`reg = 0.40`, heavily scrambled total-internal-reflection!)
-  // - Convex-bottom fisheye crystal top face (`reg = 0.75`, gently pulls in extra surrounding screen!)
+  // Rasterize each of the 85 Flux clear acrylic keycaps at native 1920x1080 sharpness!
   for (const k of keys) {
-    const padOut = 3;
+    const padOut = 10;
     const x0 = Math.max(0, Math.floor(k.rect.x * sx) - padOut);
     const y0 = Math.max(topH, Math.floor(k.rect.y * sy) - padOut);
     const x1 = Math.min(MAP_W - 1, Math.ceil((k.rect.x + k.rect.w) * sx) + padOut);
     const y1 = Math.min(MAP_H - 1, Math.ceil((k.rect.y + k.rect.h) * sy) + padOut);
+
     const cx = (k.rect.x + k.rect.w * 0.5) * sx;
     const cy = (k.rect.y + k.rect.h * 0.5) * sy;
-    const hw = Math.max(4, (k.rect.w * 0.5 - 2) * sx);
-    const hh = Math.max(4, (k.rect.h * 0.5 - 2) * sy);
-    const cornerR = 4.0;
-    const bevelW = 6.5;
+    const hw = Math.max(8, (k.rect.w * 0.5 - 1.5) * sx);
+    const hh = Math.max(8, (k.rect.h * 0.5 - 1.5) * sy);
+    const cornerR = 6.0;
 
     for (let py = y0; py <= y1; py++) {
       for (let px = x0; px <= x1; px++) {
@@ -202,52 +245,34 @@ function buildGlassNormalMap(keys: SurfaceKeyGeom[]): Uint8Array {
         const oy = Math.max(dy, 0);
         const outside = Math.hypot(ox, oy);
         const inside = Math.min(Math.max(dx, dy), 0);
-        const sdf = outside + inside - cornerR;
+        const sdf = outside + inside - cornerR; // < 0 inside keycap, > 0 outside
+        const distIn = -sdf; // > 0 inside keycap
 
-        if (sdf > 2.2) continue; // outside this keycap's mechanical gap -> stay clear apron!
+        // Encode continuous signed distance: B = 128 + distIn * (255 / 42)
+        const bVal = Math.max(0, Math.min(255, Math.round(128 + distIn * (255 / 42))));
         const o = (py * MAP_W + px) * 4;
-        if (sdf > 0) {
-          // Narrow mechanical gap directly around the keycap wall
-          data[o] = 128;
-          data[o + 1] = 128;
-          data[o + 2] = 0;
-          data[o + 3] = 0; // reg = 0.0 (gap)
-          continue;
+        // Keep the nearest keycap (largest distIn / B value) when bounding boxes overlap!
+        if (bVal <= data[o + 2]) continue;
+
+        const u = Math.max(-1, Math.min(1, (px - cx) / hw));
+        const v = Math.max(-1, Math.min(1, (py - cy) / hh));
+
+        // Signature Flux maglev vertical guide post on the left & right side walls of each keycap!
+        let post = 0;
+        if (distIn >= 1.5 && distIn <= 8.5) {
+          const distFromSide = hw - Math.abs(px - cx);
+          const absY = Math.abs(py - cy);
+          if (distFromSide >= 2.0 && distFromSide <= 7.2 && absY <= 13.5) {
+            const xEdge = Math.min(1, Math.min(distFromSide - 2.0, 7.2 - distFromSide) * 0.95);
+            const yEdge = Math.min(1, (13.5 - absY) * 0.55);
+            post = Math.round(Math.max(0, Math.min(1, xEdge * yEdge)) * 255);
+          }
         }
 
-        const distIn = -sdf;
-        let gx = 0;
-        let gy = 0;
-        if (outside > 0.001) {
-          gx = (ox / outside) * (px < cx ? -1 : 1);
-          gy = (oy / outside) * (py < cy ? -1 : 1);
-        } else if (dx > dy) {
-          gx = px < cx ? -1 : 1;
-        } else {
-          gy = py < cy ? -1 : 1;
-        }
-
-        if (distIn < bevelW) {
-          const t = distIn / bevelW;
-          const slope = 0.86 * (1.0 - t * 0.30);
-          const nx = gx * slope;
-          const ny = gy * slope;
-          data[o] = Math.round((nx * 0.5 + 0.5) * 255);
-          data[o + 1] = Math.round((ny * 0.5 + 0.5) * 255);
-          data[o + 2] = Math.round(t * 210);
-          data[o + 3] = 102; // reg ~ 0.40 (thick scrambled acrylic wall)
-        } else {
-          // Convex-bottom fisheye lens normal pointing radially outward from keycap center
-          const u = (px - cx) / hw;
-          const v = (py - cy) / hh;
-          const nx = -u * 0.24;
-          const ny = -v * 0.22;
-          const lipFactor = Math.min(1.0, (distIn - bevelW) / 3.0);
-          data[o] = Math.round((nx * 0.5 + 0.5) * 255);
-          data[o + 1] = Math.round((ny * 0.5 + 0.5) * 255);
-          data[o + 2] = Math.round(212 + lipFactor * 43);
-          data[o + 3] = 192; // reg ~ 0.75 (fisheye crystal face)
-        }
+        data[o] = Math.round((u * 0.5 + 0.5) * 255);
+        data[o + 1] = Math.round((v * 0.5 + 0.5) * 255);
+        data[o + 2] = bVal;
+        data[o + 3] = post;
       }
     }
   }
@@ -561,8 +586,8 @@ export const GlassKeyboardCanvas: React.FC<GlassKeyboardCanvasProps> = ({
       />
       <canvas
         ref={canvasRef}
-        width={1280}
-        height={720}
+        width={1920}
+        height={1080}
         className="kb-surface-preview-img"
       />
     </>

@@ -1,0 +1,51 @@
+id = "profiles"
+name = "Profiles"
+version = "2.0.0"
+description = "First-class context & profile engine with inheritance fall-through, per-profile module overrides, multi-computer host awareness, Top Bar Touch Bar layouts, and automatic QMK keybinding layer switching"
+author = "KeyGlass"
+license = "MIT"
+category = "host_service"
+tags = ["profiles", "context", "apps", "multi-computer", "touch-bar", "layers"]
+provides = ["profiles"]
+stages = []
+host_requirement = "none"
+slot_capable = false
+stackable = true
+
+[ui]
+top_tab = false
+builtin_view = "profiles"
+
+[channels]
+subscribes = ["host/app/active", "host/identity", "profiles/command/#"]
+publishes = ["profiles/active", "keyboard/layer_override", "layout/top_bar/context_override", "ui/toast"]
+
+[[actions]]
+id = "next"
+label = "Next Profile"
+short_label = "Prof+"
+icon = "star"
+accent = "#a78bfa"
+mode = "tap"
+topic = "profiles/command/cycle"
+payload = { dir = 1 }
+
+[[actions]]
+id = "prev"
+label = "Previous Profile"
+short_label = "Prof-"
+icon = "star"
+accent = "#a78bfa"
+mode = "tap"
+topic = "profiles/command/cycle"
+payload = { dir = -1 }
+
+[[actions]]
+id = "auto"
+label = "Auto Profile Mode"
+short_label = "Auto"
+icon = "refresh"
+accent = "#58f29c"
+mode = "tap"
+topic = "profiles/command/auto"
+payload = { auto = true }

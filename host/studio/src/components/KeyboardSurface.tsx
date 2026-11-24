@@ -188,8 +188,7 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
           )}
         </button>
 
-        {/* Subtle frosted acrylic keyframe ridge separating Top Strip from Keycap Deck */}
-        {showLivePreview && <div className="kb-keyframe-ridge" aria-hidden="true" />}
+        {/* Horizontal chrome divider bar is rendered directly in GlassKeyboardCanvas WebGL2 shader */}
 
         {/* Interactive 85-Key Sculpted Clear Glass Keycaps */}
         {keys.map((k) => {

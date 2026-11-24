@@ -533,3 +533,137 @@ script = "script.lua"
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn profile_api_merges_overrides_with_fallthrough_and_touch_bar_slot_override() {
+    let tmp = std::env::temp_dir().join(format!(
+        "openflux-profile-api-{}",
+        openflux_bus::now_unix_ms()
+    ));
+    let mod_dir = tmp.join("local/widget-prof-test");
+    std::fs::create_dir_all(&mod_dir).unwrap();
+    std::fs::write(
+        mod_dir.join("module.toml"),
+        r##"
+id = "widget-prof-test"
+name = "Profile Test Widget"
+version = "1.0.0"
+category = "widget"
+slot_capable = true
+stages = ["tile"]
+[entrypoints]
+script = "script.lua"
+[channels]
+subscribes = ["profiles/active"]
+publishes = ["test/profile-observed"]
+[[settings]]
+key = "dimming"
+label = "Dimming"
+kind = "number"
+default = 0.2
+[[settings]]
+key = "accent"
+label = "Accent"
+kind = "color"
+default = "#112233"
+"##,
+    )
+    .unwrap();
+    std::fs::write(
+        mod_dir.join("script.lua"),
+        r#"
+function on_render(ctx, stage)
+  local cfg = module.config()
+  local sr = module.slot_rect()
+  bus.publish("test/profile-observed", {
+    profile_id = profile.id(),
+    has_dev_tag = profile.has_tag("dev"),
+    dimming = cfg.dimming,
+    base_dimming = module.base_config().dimming,
+    has_slot = (sr ~= nil),
+    slot_x = sr and sr.x or -1,
+  }, true)
+end
+"#,
+    )
+    .unwrap();
+
+    let reg = ModuleRegistry::new(
+        tmp.join("bundled"),
+        tmp.join("installed"),
+        tmp.join("local"),
+        tmp.join("state.json"),
+    );
+    let discovered = reg.discover();
+    let mut state = BTreeMap::new();
+    state.insert(
+        "widget-prof-test".to_string(),
+        ModuleInstanceState {
+            enabled: true,
+            slot: Some(0),
+            slot_pos: Some(0.0),
+            slot_span: Some(1.0),
+            ..Default::default()
+        },
+    );
+
+    let broker = Broker::new("test");
+    let geom = KeyboardGeometry::build(FrameLayout::Ansi);
+    let mut rt = ModuleRuntime::new(broker.clone(), geom);
+    rt.sync_modules(&discovered, &state);
+
+    // 1. Default profile: base config dimming=0.2, placed at slot 0
+    let _ = rt.step_frame(0.016, 1000);
+    let obs1 = broker.get_retained("test/profile-observed").unwrap().payload;
+    assert_eq!(obs1["profile_id"], "default");
+    assert_eq!(obs1["dimming"], 0.2);
+    assert_eq!(obs1["has_slot"], true);
+    let x_slot0 = obs1["slot_x"].as_f64().unwrap();
+
+    // 2. Activate "coding" profile overriding dimming=0.65 & moving widget to slot 2 via Touch Bar override!
+    let _ = broker.publish(
+        "profiles/active",
+        serde_json::json!({
+            "profile_id": "coding",
+            "profile_name": "Coding",
+            "chain": ["coding", "default"],
+            "tags": ["dev", "base"],
+            "module_overrides": {
+                "widget-prof-test": { "dimming": 0.65 }
+            }
+        }),
+        PublishOptions::retained(),
+    );
+    let _ = broker.publish(
+        "layout/top_bar/context_override",
+        serde_json::json!({
+            "active": true,
+            "rule_name": "Coding",
+            "slots": [{ "module_id": "widget-prof-test", "pos": 2.0, "span": 1.0 }]
+        }),
+        PublishOptions::retained(),
+    );
+    let _ = rt.step_frame(0.016, 1016);
+    let obs2 = broker.get_retained("test/profile-observed").unwrap().payload;
+    assert_eq!(obs2["profile_id"], "coding");
+    assert_eq!(obs2["has_dev_tag"], true);
+    assert_eq!(obs2["dimming"], 0.65);
+    assert_eq!(obs2["base_dimming"], 0.2);
+    assert!(obs2["slot_x"].as_f64().unwrap() > x_slot0 + 400.0);
+
+    // 3. Touch Bar override without this widget hides it cleanly (`slot_rect() == nil`)!
+    let _ = broker.publish(
+        "layout/top_bar/context_override",
+        serde_json::json!({
+            "active": true,
+            "rule_name": "Minimal",
+            "slots": [{ "module_id": "widget-clock", "pos": 0.0, "span": 1.0 }]
+        }),
+        PublishOptions::retained(),
+    );
+    let _ = rt.step_frame(0.016, 1032);
+    let obs3 = broker.get_retained("test/profile-observed").unwrap().payload;
+    assert_eq!(obs3["has_slot"], false);
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
