@@ -2,7 +2,7 @@ id = "keys-renderer"
 name = "Key Legends & Icons Renderer"
 version = "2.0.0"
 description = "Core modular key-face compositor: resolves all `keys/providers/#` claims (keymap, Shift case, v1 shortcuts, game ability decks) in one atomic zero-flash frame with full parallax alignment"
-author = "OpenFlux"
+author = "Keyglass"
 category = "effect"
 tags = ["keys", "core", "legends", "parallax"]
 provides = ["keys_renderer"]
@@ -10,6 +10,13 @@ stages = ["under_key"]
 host_requirement = "none"
 slot_capable = false
 stackable = true
+
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/keyglass-dev/keyglass/tree/main/modules/keys-renderer"
+repository = "https://github.com/keyglass-dev/keyglass"
+support_url = "https://github.com/keyglass-dev/keyglass/issues"
+discord_url = "https://discord.gg/keyglass"
+changelog = "Core Keyglass v2 built-in module."
 
 [entrypoints]
 script = "script.lua"

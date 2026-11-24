@@ -106,6 +106,8 @@ jq -n \
     --arg endpoint "${pages_url}/updates/stable/latest.json" \
     --arg entitlements "$(abs "${packaging}/macos/entitlements.plist")" \
     --arg launchAgent "$(abs "${packaging}/macos/org.openflux.openfluxd.plist")" \
+    --arg infoPlist "$(abs "${packaging}/macos/studio-display-name.plist")" \
+    --arg desktopTemplate "$(abs "${packaging}/linux/studio.desktop")" \
     --arg nsisHooks "$(abs "${packaging}/windows/installer-hooks.nsh")" \
     --arg udevRules "$(abs "${packaging}/linux/70-openflux.rules")" \
     --arg userUnit "$(abs "${packaging}/linux/openfluxd.service")" \
@@ -135,6 +137,7 @@ jq -n \
       minimumSystemVersion: "13.0",
       hardenedRuntime: true,
       entitlements: $entitlements,
+      infoPlist: $infoPlist,
       files: { "Library/LaunchAgents/org.openflux.openfluxd.plist": $launchAgent }
   } } }
 elif $os == "windows" then
@@ -144,6 +147,7 @@ elif $os == "windows" then
 else
   { bundle: { targets: ["appimage", "deb"], linux: {
       deb: {
+        desktopTemplate: $desktopTemplate,
         files: {
           "/usr/lib/udev/rules.d/70-openflux.rules": $udevRules,
           "/usr/lib/systemd/user/openfluxd.service": $userUnit

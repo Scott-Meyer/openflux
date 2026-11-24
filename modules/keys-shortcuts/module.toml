@@ -2,7 +2,7 @@ id = "keys-shortcuts"
 name = "App & OS Shortcuts"
 version = "2.0.0"
 description = "Classic v1 dynamic shortcut icons (Copy, Paste, Cut, Undo, Save, Find, plus active-app shortcut packs) when holding Cmd/Ctrl/Alt"
-author = "OpenFlux"
+author = "Keyglass"
 category = "effect"
 tags = ["keys", "shortcuts", "icons", "productivity"]
 depends = [{ role = "keys_renderer" }]
@@ -10,6 +10,13 @@ stages = ["under_key"]
 host_requirement = "optional"
 slot_capable = false
 stackable = true
+
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/keyglass-dev/keyglass/tree/main/modules/keys-shortcuts"
+repository = "https://github.com/keyglass-dev/keyglass"
+support_url = "https://github.com/keyglass-dev/keyglass/issues"
+discord_url = "https://discord.gg/keyglass"
+changelog = "Core Keyglass v2 built-in module."
 
 [ui]
 top_tab = true

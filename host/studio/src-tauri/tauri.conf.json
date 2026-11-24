@@ -12,7 +12,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "KeyGlass",
+        "title": "Keyglass Studio",
         "width": 1320,
         "height": 860,
         "minWidth": 1000,
@@ -37,7 +37,7 @@
     "updater": {
       "pubkey": "OPENFLUX_UPDATER_PUBLIC_KEY",
       "endpoints": [
-        "https://scott-meyer.github.io/openflux/updates/stable/latest.json"
+        "https://keyglass-dev.github.io/keyglass/updates/stable/latest.json"
       ],
       "windows": {
         "installMode": "passive"

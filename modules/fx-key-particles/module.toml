@@ -2,13 +2,20 @@ id = "fx-key-particles"
 name = "Key-Bouncing & Refracting Particles"
 version = "2.0.0"
 description = "Sparks burst upward, ricochet inside clear keycaps, then fall, pile up and spill off the sides"
-author = "OpenFlux"
+author = "Keyglass"
 category = "effect"
 tags = ["key-press", "physics", "particles", "3d", "refraction", "visual"]
 stages = ["under_key"]
 host_requirement = "none"
 slot_capable = false
 stackable = true
+
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/keyglass-dev/keyglass/tree/main/modules/fx-key-particles"
+repository = "https://github.com/keyglass-dev/keyglass"
+support_url = "https://github.com/keyglass-dev/keyglass/issues"
+discord_url = "https://discord.gg/keyglass"
+changelog = "Core Keyglass v2 built-in module with open-cup key bounce physics."
 
 [entrypoints]
 script = "script.lua"

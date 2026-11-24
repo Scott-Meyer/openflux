@@ -410,3 +410,37 @@ Your script can publish to the bus (`POST /v2/bus/pub`), subscribe to keyboard e
   fluxctl modules install github:yourname/my-key-flash --accept-disclosure
   ```
   OpenFlux always shows a full disclosure report (files, shaders, host scripts, bus channels, and any update diffs) before installing or updating.
+
+---
+
+## Rich Metadata, Updates & Community Distribution
+
+Include optional metadata fields at the top of `module.toml` so Keyglass Studio can display version history, support links, and update cards cleanly:
+
+```toml
+author = "Your Name"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/you/my-keyglass-module"
+repository = "https://github.com/you/my-keyglass-module"
+support_url = "https://github.com/you/my-keyglass-module/issues"
+discord_url = "https://discord.gg/your-invite"
+changelog = "v1.1.0: Added custom accent color and smoother idle animation."
+```
+
+### Ways Users Can Install & Update Your Module
+
+1. **Keyglass Official Registry (`keyglass-dev/keyglass-registry`):** Open a 1-line PR adding your repo to `sources.json`. GitHub Actions compiles a static `catalog.json` with SHA-256 verification.
+2. **Custom Module Lists (“Taps”):** Publish your own static `catalog.json` (using `build-catalog.py` from `keyglass-registry`) on GitHub Pages; anyone can subscribe under **Manage Modules → Lists & Direct Install**.
+3. **Direct Install (No List Needed):** Share `github:owner/repo` (or `github:owner/repo//subdir`). Keyglass remembers the origin for one-click updates and remembers it under **Removed Modules** if uninstalled.
+
+### Forking Any Module to Local
+
+Want to tweak a built-in or installed module?
+- Click **Fork to Local** inside the module’s detail view (or run `fluxctl modules fork <id> <new-id>`).
+- Keyglass copies the module into `~/.local/share/openflux/v2/modules/local/<new-id>/`.
+- Edit `script.lua` or `module.toml` with any editor; Keyglass hot-reloads on save, and `fluxctl keyboard sync` pushes your changes straight to the keyboard.
+
+### Profiling Latency & Using the Built-In MCP Server
+
+- **Terminal Profiler:** Run `fluxctl perf --watch` to inspect real-time FPS, frame interval `p50/p95/p99/max`, >22 ms hitch causes, and per-module Lua execution timings (`avg_us` / `max_us`).
+- **AI / IDE MCP Server:** Add `fluxctl mcp` as a stdio MCP server in Pi, Claude Code, or Cursor to expose `keyglass_status`, `keyglass_perf`, `keyglass_modules_list`, `keyglass_module_logs`, `keyglass_bus_retained`, `keyglass_bus_publish`, and `keyglass_keyboard_sync`.

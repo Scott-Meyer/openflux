@@ -1443,9 +1443,35 @@ async fn list_modules(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
         StatusCode::OK,
         Json(json!({
             "modules": items,
+            "removed_sources": saved.removed_sources,
             "modules_rev": state.v2.modules_rev.load(Ordering::SeqCst),
         })),
     )
+}
+
+async fn check_module_updates_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let state_clone = state.clone();
+    let updates = tokio::task::spawn_blocking(move || state_clone.v2.registry.check_available_updates())
+        .await
+        .unwrap_or_default();
+    let available_count = updates.iter().filter(|u| u.has_update).count();
+    (
+        StatusCode::OK,
+        Json(json!({
+            "updates": updates,
+            "available_count": available_count,
+        })),
+    )
+}
+
+async fn forget_removed_source_api(
+    State(state): State<Arc<ApiState>>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match state.v2.registry.forget_removed_source(&id) {
+        Ok(()) => (StatusCode::OK, Json(json!({ "ok": true, "id": id }))),
+        Err(e) => err_resp(StatusCode::BAD_REQUEST, e),
+    }
 }
 
 async fn get_module_detail(
@@ -4259,6 +4285,8 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/bus/events", get(bus_events_poll))
         .route("/v2/bus/ws", get(bus_ws))
         .route("/v2/modules", get(list_modules))
+        .route("/v2/modules/updates", get(check_module_updates_api))
+        .route("/v2/modules/removed/:id", delete(forget_removed_source_api))
         .route("/v2/modules/create", post(create_module))
         .route("/v2/modules/fork", post(fork_module))
         .route("/v2/modules/inspect", post(inspect_module_api))

@@ -34,6 +34,7 @@ pub use manifest::{
 pub use registry::{
     CuratedListDocument, CuratedListEntry, CuratedListSubscription, DiscoveredModule,
     InstallPreview, MissingPresetModule, ModuleInstanceState, ModuleRegistry, ModuleTier,
-    ModulesStateFile, PresetImportReport, PresetModuleRef, SetupPreset,
+    ModuleUpdateInfo, ModulesStateFile, PresetImportReport, PresetModuleRef, RemovedModuleRecord,
+    SetupPreset,
 };
 pub use validator::{validate_module_behavior, ModuleValidationReport};

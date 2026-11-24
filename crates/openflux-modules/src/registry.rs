@@ -55,12 +55,46 @@ impl ModuleInstanceState {
 }
 
 /// Persistent user configuration of enabled modules, slot placements, and settings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemovedModuleRecord {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    #[serde(default)]
+    pub description: String,
+    pub source: String,
+    #[serde(default)]
+    pub list_id: Option<String>,
+    #[serde(default)]
+    pub removed_at_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleUpdateInfo {
+    pub id: String,
+    pub name: String,
+    pub current_version: String,
+    pub available_version: String,
+    pub has_update: bool,
+    #[serde(default)]
+    pub changelog: Option<String>,
+    pub source: String,
+    #[serde(default)]
+    pub list_name: Option<String>,
+    #[serde(default)]
+    pub runs_host_process: bool,
+    #[serde(default)]
+    pub host_changed: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ModulesStateFile {
     #[serde(default)]
     pub modules: BTreeMap<String, ModuleInstanceState>,
     #[serde(default)]
     pub curated_lists: Vec<CuratedListSubscription>,
+    #[serde(default)]
+    pub removed_sources: Vec<RemovedModuleRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,6 +116,20 @@ pub struct CuratedListEntry {
     pub source: String,
     #[serde(default)]
     pub author: Option<String>,
+    #[serde(default)]
+    pub license: Option<String>,
+    #[serde(default)]
+    pub homepage: Option<String>,
+    #[serde(default)]
+    pub repository: Option<String>,
+    #[serde(default)]
+    pub support_url: Option<String>,
+    #[serde(default)]
+    pub discord_url: Option<String>,
+    #[serde(default)]
+    pub changelog: Option<String>,
+    #[serde(default)]
+    pub changelog_url: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
@@ -290,6 +338,13 @@ impl ModuleRegistry {
         copy_dir_atomic(&staged.module_dir, &dest)?;
         let origin = origin_from_staged(staged, &manifest);
         let _ = origin.save(&dest);
+        // Clear any previously-removed tombstone now that this module is installed again
+        let mut st = self.load_state();
+        let prev_len = st.removed_sources.len();
+        st.removed_sources.retain(|r| r.id != manifest.id);
+        if st.removed_sources.len() != prev_len {
+            let _ = self.save_state(&st);
+        }
         Ok(DiscoveredModule {
             manifest,
             tier: ModuleTier::Installed,
@@ -321,6 +376,12 @@ impl ModuleRegistry {
             installed_at_ms: crate::installer::now_ms(),
         };
         let _ = origin.save(&dest);
+        let mut st = self.load_state();
+        let prev_len = st.removed_sources.len();
+        st.removed_sources.retain(|r| r.id != manifest.id);
+        if st.removed_sources.len() != prev_len {
+            let _ = self.save_state(&st);
+        }
         Ok(DiscoveredModule {
             manifest,
             tier: ModuleTier::Installed,
@@ -329,14 +390,38 @@ impl ModuleRegistry {
     }
 
     /// Uninstalls a user-installed or local module (bundled defaults are read-only and protected).
+    /// When an `Installed` module with a recorded upstream source is removed, remembers its origin
+    /// in `state.removed_sources` so users can 1-click re-install directly-added modules later.
     pub fn uninstall_module(&self, id: &str) -> Result<ModuleTier, String> {
         let local_path = safe_child_dir(&self.local_dir, id)?;
         let installed_path = safe_child_dir(&self.installed_dir, id)?;
         let bundled_path = safe_child_dir(&self.bundled_dir, id)?;
+        let mut remembered: Option<RemovedModuleRecord> = None;
         let removed_tier = if local_path.is_dir() {
             std::fs::remove_dir_all(&local_path).map_err(|e| e.to_string())?;
             ModuleTier::Local
         } else if installed_path.is_dir() {
+            if let Some(origin) = ModuleOrigin::load(&installed_path) {
+                let manifest = ModuleManifest::load_from_dir(&installed_path).ok();
+                remembered = Some(RemovedModuleRecord {
+                    id: id.to_string(),
+                    name: manifest
+                        .as_ref()
+                        .map(|m| m.name.clone())
+                        .unwrap_or_else(|| id.to_string()),
+                    version: manifest
+                        .as_ref()
+                        .map(|m| m.version.clone())
+                        .unwrap_or_else(|| origin.installed_version.clone()),
+                    description: manifest
+                        .as_ref()
+                        .map(|m| m.description.clone())
+                        .unwrap_or_default(),
+                    source: origin.source,
+                    list_id: origin.list_id,
+                    removed_at_ms: crate::installer::now_ms(),
+                });
+            }
             std::fs::remove_dir_all(&installed_path).map_err(|e| e.to_string())?;
             ModuleTier::Installed
         } else if bundled_path.is_dir() {
@@ -347,13 +432,157 @@ impl ModuleRegistry {
             return Err(format!("module {id:?} is not installed"));
         };
 
+        let mut state = self.load_state();
+        let mut state_dirty = false;
+        if let Some(rec) = remembered {
+            state.removed_sources.retain(|r| r.id != rec.id);
+            state.removed_sources.insert(0, rec);
+            state.removed_sources.truncate(50);
+            state_dirty = true;
+        }
         // Remove persisted state entry only if no lower-tier fallback remains.
         if !self.bundled_dir.join(id).is_dir() && !self.installed_dir.join(id).is_dir() {
-            let mut state = self.load_state();
-            state.modules.remove(id);
+            if state.modules.remove(id).is_some() {
+                state_dirty = true;
+            }
+        }
+        if state_dirty {
             let _ = self.save_state(&state);
         }
         Ok(removed_tier)
+    }
+
+    /// Removes a remembered removed-module origin record.
+    pub fn forget_removed_source(&self, id: &str) -> Result<(), String> {
+        let mut state = self.load_state();
+        state.removed_sources.retain(|r| r.id != id);
+        self.save_state(&state).map_err(|e| e.to_string())
+    }
+
+    /// Computes a deterministic SHA-256 content hash over a module directory (excluding `.git`,
+    /// `.DS_Store`, and `.openflux-source.json`), matching `keyglass-registry/scripts/build-catalog.py`.
+    pub fn compute_dir_sha256(dir: &Path) -> String {
+        use sha2::{Digest, Sha256};
+        let mut files: Vec<(String, PathBuf)> = Vec::new();
+        for entry in walkdir::WalkDir::new(dir).into_iter().flatten() {
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let p = entry.path();
+            if let Ok(rel) = p.strip_prefix(dir) {
+                let rel_s = rel.to_string_lossy().replace('\\', "/");
+                if rel_s.starts_with(".git/")
+                    || rel_s.contains("/.git/")
+                    || rel_s.ends_with(".DS_Store")
+                    || rel_s == ".openflux-source.json"
+                {
+                    continue;
+                }
+                files.push((rel_s, p.to_path_buf()));
+            }
+        }
+        files.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut h = Sha256::new();
+        for (rel, path) in files {
+            h.update(rel.as_bytes());
+            h.update(b"\0");
+            if let Ok(bytes) = std::fs::read(&path) {
+                h.update(&bytes);
+            }
+            h.update(b"\0");
+        }
+        format!("{:x}", h.finalize())
+    }
+
+    /// Checks every installed module against subscribed registries (Taps) AND recorded direct
+    /// upstream sources, reporting ONLY real version or content changes (`has_update == true`).
+    pub fn check_available_updates(&self) -> Vec<ModuleUpdateInfo> {
+        let state = self.load_state();
+        let discovered = self.discover();
+        // Index all subscribed catalog entries by module id — prefer live/custom lists over
+        // static bundled snapshots (`official-list.json`) so newly published updates are never
+        // shadowed by an older bundled copy inside the app bundle!
+        let mut catalog_by_id: BTreeMap<String, (String, CuratedListEntry)> = BTreeMap::new();
+        for sub in &state.curated_lists {
+            let is_bundled_fallback = sub.id == "official" && sub.source.ends_with("official-list.json");
+            if let Ok(doc) = crate::installer::fetch_curated_list_document(&sub.source) {
+                for entry in doc.entries {
+                    let replace = match catalog_by_id.get(&entry.id) {
+                        None => true,
+                        Some((_, prev)) => !is_bundled_fallback || prev.version < entry.version,
+                    };
+                    if replace {
+                        catalog_by_id.insert(entry.id.clone(), (sub.name.clone(), entry));
+                    }
+                }
+            }
+        }
+
+        let mut results = Vec::new();
+        for (id, dm) in &discovered {
+            // Check installed modules (or local forks that also have an installed base)
+            let inst_path = self.installed_dir.join(id);
+            if !inst_path.is_dir() {
+                continue;
+            }
+            let Ok(inst_manifest) = ModuleManifest::load_from_dir(&inst_path) else {
+                continue;
+            };
+            let current_sha = Self::compute_dir_sha256(&inst_path);
+            let origin = ModuleOrigin::load(&inst_path);
+
+            // 1. Check matching catalog entry from subscribed registries/taps first
+            if let Some((list_name, entry)) = catalog_by_id.get(id) {
+                let version_diff = entry.version != inst_manifest.version;
+                let sha_diff = entry
+                    .sha256
+                    .as_deref()
+                    .is_some_and(|s| !s.is_empty() && s != current_sha);
+                let has_update = version_diff || sha_diff;
+                results.push(ModuleUpdateInfo {
+                    id: id.clone(),
+                    name: inst_manifest.name.clone(),
+                    current_version: inst_manifest.version.clone(),
+                    available_version: entry.version.clone(),
+                    has_update,
+                    changelog: entry.changelog.clone(),
+                    source: entry.source.clone(),
+                    list_name: Some(list_name.clone()),
+                    runs_host_process: entry.runs_host_process,
+                    host_changed: entry.runs_host_process != inst_manifest.entrypoints.host.is_some(),
+                });
+                continue;
+            }
+
+            // 2. Otherwise check direct upstream source recorded in `.openflux-source.json`
+            if let Some(orig) = origin {
+                if let Ok(staged) =
+                    stage_module_source(&orig.source, &state.curated_lists, &self.bundled_dir)
+                {
+                    if let Ok(up_manifest) = ModuleManifest::load_from_dir(&staged.module_dir) {
+                        let up_sha = Self::compute_dir_sha256(&staged.module_dir);
+                        let has_update =
+                            up_manifest.version != inst_manifest.version || up_sha != current_sha;
+                        let host_changed =
+                            up_manifest.entrypoints.host.is_some() != inst_manifest.entrypoints.host.is_some();
+                        results.push(ModuleUpdateInfo {
+                            id: id.clone(),
+                            name: inst_manifest.name.clone(),
+                            current_version: inst_manifest.version.clone(),
+                            available_version: up_manifest.version,
+                            has_update,
+                            changelog: up_manifest.changelog,
+                            source: orig.source,
+                            list_name: None,
+                            runs_host_process: up_manifest.entrypoints.host.is_some(),
+                            host_changed,
+                        });
+                    }
+                }
+            }
+            let _ = dm;
+        }
+        results
     }
 
     /// Previews an update for an installed module from its recorded `.openflux-source.json`.

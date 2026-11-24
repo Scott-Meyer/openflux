@@ -12,6 +12,12 @@ host_requirement = "none"
 slot_capable = false
 stackable = true
 
+homepage = "https://github.com/keyglass-dev/keyglass/tree/main/modules/profiles"
+repository = "https://github.com/keyglass-dev/keyglass"
+support_url = "https://github.com/keyglass-dev/keyglass/issues"
+discord_url = "https://discord.gg/keyglass"
+changelog = "Core Keyglass v2 built-in module."
+
 [ui]
 top_tab = false
 builtin_view = "profiles"

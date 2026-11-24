@@ -245,6 +245,14 @@ pub struct ModuleManifest {
     pub repository: Option<String>,
     #[serde(default)]
     pub issues_url: Option<String>,
+    #[serde(default)]
+    pub support_url: Option<String>,
+    #[serde(default)]
+    pub discord_url: Option<String>,
+    #[serde(default)]
+    pub changelog: Option<String>,
+    #[serde(default)]
+    pub changelog_url: Option<String>,
     pub category: ModuleCategory,
     #[serde(default)]
     pub tags: Vec<String>,

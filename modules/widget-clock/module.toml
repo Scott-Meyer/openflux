@@ -2,13 +2,20 @@ id = "widget-clock"
 name = "Clock Widget"
 version = "2.0.0"
 description = "Classic v1-style sleek digital clock with large centered time, AM/PM, and uppercase date"
-author = "OpenFlux"
+author = "Keyglass"
 category = "widget"
 tags = ["clock", "time", "standalone", "top-bar"]
 stages = ["tile"]
 host_requirement = "none"
 slot_capable = true
 stackable = true
+
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/keyglass-dev/keyglass/tree/main/modules/widget-clock"
+repository = "https://github.com/keyglass-dev/keyglass"
+support_url = "https://github.com/keyglass-dev/keyglass/issues"
+discord_url = "https://discord.gg/keyglass"
+changelog = "Core Keyglass v2 built-in module."
 
 [top_bar]
 supported_spans = [0.5, 1.0, 2.0]

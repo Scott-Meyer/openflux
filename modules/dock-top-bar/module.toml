@@ -2,7 +2,7 @@ id = "dock-top-bar"
 name = "Top Bar Dock"
 version = "2.0.0"
 description = "Provides the top-bar widget slot layout, optional frosted module dimming backdrop for readability, and vertical slot dividers (pure module—fork or replace for custom layouts!)"
-author = "OpenFlux"
+author = "Keyglass"
 category = "widget"
 tags = ["core", "layout", "dock", "visibility", "dimming"]
 provides = ["top_bar_dock"]
@@ -10,6 +10,13 @@ stages = ["under_key"]
 host_requirement = "none"
 slot_capable = false
 stackable = false
+
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/keyglass-dev/keyglass/tree/main/modules/dock-top-bar"
+repository = "https://github.com/keyglass-dev/keyglass"
+support_url = "https://github.com/keyglass-dev/keyglass/issues"
+discord_url = "https://discord.gg/keyglass"
+changelog = "Core Keyglass v2 built-in module."
 
 [ui]
 top_tab = true

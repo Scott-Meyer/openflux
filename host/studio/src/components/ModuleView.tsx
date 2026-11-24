@@ -1,6 +1,11 @@
 import type React from "react";
 import { useEffect, useState } from "react";
-import { type MediaLibraryFile, type V2ModuleRecord, v2Client } from "../api/v2Client";
+import {
+  type MediaLibraryFile,
+  type ModuleUpdateInfo,
+  type V2ModuleRecord,
+  v2Client,
+} from "../api/v2Client";
 import { KeyboardSurface, type SurfaceKeyGeom } from "./KeyboardSurface";
 
 interface ModuleViewProps {
@@ -45,13 +50,29 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
   const [boundByActionId, setBoundByActionId] = useState<Record<string, { keyIndex: number; layer: number }>>({});
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [busyOp, setBusyOp] = useState<string | null>(null);
+  const [availUpdate, setAvailUpdate] = useState<ModuleUpdateInfo | null>(null);
 
   useEffect(() => {
     setShowPreview(mod.manifest.category === "background" || mod.manifest.category === "effect");
     setShowLogs(false);
     setStatusMsg(null);
     setReadme(null);
-  }, [mod.id, mod.manifest.category]);
+    setAvailUpdate(null);
+    if (mod.tier === "installed") {
+      let alive = true;
+      void v2Client
+        .checkModuleUpdates()
+        .then((res) => {
+          if (!alive) return;
+          const match = (res.updates ?? []).find((u) => u.id === mod.id && u.has_update);
+          setAvailUpdate(match ?? null);
+        })
+        .catch(() => {});
+      return () => {
+        alive = false;
+      };
+    }
+  }, [mod.id, mod.tier, mod.manifest.version, mod.manifest.category]);
 
   useEffect(() => {
     if (mod.manifest.settings.some((s) => s.kind === "file")) {
@@ -159,7 +180,31 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
         await v2Client.updateModule(mod.id, true);
       }
       await onUpdated();
+      setAvailUpdate(null);
       setStatusMsg(`Updated ${mod.manifest.name}`);
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyOp(null);
+    }
+  };
+
+  const handleForkToLocal = async () => {
+    const suggestedId = `${mod.id}-local`;
+    const newId = window.prompt(
+      `Fork "${mod.manifest.name}" to an editable local module.\n\nNew local module ID (lowercase letters, numbers, hyphens):`,
+      suggestedId,
+    );
+    if (!newId || !newId.trim()) return;
+    setBusyOp("fork");
+    try {
+      await v2Client.forkModule({
+        source_id: mod.id,
+        new_id: newId.trim(),
+        name: `${mod.manifest.name} (Local Fork)`,
+      });
+      await onUpdated();
+      setStatusMsg(`Forked to ~/.local/share/openflux/v2/modules/local/${newId.trim()} — edit script.lua and click Reload!`);
     } catch (err) {
       setStatusMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -220,8 +265,8 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
   };
 
   const hs = mod.host_status;
-  const canUpdate = mod.tier === "installed" && Boolean(mod.origin?.source);
   const canUninstall = mod.tier !== "bundled";
+  const supportUrl = mod.manifest.support_url || mod.manifest.issues_url;
 
   return (
     <div className="kg-module-page">
@@ -229,7 +274,8 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
         <div className="kg-page-title-row">
           <h1>{mod.manifest.name}</h1>
           <span className="kg-pill-subtle">
-            v{mod.manifest.version} · {mod.tier}
+            v{mod.manifest.version} · {mod.tier === "bundled" ? "Core" : mod.tier}
+            {mod.manifest.forked_from ? ` (fork of ${mod.manifest.forked_from})` : ""}
           </span>
           {hs && hs.state !== "not_required" && (
             <span className={`kg-status-badge ${hs.state === "running" ? "is-ok" : "is-err"}`}>
@@ -248,14 +294,15 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
           <button type="button" className="kg-btn-ghost" onClick={() => void handleReload()}>
             Reload
           </button>
-          {canUpdate && (
+          {mod.tier !== "local" && (
             <button
               type="button"
               className="kg-btn-ghost"
-              disabled={busyOp === "update"}
-              onClick={() => void handleUpdate()}
+              disabled={busyOp !== null}
+              onClick={() => void handleForkToLocal()}
+              title="Copy into your local modules folder so you can customize its code"
             >
-              {busyOp === "update" ? "Updating…" : "Update"}
+              {busyOp === "fork" ? "Forking…" : "Fork to Local"}
             </button>
           )}
           <button type="button" className="kg-btn-ghost" onClick={() => void handleDisable()}>
@@ -274,7 +321,92 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
         </div>
       </div>
 
+      {/* Update Banner — ONLY shown when an actual upstream update exists! */}
+      {availUpdate && availUpdate.has_update && (
+        <div className="kg-calm-card kg-disclosure-box" style={{ marginTop: 0 }}>
+          <div className="kg-calm-row">
+            <div>
+              <strong>
+                Update Available: v{availUpdate.current_version} → v{availUpdate.available_version}
+              </strong>
+              <span className="kg-muted" style={{ fontSize: 11, marginLeft: 8 }}>
+                via {availUpdate.list_name || "Direct Source"}
+              </span>
+              {availUpdate.changelog && (
+                <div className="kg-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  {availUpdate.changelog}
+                </div>
+              )}
+              {availUpdate.host_changed && (
+                <div style={{ fontSize: 11, color: "#fbbf24", marginTop: 4 }}>
+                  Note: This update changes host-helper permissions; you will review changes before applying.
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="kg-btn-primary"
+              disabled={busyOp === "update"}
+              onClick={() => void handleUpdate()}
+            >
+              {busyOp === "update" ? "Updating…" : `Update to v${availUpdate.available_version}`}
+            </button>
+          </div>
+        </div>
+      )}
+
       <p className="kg-page-desc">{mod.manifest.description}</p>
+
+      {/* Rich Module Metadata & Community Links */}
+      <div
+        className="kg-muted"
+        style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", fontSize: 11, alignItems: "center", marginTop: -8 }}
+      >
+        <span>
+          By <strong>{mod.manifest.author || "Keyglass"}</strong>
+        </span>
+        {mod.manifest.license && <span>License: {mod.manifest.license}</span>}
+        {mod.origin?.source && (
+          <span>
+            Source: <code>{mod.origin.source}</code>
+          </span>
+        )}
+        {mod.tier === "local" && (
+          <span>
+            Local Path: <code>{mod.path}</code> (auto-reloads on edit)
+          </span>
+        )}
+        {mod.manifest.homepage && (
+          <a href={mod.manifest.homepage} target="_blank" rel="noreferrer" style={{ color: "#7dd3fc" }}>
+            Homepage ↗
+          </a>
+        )}
+        {mod.manifest.repository && (
+          <a href={mod.manifest.repository} target="_blank" rel="noreferrer" style={{ color: "#7dd3fc" }}>
+            Source ↗
+          </a>
+        )}
+        {supportUrl && (
+          <a href={supportUrl} target="_blank" rel="noreferrer" style={{ color: "#7dd3fc" }}>
+            Support / Issues ↗
+          </a>
+        )}
+        {mod.manifest.discord_url && (
+          <a href={mod.manifest.discord_url} target="_blank" rel="noreferrer" style={{ color: "#a5b4fc" }}>
+            Discord ↗
+          </a>
+        )}
+        {mod.manifest.changelog_url && (
+          <a href={mod.manifest.changelog_url} target="_blank" rel="noreferrer" style={{ color: "#7dd3fc" }}>
+            Changelog ↗
+          </a>
+        )}
+      </div>
+      {mod.manifest.changelog && !availUpdate && (
+        <div className="kg-muted" style={{ fontSize: 11, marginTop: -4 }}>
+          Release notes (v{mod.manifest.version}): {mod.manifest.changelog}
+        </div>
+      )}
 
       {!mod.healthy && mod.last_error && (
         <div className="kg-error-banner">

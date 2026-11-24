@@ -2,13 +2,20 @@ id = "bg-media"
 name = "Media Background"
 version = "2.0.0"
 description = "Displays a local 1080p looping video or image as the compositor background with adjustable background dimming for key legend clarity"
-author = "OpenFlux"
+author = "Keyglass"
 category = "background"
 tags = ["background", "video", "image", "visibility", "dimming"]
 stages = ["background"]
 host_requirement = "none"
 slot_capable = false
 stackable = false
+
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/keyglass-dev/keyglass/tree/main/modules/bg-media"
+repository = "https://github.com/keyglass-dev/keyglass"
+support_url = "https://github.com/keyglass-dev/keyglass/issues"
+discord_url = "https://discord.gg/keyglass"
+changelog = "Core Keyglass v2 built-in module."
 
 [entrypoints]
 script = "script.lua"

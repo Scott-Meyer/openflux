@@ -47,6 +47,10 @@ export interface ModuleManifest {
   homepage?: string | null;
   repository?: string | null;
   issues_url?: string | null;
+  support_url?: string | null;
+  discord_url?: string | null;
+  changelog?: string | null;
+  changelog_url?: string | null;
   category: ModuleCategory;
   tags?: string[];
   provides?: string[];
@@ -198,6 +202,29 @@ export interface StreamDeckButton {
   settings: Record<string, unknown>;
 }
 
+export interface RemovedModuleRecord {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  source: string;
+  list_id?: string | null;
+  removed_at_ms: number;
+}
+
+export interface ModuleUpdateInfo {
+  id: string;
+  name: string;
+  current_version: string;
+  available_version: string;
+  has_update: boolean;
+  changelog?: string | null;
+  source: string;
+  list_name?: string | null;
+  runs_host_process?: boolean;
+  host_changed?: boolean;
+}
+
 export interface V2ModuleRecord {
   id: string;
   manifest: ModuleManifest;
@@ -325,7 +352,15 @@ export const v2Client = {
       latest_bus_seq: number;
       gpu_adapter: string;
     }>("GET", "/v2/status"),
-  listModules: () => v2Call<{ modules: V2ModuleRecord[]; modules_rev: number }>("GET", "/v2/modules"),
+  listModules: () =>
+    v2Call<{ modules: V2ModuleRecord[]; removed_sources?: RemovedModuleRecord[]; modules_rev: number }>(
+      "GET",
+      "/v2/modules",
+    ),
+  checkModuleUpdates: () =>
+    v2Call<{ updates: ModuleUpdateInfo[]; available_count: number }>("GET", "/v2/modules/updates"),
+  forgetRemovedSource: (id: string) =>
+    v2Call<{ ok: boolean }>("DELETE", `/v2/modules/removed/${encodeURIComponent(id)}`),
   getModuleDetail: (id: string) =>
     v2Call<{
       id: string;

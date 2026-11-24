@@ -1,18 +1,24 @@
-OpenFlux
-Copyright (c) 2026 The OpenFlux Contributors
+Keyglass (formerly OpenFlux)
+Copyright (c) 2026 The Keyglass Contributors
 
-OpenFlux is dual-licensed under the MIT License (LICENSE-MIT) or the Apache
+Keyglass is an independent open-source project, not affiliated with or endorsed by Flux.
+
+Keyglass is dual-licensed under the MIT License (LICENSE-MIT) or the Apache
 License, Version 2.0 (LICENSE-APACHE), at your option. Unless you explicitly
 state otherwise, any contribution intentionally submitted for inclusion in
-OpenFlux shall be dual-licensed as above, without any additional terms or
+Keyglass shall be dual-licensed as above, without any additional terms or
 conditions.
 
 Third-party components
 ----------------------
 
-OpenFlux source and release artifacts include the following third-party
+Keyglass source and release artifacts include the following third-party
 components, each under its own license. License texts are kept next to each
 component and are included in every release artifact that ships it.
+
+QMK / Vial Firmware (vial-qmk)
+  Used by: keyboard RP2040 firmware (keymap, Vial protocol, Hall-effect scanner & analog gamepad)
+  License: GPL-2.0-or-later
 
 littlefs
   Used by: keyboard firmware, firmware unit tests
@@ -28,6 +34,10 @@ TinyUSB
 
   The license texts for the libraries compiled into the firmware are published
   with each firmware release as openflux-firmware-licenses.txt.
+
+Lua 5.4 (via mlua / lua-src)
+  Used by: sandboxed on-device & host module runtime
+  License: MIT
 
 Montserrat font family
   Used by: keyboard display, desktop app
@@ -61,5 +71,5 @@ libusb
 Rust crates and npm packages
   The CycloneDX software bills of materials published with each release list
   every Rust crate and npm package compiled into its binaries and its license.
-  The license texts of those dependencies are installed with each binary in a
-  licenses/ directory.
+  The license texts of those dependencies are installed with each binary in
+  a licenses/ directory.

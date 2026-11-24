@@ -3,14 +3,15 @@
   "id": "keyglass-official",
   "name": "KeyGlass Official Modules",
   "description": "Official first-party optional modules for KeyGlass (local upstream mirror ready for GitHub org).",
+  "homepage": "https://github.com/keyglass-dev/keyglass-registry",
   "entries": [
     {
       "id": "fx-water-ripple-3d",
       "name": "3D Water Ripple",
       "version": "2.1.0",
       "description": "Refracts live video and backgrounds with a 60 Hz viscosity-damped water simulation (Ripple per key or Gentle Swell per key) and warm sunlit glints",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "effect",
       "tags": [
         "key-press",
@@ -23,16 +24,21 @@
       "host_requirement": "none",
       "runs_host_process": false,
       "slot_capable": false,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/fx-water-ripple-3d",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-water-ripple-3d",
-      "sha256": "271ee2070225e9cceda5e627d6629b751350d6c4352e471449884e8c04eb5a0f"
+      "sha256": "0438dccb0e5c767ed8d39c312337c877f540ee5e00461ae93d60f3b7ca68b29d"
     },
     {
       "id": "fx-analog-depth-glow",
       "name": "Analog Depth & Velocity Glow",
       "version": "2.0.0",
       "description": "Spreads wider and brighter beneath neighboring keys on the way down, and contracts gently on the way up",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "effect",
       "tags": [
         "key-press",
@@ -45,16 +51,21 @@
       "host_requirement": "none",
       "runs_host_process": false,
       "slot_capable": false,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/fx-analog-depth-glow",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-analog-depth-glow",
-      "sha256": "9614f8d6433aca94ef91a18dbd39eb63a2450df047741cc2aedd2a9e5a1cfb58"
+      "sha256": "85d156b3b338383b39474a7af4f31da5af0b75c260cbe99b5aeff0151dda60fd"
     },
     {
       "id": "bg-aurora-shader",
       "name": "Aurora Velvet Shader",
       "version": "2.0.0",
       "description": "Animated bioluminescent aurora background shader designed to showcase 3D water refraction",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "background",
       "tags": [
         "background",
@@ -65,16 +76,21 @@
       "host_requirement": "none",
       "runs_host_process": false,
       "slot_capable": false,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/bg-aurora-shader",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/bg-aurora-shader",
-      "sha256": "b34ffb5137627d22b2ee85d867b1b6026374755392002ffbfebe276fc17cb7d4"
+      "sha256": "cd8de0808c0c8dc595b6ce6016e97a6705ec6a56add63fad9784fc04e3dab5a7"
     },
     {
       "id": "fx-classic-ripple",
       "name": "Classic 2D Ripple",
       "version": "2.0.0",
       "description": "Classic v1 expanding 2D line ripple across the keyboard (now stackable)",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "effect",
       "tags": [
         "key-press",
@@ -85,16 +101,21 @@
       "host_requirement": "none",
       "runs_host_process": false,
       "slot_capable": false,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/fx-classic-ripple",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-classic-ripple",
-      "sha256": "2d7d85c4adff7df4fcae78d6a8e29fe0fb950b1133f7fd99b0bc6a9ada74b560"
+      "sha256": "fd224df2101f2a6189badcd178fc960861af36ce4a45084995f17b2d9be328b0"
     },
     {
       "id": "fx-classic-rings",
       "name": "Classic Glowing Rings",
       "version": "2.0.0",
       "description": "Classic v1 expanding glowing rings radiating from pressed keys (now stackable)",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "effect",
       "tags": [
         "key-press",
@@ -105,16 +126,21 @@
       "host_requirement": "none",
       "runs_host_process": false,
       "slot_capable": false,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/fx-classic-rings",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-classic-rings",
-      "sha256": "ac118053b099fd50a868d0a8c6407166c0d71a6325217701f38c0e5ce74edf26"
+      "sha256": "9a20759f5fee603e224a84822f83f3b3898770f519c362c9b436473a995df421"
     },
     {
       "id": "fx-classic-glow",
       "name": "Classic Key Glow",
       "version": "2.0.0",
       "description": "Classic v1 solid highlight and warm glow around pressed keys (now stackable)",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "effect",
       "tags": [
         "key-press",
@@ -125,16 +151,21 @@
       "host_requirement": "none",
       "runs_host_process": false,
       "slot_capable": false,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/fx-classic-glow",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-classic-glow",
-      "sha256": "c3d13e8ad660d9087b9c2e0e61754e1f44dfc5d88a5bf1bf58fe3f97e130f032"
+      "sha256": "732670b00fd6eed4c7851d897d750fcb62331f372ab6e113088ff49f7b4e4103"
     },
     {
       "id": "companion-idle-pet",
       "name": "Idle Pet Companion",
       "version": "2.0.0",
       "description": "Lives in a top-bar slot, swipes at upper-row typing, gets startled by ripples, and climbs onto keys when idle\u2014sending surface impulses on every paw landing",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "companion",
       "tags": [
         "pet",
@@ -146,38 +177,21 @@
       "host_requirement": "none",
       "runs_host_process": false,
       "slot_capable": true,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/companion-idle-pet",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/companion-idle-pet",
-      "sha256": "18977c3748c58a759c563d4829859b8d964fbde17e0a803fae0e6e62fbd7f8ca"
-    },
-    {
-      "id": "fx-key-particles",
-      "name": "Key-Bouncing & Refracting Particles",
-      "version": "2.0.0",
-      "description": "Sparks burst upward, ricochet inside clear keycaps, then fall, pile up and spill off the sides",
-      "author": "OpenFlux",
-      "license": "MIT",
-      "category": "effect",
-      "tags": [
-        "key-press",
-        "physics",
-        "particles",
-        "3d",
-        "refraction",
-        "visual"
-      ],
-      "host_requirement": "none",
-      "runs_host_process": false,
-      "slot_capable": false,
-      "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-key-particles",
-      "sha256": "c3530c4c9f141f63f7e6bf801d67d69fc577b3ca40d93a8885082e52e2be5a13"
+      "sha256": "12f49c7f545d2123b4aa283209db7d4d107f087d9116f1785315e3c408468bae"
     },
     {
       "id": "bg-stream",
       "name": "Live Stream Background",
       "version": "2.0.0",
       "description": "Streams live YouTube, Twitch, HLS, or RTSP video onto your keyboard background (100% transparent when idle/offline so your normal background plays underneath!)",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "background",
       "tags": [
         "background",
@@ -190,16 +204,21 @@
       "host_requirement": "required",
       "runs_host_process": true,
       "slot_capable": false,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/bg-stream",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/bg-stream",
-      "sha256": "b18e90c8d41c7d52f50780b3c123a0e1e806c1222ef1b1ec90272d4ce71a6246"
+      "sha256": "75034de0e34d5f331177c03cdf2e4f98afd07c37cd461d85d6a9eb8c5ef5f345"
     },
     {
       "id": "host-volume-osd",
       "name": "macOS Volume HUD",
       "version": "2.0.0",
       "description": "Watches macOS system volume and mute in real time via CoreAudio (zero subprocess overhead) and shows a live meter pill via `ui/toast`",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "host_service",
       "tags": [
         "host-service",
@@ -211,16 +230,21 @@
       "host_requirement": "required",
       "runs_host_process": true,
       "slot_capable": false,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/host-volume-osd",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/host-volume-osd",
-      "sha256": "bd33036b0b987aebade4a5996aba7de1cec4d72ce0bb4917225187edb9220317"
+      "sha256": "2bf5124d9e9ef08bfc09ccabfb5a9add827fb6e471d05f7c86657cc72d76119c"
     },
     {
       "id": "widget-media",
       "name": "Now Playing Widget",
       "version": "2.0.0",
       "description": "Displays live host media track, artist, animated equalizer, and playback progress",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "widget",
       "tags": [
         "media",
@@ -231,16 +255,21 @@
       "host_requirement": "optional",
       "runs_host_process": false,
       "slot_capable": true,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/widget-media",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-media",
-      "sha256": "38bf0ab962b2073a0b572befdd7aae31faa285fde908024b48358eaa8c1e1144"
+      "sha256": "b2c15ba657e5f172bd562f5d8e454e0e9a9177837ff9c83df3fb7d3fbd88a7a6"
     },
     {
       "id": "widget-pomodoro",
       "name": "Pomodoro Timer",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "description": "Keyboard-standalone Pomodoro focus timer that emits a celebratory surface impulse when a session completes",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "widget",
       "tags": [
         "timer",
@@ -252,16 +281,21 @@
       "host_requirement": "none",
       "runs_host_process": false,
       "slot_capable": true,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/widget-pomodoro",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "v2.0.1: Sharper session progress pill and verified registry update flow.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-pomodoro",
-      "sha256": "6303586f3df651d3532c3263bbd871fed9c350c073f1bdaf986e6bd4e3f486d9"
+      "sha256": "e85b832e2160fe074d85713d6ffb7d40384e3e6d80d629d694435afd0efbd459"
     },
     {
       "id": "widget-prusa-connect",
       "name": "Prusa Connect",
       "version": "2.0.0",
       "description": "Shows live 3D printer telemetry (nozzle, bed, progress, ETA) in a top-bar slot and opens a live camera glance overlay while holding a key",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "widget",
       "tags": [
         "3d-printer",
@@ -274,8 +308,13 @@
       "host_requirement": "required",
       "runs_host_process": true,
       "slot_capable": true,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/widget-prusa-connect",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-prusa-connect",
-      "sha256": "d5c4663019a8eee9238f1ad8d242771646d2b2ea53e014cf79273372ebd5f3a9"
+      "sha256": "67ecc9dc36324f02cd12a7a13f3a8c57f040bdf753013a8e3e6b9b706eac1a52"
     },
     {
       "id": "streamdeck-bridge",
@@ -296,16 +335,21 @@
       "host_requirement": "required",
       "runs_host_process": true,
       "slot_capable": false,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/streamdeck-bridge",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/streamdeck-bridge",
-      "sha256": "3c9a1f03d495b5bf2dee2874e7f11518817d4fa2a7e7b325b15b9702c8e509c8"
+      "sha256": "2c54a16528f296243432c9ea04b934dd6b0687eafa441653b3d2081963abc87e"
     },
     {
       "id": "widget-system-load",
       "name": "System Load Widget",
       "version": "2.0.0",
       "description": "Hybrid CPU, RAM, and GPU telemetry bar that gracefully shows standalone status when host disconnects",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "widget",
       "tags": [
         "system",
@@ -319,16 +363,21 @@
       "host_requirement": "optional",
       "runs_host_process": false,
       "slot_capable": true,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/widget-system-load",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-system-load",
-      "sha256": "6a8c928756fc76a532073938a79f4d7f0a9451e3072db41ff8d130c14e690057"
+      "sha256": "deaed4f791c76034bcd626c216d0d6f94e199a86f17fed8c4b08599f1f617896"
     },
     {
       "id": "widget-weather",
       "name": "Weather Widget",
       "version": "2.0.0",
       "description": "Classic v1-style weather tile with city, local time, sunrise/sunset/AQI, temperature, condition icon, and 3-hour forecast",
-      "author": "OpenFlux",
-      "license": "MIT",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
       "category": "widget",
       "tags": [
         "weather",
@@ -339,8 +388,13 @@
       "host_requirement": "optional",
       "runs_host_process": false,
       "slot_capable": true,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/widget-weather",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Initial standalone Keyglass v2 release.",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-weather",
-      "sha256": "67ce6530fc23d9b1cc4c46c7c6435acb66f7d02f40d2275238d77fe542c29585"
+      "sha256": "06b6a4660ce6f8d5bd0904d5f8966cfc677404324477e143ad647564eab9e039"
     }
   ]
 }

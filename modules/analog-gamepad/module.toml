@@ -2,7 +2,7 @@ id = "analog-gamepad"
 name = "Analog Gamepad (Wooting / HID / XInput)"
 version = "2.0.0"
 description = "Turns Hall-effect keys bound to GP_* keycodes in Vialite into 1000 Hz analog controller sticks, triggers, and buttons (Off / Classic HID for macOS & Steam / XInput for Windows) with deadzone, response curves, and automatic per-game App Linking"
-author = "OpenFlux"
+author = "Keyglass"
 category = "host_service"
 tags = ["gaming", "gamepad", "analog", "xinput", "hid", "hall-effect"]
 depends = [{ role = "keys_renderer", optional = true }]
@@ -10,6 +10,13 @@ stages = []
 host_requirement = "none"
 slot_capable = false
 stackable = true
+
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/keyglass-dev/keyglass/tree/main/modules/analog-gamepad"
+repository = "https://github.com/keyglass-dev/keyglass"
+support_url = "https://github.com/keyglass-dev/keyglass/issues"
+discord_url = "https://discord.gg/keyglass"
+changelog = "Core Keyglass v2 built-in module."
 
 [entrypoints]
 script = "script.lua"
