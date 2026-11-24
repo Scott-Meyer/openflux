@@ -62,7 +62,7 @@ ffmpeg_dir="$(cd "$ffmpeg_dir" && pwd)"
 target_dir="${CARGO_TARGET_DIR:-${repo}/target}"
 
 # package:binary pairs built with cargo.
-rust_bins=(openfluxd:openfluxd)
+rust_bins=(openfluxd:openfluxd fluxctl:fluxctl)
 
 cargo_build() {
     local triple="$1"; shift

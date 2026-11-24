@@ -253,6 +253,14 @@ pub struct ModuleManifest {
     pub changelog: Option<String>,
     #[serde(default)]
     pub changelog_url: Option<String>,
+    #[serde(default)]
+    pub deprecated: bool,
+    #[serde(default)]
+    pub deprecation_message: Option<String>,
+    #[serde(default)]
+    pub moved_to: Option<String>,
+    #[serde(default)]
+    pub replaced_by: Option<String>,
     pub category: ModuleCategory,
     #[serde(default)]
     pub tags: Vec<String>,

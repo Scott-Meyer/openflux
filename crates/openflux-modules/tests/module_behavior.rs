@@ -743,3 +743,151 @@ end
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn module_deprecation_rename_migration_and_removed_source_memory() {
+    let tmp = std::env::temp_dir().join(format!(
+        "openflux-mod-migrate-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let old_up = tmp.join("upstream-old");
+    let new_up = tmp.join("upstream-new");
+    std::fs::create_dir_all(&old_up).unwrap();
+    std::fs::create_dir_all(&new_up).unwrap();
+
+    // 1. Install v1.0.0 from old upstream and save custom user config + slot placement
+    std::fs::write(
+        old_up.join("module.toml"),
+        r#"
+id = "widget-old-name"
+name = "Old Widget"
+version = "1.0.0"
+author = "Author"
+category = "widget"
+description = "Original widget"
+stages = ["tile"]
+host_requirement = "none"
+slot_capable = true
+[entrypoints]
+script = "script.lua"
+[channels]
+subscribes = []
+publishes = []
+"#,
+    )
+    .unwrap();
+    std::fs::write(old_up.join("script.lua"), "function on_render(ctx, stage) end\n").unwrap();
+
+    std::fs::write(
+        new_up.join("module.toml"),
+        r#"
+id = "widget-new-name"
+name = "New Widget"
+version = "2.0.0"
+author = "Author"
+category = "widget"
+description = "Renamed replacement widget"
+stages = ["tile"]
+host_requirement = "none"
+slot_capable = true
+[entrypoints]
+script = "script.lua"
+[channels]
+subscribes = []
+publishes = []
+"#,
+    )
+    .unwrap();
+    std::fs::write(new_up.join("script.lua"), "function on_render(ctx, stage) end\n").unwrap();
+
+    let reg = ModuleRegistry::new(
+        tmp.join("bundled"),
+        tmp.join("installed"),
+        tmp.join("local"),
+        tmp.join("state.json"),
+    );
+    reg.install_from_source(&old_up.to_string_lossy()).unwrap();
+    let mut st = reg.load_state();
+    st.modules.insert(
+        "widget-old-name".into(),
+        ModuleInstanceState {
+            enabled: true,
+            slot: Some(2),
+            slot_pos: Some(2.0),
+            slot_span: Some(1.0),
+            pin_tab: None,
+            config: BTreeMap::from([("accent".into(), json!("#ff9900"))]),
+        },
+    );
+    reg.save_state(&st).unwrap();
+
+    // 2. Author publishes a deprecation + move/rename tombstone at the old upstream
+    std::fs::write(
+        old_up.join("module.toml"),
+        format!(
+            r#"
+id = "widget-old-name"
+name = "Old Widget"
+version = "1.0.1"
+author = "Author"
+deprecated = true
+deprecation_message = "Renamed to New Widget; migrate to keep receiving updates."
+moved_to = "{}"
+replaced_by = "widget-new-name"
+category = "widget"
+description = "Original widget"
+stages = ["tile"]
+host_requirement = "none"
+slot_capable = true
+[entrypoints]
+script = "script.lua"
+[channels]
+subscribes = []
+publishes = []
+"#,
+            new_up.to_string_lossy().replace('\\', "\\\\")
+        ),
+    )
+    .unwrap();
+
+    let updates = reg.check_available_updates();
+    assert_eq!(updates.len(), 1);
+    let u = &updates[0];
+    assert!(u.deprecated);
+    assert_eq!(u.replaced_by.as_deref(), Some("widget-new-name"));
+    assert_eq!(u.moved_to.as_deref(), Some(new_up.to_string_lossy().as_ref()));
+
+    // 3. Migrate via staged snapshot -> new module installed, old removed, user config & slot preserved!
+    let staged = openflux_modules::stage_module_source(
+        u.moved_to.as_deref().unwrap(),
+        &[],
+        &tmp.join("bundled"),
+    )
+    .unwrap();
+    let migrated = reg
+        .migrate_module_from_staged("widget-old-name", &staged)
+        .unwrap();
+    assert_eq!(migrated.manifest.id, "widget-new-name");
+    assert!(!tmp.join("installed/widget-old-name").exists());
+    let after_state = reg.load_state();
+    assert!(!after_state.modules.contains_key("widget-old-name"));
+    let carried = after_state.modules.get("widget-new-name").unwrap();
+    assert!(carried.enabled);
+    assert_eq!(carried.slot, Some(2));
+    assert_eq!(carried.config["accent"], json!("#ff9900"));
+
+    // 4. Uninstalling remembers direct source; forgetting clears it cleanly.
+    reg.uninstall_module("widget-new-name").unwrap();
+    let rem = reg.load_state().removed_sources;
+    assert_eq!(rem.len(), 1);
+    assert_eq!(rem[0].id, "widget-new-name");
+    assert!(rem[0].source.ends_with("/upstream-new"));
+    reg.forget_removed_source("widget-new-name").unwrap();
+    assert!(reg.load_state().removed_sources.is_empty());
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}

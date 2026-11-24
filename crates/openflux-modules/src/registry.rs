@@ -85,6 +85,14 @@ pub struct ModuleUpdateInfo {
     pub runs_host_process: bool,
     #[serde(default)]
     pub host_changed: bool,
+    #[serde(default)]
+    pub deprecated: bool,
+    #[serde(default)]
+    pub deprecation_message: Option<String>,
+    #[serde(default)]
+    pub moved_to: Option<String>,
+    #[serde(default)]
+    pub replaced_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -130,6 +138,14 @@ pub struct CuratedListEntry {
     pub changelog: Option<String>,
     #[serde(default)]
     pub changelog_url: Option<String>,
+    #[serde(default)]
+    pub deprecated: bool,
+    #[serde(default)]
+    pub deprecation_message: Option<String>,
+    #[serde(default)]
+    pub moved_to: Option<String>,
+    #[serde(default)]
+    pub replaced_by: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
@@ -452,6 +468,38 @@ impl ModuleRegistry {
         Ok(removed_tier)
     }
 
+    /// Migrates an installed module (`old_id`) to a new upstream location and/or new module ID
+    /// (from a `moved_to` / `replaced_by` tombstone) using an already-inspected staged snapshot.
+    /// Carries over the user's saved `enabled`, `slot`, and `config` state to the new module ID
+    /// and cleanly removes the old tombstoned module directory.
+    pub fn migrate_module_from_staged(
+        &self,
+        old_id: &str,
+        staged: &crate::installer::StagedModuleSource,
+    ) -> Result<DiscoveredModule, String> {
+        let old_inst_path = safe_child_dir(&self.installed_dir, old_id)?;
+        let mut state = self.load_state();
+        let prev_instance = state.modules.get(old_id).cloned();
+
+        let installed = self.install_from_staged(staged)?;
+        let new_id = installed.manifest.id.clone();
+
+        // Reload state after install_from_staged (which clears removed_sources for new_id)
+        state = self.load_state();
+        if new_id != old_id {
+            if let Some(prev) = prev_instance {
+                state.modules.entry(new_id.clone()).or_insert(prev);
+            }
+            state.modules.remove(old_id);
+            state.removed_sources.retain(|r| r.id != old_id && r.id != new_id);
+            let _ = self.save_state(&state);
+            if old_inst_path.is_dir() {
+                let _ = std::fs::remove_dir_all(&old_inst_path);
+            }
+        }
+        Ok(installed)
+    }
+
     /// Removes a remembered removed-module origin record.
     pub fn forget_removed_source(&self, id: &str) -> Result<(), String> {
         let mut state = self.load_state();
@@ -539,6 +587,19 @@ impl ModuleRegistry {
                     .as_deref()
                     .is_some_and(|s| !s.is_empty() && s != current_sha);
                 let has_update = version_diff || sha_diff;
+                let deprecated = entry.deprecated || inst_manifest.deprecated;
+                let deprecation_message = entry
+                    .deprecation_message
+                    .clone()
+                    .or_else(|| inst_manifest.deprecation_message.clone());
+                let moved_to = entry
+                    .moved_to
+                    .clone()
+                    .or_else(|| inst_manifest.moved_to.clone());
+                let replaced_by = entry
+                    .replaced_by
+                    .clone()
+                    .or_else(|| inst_manifest.replaced_by.clone());
                 results.push(ModuleUpdateInfo {
                     id: id.clone(),
                     name: inst_manifest.name.clone(),
@@ -550,6 +611,10 @@ impl ModuleRegistry {
                     list_name: Some(list_name.clone()),
                     runs_host_process: entry.runs_host_process,
                     host_changed: entry.runs_host_process != inst_manifest.entrypoints.host.is_some(),
+                    deprecated,
+                    deprecation_message,
+                    moved_to,
+                    replaced_by,
                 });
                 continue;
             }
@@ -565,6 +630,16 @@ impl ModuleRegistry {
                             up_manifest.version != inst_manifest.version || up_sha != current_sha;
                         let host_changed =
                             up_manifest.entrypoints.host.is_some() != inst_manifest.entrypoints.host.is_some();
+                        let deprecated = up_manifest.deprecated || inst_manifest.deprecated;
+                        let deprecation_message = up_manifest
+                            .deprecation_message
+                            .or_else(|| inst_manifest.deprecation_message.clone());
+                        let moved_to = up_manifest
+                            .moved_to
+                            .or_else(|| inst_manifest.moved_to.clone());
+                        let replaced_by = up_manifest
+                            .replaced_by
+                            .or_else(|| inst_manifest.replaced_by.clone());
                         results.push(ModuleUpdateInfo {
                             id: id.clone(),
                             name: inst_manifest.name.clone(),
@@ -576,6 +651,10 @@ impl ModuleRegistry {
                             list_name: None,
                             runs_host_process: up_manifest.entrypoints.host.is_some(),
                             host_changed,
+                            deprecated,
+                            deprecation_message,
+                            moved_to,
+                            replaced_by,
                         });
                     }
                 }

@@ -31,6 +31,10 @@ interface CatalogEntry {
   discord_url?: string | null;
   changelog?: string | null;
   changelog_url?: string | null;
+  deprecated?: boolean;
+  deprecation_message?: string | null;
+  moved_to?: string | null;
+  replaced_by?: string | null;
   tags?: string[];
   runs_host_process?: boolean;
   sha256?: string | null;
@@ -75,6 +79,7 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
     inspectToken: string;
     disclosure: DisclosureReport;
     isUpdate?: boolean;
+    migrateFromId?: string;
     changelog?: string | null;
   } | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -89,7 +94,7 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
       setRemovedSources(modRes.removed_sources ?? []);
       const map: Record<string, ModuleUpdateInfo> = {};
       for (const u of updRes.updates ?? []) {
-        if (u.has_update) map[u.id] = u;
+        if (u.has_update || u.deprecated || u.moved_to || u.replaced_by) map[u.id] = u;
       }
       setUpdatesById(map);
     } finally {
@@ -137,7 +142,10 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
     return m;
   }, [modules]);
 
-  const availableUpdateList = useMemo(() => Object.values(updatesById), [updatesById]);
+  const availableUpdateList = useMemo(
+    () => Object.values(updatesById).filter((u) => u.has_update || Boolean(u.moved_to)),
+    [updatesById],
+  );
 
   const filteredInstalled = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -167,6 +175,8 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
   const filteredCatalog = useMemo(() => {
     const q = search.trim().toLowerCase();
     return catalogEntries.filter((e) => {
+      // Hide deprecated entries from default browse listings unless explicitly searched
+      if (e.deprecated && !q) return false;
       if (listFilter !== "all" && e.listId !== listFilter) return false;
       if (catFilter === "keys") {
         if (!e.id.startsWith("keys-") && !(e.tags ?? []).includes("keys")) return false;
@@ -192,7 +202,10 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
     }
   };
 
-  const handleInspectSource = async (src: string, opts?: { isUpdate?: boolean; changelog?: string | null }) => {
+  const handleInspectSource = async (
+    src: string,
+    opts?: { isUpdate?: boolean; migrateFromId?: string; changelog?: string | null },
+  ) => {
     const clean = src.trim();
     if (!clean) return;
     setInspecting(true);
@@ -204,6 +217,7 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
         inspectToken: res.inspect_token,
         disclosure: res.preview.disclosure,
         isUpdate: opts?.isUpdate,
+        migrateFromId: opts?.migrateFromId,
         changelog: opts?.changelog,
       });
     } catch (err) {
@@ -216,6 +230,21 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
   const handleApproveInstall = async () => {
     if (!pendingDisclosure) return;
     try {
+      if (pendingDisclosure.migrateFromId) {
+        const res = await v2Client.migrateModule(
+          pendingDisclosure.migrateFromId,
+          pendingDisclosure.source,
+          true,
+          pendingDisclosure.inspectToken,
+        );
+        setPendingDisclosure(null);
+        await onUpdated();
+        await loadUpdatesAndRemoved();
+        setStatusMsg(
+          `Migrated ${res.old_id} → ${res.new_id} (v${res.preview.disclosure.version}) and preserved your settings.`,
+        );
+        return;
+      }
       const res = await v2Client.installModule(
         pendingDisclosure.source,
         true,
@@ -336,8 +365,12 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
       {pendingDisclosure && (
         <div className="kg-calm-card kg-disclosure-box" style={{ marginTop: 0 }}>
           <strong>
-            {pendingDisclosure.isUpdate ? "Review Update" : "Review Permissions"}: {pendingDisclosure.disclosure.name} v
-            {pendingDisclosure.disclosure.version}
+            {pendingDisclosure.migrateFromId
+              ? "Review Module Migration"
+              : pendingDisclosure.isUpdate
+                ? "Review Update"
+                : "Review Permissions"}
+            : {pendingDisclosure.disclosure.name} v{pendingDisclosure.disclosure.version}
           </strong>
           {pendingDisclosure.changelog && (
             <div className="kg-muted" style={{ marginTop: 4, fontSize: 12 }}>
@@ -358,7 +391,11 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button type="button" className="kg-btn-primary" onClick={() => void handleApproveInstall()}>
-              {pendingDisclosure.isUpdate ? "Approve & Update" : "Approve & Install"}
+              {pendingDisclosure.migrateFromId
+                ? "Approve & Migrate"
+                : pendingDisclosure.isUpdate
+                  ? "Approve & Update"
+                  : "Approve & Install"}
             </button>
             <button type="button" className="kg-btn-ghost" onClick={() => setPendingDisclosure(null)}>
               Cancel
@@ -480,7 +517,22 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
                       </span>
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
-                      {upd && (
+                      {upd?.moved_to && (
+                        <button
+                          type="button"
+                          className="kg-btn-primary"
+                          disabled={inspecting}
+                          onClick={() =>
+                            void handleInspectSource(upd.moved_to!, {
+                              migrateFromId: m.id,
+                              changelog: upd.deprecation_message || `Moved to ${upd.replaced_by || upd.moved_to}`,
+                            })
+                          }
+                        >
+                          Migrate{upd.replaced_by ? ` → ${upd.replaced_by}` : ""}
+                        </button>
+                      )}
+                      {upd && upd.has_update && !upd.moved_to && (
                         <button
                           type="button"
                           className="kg-btn-primary"
@@ -509,7 +561,15 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
                   <div className="kg-muted" style={{ fontSize: 12, marginTop: 6 }}>
                     {m.manifest.description}
                   </div>
-                  {upd?.changelog && (
+                  {(upd?.deprecated || m.manifest.deprecated || upd?.moved_to || m.manifest.moved_to) && (
+                    <div style={{ fontSize: 11, color: "#fbbf24", marginTop: 4 }}>
+                      <strong>{upd?.moved_to || m.manifest.moved_to ? "Moved / Replaced:" : "Deprecated:"}</strong>{" "}
+                      {upd?.deprecation_message ||
+                        m.manifest.deprecation_message ||
+                        `Now maintained at ${upd?.moved_to || m.manifest.moved_to}`}
+                    </div>
+                  )}
+                  {upd?.has_update && upd?.changelog && (
                     <div style={{ fontSize: 11, color: "#7dd3fc", marginTop: 4 }}>
                       Update notes (v{upd.available_version}): {upd.changelog}
                     </div>

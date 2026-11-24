@@ -431,7 +431,10 @@ changelog = "v1.1.0: Added custom accent color and smoother idle animation."
 
 1. **Keyglass Official Registry (`keyglass-dev/keyglass-registry`):** Open a 1-line PR adding your repo to `sources.json`. GitHub Actions compiles a static `catalog.json` with SHA-256 verification.
 2. **Custom Module Lists (“Taps”):** Publish your own static `catalog.json` (using `build-catalog.py` from `keyglass-registry`) on GitHub Pages; anyone can subscribe under **Manage Modules → Lists & Direct Install**.
-3. **Direct Install (No List Needed):** Share `github:owner/repo` (or `github:owner/repo//subdir`). Keyglass remembers the origin for one-click updates and remembers it under **Removed Modules** if uninstalled.
+3. **Direct Install (No List Needed):** Share `github:owner/repo` (or `github:owner/repo//subdir`). Keyglass remembers the origin for one-click updates and remembers it under **Previously Removed Modules** if uninstalled.
+4. **Deprecating, Renaming, or Moving Later:** Leave `deprecated = true`, `deprecation_message = "..."`, `moved_to = "..."`, and optionally `replaced_by = "..."` in your old `module.toml` so existing users get a clean 1-click **Migrate** prompt that preserves their settings.
+
+For the full submission checklist, custom catalog setup, and requesting a catalog be added by default, see [docs/submitting-modules-and-catalogs.md](submitting-modules-and-catalogs.md).
 
 ### Forking Any Module to Local
 

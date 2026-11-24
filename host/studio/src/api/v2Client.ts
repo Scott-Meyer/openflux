@@ -51,6 +51,10 @@ export interface ModuleManifest {
   discord_url?: string | null;
   changelog?: string | null;
   changelog_url?: string | null;
+  deprecated?: boolean;
+  deprecation_message?: string | null;
+  moved_to?: string | null;
+  replaced_by?: string | null;
   category: ModuleCategory;
   tags?: string[];
   provides?: string[];
@@ -223,6 +227,10 @@ export interface ModuleUpdateInfo {
   list_name?: string | null;
   runs_host_process?: boolean;
   host_changed?: boolean;
+  deprecated?: boolean;
+  deprecation_message?: string | null;
+  moved_to?: string | null;
+  replaced_by?: string | null;
 }
 
 export interface V2ModuleRecord {
@@ -400,6 +408,12 @@ export const v2Client = {
     v2Call<{ installed: boolean; requires_acceptance?: boolean; preview: InstallPreview }>(
       "POST",
       "/v2/modules/install",
+      { source, accept_disclosure, ...(inspect_token ? { inspect_token } : {}) },
+    ),
+  migrateModule: (oldId: string, source: string, accept_disclosure: boolean, inspect_token?: string) =>
+    v2Call<{ migrated: boolean; old_id: string; new_id: string; preview: InstallPreview }>(
+      "POST",
+      `/v2/modules/${encodeURIComponent(oldId)}/migrate`,
       { source, accept_disclosure, ...(inspect_token ? { inspect_token } : {}) },
     ),
   uninstallModule: (id: string) =>

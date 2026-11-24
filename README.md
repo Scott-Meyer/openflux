@@ -23,7 +23,8 @@ Keyglass is open-source, modular keyboard software for the [Flux keyboard](https
 
 - [Installing Keyglass Studio](docs/installing.md)
 - [Converting a Flux Keyboard & Returning to Stock](docs/converting-a-keyboard.md)
-- [Making & Publishing Modules](docs/making-modules.md)
+- [Making & Forking Modules](docs/making-modules.md)
+- [Submitting Modules, Publishing Catalogs & Deprecation](docs/submitting-modules-and-catalogs.md)
 - [Architecture Overview](docs/architecture.md)
 - [Component Compatibility](docs/compatibility.md)
 - [Releasing](docs/releasing.md)

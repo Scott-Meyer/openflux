@@ -82,9 +82,9 @@ keyboard="$(native "$(cd "$keyboard" && pwd)")"
 
 # Sidecars per OS. Tauri appends the target triple to each entry.
 case "$os" in
-    macos) bins=(openfluxd openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe) triple='*-apple-darwin' ;;
-    windows) bins=(openfluxd openflux-ffmpeg openflux-ffprobe) triple='*-pc-windows-msvc.exe' ;;
-    linux) bins=(openfluxd openflux-ffmpeg openflux-ffprobe) triple='*-unknown-linux-gnu' ;;
+    macos) bins=(openfluxd fluxctl openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe) triple='*-apple-darwin' ;;
+    windows) bins=(openfluxd fluxctl openflux-ffmpeg openflux-ffprobe) triple='*-pc-windows-msvc.exe' ;;
+    linux) bins=(openfluxd fluxctl openflux-ffmpeg openflux-ffprobe) triple='*-unknown-linux-gnu' ;;
     *) die "unsupported --os: ${os}" ;;
 esac
 for b in "${bins[@]}"; do
@@ -102,6 +102,8 @@ jq -n \
     --arg bundledFonts "$(abs "${repo}/assets/bundled_fonts")/" \
     --arg defaultBgs "$(abs "${repo}/assets/default_backgrounds")/" \
     --arg weatherIcons "$(abs "${repo}/assets/weather_icons")/" \
+    --arg shortcuts "$(abs "${repo}/assets/shortcuts")/" \
+    --arg coreModules "$(abs "${repo}/modules")/" \
     --arg pubkey "$(tr -d '\r\n' < "$updater_pubkey")" \
     --arg endpoint "${pages_url}/updates/stable/latest.json" \
     --arg entitlements "$(abs "${packaging}/macos/entitlements.plist")" \
@@ -125,7 +127,9 @@ jq -n \
       ($licenses): "licenses/",
       ($bundledFonts): "assets/bundled_fonts/",
       ($defaultBgs): "assets/default_backgrounds/",
-      ($weatherIcons): "assets/weather_icons/"
+      ($weatherIcons): "assets/weather_icons/",
+      ($shortcuts): "assets/shortcuts/",
+      ($coreModules): "modules/"
     })
   },
   plugins: {

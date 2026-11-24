@@ -265,7 +265,10 @@ function on_event(topic, payload)
       needs_redraw = true
     end
   elseif topic == "keyboard/geometry" and type(payload) == "table" then
-    geom = payload
+    -- Always read the authoritative local `keyboard.layout()` (which carries this device's live
+    -- parallax-shifted `visual_x`, `visual_y`, `visual_rect`) so a remote host's unshifted
+    -- startup geometry can never zero out on-device optical parallax!
+    geom = keyboard.layout() or payload
     publish_layout_regions()
     needs_redraw = true
   elseif topic == "display/parallax" then

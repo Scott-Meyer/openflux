@@ -23,7 +23,7 @@ expect() {
 
 mkdir -p "${work}/keyboard" "${work}/sidecars/licenses"
 touch "${work}/keyboard/index.json" "${work}/keyboard/index.json.sig" "${work}/sidecars/licenses/openflux-ffmpeg-COPYING.GPLv2.txt"
-for b in openfluxd openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe; do
+for b in openfluxd fluxctl openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe; do
     touch "${work}/sidecars/${b}-universal-apple-darwin" "${work}/sidecars/${b}-x86_64-pc-windows-msvc.exe" \
         "${work}/sidecars/${b}-x86_64-unknown-linux-gnu"
 done
@@ -35,10 +35,10 @@ for os in macos windows linux; do
         --pages-url https://example.invalid/openflux/ -o "$out" > /dev/null
     expect "$out" "${os}: version" '.version == "1.2.0-beta.1"'
     # shellcheck disable=SC2016 # jq variables
-    expect "$out" "${os}: openfluxd, openflux-ffmpeg and openflux-ffprobe are sidecars" \
-        '[.bundle.externalBin[] | split("/") | last] as $b | ["openfluxd", "openflux-ffmpeg", "openflux-ffprobe"] - $b == []'
-    expect "$out" "${os}: keyboard software, licenses and preview assets are resources" \
-        '[.bundle.resources[]] | sort == ["assets/bundled_fonts/", "assets/default_backgrounds/", "assets/weather_icons/", "keyboard/", "licenses/"]'
+    expect "$out" "${os}: openfluxd, fluxctl, openflux-ffmpeg and openflux-ffprobe are sidecars" \
+        '[.bundle.externalBin[] | split("/") | last] as $b | ["openfluxd", "fluxctl", "openflux-ffmpeg", "openflux-ffprobe"] - $b == []'
+    expect "$out" "${os}: keyboard software, licenses, core modules, shortcuts and preview assets are resources" \
+        '[.bundle.resources[]] | sort == ["assets/bundled_fonts/", "assets/default_backgrounds/", "assets/shortcuts/", "assets/weather_icons/", "keyboard/", "licenses/", "modules/"]'
     expect "$out" "${os}: updater requires the signed version" '.plugins.updater.requireSignedVersion == true'
     if jq -e --arg k "$pubkey" '.plugins.updater.pubkey == $k and
         .plugins.updater.endpoints == ["https://example.invalid/openflux/updates/stable/latest.json"]' "$out" > /dev/null; then

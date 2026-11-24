@@ -238,10 +238,13 @@ impl V2State {
             &geometry,
             PublishOptions::retained(),
         );
+        // Seed default ANSI geometry on `broker` with `"peer:default"` origin so `App.tsx`
+        // renders 3D glass keycaps immediately on cold start, while `BrokerMirror` never echoes
+        // unshifted `(0,0)` geometry back onto the keyboard to clobber on-device optical parallax!
         let _ = broker.publish_typed(
             topics::KEYBOARD_GEOMETRY,
             &geometry,
-            PublishOptions::retained(),
+            PublishOptions::retained().with_origin("peer:default"),
         );
         let _ = preview_broker.publish_typed(
             topics::KEYBOARD_GEOMETRY,
@@ -1755,6 +1758,90 @@ async fn inspect_module_api(
         Ok((inspect_token, preview)) => (
             StatusCode::OK,
             Json(json!({ "preview": preview, "inspect_token": inspect_token })),
+        ),
+        Err(e) => err_resp(StatusCode::BAD_REQUEST, e),
+    }
+}
+
+async fn migrate_module_api(
+    State(state): State<Arc<ApiState>>,
+    AxumPath(old_id): AxumPath<String>,
+    Json(body): Json<InspectInstallBody>,
+) -> impl IntoResponse {
+    let accept = body.accept_disclosure;
+    let token_opt = body.inspect_token.clone().filter(|t| !t.trim().is_empty());
+    let src_opt = body.effective_source().ok().map(str::to_string);
+    if token_opt.is_none() && src_opt.is_none() {
+        return err_resp(StatusCode::BAD_REQUEST, "missing `inspect_token`, `source`, or `path`");
+    }
+    let state_clone = state.clone();
+    let old_id_clone = old_id.clone();
+    let res = tokio::task::spawn_blocking(move || {
+        if let Some(tok) = token_opt {
+            let ticket = state_clone.v2.staged_installs.lock().unwrap().remove(&tok);
+            let Some(ticket) = ticket else {
+                return Err("inspect_token expired or invalid; please re-inspect before migrating".into());
+            };
+            if !accept {
+                return Ok((false, None, ticket.preview));
+            }
+            let dm = state_clone
+                .v2
+                .registry
+                .migrate_module_from_staged(&old_id_clone, &ticket.staged)?;
+            return Ok((true, Some(dm), ticket.preview));
+        }
+        let src = src_opt.unwrap();
+        let saved = state_clone.v2.registry.load_state();
+        let staged = openflux_modules::stage_module_source(
+            &src,
+            &saved.curated_lists,
+            &state_clone.v2.registry.bundled_dir,
+        )?;
+        let preview = state_clone.v2.registry.preview_install(&staged.module_dir)?;
+        if !accept {
+            return Ok((false, None, preview));
+        }
+        let dm = state_clone
+            .v2
+            .registry
+            .migrate_module_from_staged(&old_id_clone, &staged)?;
+        Ok((true, Some(dm), preview))
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+
+    match res {
+        Ok((true, Some(dm), preview)) => {
+            state.v2.sync_all();
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "migrated": true,
+                    "old_id": old_id,
+                    "new_id": dm.manifest.id,
+                    "module": dm.manifest,
+                    "tier": dm.tier,
+                    "preview": preview,
+                })),
+            )
+        }
+        Ok((false, _, preview)) => (
+            StatusCode::ACCEPTED,
+            Json(json!({
+                "migrated": false,
+                "requires_acceptance": true,
+                "preview": preview,
+            })),
+        ),
+        Ok((_, None, preview)) => (
+            StatusCode::ACCEPTED,
+            Json(json!({
+                "migrated": false,
+                "requires_acceptance": true,
+                "preview": preview,
+            })),
         ),
         Err(e) => err_resp(StatusCode::BAD_REQUEST, e),
     }
@@ -4298,6 +4385,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/modules/install", post(install_module_api))
         .route("/v2/modules/:id", get(get_module_detail).delete(uninstall_module_api))
         .route("/v2/modules/:id/update", post(update_module_api))
+        .route("/v2/modules/:id/migrate", post(migrate_module_api))
         .route("/v2/modules/:id/state", put(update_module_state))
         .route("/v2/modules/:id/action", post(trigger_module_action))
         .route("/v2/modules/:id/reload", post(reload_module_api))

@@ -64,7 +64,9 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
         .checkModuleUpdates()
         .then((res) => {
           if (!alive) return;
-          const match = (res.updates ?? []).find((u) => u.id === mod.id && u.has_update);
+          const match = (res.updates ?? []).find(
+            (u) => u.id === mod.id && (u.has_update || u.deprecated || u.moved_to || u.replaced_by),
+          );
           setAvailUpdate(match ?? null);
         })
         .catch(() => {});
@@ -321,8 +323,73 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
         </div>
       </div>
 
+      {/* Deprecation / Move / Rename Banner */}
+      {(mod.manifest.deprecated ||
+        mod.manifest.moved_to ||
+        availUpdate?.deprecated ||
+        availUpdate?.moved_to) && (
+        <div className="kg-calm-card" style={{ marginTop: 0, borderColor: "rgba(251, 191, 36, 0.45)" }}>
+          <div className="kg-calm-row">
+            <div>
+              <strong style={{ color: "#fbbf24" }}>
+                {availUpdate?.moved_to || mod.manifest.moved_to
+                  ? "This Module Has Moved / Been Replaced"
+                  : "Deprecated Module"}
+              </strong>
+              <div className="kg-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                {availUpdate?.deprecation_message ||
+                  mod.manifest.deprecation_message ||
+                  "The author marked this module as deprecated."}
+              </div>
+              {(availUpdate?.moved_to || mod.manifest.moved_to) && (
+                <div className="kg-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  New location: <code>{availUpdate?.moved_to || mod.manifest.moved_to}</code>
+                  {(availUpdate?.replaced_by || mod.manifest.replaced_by) && (
+                    <>
+                      {" "}
+                      (new ID: <code>{availUpdate?.replaced_by || mod.manifest.replaced_by}</code>)
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            {(availUpdate?.moved_to || mod.manifest.moved_to) && (
+              <button
+                type="button"
+                className="kg-btn-primary"
+                disabled={busyOp !== null}
+                onClick={async () => {
+                  const dest = availUpdate?.moved_to || mod.manifest.moved_to;
+                  if (!dest) return;
+                  if (
+                    !window.confirm(
+                      `Migrate "${mod.manifest.name}" to:\n${dest}\n\nYour saved settings and slot placement will carry over, and the old module will be removed.`,
+                    )
+                  ) {
+                    return;
+                  }
+                  setBusyOp("migrate");
+                  try {
+                    const insp = await v2Client.inspectModule(dest);
+                    const res = await v2Client.migrateModule(mod.id, dest, true, insp.inspect_token);
+                    await onUpdated();
+                    setStatusMsg(`Migrated ${res.old_id} → ${res.new_id}!`);
+                  } catch (err) {
+                    setStatusMsg(err instanceof Error ? err.message : String(err));
+                  } finally {
+                    setBusyOp(null);
+                  }
+                }}
+              >
+                {busyOp === "migrate" ? "Migrating…" : "Migrate Now"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Update Banner — ONLY shown when an actual upstream update exists! */}
-      {availUpdate && availUpdate.has_update && (
+      {availUpdate && availUpdate.has_update && !availUpdate.moved_to && (
         <div className="kg-calm-card kg-disclosure-box" style={{ marginTop: 0 }}>
           <div className="kg-calm-row">
             <div>
