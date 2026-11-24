@@ -16,9 +16,9 @@ kind = "protocol"
 summary = "Host to bridge OFV2 priority-multiplexed USB protocol: full-duplex bus mirror, H.264 media streams, file sync, and packages."
 
 [interfaces.firmware-usb]
-version = "2.0"
+version = "1.2"
 kind = "protocol"
-summary = "Host to firmware USB protocol: Vial raw HID, dynamic XZ vial.json (0x73), Analog Gamepad config (0x74), layer override (0x75), and bootloader."
+summary = "Host to firmware USB protocol: press refinement, Vial raw HID, dynamic XZ vial.json (0x73), Analog Gamepad config (0x74), layer override (0x75), and bootloader."
 
 [interfaces.uart]
 version = "2.0"
@@ -53,10 +53,10 @@ summary = "Keyglass v2 modular runtime state, display_prefs.json (parallax, powe
 [components.host]
 version = "2.0.0-alpha.1"
 provides = []
-requires = { bridge-usb = ">=2.0, <3.0", firmware-usb = ">=2.0, <3.0", keymap = ">=2.0, <3.0", profile-settings = ">=2.0, <3.0", calibration-lfs = ">=1.0, <2.0", config = ">=2.0, <3.0" }
+requires = { bridge-usb = ">=2.0, <3.0", firmware-usb = ">=1.0, <2.0", keymap = ">=2.0, <3.0", profile-settings = ">=2.0, <3.0", calibration-lfs = ">=1.0, <2.0", config = ">=2.0, <3.0" }
 
 [components.firmware]
-version = "2.1.1"
+version = "2.1.2"
 provides = ["firmware-usb", "uart", "keymap", "profile-settings", "calibration-lfs"]
 update-transport = ["firmware-usb"]
 

@@ -18,7 +18,7 @@ build_firmware() {
   echo "==> [firmware] Building RP2040 v2 firmware (.uf2) via Docker..."
   docker build -t openflux-fw-builder -f "$REPO/keyboard/firmware/Dockerfile.build" "$REPO/keyboard/firmware"
   docker run --rm -v "$REPO:/work" -w /work/keyboard/firmware openflux-fw-builder \
-    bash -lc 'cmake -B build-pico -DPICO_SDK_PATH=/opt/pico-sdk && cmake --build build-pico -j"$(nproc)"'
+    bash -lc "cmake -B build-pico -DPICO_SDK_PATH=/opt/pico-sdk -DOPENFLUX_VERSION=${VERSION} && cmake --build build-pico -j\$(nproc)"
   cp "$REPO/keyboard/firmware/build-pico/"*.uf2 "$OUT/openflux-firmware-${VERSION}.uf2"
   echo "  -> $OUT/openflux-firmware-${VERSION}.uf2"
 }

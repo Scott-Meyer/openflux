@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::SystemTime;
 
 const MAX_MODULE_LOGS: usize = 200;
@@ -509,7 +509,7 @@ impl LoadedLuaModule {
         discovered: DiscoveredModule,
         instance: ModuleInstanceState,
         broker: Broker,
-        geometry: Arc<KeyboardGeometry>,
+        geometry: Arc<RwLock<KeyboardGeometry>>,
     ) -> Self {
         let logs = LogBuffer::default();
         let subscriptions: Arc<Mutex<Vec<Subscription>>> = Arc::new(Mutex::new(Vec::new()));
@@ -645,7 +645,7 @@ impl LoadedLuaModule {
     fn init_bindings(
         &self,
         broker: Broker,
-        geometry: Arc<KeyboardGeometry>,
+        geometry: Arc<RwLock<KeyboardGeometry>>,
     ) -> mlua::Result<()> {
         let globals = self.lua.globals();
 
@@ -722,14 +722,18 @@ impl LoadedLuaModule {
         }
         globals.set("bus", bus_tbl)?;
 
-        // `keyboard` table
+        // `keyboard` table — reads through shared `RwLock<KeyboardGeometry>` so live optical
+        // parallax updates (`ModuleRuntime::update_geometry`) immediately reflect in every
+        // already-loaded Lua module's `keyboard.layout()`, `nearest_key()`, and `sample_sdf()`!
         let kb_tbl = self.lua.create_table()?;
         {
             let geom_ref = geometry.clone();
             kb_tbl.set(
                 "layout",
-                self.lua
-                    .create_function(move |lua, ()| lua.to_value(&*geom_ref))?,
+                self.lua.create_function(move |lua, ()| {
+                    let g = geom_ref.read().unwrap();
+                    lua.to_value(&*g)
+                })?,
             )?;
         }
         {
@@ -737,9 +741,12 @@ impl LoadedLuaModule {
             kb_tbl.set(
                 "nearest_key",
                 self.lua
-                    .create_function(move |lua, (x, y): (f32, f32)| match geom_ref.nearest_key(x, y) {
-                        Some(k) => lua.to_value(k),
-                        None => Ok(LuaValue::Nil),
+                    .create_function(move |lua, (x, y): (f32, f32)| {
+                        let g = geom_ref.read().unwrap();
+                        match g.nearest_key(x, y) {
+                            Some(k) => lua.to_value(k),
+                            None => Ok(LuaValue::Nil),
+                        }
                     })?,
             )?;
         }
@@ -749,7 +756,8 @@ impl LoadedLuaModule {
                 "sample_sdf",
                 self.lua
                     .create_function(move |lua, (x, y): (f32, f32)| {
-                        let s = geom_ref.sample_key_sdf(x, y);
+                        let g = geom_ref.read().unwrap();
+                        let s = g.sample_key_sdf(x, y);
                         let t = lua.create_table()?;
                         t.set("dist", s.signed_distance_px)?;
                         t.set("nx", s.normal_x)?;
@@ -793,7 +801,7 @@ impl LoadedLuaModule {
         let mod_dir = self.discovered.path.to_string_lossy().into_owned();
         let slot_pos = self.instance.effective_slot_pos();
         let slot_span = self.instance.slot_span.unwrap_or(1.0).clamp(0.5, 4.0);
-        let fallback_hdr = geometry.header_rect;
+        let fallback_hdr = geometry.read().unwrap().header_rect;
 
         // Merge manifest defaults with instance overrides.
         let mut merged_cfg = self.discovered.manifest.default_config();
@@ -1215,7 +1223,7 @@ pub struct RuntimeModuleStatus {
 /// scripts, and producing a unified `FrameScene` for the GPU compositor each frame.
 pub struct ModuleRuntime {
     broker: Broker,
-    geometry: Arc<KeyboardGeometry>,
+    geometry: Arc<RwLock<KeyboardGeometry>>,
     modules: BTreeMap<String, LoadedLuaModule>,
     elapsed_sec: f32,
     tiles_dirty: bool,
@@ -1230,7 +1238,7 @@ impl ModuleRuntime {
     pub fn new(broker: Broker, geometry: KeyboardGeometry) -> Self {
         Self {
             broker,
-            geometry: Arc::new(geometry),
+            geometry: Arc::new(RwLock::new(geometry)),
             modules: BTreeMap::new(),
             elapsed_sec: 0.0,
             tiles_dirty: true,
@@ -1242,8 +1250,8 @@ impl ModuleRuntime {
         }
     }
 
-    pub fn geometry(&self) -> &KeyboardGeometry {
-        &self.geometry
+    pub fn geometry(&self) -> KeyboardGeometry {
+        self.geometry.read().unwrap().clone()
     }
 
     /// Returns true if any healthy loaded module declares the given capability role in `provides`.
@@ -1259,10 +1267,13 @@ impl ModuleRuntime {
     }
 
     pub fn update_geometry(&mut self, geometry: KeyboardGeometry) {
-        self.geometry = Arc::new(geometry);
+        {
+            let mut g = self.geometry.write().unwrap();
+            *g = geometry.clone();
+        }
         let _ = self.broker.publish_typed(
             openflux_bus::topics::KEYBOARD_GEOMETRY,
-            &*self.geometry,
+            &geometry,
             PublishOptions::retained(),
         );
     }

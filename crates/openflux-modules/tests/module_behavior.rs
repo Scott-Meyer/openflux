@@ -891,3 +891,89 @@ publishes = []
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn update_geometry_propagates_live_parallax_to_already_loaded_lua_modules() {
+    let tmp = std::env::temp_dir().join(format!(
+        "openflux-parallax-live-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let mod_dir = tmp.join("bundled/parallax-probe");
+    std::fs::create_dir_all(&mod_dir).unwrap();
+    std::fs::write(
+        mod_dir.join("module.toml"),
+        r#"
+id = "parallax-probe"
+name = "Parallax Probe"
+version = "1.0.0"
+author = "Keyglass"
+category = "effect"
+description = "Verifies keyboard.layout() reflects live update_geometry() parallax shifts"
+stages = ["under_key"]
+host_requirement = "none"
+[entrypoints]
+script = "script.lua"
+[channels]
+subscribes = ["keyboard/geometry"]
+publishes = ["test/parallax-observed"]
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        mod_dir.join("script.lua"),
+        r#"
+local function report()
+  local g = keyboard.layout()
+  local k0 = g.keys[1]
+  bus.publish("test/parallax-observed", {
+    dx = k0.parallax_dx,
+    dy = k0.parallax_dy,
+    vx = k0.visual_x,
+    vr_x = k0.visual_rect and k0.visual_rect.x or nil,
+  }, true)
+end
+function on_init() report() end
+function on_event(topic, payload)
+  if topic == "keyboard/geometry" then report() end
+end
+"#,
+    )
+    .unwrap();
+
+    let reg = ModuleRegistry::new(
+        tmp.join("bundled"),
+        tmp.join("installed"),
+        tmp.join("local"),
+        tmp.join("state.json"),
+    );
+    let broker = Broker::new("test");
+    let mut geom = KeyboardGeometry::build(FrameLayout::Ansi);
+    let orig_x = geom.key(0).unwrap().rect.x;
+    let mut rt = ModuleRuntime::new(broker.clone(), geom.clone());
+    let discovered = reg.discover();
+    let states = BTreeMap::from([(
+        "parallax-probe".into(),
+        ModuleInstanceState {
+            enabled: true,
+            ..Default::default()
+        },
+    )]);
+    rt.sync_modules(&discovered, &states);
+    let obs0 = broker.get_retained("test/parallax-observed").unwrap().payload;
+    assert_eq!(obs0["dx"], json!(0.0));
+
+    // Apply live optical parallax WITHOUT reloading the Lua module!
+    geom.apply_parallax(false, 0.0, 0.0, 425.0, 8.0, 12.5, -18.25);
+    rt.update_geometry(geom);
+    let _ = rt.step_frame(0.016, 100);
+    let obs1 = broker.get_retained("test/parallax-observed").unwrap().payload;
+    assert!((obs1["dx"].as_f64().unwrap() - 12.5).abs() < 0.01);
+    assert!((obs1["dy"].as_f64().unwrap() - (-18.25)).abs() < 0.01);
+    assert!((obs1["vr_x"].as_f64().unwrap() - (orig_x as f64 + 12.5)).abs() < 0.01);
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}

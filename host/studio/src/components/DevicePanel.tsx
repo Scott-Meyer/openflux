@@ -141,6 +141,22 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
   const gpuSamples = socHistory.map((s) => s.gpuPct).filter((v): v is number => typeof v === "number");
   const latestGpu = latestSoc?.gpuPct;
 
+  const formatComponentVersion = (raw: string | null | undefined, label: string, fallback: string) => {
+    if (!raw) return fallback;
+    const trimmed = raw.trim();
+    if (/^openflux-(bridge|firmware|display)\b/i.test(trimmed)) {
+      const ver = trimmed.replace(/^openflux-(bridge|firmware|display)\s*/i, "").trim();
+      return ver ? `${label} v${ver}` : label;
+    }
+    return trimmed;
+  };
+  const formatOsVersion = (raw: string | null | undefined) => {
+    if (!raw) return "Offline";
+    const cleaned = raw.trim().replace(/^NAME=/i, "").replace(/^"(.*)"$/, "$1").trim();
+    if (cleaned.toLowerCase() === "buildroot") return "Buildroot Linux (RK3566)";
+    return cleaned || "Linux";
+  };
+
   return (
     <div className="panel-grid device-grid">
       <div className="card">
@@ -148,19 +164,31 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
         <div className="kv-list">
           <div>
             <span>Keyboard USB Bridge</span>
-            <strong>{status?.versions.bridge ?? (status?.connected.bridge ? "Connected" : "Offline")}</strong>
+            <strong>
+              {formatComponentVersion(
+                status?.versions.bridge,
+                "Keyglass Bridge",
+                status?.connected.bridge ? "Connected" : "Offline",
+              )}
+            </strong>
           </div>
           <div>
             <span>Key Scanner MCU (RP2040)</span>
-            <strong>{status?.versions.firmware ?? (status?.connected.firmware ? "Connected" : "Offline")}</strong>
+            <strong>
+              {formatComponentVersion(
+                status?.versions.firmware,
+                "Keyglass Scanner",
+                status?.connected.firmware ? "Connected" : "Offline",
+              )}
+            </strong>
           </div>
           <div>
             <span>Display software</span>
-            <strong>{status?.versions.display ?? "Offline"}</strong>
+            <strong>{formatComponentVersion(status?.versions.display, "Keyglass Display", "Offline")}</strong>
           </div>
           <div>
             <span>Keyboard Linux OS</span>
-            <strong>{status?.versions.os ?? "Offline"}</strong>
+            <strong>{formatOsVersion(status?.versions.os)}</strong>
           </div>
         </div>
         <PressRefinementRow client={client} firmwareConnected={!!status?.connected.firmware} />

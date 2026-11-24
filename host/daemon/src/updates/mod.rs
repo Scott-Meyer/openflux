@@ -576,13 +576,13 @@ impl UpdateService {
                 AreaState::ReadOnly => {
                     return Err(WriteRefusal {
                         code: "readOnly",
-                        message: format!("The keyboard stores {} in a newer format than this OpenFlux understands; update OpenFlux to change it", a.describe()),
+                        message: format!("The keyboard stores {} in a newer format than this Keyglass version understands; update Keyglass to change it", a.describe()),
                     })
                 }
                 AreaState::Unsupported => {
                     return Err(WriteRefusal {
                         code: "unsupported",
-                        message: format!("This OpenFlux doesn't support the keyboard's version of {}; update OpenFlux", a.describe()),
+                        message: format!("This Keyglass version doesn't support the keyboard's version of {}; update Keyglass", a.describe()),
                     })
                 }
                 AreaState::Unknown => {
