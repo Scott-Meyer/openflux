@@ -132,6 +132,103 @@ struct StagedInstallTicket {
     created_at: std::time::Instant,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentAppEntry {
+    pub app_id: String,
+    pub process_name: String,
+    #[serde(default)]
+    pub window_title: String,
+    pub last_seen_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileConflictInfo {
+    pub profile_id: String,
+    pub profile_name: String,
+    pub matched_rule: String,
+    pub match_kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileMatchDiagnostics {
+    pub profile_id: String,
+    pub profile_name: String,
+    pub pinned: bool,
+    pub reason: String,
+    pub matched_rule: Option<String>,
+    /// One of `"pinned"`, `"exact_app_id"`, `"exact_process"`, `"substring"`, `"host"`, `"default"`.
+    pub match_kind: String,
+    pub evaluated_app_id: String,
+    pub evaluated_process: String,
+    pub current_app_is_studio: bool,
+    #[serde(default)]
+    pub conflicts: Vec<ProfileConflictInfo>,
+}
+
+fn is_studio_foreground_app(app_id: &str, process_name: &str) -> bool {
+    let id = app_id.trim().to_ascii_lowercase();
+    let proc_clean = process_name
+        .trim()
+        .to_ascii_lowercase()
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("")
+        .trim_end_matches(".exe")
+        .trim_end_matches(".app")
+        .to_string();
+    id == "org.openflux.studio"
+        || id.starts_with("org.keyglass.")
+        || proc_clean == "openflux-studio"
+        || proc_clean == "openflux studio"
+        || proc_clean == "keyglass studio"
+        || proc_clean == "keyglass"
+}
+
+fn match_profile_against_app(
+    p: &ProfileEntry,
+    app_id: &str,
+    process_name: &str,
+    window_title: &str,
+) -> Option<(u8, &'static str, String)> {
+    let id_low = app_id.trim().to_ascii_lowercase();
+    let proc_low = process_name
+        .trim()
+        .to_ascii_lowercase()
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("")
+        .trim_end_matches(".exe")
+        .trim_end_matches(".app")
+        .to_string();
+    let hay = format!("{} {} {}", process_name, app_id, window_title).to_ascii_lowercase();
+    let mut best: Option<(u8, &'static str, String)> = None;
+    for tok in &p.match_apps {
+        let t = tok.trim();
+        let t_low = t.to_ascii_lowercase();
+        if t_low.is_empty() {
+            continue;
+        }
+        let cand = if !id_low.is_empty() && id_low == t_low {
+            Some((3u8, "exact_app_id", t.to_string()))
+        } else if !proc_low.is_empty()
+            && (proc_low == t_low
+                || proc_low == t_low.trim_end_matches(".exe").trim_end_matches(".app"))
+        {
+            Some((2u8, "exact_process", t.to_string()))
+        } else if hay.contains(&t_low) {
+            Some((1u8, "substring", t.to_string()))
+        } else {
+            None
+        };
+        if let Some(c) = cand {
+            if best.as_ref().map(|b| c.0 > b.0).unwrap_or(true) {
+                best = Some(c);
+            }
+        }
+    }
+    best
+}
+
 pub struct V2State {
     /// Authoritative live host bus mirrored cleanly with the keyboard over OFV2.
     pub broker: Broker,
@@ -156,6 +253,7 @@ pub struct V2State {
     staged_installs: Mutex<BTreeMap<String, StagedInstallTicket>>,
     last_context_sig: Mutex<String>,
     profile_cmd_rx: Mutex<openflux_bus::Subscription>,
+    recent_apps: Mutex<std::collections::VecDeque<RecentAppEntry>>,
 }
 
 fn resolve_bundled_modules_dir() -> PathBuf {
@@ -410,6 +508,7 @@ impl V2State {
             staged_installs: Mutex::new(BTreeMap::new()),
             last_context_sig: Mutex::new(String::new()),
             profile_cmd_rx: Mutex::new(profile_cmd_rx),
+            recent_apps: Mutex::new(std::collections::VecDeque::with_capacity(12)),
         });
 
         // Background watcher: detects direct edits to script.lua / module.toml / new local
@@ -698,27 +797,58 @@ impl V2State {
         }
     }
 
+    pub fn record_recent_app(&self, app_id: &str, process_name: &str, window_title: &str) {
+        if (app_id.trim().is_empty() && process_name.trim().is_empty())
+            || is_studio_foreground_app(app_id, process_name)
+        {
+            return;
+        }
+        let mut q = self.recent_apps.lock().unwrap();
+        let key_id = app_id.trim().to_ascii_lowercase();
+        let key_proc = process_name.trim().to_ascii_lowercase();
+        q.retain(|e| {
+            !(if !key_id.is_empty() && !e.app_id.is_empty() {
+                e.app_id.eq_ignore_ascii_case(&key_id)
+            } else {
+                e.process_name.eq_ignore_ascii_case(&key_proc)
+            })
+        });
+        q.push_front(RecentAppEntry {
+            app_id: app_id.trim().to_string(),
+            process_name: process_name.trim().to_string(),
+            window_title: window_title.trim().to_string(),
+            last_seen_ms: openflux_bus::now_unix_ms(),
+        });
+        while q.len() > 10 {
+            q.pop_back();
+        }
+    }
+
+    pub fn recent_apps_snapshot(&self) -> Vec<RecentAppEntry> {
+        self.recent_apps.lock().unwrap().iter().cloned().collect()
+    }
+
     pub fn evaluate_profiles(&self) {
         let host = self.load_host_identity();
         let doc = self.load_profiles();
         let app_msg = self.broker.get_retained("host/app/active");
-        let app_hay = app_msg
+        let app_id = app_msg
             .as_ref()
-            .map(|m| {
-                format!(
-                    "{} {} {}",
-                    m.payload.get("process_name").and_then(|v| v.as_str()).unwrap_or(""),
-                    m.payload.get("app_id").and_then(|v| v.as_str()).unwrap_or(""),
-                    m.payload.get("window_title").and_then(|v| v.as_str()).unwrap_or(""),
-                )
-                .to_ascii_lowercase()
-            })
-            .unwrap_or_default();
+            .and_then(|m| m.payload.get("app_id").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string();
         let app_display = app_msg
             .as_ref()
             .and_then(|m| m.payload.get("process_name").and_then(|v| v.as_str()))
             .unwrap_or("")
             .to_string();
+        let app_title = app_msg
+            .as_ref()
+            .and_then(|m| m.payload.get("window_title").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string();
+        self.record_recent_app(&app_id, &app_display, &app_title);
+        let current_is_studio = is_studio_foreground_app(&app_id, &app_display);
 
         let by_id: BTreeMap<&str, &ProfileEntry> =
             doc.profiles.iter().map(|p| (p.id.as_str(), p)).collect();
@@ -733,35 +863,122 @@ impl V2State {
             ok_os && ok_host
         };
 
-        let (selected_id, source, manual_override): (&str, String, bool) =
-            if let Some(ref mid) = doc.manual_profile_id {
-                if by_id.contains_key(mid.as_str()) {
-                    (mid.as_str(), "manual".to_string(), true)
-                } else {
-                    ("default", "default".to_string(), false)
-                }
-            } else if let Some(app_hit) = doc.profiles.iter().find(|p| {
-                p.enabled
-                    && p.id != "default"
-                    && !p.match_apps.is_empty()
-                    && host_matches(p)
-                    && p.match_apps.iter().any(|tok| {
-                        let t = tok.trim().to_ascii_lowercase();
-                        !t.is_empty() && app_hay.contains(&t)
+        // Collect all matching app profiles with specificity ranking:
+        // exact_app_id (3) > exact_process (2) > substring (1), preserving definition order on ties.
+        let mut app_candidates: Vec<(u8, usize, &ProfileEntry, &'static str, String)> = Vec::new();
+        for (idx, p) in doc.profiles.iter().enumerate() {
+            if !p.enabled || p.id == "default" || p.match_apps.is_empty() || !host_matches(p) {
+                continue;
+            }
+            if let Some((rank, kind, rule)) =
+                match_profile_against_app(p, &app_id, &app_display, &app_title)
+            {
+                app_candidates.push((rank, idx, p, kind, rule));
+            }
+        }
+        app_candidates.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+
+        let (selected_id, source, manual_override, match_kind, matched_rule, reason, conflicts): (
+            &str,
+            String,
+            bool,
+            &'static str,
+            Option<String>,
+            String,
+            Vec<ProfileConflictInfo>,
+        ) = if let Some(ref mid) = doc.manual_profile_id {
+            if let Some(p) = by_id.get(mid.as_str()) {
+                let confs = app_candidates
+                    .iter()
+                    .filter(|(_, _, cp, _, _)| cp.id != p.id)
+                    .map(|(_, _, cp, kind, rule)| ProfileConflictInfo {
+                        profile_id: cp.id.clone(),
+                        profile_name: cp.name.clone(),
+                        matched_rule: rule.clone(),
+                        match_kind: (*kind).to_string(),
                     })
-            }) {
-                (app_hit.id.as_str(), format!("app:{app_display}"), false)
-            } else if let Some(host_hit) = doc.profiles.iter().find(|p| {
-                p.enabled
-                    && p.id != "default"
-                    && p.match_apps.is_empty()
-                    && (!p.match_hosts.is_empty() || !p.match_os.is_empty())
-                    && host_matches(p)
-            }) {
-                (host_hit.id.as_str(), format!("host:{}", host.host_name), false)
+                    .collect();
+                (
+                    mid.as_str(),
+                    "manual".to_string(),
+                    true,
+                    "pinned",
+                    None,
+                    format!("Pinned manually ({})", p.name),
+                    confs,
+                )
             } else {
-                ("default", "default".to_string(), false)
+                (
+                    "default",
+                    "default".to_string(),
+                    false,
+                    "default",
+                    None,
+                    "Default fallback profile".to_string(),
+                    Vec::new(),
+                )
+            }
+        } else if let Some((_, _, winner, kind, rule)) = app_candidates.first() {
+            let confs = app_candidates
+                .iter()
+                .skip(1)
+                .map(|(_, _, cp, ck, cr)| ProfileConflictInfo {
+                    profile_id: cp.id.clone(),
+                    profile_name: cp.name.clone(),
+                    matched_rule: cr.clone(),
+                    match_kind: (*ck).to_string(),
+                })
+                .collect();
+            let app_label = if !app_display.is_empty() {
+                app_display.as_str()
+            } else {
+                app_id.as_str()
             };
+            let kind_human = match *kind {
+                "exact_app_id" => "exact app ID",
+                "exact_process" => "exact process",
+                _ => "broad substring",
+            };
+            (
+                winner.id.as_str(),
+                format!("app:{app_label}"),
+                false,
+                *kind,
+                Some(rule.clone()),
+                format!("Matched {kind_human} \"{rule}\" on {app_label}"),
+                confs,
+            )
+        } else if let Some(host_hit) = doc.profiles.iter().find(|p| {
+            p.enabled
+                && p.id != "default"
+                && p.match_apps.is_empty()
+                && (!p.match_hosts.is_empty() || !p.match_os.is_empty())
+                && host_matches(p)
+        }) {
+            (
+                host_hit.id.as_str(),
+                format!("host:{}", host.host_name),
+                false,
+                "host",
+                Some(host.host_name.clone()),
+                format!("Matched computer/OS scope ({}, {})", host.host_name, host.os),
+                Vec::new(),
+            )
+        } else {
+            (
+                "default",
+                "default".to_string(),
+                false,
+                "default",
+                None,
+                if current_is_studio {
+                    "Default profile (Keyglass Studio is focused — switch to a target app or Pin a profile to preview)".to_string()
+                } else {
+                    "Default fallback profile (no app rule matched)".to_string()
+                },
+                Vec::new(),
+            )
+        };
 
         // Cycle-safe inheritance fall-through chain: child -> parent -> ... -> default
         let mut chain_entries: Vec<&ProfileEntry> = Vec::new();
@@ -816,14 +1033,29 @@ impl V2State {
             .map(|e| e.name.clone())
             .unwrap_or_else(|| "Default".into());
 
+        let active_match = ProfileMatchDiagnostics {
+            profile_id: selected_id.to_string(),
+            profile_name: profile_name.clone(),
+            pinned: manual_override,
+            reason,
+            matched_rule,
+            match_kind: match_kind.to_string(),
+            evaluated_app_id: app_id.clone(),
+            evaluated_process: app_display.clone(),
+            current_app_is_studio: current_is_studio,
+            conflicts,
+        };
+
         let payload = json!({
             "profile_id": selected_id,
             "profile_name": profile_name,
             "chain": chain_ids,
             "source": source,
             "manual_override": manual_override,
+            "active_match": active_match,
             "host": host,
             "app_name": app_display,
+            "app_id": app_id,
             "tags": tags,
             "qmk_layer": qmk_layer,
             "top_bar_slots": top_bar_slots,
@@ -4060,14 +4292,18 @@ async fn get_profiles_api(State(state): State<Arc<ApiState>>) -> impl IntoRespon
         .broker
         .get_retained("host/app/active")
         .map(|m| m.payload);
+    let recent_apps = state.v2.recent_apps_snapshot();
+    let active_match = active.get("active_match").cloned();
     (
         StatusCode::OK,
         Json(json!({
             "manual_profile_id": doc.manual_profile_id,
             "profiles": doc.profiles,
             "active": active,
+            "active_match": active_match,
             "host": host,
             "current_app": current_app,
+            "recent_apps": recent_apps,
         })),
     )
 }
@@ -4517,6 +4753,10 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/modules/:id/migrate", post(migrate_module_api))
         .route("/v2/modules/:id/state", put(update_module_state))
         .route("/v2/modules/:id/action", post(trigger_module_action))
+        .route(
+            "/v2/modules/:id/binding-layout",
+            get(super::binding_import::get).post(super::binding_import::import),
+        )
         .route("/v2/modules/:id/reload", post(reload_module_api))
         .route("/v2/modules/:id/logs", get(get_module_logs_api))
         .route("/v2/media/library", get(list_media_library_api))
@@ -4721,6 +4961,135 @@ publishes = []
         }
         let err = sync_v2_to_device(&TransportErrDevice, &discovered, &mut kb_state, &state_path, "host-1").unwrap_err();
         assert!(err.contains("OFV2 bulk RPC timed out"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn profile_matching_prioritizes_exact_app_id_reports_conflicts_and_filters_studio_from_recent() {
+        let tmp = std::env::temp_dir().join(format!(
+            "openflux-profile-match-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let v2 = V2State::new(Some(tmp.clone()), None);
+
+        // Create a broad substring profile BEFORE a specific exact bundle-ID profile
+        let doc = ProfilesFile {
+            manual_profile_id: None,
+            profiles: vec![
+                ProfileEntry {
+                    id: "default".into(),
+                    name: "Default".into(),
+                    parent: None,
+                    enabled: true,
+                    match_apps: vec![],
+                    match_hosts: vec![],
+                    match_os: vec![],
+                    tags: vec![],
+                    qmk_layer: None,
+                    top_bar_slots: None,
+                    module_overrides: BTreeMap::new(),
+                },
+                ProfileEntry {
+                    id: "broad_game".into(),
+                    name: "Broad Warcraft".into(),
+                    parent: Some("default".into()),
+                    enabled: true,
+                    match_apps: vec!["warcraft".into()],
+                    match_hosts: vec![],
+                    match_os: vec![],
+                    tags: vec![],
+                    qmk_layer: Some(2),
+                    top_bar_slots: None,
+                    module_overrides: BTreeMap::new(),
+                },
+                ProfileEntry {
+                    id: "exact_wow".into(),
+                    name: "WoW Exact".into(),
+                    parent: Some("default".into()),
+                    enabled: true,
+                    match_apps: vec!["com.blizzard.worldofwarcraft".into()],
+                    match_hosts: vec![],
+                    match_os: vec![],
+                    tags: vec![],
+                    qmk_layer: Some(3),
+                    top_bar_slots: None,
+                    module_overrides: BTreeMap::new(),
+                },
+            ],
+        };
+        v2.save_profiles(&doc).unwrap();
+
+        // 1. Focus WoW -> exact_app_id MUST win over earlier broad substring AND list broad_game in conflicts!
+        let _ = v2.broker.publish(
+            "host/app/active",
+            json!({
+                "app_id": "com.blizzard.worldofwarcraft",
+                "process_name": "World of Warcraft",
+                "window_title": "World of Warcraft"
+            }),
+            PublishOptions::retained(),
+        );
+        v2.evaluate_profiles();
+        let active = v2.broker.get_retained("profiles/active").unwrap().payload;
+        assert_eq!(active["profile_id"], "exact_wow");
+        assert_eq!(active["active_match"]["match_kind"], "exact_app_id");
+        assert_eq!(active["active_match"]["matched_rule"], "com.blizzard.worldofwarcraft");
+        let conflicts = active["active_match"]["conflicts"].as_array().unwrap();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0]["profile_id"], "broad_game");
+        assert_eq!(conflicts[0]["match_kind"], "substring");
+
+        // 2. Focus Keyglass Studio -> MUST NOT pollute recent_apps!
+        let _ = v2.broker.publish(
+            "host/app/active",
+            json!({
+                "app_id": "org.openflux.studio",
+                "process_name": "Keyglass Studio",
+                "window_title": "Keyglass Studio"
+            }),
+            PublishOptions::retained(),
+        );
+        v2.evaluate_profiles();
+        let recent = v2.recent_apps_snapshot();
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].app_id, "com.blizzard.worldofwarcraft");
+        let active_studio = v2.broker.get_retained("profiles/active").unwrap().payload;
+        assert_eq!(active_studio["active_match"]["current_app_is_studio"], true);
+
+        // 3. Broad substring still works cleanly when no exact match exists
+        let _ = v2.broker.publish(
+            "host/app/active",
+            json!({
+                "app_id": "com.blizzard.warcraft3",
+                "process_name": "Warcraft III",
+                "window_title": "Warcraft III"
+            }),
+            PublishOptions::retained(),
+        );
+        v2.evaluate_profiles();
+        let active_broad = v2.broker.get_retained("profiles/active").unwrap().payload;
+        assert_eq!(active_broad["profile_id"], "broad_game");
+        assert_eq!(active_broad["active_match"]["match_kind"], "substring");
+
+        // 4. Pinning overrides auto, and clearing returns to auto cleanly
+        let mut pinned_doc = doc.clone();
+        pinned_doc.manual_profile_id = Some("exact_wow".into());
+        v2.save_profiles(&pinned_doc).unwrap();
+        let active_pin = v2.broker.get_retained("profiles/active").unwrap().payload;
+        assert_eq!(active_pin["profile_id"], "exact_wow");
+        assert_eq!(active_pin["active_match"]["match_kind"], "pinned");
+        assert_eq!(active_pin["active_match"]["pinned"], true);
+
+        pinned_doc.manual_profile_id = None;
+        v2.save_profiles(&pinned_doc).unwrap();
+        let active_auto = v2.broker.get_retained("profiles/active").unwrap().payload;
+        assert_eq!(active_auto["profile_id"], "broad_game");
+        assert_eq!(active_auto["active_match"]["pinned"], false);
 
         let _ = std::fs::remove_dir_all(&tmp);
     }

@@ -13,6 +13,45 @@ interface ProfilesViewProps {
   modules: V2ModuleRecord[];
 }
 
+interface RecentAppEntry {
+  app_id: string;
+  process_name: string;
+  window_title: string;
+  last_seen_ms: number;
+}
+
+interface ProfileConflictInfo {
+  profile_id: string;
+  profile_name: string;
+  matched_rule: string;
+  match_kind: string;
+}
+
+interface ProfileMatchDiagnostics {
+  profile_id: string;
+  profile_name: string;
+  pinned: boolean;
+  reason: string;
+  matched_rule?: string | null;
+  match_kind: string;
+  evaluated_app_id: string;
+  evaluated_process: string;
+  current_app_is_studio: boolean;
+  conflicts?: ProfileConflictInfo[];
+}
+
+function isStudioToken(tok: string): boolean {
+  const low = tok.trim().toLowerCase();
+  return (
+    low === "org.openflux.studio" ||
+    low.startsWith("org.keyglass.") ||
+    low === "openflux-studio" ||
+    low === "openflux studio" ||
+    low === "keyglass studio" ||
+    low === "keyglass"
+  );
+}
+
 const LAYER_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "", label: "Fall through (inherit from parent / Base)" },
   { value: "0", label: "Layer 0 (Base)" },
@@ -31,7 +70,8 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
   const [active, setActive] = useState<ActiveProfileState | null>(null);
   const [host, setHost] = useState<HostIdentity | null>(null);
   const [hostNameDraft, setHostNameDraft] = useState("");
-  const [currentApp, setCurrentApp] = useState("");
+  const [recentApps, setRecentApps] = useState<RecentAppEntry[]>([]);
+  const [activeMatch, setActiveMatch] = useState<ProfileMatchDiagnostics | null>(null);
   const [selectedId, setSelectedId] = useState<string>("default");
   const [overrideModId, setOverrideModId] = useState<string>("bg-media");
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -41,15 +81,22 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
 
   const loadAll = useCallback(async () => {
     try {
-      const res = await v2Client.getProfiles();
+      const res = (await v2Client.getProfiles()) as Awaited<ReturnType<typeof v2Client.getProfiles>> & {
+        recent_apps?: RecentAppEntry[];
+        active_match?: ProfileMatchDiagnostics | null;
+      };
       setProfiles(res.profiles ?? []);
       setManualId(res.manual_profile_id ?? null);
       setActive(res.active ?? null);
+      setRecentApps(res.recent_apps ?? []);
+      const am =
+        res.active_match ??
+        ((res.active as unknown as { active_match?: ProfileMatchDiagnostics | null })?.active_match ?? null);
+      setActiveMatch(am);
       if (res.host) {
         setHost(res.host);
         setHostNameDraft((prev) => (prev ? prev : res.host.host_name));
       }
-      setCurrentApp(res.current_app?.process_name || res.current_app?.app_id || "");
     } catch (err) {
       setStatusMsg(err instanceof Error ? err.message : String(err));
     }
@@ -87,12 +134,14 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
 
   const handleCreateProfile = () => {
     const slug = `profile_${Date.now().toString(36)}`;
+    const recent = recentApps[0];
+    const defaultToken = recent ? recent.app_id || recent.process_name : "";
     const nextP: ProfileEntry = {
       id: slug,
-      name: currentApp ? `${currentApp}` : "Coding",
+      name: recent ? recent.process_name || recent.app_id : "New Profile",
       parent: "default",
       enabled: true,
-      match_apps: currentApp ? [currentApp] : ["Code", "Cursor"],
+      match_apps: defaultToken ? [defaultToken] : [],
       match_hosts: [],
       match_os: [],
       tags: [],
@@ -182,6 +231,86 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
           </button>
         </div>
       </div>
+
+      {/* Active Profile, Why-Matched & Competing Profiles Status Card */}
+      {active && (
+        <div
+          className="kg-calm-card"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            borderColor: manualId ? "rgba(92, 225, 255, 0.45)" : undefined,
+          }}
+        >
+          <div className="kg-calm-row" style={{ flexWrap: "wrap" }}>
+            <div>
+              <strong>
+                {manualId ? "📌 Pinned / Previewing:" : "Active Profile:"} {active.profile_name}
+              </strong>{" "}
+              <span className="kg-muted" style={{ fontSize: 11 }}>
+                ({active.chain.join(" → ")})
+              </span>
+              <div className="kg-muted" style={{ fontSize: 12, marginTop: 3 }}>
+                {activeMatch?.reason || `Source: ${active.source}`}
+                {activeMatch?.evaluated_app_id && !activeMatch.current_app_is_studio && (
+                  <>
+                    {" "}
+                    · App ID: <code>{activeMatch.evaluated_app_id}</code>
+                  </>
+                )}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {manualId ? (
+                <button type="button" className="kg-btn-primary" onClick={() => void handleSelectManual(null)}>
+                  Return to Automatic
+                </button>
+              ) : (
+                selected && (
+                  <button
+                    type="button"
+                    className="kg-btn-ghost"
+                    onClick={() => void handleSelectManual(selected.id)}
+                  >
+                    Preview / Pin “{selected.name}”
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+          {activeMatch?.conflicts && activeMatch.conflicts.length > 0 && (
+            <div
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: "rgba(251, 191, 36, 0.10)",
+                border: "1px solid rgba(251, 191, 36, 0.35)",
+                fontSize: 12,
+              }}
+            >
+              <strong style={{ color: "#fbbf24" }}>Competing profiles also matched this app:</strong>{" "}
+              {activeMatch.conflicts.map((c, i) => (
+                <span key={c.profile_id}>
+                  {i > 0 ? " · " : ""}
+                  <button
+                    type="button"
+                    className="kg-btn-ghost"
+                    style={{ padding: "1px 6px", fontSize: 11 }}
+                    onClick={() => setSelectedId(c.profile_id)}
+                  >
+                    {c.profile_name} ({c.match_kind}: “{c.matched_rule}”)
+                  </button>
+                </span>
+              ))}
+              <div className="kg-muted" style={{ fontSize: 11, marginTop: 4 }}>
+                Specificity order: Exact App ID &gt; Exact Process &gt; Broad Substring. Use Exact App IDs below to
+                prevent overlaps.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Host / Multi-Computer Identity Bar (lives ABOVE Profiles!) */}
       {host && (
@@ -297,16 +426,18 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
 
             {selected.id !== "default" && (
               <>
-                <div className="kg-setting-row">
+                <div className="kg-setting-row" style={{ alignItems: "flex-start" }}>
                   <div className="kg-setting-meta">
                     <div className="kg-setting-label">Auto-Activate on Applications</div>
-                    <div className="kg-muted">Comma-separated app names, bundle IDs, or window titles</div>
+                    <div className="kg-muted">
+                      Exact bundle/app IDs (recommended, highest priority), exact process names, or broad substrings.
+                    </div>
                   </div>
-                  <div className="kg-setting-ctrl" style={{ flexDirection: "column", alignItems: "flex-end" }}>
+                  <div className="kg-setting-ctrl" style={{ flexDirection: "column", alignItems: "stretch", gap: 8, minWidth: 320 }}>
                     <input
                       type="text"
                       style={{ width: "100%" }}
-                      placeholder="e.g. Code, Cursor, Figma"
+                      placeholder="e.g. com.blizzard.worldofwarcraft, Code, Cursor"
                       value={selected.match_apps.join(", ")}
                       onChange={(e) =>
                         updateProfile(selected.id, {
@@ -317,19 +448,50 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
                         })
                       }
                     />
-                    {currentApp && (
-                      <button
-                        type="button"
-                        className="kg-btn-ghost"
-                        onClick={() => {
-                          if (!selected.match_apps.includes(currentApp)) {
-                            updateProfile(selected.id, { match_apps: [...selected.match_apps, currentApp] });
-                          }
-                        }}
-                      >
-                        + Add Focused App ({currentApp})
-                      </button>
+                    {selected.match_apps.some(isStudioToken) && (
+                      <div style={{ fontSize: 11, color: "#fbbf24" }}>
+                        Warning: This rule matches Keyglass Studio itself — remove it unless you intentionally want
+                        this profile active while configuring Studio.
+                      </div>
                     )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span className="kg-muted" style={{ fontSize: 11 }}>
+                        Recently focused apps (Keyglass Studio excluded automatically — click to add):
+                      </span>
+                      {recentApps.length === 0 ? (
+                        <span className="kg-muted" style={{ fontSize: 11 }}>
+                          Switch briefly to the app you want to bind, then return here and it will appear for 1-click
+                          binding.
+                        </span>
+                      ) : (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {recentApps.slice(0, 6).map((app) => {
+                            const exactId = app.app_id || app.process_name;
+                            const label = app.process_name || app.app_id;
+                            const hasExact = selected.match_apps.some(
+                              (t) => t.toLowerCase() === exactId.toLowerCase(),
+                            );
+                            return (
+                              <button
+                                key={`${app.app_id}:${app.process_name}`}
+                                type="button"
+                                className="kg-btn-ghost"
+                                style={{ fontSize: 11, padding: "3px 8px" }}
+                                disabled={hasExact}
+                                title={app.app_id ? `Exact App ID: ${app.app_id}` : `Process: ${app.process_name}`}
+                                onClick={() => {
+                                  if (!hasExact && exactId) {
+                                    updateProfile(selected.id, { match_apps: [...selected.match_apps, exactId] });
+                                  }
+                                }}
+                              >
+                                {hasExact ? `✓ ${label}` : `+ ${label}${app.app_id ? ` (${app.app_id})` : ""}`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
