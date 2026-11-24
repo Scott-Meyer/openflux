@@ -52,6 +52,8 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
   const [followHostDisplay, setFollowHostDisplay] = useState<boolean>(true);
   const [swMode, setSwMode] = useState<"offline" | "stock" | "keyglass">("offline");
   const [switchingSw, setSwitchingSw] = useState(false);
+  const [perfData, setPerfData] = useState<Record<string, any> | null>(null);
+  const [copiedPerfMsg, setCopiedPerfMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -119,6 +121,10 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
         }
       } catch {
         if (!cancelled) setSocFreshness("offline");
+      }
+      if (!cancelled) {
+        const p = await v2Client.getPerf().catch(() => null);
+        if (!cancelled && p) setPerfData(p);
       }
     };
     void poll();
@@ -203,6 +209,83 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
             />
           </div>
         </div>
+
+        {/* Live Frame Pacing & Module Developer Profiler */}
+        {perfData?.keyboard_perf && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: "10px 12px",
+              background: "var(--bg-input)",
+              borderRadius: 8,
+              border: "1px solid var(--border-subtle)",
+              fontSize: 12,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <strong>Frame Pacing &amp; Module Profiler</strong>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ fontSize: 11, padding: "2px 8px" }}
+                  onClick={() => {
+                    const cfg = JSON.stringify({ mcpServers: { keyglass: { command: "fluxctl", args: ["mcp"] } } }, null, 2);
+                    void navigator.clipboard?.writeText(cfg);
+                    setCopiedPerfMsg("Copied MCP config!");
+                    window.setTimeout(() => setCopiedPerfMsg(null), 2000);
+                  }}
+                >
+                  Copy MCP Config
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ fontSize: 11, padding: "2px 8px" }}
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(JSON.stringify(perfData, null, 2));
+                    setCopiedPerfMsg("Copied Perf JSON!");
+                    window.setTimeout(() => setCopiedPerfMsg(null), 2000);
+                  }}
+                >
+                  Copy Perf JSON
+                </button>
+              </div>
+            </div>
+            {copiedPerfMsg && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{copiedPerfMsg}</div>}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginTop: 6 }}>
+              <span>
+                FPS: <strong>{Number(perfData.keyboard_perf.fps ?? 0).toFixed(1)}</strong>
+              </span>
+              <span>
+                Interval p50/p95/p99:{" "}
+                <strong>
+                  {perfData.keyboard_perf.interval_ms?.p50}/{perfData.keyboard_perf.interval_ms?.p95}/
+                  {perfData.keyboard_perf.interval_ms?.p99} ms
+                </strong>
+              </span>
+              <span>
+                Jank (&gt;22ms):{" "}
+                <strong>
+                  {perfData.keyboard_perf.jank_frames_1s ?? 0}/s ({perfData.keyboard_perf.jank_frames_total ?? 0} total)
+                </strong>
+              </span>
+              <span>
+                RKMPP Q: <strong>{perfData.keyboard_perf.video?.rkmpp_queue ?? 0}</strong> (underruns:{" "}
+                {perfData.keyboard_perf.video?.rkmpp_underruns ?? 0})
+              </span>
+            </div>
+            {Array.isArray(perfData.keyboard_perf.modules) && perfData.keyboard_perf.modules.length > 0 && (
+              <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                Top Lua modules:{" "}
+                {perfData.keyboard_perf.modules
+                  .slice(0, 4)
+                  .map((m: any) => `${m.id} (${m.avg_us}µs avg / ${m.max_us}µs max)`)
+                  .join(" · ")}
+              </div>
+            )}
+          </div>
+        )}
 
         {settings && onChangeSettings && (
           <>

@@ -211,9 +211,11 @@ fn main() {
         let mut rkmpp_path = String::new();
         let mut rkmpp_failed_path = String::new();
         let mut rkmpp_pending: Option<Nv12Frame> = None;
-        let mut rkmpp_due: Option<std::time::Instant> = None;
-        let mut rkmpp_epoch_set = false;
+        let mut rkmpp_epoch_inst: Option<std::time::Instant> = None;
+        let mut rkmpp_first_pts_ms: u64 = 0;
         let mut rkmpp_last_pts_ms: u64 = 0;
+        let mut rkmpp_underruns: u64 = 0;
+        let mut rkmpp_uploads: u64 = 0;
 
         let mut v2_img_path = String::new();
         let mut v2_img_mtime: Option<SystemTime> = None;
@@ -222,18 +224,23 @@ fn main() {
         let mut cached_suspended = false;
         let start = std::time::Instant::now();
         let mut last_step_ms: u64 = 0;
+        let mut last_frame_inst: Option<std::time::Instant> = None;
         let mut last_hb_sec: u64 = 0;
         let mut last_soc_ms: u64 = 0;
         let mut prev_cpu: Option<(u64, u64)> = None;
         let mut last_render_ms: u64 = 0;
 
+        // Rolling 120-frame latency & hitch profiler (published 1 Hz to `display/perf`)
+        let mut perf = PerfWindow::new();
+
         while RUNNING.load(Ordering::SeqCst) {
+            let iter_start = std::time::Instant::now();
             let now_sec = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs() as i64;
             let mono_ms = start.elapsed().as_millis() as u64;
-            let unix_ms = openflux_bus::now_unix_ms();
+            let _unix_ms = openflux_bus::now_unix_ms();
 
             if now_sec as u64 != last_hb_sec {
                 last_hb_sec = now_sec as u64;
@@ -279,7 +286,9 @@ fn main() {
                 v2_mux.send_bus_frame(&out_frame);
             }
 
-            // 3. Hot-reload modules whenever `fluxctl keyboard sync` writes new files
+            let ipc_mux_us = iter_start.elapsed().as_micros() as u64;
+
+            // 3. Hot-reload modules whenever `fluxctl keyboard sync` writes new files (throttled 500ms)
             if v2.poll_reload() {
                 rkmpp_failed_path.clear();
                 v2_img_path.clear();
@@ -326,8 +335,7 @@ fn main() {
                     rkmpp_stream = None;
                     rkmpp_path.clear();
                     rkmpp_pending = None;
-                    rkmpp_due = None;
-                    rkmpp_epoch_set = false;
+                    rkmpp_epoch_inst = None;
                 }
                 if !cached_suspended && !desired_bg.is_empty() {
                     if let Some(rp) = resolve_media_file(&media_dir, &desired_bg) {
@@ -361,8 +369,7 @@ fn main() {
                     rkmpp_stream = None;
                     rkmpp_path.clear();
                     rkmpp_pending = None;
-                    rkmpp_due = None;
-                    rkmpp_epoch_set = false;
+                    rkmpp_epoch_inst = None;
                     if let Some(rp) = resolve_media_file(&media_dir, &desired_bg) {
                         if let Some(st_mpp) = openflux_display::rkmpp::open_rkmpp_stream(&rp) {
                             log_diag(&format!(
@@ -381,60 +388,21 @@ fn main() {
                 }
             }
 
-            // Pace RKMPP background loop cleanly
-            let mut stream_ended = false;
-            if let Some(ref mut st_mpp) = rkmpp_stream {
-                if rkmpp_pending.is_none() {
-                    match st_mpp.try_read_frame() {
-                        Ok(Some(f)) => rkmpp_pending = Some(f),
-                        Ok(None) => {}
-                        Err(StreamEnded) => stream_ended = true,
-                    }
-                }
-                if !stream_ended {
-                    if let Some(ref pend) = rkmpp_pending {
-                        let now_inst = std::time::Instant::now();
-                        let fps_ms = ((1000.0 / st_mpp.fps.max(1.0)).round() as u64).clamp(16, 100);
-                        let due = if !rkmpp_epoch_set {
-                            rkmpp_epoch_set = true;
-                            rkmpp_last_pts_ms = pend.pts_ms;
-                            now_inst
-                        } else if let Some(d) = rkmpp_due {
-                            d
-                        } else {
-                            let d_ms = pend.pts_ms.saturating_sub(rkmpp_last_pts_ms).clamp(16, 100);
-                            let step = if d_ms > 0 { d_ms } else { fps_ms };
-                            rkmpp_last_pts_ms = pend.pts_ms;
-                            let next_d = now_inst + Duration::from_millis(step);
-                            rkmpp_due = Some(next_d);
-                            next_d
-                        };
-                        if now_inst >= due {
-                            if let Some(f) = rkmpp_pending.take() {
-                                gpu.upload_bg_nv12(f.width, f.height, &f.nv12);
-                            }
-                            rkmpp_due = None;
-                        }
-                    }
-                }
-            }
-            if stream_ended {
-                rkmpp_stream = None;
-                rkmpp_path.clear();
-                rkmpp_pending = None;
-                rkmpp_due = None;
-                rkmpp_epoch_set = false;
-            }
-
-            // 7. Step v2 Lua modules + water PDE + particles + GPU composite & swap!
+            // 7. Step v2 Lua modules + water PDE + particles + vsync-locked video + GPU composite!
             // While panel is asleep, skip GPU/Lua rendering and yield cleanly at 20 Hz so the
             // RK3566 stays cool and wakes within <50 ms on real keypress or host monitor wake.
             if cached_suspended {
+                last_frame_inst = None;
                 std::thread::sleep(Duration::from_millis(50));
                 continue;
             }
             if !gpu.is_frame_pending() {
                 let frame_start = std::time::Instant::now();
+                let frame_interval_us = last_frame_inst
+                    .map(|p| frame_start.duration_since(p).as_micros() as u64)
+                    .unwrap_or(16_667);
+                last_frame_inst = Some(frame_start);
+
                 let dt_sec = if last_step_ms == 0 {
                     0.016
                 } else {
@@ -442,6 +410,70 @@ fn main() {
                 };
                 last_step_ms = mono_ms;
                 v2.step_frame(dt_sec, mono_ms);
+
+                // Vsync-locked & epoch-anchored RKMPP background upload (eliminates 59.94 vs 60 Hz
+                // beat judder AND avoids mid-frame GL texture stalls by uploading only when ready!)
+                let t_vid = std::time::Instant::now();
+                let mut stream_ended = false;
+                if let Some(ref mut st_mpp) = rkmpp_stream {
+                    if st_mpp.fps >= 55.0 {
+                        // Native 60 Hz video on 60 Hz panel: exact 1:1 frame-per-vsync lock!
+                        match st_mpp.try_read_frame() {
+                            Ok(Some(f)) => {
+                                gpu.upload_bg_nv12(f.width, f.height, &f.nv12);
+                                rkmpp_uploads += 1;
+                            }
+                            Ok(None) => {
+                                if rkmpp_uploads > 0 {
+                                    rkmpp_underruns += 1;
+                                }
+                            }
+                            Err(StreamEnded) => stream_ended = true,
+                        }
+                    } else {
+                        // Lower-fps video (24/25/30 fps): drift-free monotonic presentation epoch
+                        if rkmpp_pending.is_none() {
+                            match st_mpp.try_read_frame() {
+                                Ok(Some(f)) => rkmpp_pending = Some(f),
+                                Ok(None) => {}
+                                Err(StreamEnded) => stream_ended = true,
+                            }
+                        }
+                        if !stream_ended {
+                            if let Some(ref pend) = rkmpp_pending {
+                                let now_inst = std::time::Instant::now();
+                                let epoch = match rkmpp_epoch_inst {
+                                    Some(ep) if pend.pts_ms >= rkmpp_last_pts_ms => ep,
+                                    _ => {
+                                        rkmpp_first_pts_ms = pend.pts_ms;
+                                        rkmpp_last_pts_ms = pend.pts_ms;
+                                        rkmpp_epoch_inst = Some(now_inst);
+                                        now_inst
+                                    }
+                                };
+                                let rel_ms = pend.pts_ms.saturating_sub(rkmpp_first_pts_ms);
+                                let due = epoch + Duration::from_millis(rel_ms);
+                                if now_inst + Duration::from_millis(2) >= due {
+                                    if now_inst.saturating_duration_since(due) > Duration::from_millis(250) {
+                                        rkmpp_first_pts_ms = pend.pts_ms;
+                                        rkmpp_epoch_inst = Some(now_inst);
+                                    }
+                                    rkmpp_last_pts_ms = pend.pts_ms;
+                                    if let Some(f) = rkmpp_pending.take() {
+                                        gpu.upload_bg_nv12(f.width, f.height, &f.nv12);
+                                        rkmpp_uploads += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if stream_ended {
+                    rkmpp_stream = None;
+                    rkmpp_path.clear();
+                    rkmpp_pending = None;
+                    rkmpp_epoch_inst = None;
+                }
 
                 // Live H.264 background stream (`ctx:stream_background`)
                 let mut live_stream_active = false;
@@ -469,9 +501,11 @@ fn main() {
                         ));
                     }
                 }
+                let video_upload_us = t_vid.elapsed().as_micros() as u64;
 
                 let (ww, wh) = v2.wave_dims();
                 let has_bg_media = live_stream_active || rkmpp_stream.is_some() || v2_img_loaded;
+                let t_gpu = std::time::Instant::now();
                 if let Err(e) = gpu.render_v2_and_swap(
                     cached_suspended,
                     has_bg_media,
@@ -501,7 +535,22 @@ fn main() {
                 ) {
                     log_diag(&format!("render_v2_and_swap error: {e}"));
                 }
-                last_render_ms = frame_start.elapsed().as_millis() as u64;
+                let gpu_swap_us = t_gpu.elapsed().as_micros() as u64;
+                let total_render_us = frame_start.elapsed().as_micros() as u64;
+                last_render_ms = (total_render_us + 500) / 1000;
+                let rkmpp_q = rkmpp_stream.as_ref().map(|s| s.queued_len()).unwrap_or(0);
+                perf.record_frame(
+                    mono_ms,
+                    frame_interval_us,
+                    total_render_us,
+                    ipc_mux_us,
+                    v2.last_lua_us,
+                    v2.last_physics_us,
+                    video_upload_us,
+                    gpu_swap_us,
+                    v2.overlay_dirty,
+                    rkmpp_q,
+                );
             }
 
             if mono_ms.saturating_sub(last_soc_ms) >= 1000 {
@@ -514,10 +563,24 @@ fn main() {
                     now_sec,
                     mono_ms,
                 );
+                let mod_perf = v2.take_module_perf_snapshot();
+                let vfps = rkmpp_stream.as_ref().map(|s| s.fps).unwrap_or(0.0);
+                let rkmpp_q = rkmpp_stream.as_ref().map(|s| s.queued_len()).unwrap_or(0);
+                let perf_json = perf.build_report_json(
+                    &mod_perf,
+                    vfps,
+                    rkmpp_q,
+                    rkmpp_underruns,
+                    rkmpp_uploads,
+                );
+                v2.publish_perf_snapshot(perf_json);
             }
 
-            let wait_ms = if cached_suspended { 80 } else { 4 };
-            std::thread::sleep(Duration::from_millis(wait_ms));
+            if cached_suspended {
+                std::thread::sleep(Duration::from_millis(50));
+            } else {
+                std::thread::sleep(Duration::from_micros(500));
+            }
         }
 
         let _ = std::fs::remove_file(DISPLAY_ACTIVE_MARKER_DEFAULT);
@@ -651,5 +714,224 @@ fn write_soc_stats(
     );
     if std::fs::write(&p_tmp, body).is_ok() {
         let _ = std::fs::rename(&p_tmp, &p);
+    }
+}
+
+#[cfg(target_os = "linux")]
+struct HitchSample {
+    mono_ms: u64,
+    interval_ms: f64,
+    render_us: u64,
+    top_stage: &'static str,
+    ipc_mux_us: u64,
+    lua_us: u64,
+    physics_us: u64,
+    video_upload_us: u64,
+    gpu_swap_us: u64,
+    overlay_uploaded: bool,
+    rkmpp_queue: usize,
+}
+
+#[cfg(target_os = "linux")]
+struct PerfWindow {
+    intervals_us: std::collections::VecDeque<u64>,
+    renders_us: std::collections::VecDeque<u64>,
+    ipc_mux_us: std::collections::VecDeque<u64>,
+    lua_us: std::collections::VecDeque<u64>,
+    physics_us: std::collections::VecDeque<u64>,
+    video_upload_us: std::collections::VecDeque<u64>,
+    gpu_swap_us: std::collections::VecDeque<u64>,
+    recent_hitches: std::collections::VecDeque<HitchSample>,
+    jank_frames_total: u64,
+    jank_frames_window: u64,
+    overlay_uploads_window: u64,
+    frames_window: u64,
+}
+
+#[cfg(target_os = "linux")]
+impl PerfWindow {
+    fn new() -> Self {
+        Self {
+            intervals_us: std::collections::VecDeque::with_capacity(120),
+            renders_us: std::collections::VecDeque::with_capacity(120),
+            ipc_mux_us: std::collections::VecDeque::with_capacity(120),
+            lua_us: std::collections::VecDeque::with_capacity(120),
+            physics_us: std::collections::VecDeque::with_capacity(120),
+            video_upload_us: std::collections::VecDeque::with_capacity(120),
+            gpu_swap_us: std::collections::VecDeque::with_capacity(120),
+            recent_hitches: std::collections::VecDeque::with_capacity(16),
+            jank_frames_total: 0,
+            jank_frames_window: 0,
+            overlay_uploads_window: 0,
+            frames_window: 0,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn record_frame(
+        &mut self,
+        mono_ms: u64,
+        interval_us: u64,
+        render_us: u64,
+        ipc_mux_us: u64,
+        lua_us: u64,
+        physics_us: u64,
+        video_upload_us: u64,
+        gpu_swap_us: u64,
+        overlay_uploaded: bool,
+        rkmpp_queue: usize,
+    ) {
+        fn push_cap(q: &mut std::collections::VecDeque<u64>, v: u64) {
+            if q.len() >= 120 {
+                q.pop_front();
+            }
+            q.push_back(v);
+        }
+        push_cap(&mut self.intervals_us, interval_us);
+        push_cap(&mut self.renders_us, render_us);
+        push_cap(&mut self.ipc_mux_us, ipc_mux_us);
+        push_cap(&mut self.lua_us, lua_us);
+        push_cap(&mut self.physics_us, physics_us);
+        push_cap(&mut self.video_upload_us, video_upload_us);
+        push_cap(&mut self.gpu_swap_us, gpu_swap_us);
+        self.frames_window += 1;
+        if overlay_uploaded {
+            self.overlay_uploads_window += 1;
+        }
+        // Any frame interval > 22 ms (missed a 60 Hz 16.67 ms vsync) counts as a hitch/jank frame.
+        if interval_us > 22_000 {
+            self.jank_frames_total += 1;
+            self.jank_frames_window += 1;
+            let stages = [
+                ("ipc_mux", ipc_mux_us),
+                ("lua", lua_us),
+                ("physics_wave", physics_us),
+                ("video_upload", video_upload_us),
+                ("gpu_swap", gpu_swap_us),
+            ];
+            let top_stage = stages
+                .iter()
+                .max_by_key(|(_, v)| *v)
+                .map(|(n, _)| *n)
+                .unwrap_or("vsync_wait");
+            if self.recent_hitches.len() >= 12 {
+                self.recent_hitches.pop_front();
+            }
+            self.recent_hitches.push_back(HitchSample {
+                mono_ms,
+                interval_ms: (interval_us as f64) / 1000.0,
+                render_us,
+                top_stage,
+                ipc_mux_us,
+                lua_us,
+                physics_us,
+                video_upload_us,
+                gpu_swap_us,
+                overlay_uploaded,
+                rkmpp_queue,
+            });
+        }
+    }
+
+    fn percentile(q: &std::collections::VecDeque<u64>, pct: f64) -> u64 {
+        if q.is_empty() {
+            return 0;
+        }
+        let mut v: Vec<u64> = q.iter().copied().collect();
+        v.sort_unstable();
+        let idx = (((v.len() - 1) as f64) * pct).round() as usize;
+        v[idx.min(v.len() - 1)]
+    }
+
+    fn avg(q: &std::collections::VecDeque<u64>) -> u64 {
+        if q.is_empty() {
+            return 0;
+        }
+        q.iter().sum::<u64>() / q.len() as u64
+    }
+
+    fn max(q: &std::collections::VecDeque<u64>) -> u64 {
+        q.iter().copied().max().unwrap_or(0)
+    }
+
+    fn build_report_json(
+        &mut self,
+        mod_perf: &[openflux_modules::ModulePerfStats],
+        video_fps: f64,
+        rkmpp_queue: usize,
+        rkmpp_underruns: u64,
+        rkmpp_uploads: u64,
+    ) -> serde_json::Value {
+        let p50_int = Self::percentile(&self.intervals_us, 0.50);
+        let p95_int = Self::percentile(&self.intervals_us, 0.95);
+        let p99_int = Self::percentile(&self.intervals_us, 0.99);
+        let max_int = Self::max(&self.intervals_us);
+        let fps = self.frames_window as f64;
+        let jank_1s = self.jank_frames_window;
+        let ov_1s = self.overlay_uploads_window;
+        self.frames_window = 0;
+        self.jank_frames_window = 0;
+        self.overlay_uploads_window = 0;
+
+        let hitches: Vec<serde_json::Value> = self
+            .recent_hitches
+            .iter()
+            .rev()
+            .take(8)
+            .map(|h| {
+                serde_json::json!({
+                    "mono_ms": h.mono_ms,
+                    "interval_ms": (h.interval_ms * 10.0).round() / 10.0,
+                    "render_us": h.render_us,
+                    "top_stage": h.top_stage,
+                    "ipc_mux_us": h.ipc_mux_us,
+                    "lua_us": h.lua_us,
+                    "physics_us": h.physics_us,
+                    "video_upload_us": h.video_upload_us,
+                    "gpu_swap_us": h.gpu_swap_us,
+                    "overlay_uploaded": h.overlay_uploaded,
+                    "rkmpp_queue": h.rkmpp_queue,
+                })
+            })
+            .collect();
+
+        serde_json::json!({
+            "fps": fps,
+            "interval_ms": {
+                "p50": (p50_int as f64 / 100.0).round() / 10.0,
+                "p95": (p95_int as f64 / 100.0).round() / 10.0,
+                "p99": (p99_int as f64 / 100.0).round() / 10.0,
+                "max": (max_int as f64 / 100.0).round() / 10.0,
+            },
+            "render_us": {
+                "p50": Self::percentile(&self.renders_us, 0.50),
+                "p95": Self::percentile(&self.renders_us, 0.95),
+                "p99": Self::percentile(&self.renders_us, 0.99),
+                "max": Self::max(&self.renders_us),
+            },
+            "stages_us": {
+                "ipc_mux_avg": Self::avg(&self.ipc_mux_us),
+                "ipc_mux_max": Self::max(&self.ipc_mux_us),
+                "lua_avg": Self::avg(&self.lua_us),
+                "lua_max": Self::max(&self.lua_us),
+                "physics_avg": Self::avg(&self.physics_us),
+                "physics_max": Self::max(&self.physics_us),
+                "video_upload_avg": Self::avg(&self.video_upload_us),
+                "video_upload_max": Self::max(&self.video_upload_us),
+                "gpu_swap_avg": Self::avg(&self.gpu_swap_us),
+                "gpu_swap_max": Self::max(&self.gpu_swap_us),
+            },
+            "jank_frames_1s": jank_1s,
+            "jank_frames_total": self.jank_frames_total,
+            "overlay_uploads_1s": ov_1s,
+            "video": {
+                "fps": (video_fps * 100.0).round() / 100.0,
+                "rkmpp_queue": rkmpp_queue,
+                "rkmpp_underruns": rkmpp_underruns,
+                "rkmpp_uploads": rkmpp_uploads,
+            },
+            "modules": mod_perf.iter().take(12).collect::<Vec<_>>(),
+            "recent_hitches": hitches,
+        })
     }
 }

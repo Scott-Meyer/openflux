@@ -4187,10 +4187,53 @@ async fn v2_auth_middleware(
     next.run(req).await
 }
 
+async fn v2_perf_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let kb_perf = state
+        .v2
+        .broker
+        .get_retained("display/perf")
+        .map(|m| m.payload);
+    let host_disp = state
+        .v2
+        .broker
+        .get_retained("host/display/state")
+        .map(|m| m.payload);
+    let bus_latest_seq = state.v2.broker.latest_seq();
+    let retained_count = state.v2.broker.query_retained("#").map(|v| v.len()).unwrap_or(0);
+    let usb_connected = state.device.is_v2_mux_active();
+    let saved = state.v2.registry.load_state();
+    let enabled_count = saved.modules.values().filter(|m| m.enabled).count();
+    let statuses = state.v2.runtime.lock().unwrap().statuses();
+    let unhealthy: Vec<String> = statuses
+        .iter()
+        .filter(|m| !m.healthy)
+        .map(|m| m.id.clone())
+        .collect();
+    Json(json!({
+        "ok": true,
+        "keyboard_perf": kb_perf,
+        "host": {
+            "connected": usb_connected,
+            "usb_protocol": if usb_connected { "ofv2" } else { "offline" },
+            "bus_latest_seq": bus_latest_seq,
+            "retained_topics": retained_count,
+            "enabled_modules": enabled_count,
+            "unhealthy_modules": unhealthy,
+            "display_state": host_disp,
+        },
+        "mcp": {
+            "command": "fluxctl",
+            "args": ["mcp"],
+            "description": "Stdio MCP server exposing live KeyGlass performance, latency, module logs, bus state, and keyboard sync tools for module developers."
+        }
+    }))
+}
+
 /// Mounts all OpenFlux v2 routes (authenticated localhost bus, module management, disclosure, lists, presets, GPU preview).
 pub fn router(state: Arc<ApiState>) -> Router {
     Router::new()
         .route("/v2/status", get(v2_status_api))
+        .route("/v2/perf", get(v2_perf_api))
         .route("/v2/display/prefs", get(get_display_prefs))
         .route("/v2/display/parallax", put(put_display_parallax))
         .route("/v2/display/power", put(put_display_power))

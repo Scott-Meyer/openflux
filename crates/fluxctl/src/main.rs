@@ -54,6 +54,16 @@ enum Commands {
     /// Show live daemon connection (if running), paths, discovered module counts, and GPU info.
     Status,
 
+    /// Live keyboard & host latency/performance profiler (FPS, p50/p95/p99, jank hitches, RKMPP queue, per-module Lua timings).
+    Perf {
+        /// Refresh continuously once per second.
+        #[arg(long)]
+        watch: bool,
+    },
+
+    /// Run a standard JSON-RPC 2.0 stdio MCP server exposing live KeyGlass diagnostics, performance, module logs, bus state, and keyboard sync for AI tools & module developers.
+    Mcp,
+
     /// Manage modules: list, info, create, fork, inspect, install, enable, disable, slot, config, reload, logs, validate.
     Modules {
         #[command(subcommand)]
@@ -598,6 +608,27 @@ fn run(cli: Cli) -> Result<(), String> {
     let live_daemon = detect_live_daemon(&cli);
 
     match &cli.command {
+        Commands::Perf { watch } => {
+            let base = live_daemon
+                .ok_or_else(|| "openfluxd is not running; start KeyGlass to inspect live performance".to_string())?;
+            loop {
+                let val = daemon_json(reqwest::Method::GET, &format!("{base}/v2/perf"), None, 3000)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
+                } else {
+                    if *watch {
+                        print!("\x1b[2J\x1b[H");
+                    }
+                    println!("{}", format_perf_report(&val));
+                }
+                if !*watch {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+            Ok(())
+        }
+        Commands::Mcp => run_mcp_stdio_server(&cli),
         Commands::Status => {
             if let Some(base) = live_daemon {
                 let mut val = daemon_json(reqwest::Method::GET, &format!("{base}/v2/status"), None, 3000)?;
@@ -2754,5 +2785,255 @@ fn inject_scenario_events(
             }
         }
         _ => {}
+    }
+}
+
+fn format_perf_report(val: &Value) -> String {
+    let mut out = String::new();
+    let host = &val["host"];
+    let kb = &val["keyboard_perf"];
+    out.push_str(&format!(
+        "KeyGlass Live Performance Profiler (usb={} · enabled={} · bus_seq={})\n",
+        host["usb_protocol"].as_str().unwrap_or("offline"),
+        host["enabled_modules"].as_u64().unwrap_or(0),
+        host["bus_latest_seq"].as_u64().unwrap_or(0),
+    ));
+    if kb.is_null() {
+        out.push_str("  Keyboard display/perf: waiting for keyboard (requires openflux-display >= 2.3.12)\n");
+        return out;
+    }
+    let iv = &kb["interval_ms"];
+    let ru = &kb["render_us"];
+    let st = &kb["stages_us"];
+    let vid = &kb["video"];
+    out.push_str(&format!(
+        "  FPS: {:.1}  |  Frame interval: p50={}ms  p95={}ms  p99={}ms  max={}ms\n",
+        kb["fps"].as_f64().unwrap_or(0.0),
+        iv["p50"], iv["p95"], iv["p99"], iv["max"],
+    ));
+    out.push_str(&format!(
+        "  Render work: p50={}us  p95={}us  p99={}us  max={}us  |  Jank (>22ms): {}/s ({} total)\n",
+        ru["p50"], ru["p95"], ru["p99"], ru["max"],
+        kb["jank_frames_1s"], kb["jank_frames_total"],
+    ));
+    out.push_str(&format!(
+        "  Stages (avg/max us): ipc_mux={}/{}  lua={}/{}  physics={}/{}  video_up={}/{}  gpu_swap={}/{}\n",
+        st["ipc_mux_avg"], st["ipc_mux_max"],
+        st["lua_avg"], st["lua_max"],
+        st["physics_avg"], st["physics_max"],
+        st["video_upload_avg"], st["video_upload_max"],
+        st["gpu_swap_avg"], st["gpu_swap_max"],
+    ));
+    out.push_str(&format!(
+        "  Video RKMPP: {:.2} fps  queue={}  underruns={}  uploads={}  |  overlay_uploads/s={}\n",
+        vid["fps"].as_f64().unwrap_or(0.0),
+        vid["rkmpp_queue"], vid["rkmpp_underruns"], vid["rkmpp_uploads"],
+        kb["overlay_uploads_1s"],
+    ));
+    if let Some(mods) = kb["modules"].as_array() {
+        if !mods.is_empty() {
+            out.push_str("  Top Lua modules (avg / max us):\n");
+            for m in mods.iter().take(8) {
+                out.push_str(&format!(
+                    "    - {:24} avg={:>5}us  max={:>6}us  events={}\n",
+                    m["id"].as_str().unwrap_or("?"),
+                    m["avg_us"].as_u64().unwrap_or(0),
+                    m["max_us"].as_u64().unwrap_or(0),
+                    m["events_last"].as_u64().unwrap_or(0),
+                ));
+            }
+        }
+    }
+    if let Some(hitches) = kb["recent_hitches"].as_array() {
+        if !hitches.is_empty() {
+            out.push_str("  Recent hitches (>22ms interval):\n");
+            for h in hitches.iter().take(5) {
+                out.push_str(&format!(
+                    "    - t={}ms  interval={}ms  render={}us  top_stage={}  rkmpp_q={}\n",
+                    h["mono_ms"], h["interval_ms"], h["render_us"],
+                    h["top_stage"].as_str().unwrap_or("?"), h["rkmpp_queue"],
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Built-in MCP (Model Context Protocol) JSON-RPC 2.0 stdio server for KeyGlass module developers.
+fn run_mcp_stdio_server(cli: &Cli) -> Result<(), String> {
+    use std::io::{BufRead, Write};
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+
+    let tools_schema = json!([
+        {
+            "name": "keyglass_status",
+            "description": "Show live KeyGlass daemon status, USB OFV2 protocol state, connected keyboard versions, and module counts.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+            "name": "keyglass_perf",
+            "description": "Inspect live keyboard & host latency/performance: FPS, frame interval p50/p95/p99/max ms, jank hitches (>22ms), stage breakdown (IPC/Mux, Lua, Physics, Video Upload, GPU Swap), RKMPP video queue/underruns, and per-module Lua execution timings (avg/max us).",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+            "name": "keyglass_modules_list",
+            "description": "List all discovered KeyGlass modules with tier (bundled/installed/local), enabled state, health, host helper status, and last error.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+            "name": "keyglass_module_logs",
+            "description": "Fetch recent Lua and host-helper stdout/stderr logs for a specific KeyGlass module ID.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "module_id": { "type": "string", "description": "Module ID (e.g. 'keys-renderer', 'streamdeck-bridge')" }
+                },
+                "required": ["module_id"]
+            }
+        },
+        {
+            "name": "keyglass_bus_retained",
+            "description": "Query retained messages on the live KeyGlass hierarchical pub/sub bus (supports MQTT-style wildcards like '#' or 'keys/providers/#').",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "pattern": { "type": "string", "description": "Topic pattern (default '#')" }
+                }
+            }
+        },
+        {
+            "name": "keyglass_bus_publish",
+            "description": "Publish a JSON payload onto a KeyGlass bus topic for testing or triggering module behaviors.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "topic": { "type": "string" },
+                    "payload": { "type": "object" },
+                    "retain": { "type": "boolean" }
+                },
+                "required": ["topic", "payload"]
+            }
+        },
+        {
+            "name": "keyglass_keyboard_sync",
+            "description": "Sync local/installed module edits and config from the host directly to the connected Flux keyboard over OFV2.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        }
+    ]);
+
+    for line_res in stdin.lock().lines() {
+        let Ok(line) = line_res else { break };
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(req) = serde_json::from_str::<Value>(trimmed) else {
+            continue;
+        };
+        let id = req.get("id").cloned();
+        let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
+        let params = req.get("params").cloned().unwrap_or_else(|| json!({}));
+
+        // Notifications have no `id` and expect no response.
+        if id.is_none() {
+            continue;
+        }
+
+        let resp = match method {
+            "initialize" => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": { "tools": {} },
+                    "serverInfo": { "name": "keyglass-mcp", "version": env!("CARGO_PKG_VERSION") }
+                }
+            }),
+            "ping" => json!({ "jsonrpc": "2.0", "id": id, "result": {} }),
+            "tools/list" => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "tools": tools_schema }
+            }),
+            "tools/call" => {
+                let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+                let call_res = handle_mcp_tool_call(cli, tool_name, &args);
+                match call_res {
+                    Ok(val) => json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": serde_json::to_string_pretty(&val).unwrap_or_default() }],
+                            "isError": false
+                        }
+                    }),
+                    Err(e) => json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "content": [{ "type": "text", "text": e }],
+                            "isError": true
+                        }
+                    }),
+                }
+            }
+            _ => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": { "code": -32601, "message": format!("Method not found: {method}") }
+            }),
+        };
+
+        let _ = writeln!(stdout, "{}", resp);
+        let _ = stdout.flush();
+    }
+    Ok(())
+}
+
+fn handle_mcp_tool_call(cli: &Cli, name: &str, args: &Value) -> Result<Value, String> {
+    let base = detect_live_daemon(cli)
+        .ok_or_else(|| "openfluxd is not running; start KeyGlass first".to_string())?;
+    match name {
+        "keyglass_status" => {
+            let st = daemon_json(reqwest::Method::GET, &format!("{base}/v2/status"), None, 3000)?;
+            let sw = daemon_json(reqwest::Method::GET, &format!("{base}/v2/keyboard/software-status"), None, 3000).ok();
+            Ok(json!({ "daemon": st, "keyboard_software": sw }))
+        }
+        "keyglass_perf" => daemon_json(reqwest::Method::GET, &format!("{base}/v2/perf"), None, 3000),
+        "keyglass_modules_list" => daemon_json(reqwest::Method::GET, &format!("{base}/v2/modules"), None, 3000),
+        "keyglass_module_logs" => {
+            let mid = args
+                .get("module_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "missing module_id".to_string())?;
+            daemon_json(reqwest::Method::GET, &format!("{base}/v2/modules/{mid}/logs"), None, 3000)
+        }
+        "keyglass_bus_retained" => {
+            let pat = args.get("pattern").and_then(|v| v.as_str()).unwrap_or("#");
+            let enc = pat.replace('#', "%23").replace('+', "%2B");
+            daemon_json(reqwest::Method::GET, &format!("{base}/v2/bus/retained?pattern={enc}"), None, 3000)
+        }
+        "keyglass_bus_publish" => {
+            let topic = args
+                .get("topic")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "missing topic".to_string())?;
+            let payload = args.get("payload").cloned().unwrap_or_else(|| json!({}));
+            let retain = args.get("retain").and_then(|v| v.as_bool()).unwrap_or(false);
+            let body = json!({ "topic": topic, "payload": payload, "retain": retain });
+            daemon_json(
+                reqwest::Method::POST,
+                &format!("{base}/v2/bus/pub"),
+                Some(&body),
+                3000,
+            )
+        }
+        "keyglass_keyboard_sync" => {
+            let body = json!({});
+            daemon_json(reqwest::Method::POST, &format!("{base}/v2/keyboard/sync"), Some(&body), 30000)
+        }
+        _ => Err(format!("unknown tool: {name}")),
     }
 }

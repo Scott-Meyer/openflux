@@ -3,6 +3,7 @@
 //! [`WaylandGpuPresenter::open`] returns an error when GPU EGL is unavailable (for example on a
 //! headless machine), so the caller can fall back to `WaylandPresenter` (SHM).
 
+use openflux_compositor::ParticleDot;
 use std::ffi::{c_char, c_int, c_void, CString};
 use std::os::unix::io::{AsFd, AsRawFd};
 use wayland_client::protocol::{wl_callback, wl_compositor, wl_registry, wl_surface};
@@ -49,6 +50,7 @@ const GL_COMPILE_STATUS: u32 = 0x8B81;
 const GL_LINK_STATUS: u32 = 0x8B82;
 const GL_FRAMEBUFFER: u32 = 0x8D40;
 const GL_COLOR_ATTACHMENT0: u32 = 0x8CE0;
+const GL_POINTS: u32 = 0x0000;
 const GL_TRIANGLE_STRIP: u32 = 0x0005;
 const GL_FLOAT: u32 = 0x1406;
 
@@ -146,6 +148,7 @@ struct EglGlesLib {
     gl_get_attrib_location: unsafe extern "C" fn(u32, *const c_char) -> i32,
     gl_get_uniform_location: unsafe extern "C" fn(u32, *const c_char) -> i32,
     gl_enable_vertex_attrib_array: unsafe extern "C" fn(u32),
+    gl_disable_vertex_attrib_array: unsafe extern "C" fn(u32),
     gl_vertex_attrib_pointer: unsafe extern "C" fn(u32, i32, u32, u8, i32, *const c_void),
     gl_uniform1i: unsafe extern "C" fn(i32, i32),
     gl_uniform1f: unsafe extern "C" fn(i32, f32),
@@ -233,6 +236,7 @@ impl EglGlesLib {
                 gl_get_attrib_location: sym!(gles, "glGetAttribLocation"),
                 gl_get_uniform_location: sym!(gles, "glGetUniformLocation"),
                 gl_enable_vertex_attrib_array: sym!(gles, "glEnableVertexAttribArray"),
+                gl_disable_vertex_attrib_array: sym!(gles, "glDisableVertexAttribArray"),
                 gl_vertex_attrib_pointer: sym!(gles, "glVertexAttribPointer"),
                 gl_uniform1i: sym!(gles, "glUniform1i"),
                 gl_uniform1f: sym!(gles, "glUniform1f"),
@@ -916,17 +920,34 @@ void main() {
     } else if (shape == 3) {
         float d = sd_round_box(local, half_sz, 10.0);
         alpha = smoothstep(1.5, -1.5, d) * intensity;
-    } else {
-        float dist = length(local);
-        float core = smoothstep(radius, radius * 0.25, dist);
-        float aura = exp(-dist / max(radius * 1.35, 2.0)) * 0.55;
-        alpha = clamp(core + aura, 0.0, 1.0) * intensity;
-        boost = 1.0 + core * 0.6;
     }
 
     float fa = clamp(alpha * u_color.a, 0.0, 1.0);
     if (fa < 0.002) discard;
     gl_FragColor = vec4(clamp(u_color.rgb * boost, 0.0, 1.0), fa);
+}
+"#;
+
+const VS_PARTICLE_DOTS: &str = r#"
+attribute vec3 a_dot; // x, y, radius in pixels
+attribute vec4 a_color;
+uniform vec2 u_screen;
+varying lowp vec4 v_color;
+void main() {
+    vec2 xy = a_dot.xy / u_screen * 2.0 - 1.0;
+    gl_Position = vec4(xy.x, -xy.y, 0.0, 1.0);
+    gl_PointSize = a_dot.z * 2.0;
+    v_color = a_color;
+}
+"#;
+
+const FS_PARTICLE_DOTS: &str = r#"
+precision mediump float;
+varying lowp vec4 v_color;
+void main() {
+    vec2 delta = gl_PointCoord - vec2(0.5);
+    if (dot(delta, delta) > 0.25) discard;
+    gl_FragColor = v_color;
 }
 "#;
 
@@ -964,6 +985,7 @@ pub struct WaylandGpuPresenter {
     prog_keyfx: u32,
     prog_v2_refract: u32,
     prog_v2_glow: u32,
+    prog_particle_dots: u32,
     prog_v2_overlay: u32,
     shader_bg: Option<(i32, f32, f32)>,
 
@@ -1128,6 +1150,9 @@ impl WaylandGpuPresenter {
             guard.progs.push(prog_v2_refract);
             let prog_v2_glow = build_program(&gl, "v2_glow", VS_QUAD, FS_V2_GLOW)?;
             guard.progs.push(prog_v2_glow);
+            let prog_particle_dots =
+                build_program(&gl, "particle_dots", VS_PARTICLE_DOTS, FS_PARTICLE_DOTS)?;
+            guard.progs.push(prog_particle_dots);
             let prog_v2_overlay = build_program(&gl, "v2_overlay", VS_QUAD, FS_V2_OVERLAY)?;
             guard.progs.push(prog_v2_overlay);
             guard.active = false;
@@ -1215,6 +1240,7 @@ impl WaylandGpuPresenter {
                 prog_keyfx,
                 prog_v2_refract,
                 prog_v2_glow,
+                prog_particle_dots,
                 prog_v2_overlay,
                 shader_bg: None,
                 tex_y,
@@ -1365,7 +1391,9 @@ impl WaylandGpuPresenter {
         let y_len = (w as usize) * (h as usize);
         let idx = self.nv12_idx ^ 1;
         self.nv12_idx = idx;
+        let align = if (w & 7) == 0 { 8 } else if (w & 3) == 0 { 4 } else { 1 };
         unsafe {
+            (self.gl.gl_pixel_storei)(GL_UNPACK_ALIGNMENT, align);
             (self.gl.gl_active_texture)(GL_TEXTURE0);
             (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_y[idx]);
             if self.nv12_dims[idx] != (w, h) {
@@ -1539,6 +1567,39 @@ impl WaylandGpuPresenter {
             );
             (self.gl.gl_draw_arrays)(GL_TRIANGLE_STRIP, 0, 4);
         }
+    }
+
+    unsafe fn draw_particle_dots(&self, dots: &[ParticleDot]) {
+        if dots.is_empty() {
+            return;
+        }
+        let gl = &self.gl;
+        let prog = self.prog_particle_dots;
+        let pos = (gl.gl_get_attrib_location)(prog, c"a_dot".as_ptr());
+        let color = (gl.gl_get_attrib_location)(prog, c"a_color".as_ptr());
+        if pos < 0 || color < 0 {
+            return;
+        }
+        (gl.gl_enable)(GL_BLEND);
+        (gl.gl_blend_func_separate)(
+            GL_SRC_ALPHA,
+            GL_ONE_MINUS_SRC_ALPHA,
+            GL_ONE,
+            GL_ONE_MINUS_SRC_ALPHA,
+        );
+        (gl.gl_use_program)(prog);
+        let screen = (gl.gl_get_uniform_location)(prog, c"u_screen".as_ptr());
+        (gl.gl_uniform2f)(screen, self.width as f32, self.height as f32);
+        let stride = std::mem::size_of::<ParticleDot>() as i32;
+        let data = dots.as_ptr().cast::<u8>();
+        let color_data = data.add(std::mem::offset_of!(ParticleDot, color));
+        (gl.gl_enable_vertex_attrib_array)(pos as u32);
+        (gl.gl_enable_vertex_attrib_array)(color as u32);
+        (gl.gl_vertex_attrib_pointer)(pos as u32, 3, GL_FLOAT, 0, stride, data.cast());
+        (gl.gl_vertex_attrib_pointer)(color as u32, 4, GL_FLOAT, 0, stride, color_data.cast());
+        (gl.gl_draw_arrays)(GL_POINTS, 0, dots.len() as i32);
+        (gl.gl_disable_vertex_attrib_array)(pos as u32);
+        (gl.gl_disable_vertex_attrib_array)(color as u32);
     }
 
     pub fn render_and_swap(
@@ -1901,7 +1962,7 @@ impl WaylandGpuPresenter {
     /// 1. Background (`rkmpp` NV12 video, RGBA image, or custom module `background` GLSL shaders)
     /// 2. Arbitrary chained module `distortion` GLSL shaders + 3D water refraction over live video
     /// 3. Alpha-blended custom module `under_key` GLSL shaders
-    /// 4. Bounded-quad additive under-key glows & Key-SDF particles
+    /// 4. Bounded-quad additive under-key glows & batched particle dots
     /// 5. Straight-alpha 2D overlay (key legends, top-bar widgets, companions)
     #[allow(clippy::too_many_arguments)]
     pub fn render_v2_and_swap(
@@ -1922,6 +1983,7 @@ impl WaylandGpuPresenter {
         distortion_shaders: &[openflux_modules::ShaderPassCmd],
         under_key_shaders: &[openflux_modules::ShaderPassCmd],
         glows: &[crate::v2_runtime::V2GlowDraw],
+        particle_dots: &[ParticleDot],
         overlay_rgba: &[u8],
         overlay_dirty: bool,
         stream_overlay_rects: &[(i32, i32, i32, i32)],
@@ -2111,7 +2173,7 @@ impl WaylandGpuPresenter {
                     }
                 }
 
-                // Pass 2: Additive Under-Key Glows + SDF Bouncing/Refracting Particles
+                // Pass 2: Additive under-key glows, then a single alpha-blended dot batch.
                 if !glows.is_empty() {
                     (self.gl.gl_enable)(GL_BLEND);
                     (self.gl.gl_blend_func_separate)(
@@ -2137,6 +2199,8 @@ impl WaylandGpuPresenter {
                         self.draw_bounds_quad(self.prog_v2_glow, g.cx - hx, g.cy - hy, g.cx + hx, g.cy + hy);
                     }
                 }
+
+                self.draw_particle_dots(particle_dots);
 
                 // Pass 3: 2D Straight-Alpha Overlay (Legends + Top-Bar Widgets + Idle Pet)
                 if overlay_rgba.len() >= (self.width as usize) * (self.height as usize) * 4 {
@@ -2325,6 +2389,7 @@ impl Drop for WaylandGpuPresenter {
             (self.gl.gl_delete_program)(self.prog_keyfx);
             (self.gl.gl_delete_program)(self.prog_v2_refract);
             (self.gl.gl_delete_program)(self.prog_v2_glow);
+            (self.gl.gl_delete_program)(self.prog_particle_dots);
             (self.gl.gl_delete_program)(self.prog_v2_overlay);
             for c in self.v2_custom_programs.values() {
                 if let Some(p) = c.program {

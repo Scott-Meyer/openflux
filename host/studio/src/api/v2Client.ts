@@ -435,6 +435,7 @@ export const v2Client = {
       slot_count: number;
       warnings: string[];
     }>("POST", "/v2/vial/sync", {}),
+  getPerf: () => v2Call<Record<string, unknown>>("GET", "/v2/perf"),
   getDisplayPrefs: () =>
     v2Call<{
       parallax: {

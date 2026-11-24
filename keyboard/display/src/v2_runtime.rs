@@ -215,6 +215,9 @@ pub struct KeyboardV2Display {
     last_input_ms: u64,
     last_input_mono: std::time::Instant,
     last_state_mtime: Option<SystemTime>,
+    last_reload_check: std::time::Instant,
+    pub last_lua_us: u64,
+    pub last_physics_us: u64,
     pub mirror: openflux_bus::BrokerMirror,
 }
 
@@ -417,6 +420,9 @@ impl KeyboardV2Display {
             last_input_ms: openflux_bus::now_unix_ms(),
             last_input_mono: std::time::Instant::now(),
             last_state_mtime,
+            last_reload_check: std::time::Instant::now(),
+            last_lua_us: 0,
+            last_physics_us: 0,
             mirror,
         };
         this.load_persisted_prefs();
@@ -521,7 +527,12 @@ impl KeyboardV2Display {
     }
 
     /// Checks whether `modules_state.json` or any Lua module file changed on disk (e.g. after USB sync).
+    /// Throttled to once every 500 ms so synchronous eMMC `stat()` calls never stall the 60 Hz frame loop!
     pub fn poll_reload(&mut self) -> bool {
+        if self.last_reload_check.elapsed() < std::time::Duration::from_millis(500) {
+            return false;
+        }
+        self.last_reload_check = std::time::Instant::now();
         let cur_mtime = file_mtime(&self.registry.state_path);
         if cur_mtime != self.last_state_mtime {
             self.last_state_mtime = cur_mtime;
@@ -531,6 +542,18 @@ impl KeyboardV2Display {
             return true;
         }
         !self.runtime.check_hot_reload().is_empty()
+    }
+
+    pub fn take_module_perf_snapshot(&mut self) -> Vec<openflux_modules::ModulePerfStats> {
+        self.runtime.take_perf_snapshot()
+    }
+
+    pub fn publish_perf_snapshot(&self, payload: serde_json::Value) {
+        let _ = self.broker.publish(
+            "display/perf",
+            payload,
+            PublishOptions::retained().with_origin("keyboard"),
+        );
     }
 
     pub fn wave_dims(&self) -> (usize, usize) {
@@ -1096,7 +1119,10 @@ impl KeyboardV2Display {
         self.poll_power_and_host_state();
         let dt = dt_sec.clamp(0.001, 0.06);
         self.time_sec += dt;
+        let t_lua = std::time::Instant::now();
         let scene = self.runtime.step_frame(dt, now_ms);
+        self.last_lua_us = t_lua.elapsed().as_micros() as u64;
+        let t_phys = std::time::Instant::now();
 
         self.active_media_path = scene.background_media.clone();
         self.active_stream_name = scene.background_stream.clone();
@@ -1193,6 +1219,7 @@ impl KeyboardV2Display {
         }
         // Swap in the latest off-thread rasterized RGBA buffer in O(1) whenever ready!
         self.overlay_dirty = self.overlay_worker.take_ready(&mut self.overlay_rgba);
+        self.last_physics_us = t_phys.elapsed().as_micros() as u64;
     }
 
     /// Updates every key's optical parallax offset (`visual_x`, `visual_y`, `parallax_dx`, `parallax_dy`)

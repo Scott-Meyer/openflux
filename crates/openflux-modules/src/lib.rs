@@ -23,7 +23,9 @@ pub use ir::{
     DrawCommand, FrameScene, KeyGlowCmd, KeyGlowShape, ParticleSpawnCmd, ShaderPassCmd,
     StreamOverlayCmd, TextAlign, WaveFieldParams, WaveImpulseCmd,
 };
-pub use lua_runtime::{parse_hex_color, ModuleLogEntry, ModuleRuntime, RuntimeModuleStatus};
+pub use lua_runtime::{
+    parse_hex_color, ModuleLogEntry, ModulePerfStats, ModuleRuntime, RuntimeModuleStatus,
+};
 pub use manifest::{
     ChannelDeclarations, CompositorStage, Entrypoints, HostRequirement, ManifestError,
     ModuleActionField, ModuleCategory, ModuleDependency, ModuleManifest, ModuleUiSpec,

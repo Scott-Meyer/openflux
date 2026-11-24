@@ -474,6 +474,15 @@ impl UserData for RenderCtxHandle {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModulePerfStats {
+    pub id: String,
+    pub last_us: u64,
+    pub avg_us: u64,
+    pub max_us: u64,
+    pub events_last: u32,
+}
+
 struct LoadedLuaModule {
     discovered: DiscoveredModule,
     instance: ModuleInstanceState,
@@ -485,6 +494,10 @@ struct LoadedLuaModule {
     manifest_mtime: Option<SystemTime>,
     healthy: bool,
     last_error: Option<String>,
+    last_step_us: u64,
+    ema_step_us: f64,
+    max_step_us: u64,
+    events_last: u32,
 }
 
 fn file_mtime(path: &Path) -> Option<SystemTime> {
@@ -576,6 +589,10 @@ impl LoadedLuaModule {
             manifest_mtime,
             healthy: true,
             last_error: None,
+            last_step_us: 0,
+            ema_step_us: 0.0,
+            max_step_us: 0,
+            events_last: 0,
         };
 
         if let Err(e) = loaded.init_bindings(broker, geometry) {
@@ -1201,6 +1218,12 @@ pub struct ModuleRuntime {
     geometry: Arc<KeyboardGeometry>,
     modules: BTreeMap<String, LoadedLuaModule>,
     elapsed_sec: f32,
+    tiles_dirty: bool,
+    last_tile_render_ms: u64,
+    last_tile_context_seq: (u64, u64),
+    cached_tile_draws: Vec<DrawCommand>,
+    cached_tile_top_fade: f32,
+    cached_tile_streams: Vec<crate::ir::StreamOverlayCmd>,
 }
 
 impl ModuleRuntime {
@@ -1210,6 +1233,12 @@ impl ModuleRuntime {
             geometry: Arc::new(geometry),
             modules: BTreeMap::new(),
             elapsed_sec: 0.0,
+            tiles_dirty: true,
+            last_tile_render_ms: 0,
+            last_tile_context_seq: (0, 0),
+            cached_tile_draws: Vec::new(),
+            cached_tile_top_fade: 0.0,
+            cached_tile_streams: Vec::new(),
         }
     }
 
@@ -1259,6 +1288,9 @@ impl ModuleRuntime {
         for rid in &removed_ids {
             self.broker.purge_origin(&format!("module:{rid}"));
         }
+        if !removed_ids.is_empty() {
+            self.tiles_dirty = true;
+        }
         self.modules.retain(|id, _| keep_ids.contains(id));
 
         for id in keep_ids {
@@ -1273,6 +1305,7 @@ impl ModuleRuntime {
                 }
             };
             if should_reload {
+                self.tiles_dirty = true;
                 self.broker.purge_origin(&format!("module:{id}"));
                 let loaded = LoadedLuaModule::load(
                     dm.clone(),
@@ -1372,9 +1405,12 @@ impl ModuleRuntime {
         // 1. Deliver queued pub/sub events to every healthy module (and LWT-purge on crash!).
         let mut newly_crashed = Vec::new();
         for (id, loaded) in self.modules.iter_mut() {
+            loaded.last_step_us = 0;
+            loaded.events_last = 0;
             if !loaded.healthy {
                 continue;
             }
+            let t0 = std::time::Instant::now();
             let events: Vec<openflux_bus::BusMessage> = {
                 let subs = loaded.subscriptions.lock().unwrap();
                 let mut all = Vec::new();
@@ -1383,7 +1419,11 @@ impl ModuleRuntime {
                 }
                 all
             };
+            loaded.events_last = events.len() as u32;
             if !events.is_empty() {
+                if loaded.discovered.manifest.stages.contains(&CompositorStage::Tile) {
+                    self.tiles_dirty = true;
+                }
                 if let Ok(on_event) = loaded.lua.globals().get::<Function>("on_event") {
                     for msg in events {
                         let lua_payload = match loaded.lua.to_value(&msg.payload) {
@@ -1415,6 +1455,7 @@ impl ModuleRuntime {
                     }
                 }
             }
+            loaded.last_step_us += t0.elapsed().as_micros() as u64;
         }
 
         // 2. Call `on_update(dt_sec, now_ms)` for every healthy module.
@@ -1423,9 +1464,11 @@ impl ModuleRuntime {
                 continue;
             }
             if let Ok(on_update) = loaded.lua.globals().get::<Function>("on_update") {
+                let t0 = std::time::Instant::now();
                 loaded.arm_watchdog(std::time::Duration::from_millis(150));
                 let upd_res = on_update.call::<()>((dt_sec, now_ms));
                 loaded.clear_watchdog();
+                loaded.last_step_us += t0.elapsed().as_micros() as u64;
                 if let Err(e) = upd_res {
                     loaded.record_error(format!("on_update error: {e}"));
                     newly_crashed.push(id.clone());
@@ -1453,13 +1496,46 @@ impl ModuleRuntime {
             CompositorStage::WorldOverlay,
         ];
 
+        let cur_ctx_seq = (
+            self.broker.get_retained("profiles/active").map(|m| m.seq).unwrap_or(0),
+            self.broker
+                .get_retained("layout/top_bar/context_override")
+                .map(|m| m.seq)
+                .unwrap_or(0),
+        );
+        if cur_ctx_seq != self.last_tile_context_seq {
+            self.last_tile_context_seq = cur_ctx_seq;
+            self.tiles_dirty = true;
+        }
+        let render_tiles_now = self.tiles_dirty
+            || self.last_tile_render_ms == 0
+            || now_ms.saturating_sub(self.last_tile_render_ms) >= 200;
+        if render_tiles_now {
+            self.tiles_dirty = false;
+            self.last_tile_render_ms = now_ms;
+        }
+
         for stage in stage_order {
+            if stage == CompositorStage::Tile && !render_tiles_now {
+                let mut s = scene.lock().unwrap();
+                s.tile_draws = self.cached_tile_draws.clone();
+                if self.cached_tile_top_fade > s.top_fade {
+                    s.top_fade = self.cached_tile_top_fade;
+                }
+                s.stream_overlays.extend(self.cached_tile_streams.iter().cloned());
+                continue;
+            }
             let stage_name = match stage {
                 CompositorStage::Background => "background",
                 CompositorStage::Distortion => "distortion",
                 CompositorStage::UnderKey => "under_key",
                 CompositorStage::Tile => "tile",
                 CompositorStage::WorldOverlay => "world_overlay",
+            };
+            let prev_streams_len = if stage == CompositorStage::Tile {
+                scene.lock().unwrap().stream_overlays.len()
+            } else {
+                0
             };
             for loaded in self.modules.values_mut() {
                 if !loaded.healthy || !loaded.discovered.manifest.stages.contains(&stage) {
@@ -1472,19 +1548,61 @@ impl ModuleRuntime {
                         stage,
                         scene: scene.clone(),
                     };
+                    let t0 = std::time::Instant::now();
                     loaded.arm_watchdog(std::time::Duration::from_millis(150));
                     let render_res = on_render.call::<()>((handle, stage_name));
                     loaded.clear_watchdog();
+                    loaded.last_step_us += t0.elapsed().as_micros() as u64;
                     if let Err(e) = render_res {
                         loaded.record_error(format!("on_render({stage_name}) error: {e}"));
                     }
                 }
+            }
+            if stage == CompositorStage::Tile {
+                let s = scene.lock().unwrap();
+                self.cached_tile_draws = s.tile_draws.clone();
+                self.cached_tile_top_fade = s.top_fade;
+                self.cached_tile_streams = s.stream_overlays[prev_streams_len..].to_vec();
+            }
+        }
+
+        for loaded in self.modules.values_mut() {
+            let us = loaded.last_step_us;
+            loaded.ema_step_us = if loaded.ema_step_us == 0.0 {
+                us as f64
+            } else {
+                loaded.ema_step_us * 0.90 + (us as f64) * 0.10
+            };
+            if us > loaded.max_step_us {
+                loaded.max_step_us = us;
             }
         }
 
         Arc::try_unwrap(scene)
             .map(|m| m.into_inner().unwrap())
             .unwrap_or_else(|arc| arc.lock().unwrap().clone())
+    }
+
+    /// Returns per-module Lua execution timing statistics (sorted hottest-first) and resets
+    /// the rolling window `max_us` peak so each profiler snapshot exposes fresh spikes.
+    pub fn take_perf_snapshot(&mut self) -> Vec<ModulePerfStats> {
+        let mut out: Vec<ModulePerfStats> = self
+            .modules
+            .values_mut()
+            .map(|m| {
+                let s = ModulePerfStats {
+                    id: m.discovered.manifest.id.clone(),
+                    last_us: m.last_step_us,
+                    avg_us: m.ema_step_us.round() as u64,
+                    max_us: m.max_step_us,
+                    events_last: m.events_last,
+                };
+                m.max_step_us = 0;
+                s
+            })
+            .collect();
+        out.sort_by(|a, b| b.max_us.cmp(&a.max_us).then_with(|| b.avg_us.cmp(&a.avg_us)));
+        out
     }
 
     pub fn statuses(&self) -> Vec<RuntimeModuleStatus> {

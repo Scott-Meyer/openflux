@@ -387,7 +387,7 @@ pub fn open_rkmpp_stream(path: &str) -> Option<RkmppVideoStream> {
     let mut child = cmd.spawn().ok()?;
     let mut stdout = child.stdout.take()?;
 
-    let (tx, rx) = mpsc::sync_channel::<Nv12Frame>(6);
+    let (tx, rx) = mpsc::sync_channel::<Nv12Frame>(10);
     let queued = Arc::new(AtomicUsize::new(0));
     let disconnected = Arc::new(AtomicBool::new(false));
     let stop = Arc::new(AtomicBool::new(false));
