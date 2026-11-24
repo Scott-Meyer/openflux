@@ -478,7 +478,24 @@ class StreamDeckHost:
                 changed = True
             elif ev == "setImage":
                 img_data = payload.get("image", "")
-                if isinstance(img_data, str) and "base64," in img_data:
+                if img_data == "" or img_data is None:
+                    b = self.buttons.get(ctx_id)
+                    if b and b.get("icon_media"):
+                        face["image"] = f"media://{b['icon_media']}"
+                    else:
+                        face.pop("image", None)
+                    face["color"] = (b.get("color") if b else None) or "#5ce1ff"
+                    changed = True
+                elif isinstance(img_data, str) and "svg+xml" in img_data:
+                    # Handle SVG data URLs (e.g. Task Timer's colored/blinking state SVGs!)
+                    import re
+                    from urllib.parse import unquote
+                    decoded_svg = unquote(img_data)
+                    m_col = re.search(r"#[0-9a-fA-F]{6}", decoded_svg)
+                    if m_col:
+                        face["color"] = m_col.group(0)
+                        changed = True
+                elif isinstance(img_data, str) and "base64," in img_data:
                     b64 = img_data.split("base64,", 1)[1]
                     try:
                         raw = base64.b64decode(b64)

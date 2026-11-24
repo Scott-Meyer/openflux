@@ -3536,6 +3536,8 @@ struct SdPluginAssetQuery {
     action_uuid: Option<String>,
     #[serde(default)]
     pi_boot: Option<u8>,
+    #[serde(default)]
+    plugin_boot: Option<u8>,
 }
 
 /// Serves static files inside an imported `.sdPlugin` directory (HTML/CSS/JS/PNG/SVG) so KeyGlass
@@ -3585,39 +3587,63 @@ async fn serve_streamdeck_plugin_asset_api(
         "application/octet-stream"
     };
 
-    // Inject Elgato's official `connectElgatoStreamDeckSocket(...)` bootstrap into Property Inspector HTML!
-    if (lower.ends_with(".html") || lower.ends_with(".htm")) && q.pi_boot == Some(1) {
-        if let (Some(ws_port), Some(btn_id), Some(action_uuid)) = (q.ws_port, q.btn_id, q.action_uuid) {
+    // Inject Elgato's official `connectElgatoStreamDeckSocket(...)` bootstrap into BOTH
+    // Property Inspector HTML (`pi_boot=1`) AND HTML-based `.sdPlugin` runtimes (`plugin_boot=1`,
+    // like Task Timer's `index.html`)!
+    if (lower.ends_with(".html") || lower.ends_with(".htm")) && (q.pi_boot == Some(1) || q.plugin_boot == Some(1)) {
+        if let Some(ws_port) = q.ws_port {
             let mut html = String::from_utf8_lossy(&bytes).into_owned();
-            // Load saved settings for this button so the PI renders current state immediately
-            let buttons_doc: StreamDeckButtonsFile =
-                std::fs::read_to_string(streamdeck_root(&state).join("buttons.json"))
-                    .ok()
-                    .and_then(|r| serde_json::from_str(&r).ok())
-                    .unwrap_or_default();
-            let cur_settings = buttons_doc
-                .buttons
-                .iter()
-                .find(|b| b.id == btn_id)
-                .map(|b| b.settings.clone())
-                .unwrap_or_else(|| json!({}));
             let info_json = json!({
                 "application": { "language": "en", "platform": "mac", "platformVersion": "14.0", "version": "6.5.0" },
                 "plugin": { "uuid": clean_id, "version": "1.0.0" },
                 "devicePixelRatio": 2,
                 "devices": [{ "id": "keyglass-main", "name": "KeyGlass", "size": { "columns": 15, "rows": 6 }, "type": 0 }]
             });
-            let action_info_json = json!({
-                "action": action_uuid,
-                "context": btn_id,
-                "device": "keyglass-main",
-                "payload": {
-                    "settings": cur_settings,
-                    "coordinates": { "column": 0, "row": 0 }
-                }
-            });
-            let boot_script = format!(
-                r#"<script>
+            let boot_script = if q.plugin_boot == Some(1) {
+                format!(
+                    r#"<script>
+window.addEventListener('load', function() {{
+  try {{
+    if (typeof window.connectElgatoStreamDeckSocket === 'function') {{
+      window.connectElgatoStreamDeckSocket(
+        {ws_port},
+        {pid_js},
+        'registerPlugin',
+        {info_js}
+      );
+    }}
+  }} catch (e) {{ console.error('KeyGlass HTML plugin boot error:', e); }}
+}});
+</script>"#,
+                    ws_port = ws_port,
+                    pid_js = serde_json::to_string(&clean_id).unwrap_or_else(|_| "\"\"".into()),
+                    info_js = serde_json::to_string(&info_json.to_string()).unwrap_or_else(|_| "\"{}\"".into()),
+                )
+            } else {
+                let btn_id = q.btn_id.unwrap_or_default();
+                let action_uuid = q.action_uuid.unwrap_or_default();
+                let buttons_doc: StreamDeckButtonsFile =
+                    std::fs::read_to_string(streamdeck_root(&state).join("buttons.json"))
+                        .ok()
+                        .and_then(|r| serde_json::from_str(&r).ok())
+                        .unwrap_or_default();
+                let cur_settings = buttons_doc
+                    .buttons
+                    .iter()
+                    .find(|b| b.id == btn_id)
+                    .map(|b| b.settings.clone())
+                    .unwrap_or_else(|| json!({}));
+                let action_info_json = json!({
+                    "action": action_uuid,
+                    "context": btn_id,
+                    "device": "keyglass-main",
+                    "payload": {
+                        "settings": cur_settings,
+                        "coordinates": { "column": 0, "row": 0 }
+                    }
+                });
+                format!(
+                    r#"<script>
 window.addEventListener('load', function() {{
   try {{
     if (typeof window.connectElgatoStreamDeckSocket === 'function') {{
@@ -3632,11 +3658,12 @@ window.addEventListener('load', function() {{
   }} catch (e) {{ console.error('KeyGlass PI boot error:', e); }}
 }});
 </script>"#,
-                ws_port = ws_port,
-                btn_id_js = serde_json::to_string(&btn_id).unwrap_or_else(|_| "\"\"".into()),
-                info_js = serde_json::to_string(&info_json.to_string()).unwrap_or_else(|_| "\"{}\"".into()),
-                action_info_js = serde_json::to_string(&action_info_json.to_string()).unwrap_or_else(|_| "\"{}\"".into()),
-            );
+                    ws_port = ws_port,
+                    btn_id_js = serde_json::to_string(&btn_id).unwrap_or_else(|_| "\"\"".into()),
+                    info_js = serde_json::to_string(&info_json.to_string()).unwrap_or_else(|_| "\"{}\"".into()),
+                    action_info_js = serde_json::to_string(&action_info_json.to_string()).unwrap_or_else(|_| "\"{}\"".into()),
+                )
+            };
             if let Some(pos) = html.rfind("</body>") {
                 html.insert_str(pos, &boot_script);
             } else {

@@ -508,6 +508,12 @@ export const v2Client = {
       btnId: btn_id,
       actionUuid: action_uuid,
     }),
+  getStreamDeckPluginUrl: (plugin_id: string, rel_path: string, ws_port: number) =>
+    invoke<string>("v2_streamdeck_plugin_url", {
+      pluginId: plugin_id,
+      relPath: rel_path,
+      wsPort: ws_port,
+    }),
   importStreamDeckPlugin: (path: string) =>
     v2Call<{ ok: boolean; plugin?: StreamDeckPluginInfo }>("POST", "/v2/streamdeck/import", { path }),
   deleteStreamDeckPlugin: (id: string) =>

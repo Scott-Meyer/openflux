@@ -219,8 +219,50 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
   const [syncing, setSyncing] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [previewTick, setPreviewTick] = useState(0);
+  const [htmlSdPlugins, setHtmlSdPlugins] = useState<Array<{ id: string; url: string }>>([]);
   const configRef = useRef<OpenFluxConfig>(config);
   configRef.current = config;
+
+  // Keep any imported HTML/JS `.sdPlugin` runtimes (like Task Timer's `index.html`) alive inside
+  // hidden WebView iframes so they register on `sd_host.py`'s WebSocket server & update keycaps live!
+  useEffect(() => {
+    let alive = true;
+    const syncHtmlPlugins = async () => {
+      try {
+        const sd = await v2Client.getStreamDeckState();
+        const wsPort = sd.ws_port ?? 0;
+        if (!alive || wsPort <= 0) return;
+        const needed = new Set(sd.buttons.map((b) => b.plugin_id));
+        const htmlPlugs = sd.plugins.filter(
+          (p) =>
+            needed.has(p.id) &&
+            typeof p.code_path === "string" &&
+            /\.(html?|HTML?)$/.test(p.code_path),
+        );
+        const urls = await Promise.all(
+          htmlPlugs.map(async (p) => ({
+            id: `${p.id}:${wsPort}`,
+            url: await v2Client.getStreamDeckPluginUrl(p.id, p.code_path!, wsPort),
+          })),
+        );
+        if (alive) {
+          setHtmlSdPlugins((prev) => {
+            const prevSig = prev.map((x) => x.id).join(",");
+            const nextSig = urls.map((x) => x.id).join(",");
+            return prevSig === nextSig ? prev : urls;
+          });
+        }
+      } catch {
+        // ignore when streamdeck-bridge is disabled
+      }
+    };
+    void syncHtmlPlugins();
+    const id = window.setInterval(() => void syncHtmlPlugins(), 4000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
 
   const refreshModules = useCallback(async () => {
     try {
@@ -579,6 +621,16 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
           </div>
         )}
       </main>
+
+      {/* Hidden WebView host for HTML/JS `.sdPlugin` packages (e.g. Task Timer's index.html) */}
+      {htmlSdPlugins.map((hp) => (
+        <iframe
+          key={hp.id}
+          src={hp.url}
+          title={`StreamDeck Plugin ${hp.id}`}
+          style={{ position: "fixed", width: 1, height: 1, opacity: 0.001, pointerEvents: "none", border: "none" }}
+        />
+      ))}
     </div>
   );
 };
