@@ -437,6 +437,11 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
                 }
                 let hw = bridge.sample_hardware();
                 let media = bridge.media_snapshot();
+                {
+                    let mut g = state.inner.lock().unwrap();
+                    g.hardware = hw.clone();
+                    g.media = media.clone();
+                }
 
                 let _ = state.v2.broker.publish_typed(
                     openflux_bus::topics::HOST_SYSTEM_METRICS,
@@ -1669,39 +1674,13 @@ pub fn reconcile_tick_with_state(
                 disconnected_now = true;
             }
         }
-        g.hardware = hw.clone();
-        g.media = media.clone();
-        let _ = state.v2.broker.publish_typed(
-            openflux_bus::topics::HOST_SYSTEM_METRICS,
-            &openflux_bus::SystemMetrics {
-                cpu_percent: hw.cpu_pct as f32,
-                memory_used_gb: hw.mem_used_gb as f32,
-                memory_total_gb: hw.mem_total_gb as f32,
-                gpu_percent: hw.gpu_pct as f32,
-                gpu_unified: hw.gpu_unified_mem,
-                vram_used_gb: hw.vram_used_gb.map(|v| v as f32),
-                vram_total_gb: hw.vram_total_gb.map(|v| v as f32),
-                net_down_kbps: 0.0,
-                net_up_kbps: 0.0,
-                net_down: hw.net_down.clone(),
-                net_up: hw.net_up.clone(),
-            },
-            openflux_bus::PublishOptions::retained(),
-        );
-        let _ = state.v2.broker.publish_typed(
-            openflux_bus::topics::HOST_MEDIA_NOW_PLAYING,
-            &openflux_bus::MediaNowPlaying {
-                title: media.title.clone(),
-                artist: media.artists.clone(),
-                album: media.album.clone(),
-                playing: media.playing,
-                length_sec: media.length_s as f32,
-                position_sec: media.played_s as f32,
-                track_id: String::new(),
-                art_base64: String::new(),
-            },
-            openflux_bus::PublishOptions::retained(),
-        );
+        if sample_due {
+            g.hardware = hw.clone();
+            g.media = media.clone();
+        }
+        // `openflux-host-telemetry` (`spawn_host_telemetry_publisher`) is the single authoritative
+        // publisher of `HOST_SYSTEM_METRICS` and `HOST_MEDIA_NOW_PLAYING` — never overwrite them
+        // here with unsampled/default values when `sample_due == false`!
         if !has_firmware {
             g.record_firmware_detached();
             g.forget_keymap();
