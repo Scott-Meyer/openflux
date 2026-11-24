@@ -283,6 +283,35 @@ fn resolve_bundled_modules_dir() -> PathBuf {
     PathBuf::from("modules")
 }
 
+fn resolve_bundled_asset_path(rel_or_abs: &str) -> Option<PathBuf> {
+    let direct = PathBuf::from(rel_or_abs);
+    if direct.is_file() {
+        return Some(direct);
+    }
+    let rel = rel_or_abs.trim_start_matches("./");
+    let mut candidates = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(p) = exe.parent() {
+            candidates.push(p.join(rel));
+            if let Some(pp) = p.parent() {
+                candidates.push(pp.join("Resources").join(rel));
+            }
+        }
+    }
+    let bundled_mods = resolve_bundled_modules_dir();
+    if let Some(parent) = bundled_mods.parent() {
+        candidates.push(parent.join(rel));
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        candidates.push(
+            PathBuf::from(&home)
+                .join("Applications/OpenFlux Studio.app/Contents/Resources")
+                .join(rel),
+        );
+    }
+    candidates.into_iter().find(|p| p.is_file())
+}
+
 fn load_font_bytes() -> Option<Vec<u8>> {
     let mut candidates = vec![
         PathBuf::from("assets/bundled_fonts/Montserrat-Medium.ttf"),
@@ -422,24 +451,45 @@ impl V2State {
         let discovered = registry.discover();
         let mut state_file = registry.load_state();
 
-        // Seed a great default v2 showcase stack on first run if no modules are configured yet.
+        // Seed a clean, ready-to-use Core Built-In stack on first run (brand-new user experience!)
+        // ensuring a bundled default background (`aurora_velvet.png`), legends, clock, profiles,
+        // keypress sparks, and OSD notifications all work immediately with zero black screen!
         if state_file.modules.is_empty() && !discovered.is_empty() {
+            let media_dir = base.join("media");
+            let _ = std::fs::create_dir_all(&media_dir);
+            let mut default_bg_path: Option<String> = None;
+            if let Some(src_bg) = resolve_bundled_asset_path("assets/default_backgrounds/aurora_velvet.png") {
+                let dst_bg = media_dir.join("aurora_velvet.png");
+                if !dst_bg.is_file() {
+                    let _ = std::fs::copy(&src_bg, &dst_bg);
+                }
+                if dst_bg.is_file() {
+                    default_bg_path = Some(dst_bg.to_string_lossy().into_owned());
+                } else {
+                    default_bg_path = Some(src_bg.to_string_lossy().into_owned());
+                }
+            }
+
             let defaults = [
-                ("bg-aurora-shader", None),
+                ("bg-media", None),
+                ("profiles", None),
                 ("dock-top-bar", None),
                 ("keys-renderer", None),
                 ("keys-keymap", None),
                 ("keys-shortcuts", None),
-                ("fx-water-ripple-3d", None),
-                ("fx-analog-depth-glow", None),
                 ("fx-key-particles", None),
+                ("ui-osd-toast", None),
                 ("widget-clock", Some(0)),
-                ("widget-system-load", Some(1)),
-                ("widget-weather", Some(2)),
-                ("companion-idle-pet", Some(3)),
             ];
             for (id, slot) in defaults {
                 if discovered.contains_key(id) {
+                    let mut cfg = BTreeMap::new();
+                    if id == "bg-media" {
+                        if let Some(ref bg) = default_bg_path {
+                            cfg.insert("media_path".into(), json!(bg));
+                        }
+                        cfg.insert("bg_dimming".into(), json!(20));
+                    }
                     state_file.modules.insert(
                         id.to_string(),
                         ModuleInstanceState {
@@ -448,7 +498,7 @@ impl V2State {
                             slot_pos: slot.map(|s| s as f32),
                             slot_span: None,
                             pin_tab: None,
-                            config: BTreeMap::new(),
+                            config: cfg,
                         },
                     );
                 }
@@ -3286,8 +3336,8 @@ fn sync_v2_to_device(
             else {
                 continue;
             };
-            let lp = std::path::Path::new(&media_str);
-            if lp.is_file() {
+            let resolved_lp = resolve_bundled_asset_path(&media_str);
+            if let Some(lp) = resolved_lp.as_deref() {
                 if let Some(fname) = lp.file_name().and_then(|n| n.to_str()) {
                     let remote_media = format!("/home/root/openflux/media/{fname}");
                     acc.put_media_if_missing(&remote_media, lp)?;

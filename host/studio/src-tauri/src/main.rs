@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tauri::{Manager, State, WindowEvent};
 
 mod daemon_api;
@@ -334,16 +334,12 @@ async fn daemon_req_json_with_timeout(
 
 struct LiveDataCache {
     cached: tokio::sync::Mutex<Option<Value>>,
-    inflight: AtomicBool,
-    next_at: tokio::sync::Mutex<Option<Instant>>,
 }
 
 impl LiveDataCache {
     fn new() -> Arc<Self> {
         Arc::new(Self {
             cached: tokio::sync::Mutex::new(None),
-            inflight: AtomicBool::new(false),
-            next_at: tokio::sync::Mutex::new(None),
         })
     }
 }
@@ -705,7 +701,6 @@ async fn pomodoro_action(st: State<'_, DesktopState>, action: String) -> Result<
         )
         .await?;
     if let Some(pomo_state) = res.get("pomodoro").cloned() {
-        let live_patch = serde_json::json!({ "pomodoro": pomo_state });
         {
             let mut lc = st.live_cache.cached.lock().await;
             if let Some(ref mut cur) = *lc {

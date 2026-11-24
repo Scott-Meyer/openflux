@@ -312,6 +312,7 @@ impl KeyboardGeometry {
     /// Applies optical parallax offset (matching physical eye-to-keycap projection through the clear
     /// keyframe) to every key's `visual_x`/`visual_y` and `parallax_dx`/`parallax_dy`, so any module
     /// consuming `keyboard/geometry` automatically aligns legends, icons, and overlays to the viewer.
+    #[allow(clippy::too_many_arguments)]
     pub fn apply_parallax(
         &mut self,
         enabled: bool,
