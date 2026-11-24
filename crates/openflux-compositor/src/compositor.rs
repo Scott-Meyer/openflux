@@ -1039,13 +1039,11 @@ impl Compositor {
             if instances.len() >= MAX_GLOW_INSTANCES {
                 break;
             }
-            let life_t = (p.age_ms / p.life_ms).clamp(0.0, 1.0);
-            let fade = (1.0 - life_t).powf(1.2);
-            let lens_boost = if p.inside_key { 1.35 } else { 1.0 };
+            let dot = p.dot();
             instances.push(GlowInstanceGpu {
-                rect: [p.x, p.y, 2.0, 2.0],
-                params: [4.0, p.radius_px * p.current_scale, 2.0, fade * lens_boost],
-                color: p.color,
+                rect: [dot.center_px[0], dot.center_px[1], 0.0, 0.0],
+                params: [4.0, dot.radius_px, 0.0, 1.0],
+                color: dot.color,
             });
         }
         let screen_u = ScreenUniform {

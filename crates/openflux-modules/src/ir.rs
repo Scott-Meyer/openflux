@@ -173,9 +173,9 @@ pub struct ParticleSpawnCmd {
     pub radius_px: f32,
     pub life_ms: f32,
     pub color: [f32; 4],
-    /// Probability `[0.0, 1.0]` that hitting a keycap wall bounces in the 2mm trench vs enters under the lens.
+    /// Probability `[0.0, 1.0]` of ricocheting off an eligible inside wall instead of leaving the keycap.
     pub bounce_chance: f32,
-    /// Lens magnification/refraction multiplier when passing underneath a transparent keycap.
+    /// Visual magnification multiplier while passing under a transparent keycap.
     pub lens_refract: f32,
     pub drag: f32,
 }

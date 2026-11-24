@@ -11,5 +11,5 @@ pub mod wave2d;
 pub use canvas2d::{Canvas2D, DEFAULT_ANSI_LABELS};
 #[cfg(feature = "wgpu-backend")]
 pub use compositor::{Compositor, CompositorOptions, FrameTimings};
-pub use particles::{KeySdfGrid, LiveParticle, ParticleSystem, SdfCell};
+pub use particles::{KeySdfGrid, LiveParticle, ParticleDot, ParticleSystem, SdfCell};
 pub use wave2d::{WaveField2D, WAVE2D_H, WAVE2D_W};

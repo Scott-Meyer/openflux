@@ -220,7 +220,8 @@ fn vs_main(
     );
     let c = corners[vid];
     let half_sz = inst.rect.zw * 0.5;
-    let expand = inst.params.y * 2.5 + inst.params.z + 28.0;
+    let expand = select(inst.params.y * 2.5 + inst.params.z + 28.0,
+                        inst.params.y, inst.params.x == 4.0);
     let extent = half_sz + vec2<f32>(expand, expand);
     let local = c * extent;
     let px = inst.rect.xy + local;
@@ -250,6 +251,13 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let thick = max(in.params.z, 1.0);
     let intensity = in.params.w;
 
+    if (shape == 4) {
+        if (dot(in.local_px, in.local_px) > radius * radius) {
+            discard;
+        }
+        return in.color;
+    }
+
     var alpha = 0.0;
     var boost = 1.0;
 
@@ -278,13 +286,6 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         // Crisp solid highlight fill
         let d = sd_round_box(in.local_px, in.half_size, 10.0);
         alpha = smoothstep(1.5, -1.5, d) * intensity;
-    } else {
-        // Glowing optical particle (core + soft aura; magnified when passing under keycap lens!)
-        let dist = length(in.local_px);
-        let core = smoothstep(radius, radius * 0.25, dist);
-        let aura = exp(-dist / max(radius * 1.35, 2.0)) * 0.55;
-        alpha = clamp(core + aura, 0.0, 1.0) * intensity;
-        boost = 1.0 + core * 0.6;
     }
 
     let final_a = clamp(alpha * in.color.a, 0.0, 1.0);
