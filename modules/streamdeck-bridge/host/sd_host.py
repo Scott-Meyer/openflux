@@ -146,6 +146,7 @@ class StreamDeckHost:
         self.pi_sockets: dict[str, socket.socket] = {}      # button_id (context) -> PI ws socket
         self.plugin_procs: dict[str, subprocess.Popen] = {}
         self.last_img_hash: dict[str, str] = {}
+        self.last_key_ts: dict[tuple[str, bool], float] = {}
         self.ws_port = 0
         self._load_global_settings()
 
@@ -633,10 +634,19 @@ class StreamDeckHost:
                 print(f"[streamdeck] failed to launch '{pid}': {e}", flush=True)
 
     def handle_key(self, button_id: str, pressed: bool):
+        # Deduplicate dual-path (USB IF 4 + keyboard UART mirror) action delivery within 120ms
+        # so one physical keypress never fires start+pause twice!
+        now = time.monotonic()
+        k = (button_id, bool(pressed))
         with self.lock:
+            prev_t = self.last_key_ts.get(k, 0.0)
+            if now - prev_t < 0.12:
+                return
+            self.last_key_ts[k] = now
             b = self.buttons.get(button_id)
         if not b:
             return
+        print(f"[streamdeck] key {'DOWN' if pressed else 'UP'}: {b.get('title')} ({button_id}) -> {b.get('plugin_id')}", flush=True)
         pid = b.get("plugin_id", "builtin")
         auuid = b.get("action_uuid", "")
         settings = b.get("settings") or {}

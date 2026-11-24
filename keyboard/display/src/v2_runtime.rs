@@ -12,7 +12,8 @@ use openflux_bus::{
     WeatherState, WireFrame, DISPLAY_HEIGHT_PX, DISPLAY_WIDTH_PX,
 };
 use openflux_compositor::{
-    Canvas2D, KeySdfGrid, ParticleSystem, WaveField2D, DEFAULT_ANSI_LABELS, WAVE2D_H, WAVE2D_W,
+    Canvas2D, KeySdfGrid, ParticleDot, ParticleSystem, WaveField2D, DEFAULT_ANSI_LABELS, WAVE2D_H,
+    WAVE2D_W,
 };
 use openflux_modules::{
     KeyGlowShape, ModuleRegistry, ModuleRuntime, WaveFieldParams,
@@ -151,14 +152,14 @@ impl Drop for OverlayRasterWorker {
     }
 }
 
-/// Packed GPU draw primitive for Mali-G52 GLES2 under-key glows & SDF-refracting particles.
+/// Packed GPU draw primitive for Mali-G52 GLES2 under-key glows.
 #[derive(Clone, Copy, Debug)]
 pub struct V2GlowDraw {
     pub cx: f32,
     pub cy: f32,
     pub w: f32,
     pub h: f32,
-    /// `0=Glow`, `1=Ring`, `2=Ripple`, `3=Solid`, `4=Particle`
+    /// `0=Glow`, `1=Ring`, `2=Ripple`, `3=Solid`
     pub shape: f32,
     pub radius_px: f32,
     pub thickness_px: f32,
@@ -196,6 +197,7 @@ pub struct KeyboardV2Display {
     pub distortion_shaders: Vec<openflux_modules::ShaderPassCmd>,
     pub under_key_shaders: Vec<openflux_modules::ShaderPassCmd>,
     pub glows: Vec<V2GlowDraw>,
+    pub particle_dots: Vec<ParticleDot>,
     pub time_sec: f32,
     pub overlay_dirty: bool,
     last_keys_hash: u64,
@@ -388,6 +390,7 @@ impl KeyboardV2Display {
             distortion_shaders: Vec::new(),
             under_key_shaders: Vec::new(),
             glows: Vec::with_capacity(256),
+            particle_dots: Vec::with_capacity(256),
             time_sec: 0.0,
             overlay_dirty: true,
             last_keys_hash: 0,
@@ -727,6 +730,11 @@ impl KeyboardV2Display {
                 );
             }
             if let Some(topic) = m.get("topic").and_then(|v| v.as_str()) {
+                // Host-driven `modules/streamdeck/key` is already dispatched by host USB IF 4;
+                // never echo it from keyboard over BrokerMirror (prevents start+pause double-fire!).
+                if topic == "modules/streamdeck/key" {
+                    return;
+                }
                 let retain = m.get("retain").and_then(|v| v.as_bool()).unwrap_or(false);
                 let mode = m.get("mode").and_then(|v| v.as_str()).unwrap_or("tap");
                 let opts = if retain {
@@ -1047,7 +1055,7 @@ impl KeyboardV2Display {
         }
         self.particles.step(dt, &self.sdf_grid, &self.geometry);
 
-        // Pack glows + particles for Mali-G52 bounded-quad additive pass
+        // Pack distinct glow and point-sprite draws for Mali-G52.
         self.glows.clear();
         for g in &scene.key_glows {
             let shape = match g.shape {
@@ -1068,22 +1076,9 @@ impl KeyboardV2Display {
                 color: g.color,
             });
         }
-        for p in &self.particles.particles {
-            let life_t = (p.age_ms / p.life_ms).clamp(0.0, 1.0);
-            let fade = (1.0 - life_t).powf(1.2);
-            let lens_boost = if p.inside_key { 1.35 } else { 1.0 };
-            self.glows.push(V2GlowDraw {
-                cx: p.x,
-                cy: p.y,
-                w: 2.0,
-                h: 2.0,
-                shape: 4.0,
-                radius_px: p.radius_px * p.current_scale,
-                thickness_px: 2.0,
-                intensity: fade * lens_boost,
-                color: p.color,
-            });
-        }
+        self.particle_dots.clear();
+        self.particle_dots
+            .extend(self.particles.particles.iter().map(|p| p.dot()));
 
         // Fast zero-allocation hash split by stage:
         // When `keys-renderer` signals `keep_under_key_layer`, reuse cached key commands without
