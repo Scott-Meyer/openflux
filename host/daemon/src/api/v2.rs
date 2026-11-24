@@ -3545,6 +3545,60 @@ struct SdPluginAssetQuery {
 /// Serves static files inside an imported `.sdPlugin` directory (HTML/CSS/JS/PNG/SVG) so KeyGlass
 /// can render every Elgato plugin's native `PropertyInspectorPath` settings UI (e.g. Audio Device
 /// picker, OBS Scene picker, Hue Light picker) connected live to `sd_host.py`'s WebSocket server!
+fn rewrite_sd_html_asset_urls(html: &str, tok: &str) -> String {
+    // Rewrites relative `src="..."` and `href="..."` attributes in `.sdPlugin` HTML to include
+    // `?token=<tok>` so WKWebView (which blocks third-party iframe cookies via ITP!) loads every
+    // local JS/CSS/image sub-resource cleanly with full authentication!
+    let mut out = String::with_capacity(html.len() + 512);
+    let mut rest = html;
+    while !rest.is_empty() {
+        let next_src = rest.find("src=\"");
+        let next_href = rest.find("href=\"");
+        let picked = match (next_src, next_href) {
+            (Some(a), Some(b)) => {
+                if a <= b {
+                    Some((a, 5usize))
+                } else {
+                    Some((b, 6usize))
+                }
+            }
+            (Some(a), None) => Some((a, 5usize)),
+            (None, Some(b)) => Some((b, 6usize)),
+            (None, None) => None,
+        };
+        let Some((pos, prefix_len)) = picked else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..pos + prefix_len]);
+        rest = &rest[pos + prefix_len..];
+        let Some(end_q) = rest.find('"') else {
+            out.push_str(rest);
+            break;
+        };
+        let val = &rest[..end_q];
+        let is_relative = !val.is_empty()
+            && !val.starts_with("http://")
+            && !val.starts_with("https://")
+            && !val.starts_with("data:")
+            && !val.starts_with("blob:")
+            && !val.starts_with('#')
+            && !val.contains("token=");
+        if is_relative {
+            let sep = if val.contains('?') { '&' } else { '?' };
+            out.push_str(val);
+            out.push(sep);
+            out.push_str("token=");
+            out.push_str(tok);
+        } else {
+            out.push_str(val);
+        }
+        out.push('"');
+        rest = &rest[end_q + 1..];
+    }
+    out
+}
+
 async fn serve_streamdeck_plugin_asset_api(
     State(state): State<Arc<ApiState>>,
     AxumPath((plugin_id, rel)): AxumPath<(String, String)>,
@@ -3591,10 +3645,35 @@ async fn serve_streamdeck_plugin_asset_api(
 
     // Inject Elgato's official `connectElgatoStreamDeckSocket(...)` bootstrap into BOTH
     // Property Inspector HTML (`pi_boot=1`) AND HTML-based `.sdPlugin` runtimes (`plugin_boot=1`,
-    // like Task Timer's `index.html`)!
+    // like Task Timer's `index.html`), rewriting relative JS/CSS/fetch URLs with `?token=` so
+    // WKWebView ITP never blocks sub-resources!
     if (lower.ends_with(".html") || lower.ends_with(".htm")) && (q.pi_boot == Some(1) || q.plugin_boot == Some(1)) {
         if let Some(ws_port) = q.ws_port {
             let mut html = String::from_utf8_lossy(&bytes).into_owned();
+            if let Some(tok) = q.token.as_deref().filter(|t| !t.is_empty()) {
+                html = rewrite_sd_html_asset_urls(&html, tok);
+                let fetch_patch = format!(
+                    r#"<script>
+(function(){{
+  var T={tok_js};
+  function addTok(u){{
+    if(typeof u!=='string'||!u||u.indexOf('token=')!==-1||/^(https?:|data:|blob:|ws:)/i.test(u)) return u;
+    return u+(u.indexOf('?')===-1?'?':'&')+'token='+encodeURIComponent(T);
+  }}
+  var origFetch=window.fetch;
+  if(origFetch) window.fetch=function(input,init){{ return origFetch.call(this, typeof input==='string'?addTok(input):input, init); }};
+  var origOpen=XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open=function(m,u){{ var args=Array.prototype.slice.call(arguments); args[1]=addTok(u); return origOpen.apply(this,args); }};
+}})();
+</script>"#,
+                    tok_js = serde_json::to_string(tok).unwrap_or_else(|_| "\"\"".into())
+                );
+                if let Some(hpos) = html.find("<head>") {
+                    html.insert_str(hpos + 6, &fetch_patch);
+                } else {
+                    html.insert_str(0, &fetch_patch);
+                }
+            }
             let info_json = json!({
                 "application": { "language": "en", "platform": "mac", "platformVersion": "14.0", "version": "6.5.0" },
                 "plugin": { "uuid": clean_id, "version": "1.0.0" },
