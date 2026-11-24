@@ -210,7 +210,7 @@ export const DaemonStartup: React.FC<{
         {p.phase === "needsApproval" && (
           <>
             <p>
-              The OpenFlux background service is turned off in System Settings. Turn on Keyglass Studio under General
+              The Keyglass background service is turned off in System Settings. Turn on Keyglass Studio under General
               &gt; Login Items &gt; Allow in the Background. Studio continues as soon as it's allowed.
             </p>
             <div className="btn-group">
@@ -233,7 +233,7 @@ export const DaemonStartup: React.FC<{
             <div className="notice notice-error" role="alert">
               <strong>
                 {p.notRunning
-                  ? "The OpenFlux background service isn't running."
+                  ? "The Keyglass background service isn't running."
                   : "Couldn't connect to the Keyglass background service."}
               </strong>
               <p>{p.reason}</p>

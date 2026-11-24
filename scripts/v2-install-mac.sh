@@ -52,8 +52,10 @@ cat > "$APP_STAGE/Contents/Info.plist" <<'PLIST'
 	<string>org.openflux.studio</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleDisplayName</key>
+	<string>Keyglass Studio</string>
 	<key>CFBundleName</key>
-	<string>OpenFlux Studio</string>
+	<string>Keyglass Studio</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

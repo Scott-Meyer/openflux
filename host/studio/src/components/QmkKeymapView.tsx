@@ -657,7 +657,9 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                 {actionList.map((a) => {
                   const lbl = a.label || a.short_label || a.action_id;
                   const modName =
-                    a.module_id === "streamdeck-bridge"
+                    a.module_id === "openflux"
+                      ? "Built-in"
+                      : a.module_id === "streamdeck-bridge"
                       ? "Stream Deck"
                       : a.module_id === "widget-prusa-connect"
                         ? "Prusa Printer"

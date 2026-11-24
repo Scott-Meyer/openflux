@@ -307,7 +307,7 @@ async fn daemon_req_json_with_timeout(
                 DaemonErr::PreSendConnect(e.to_string())
             } else {
                 DaemonErr::AmbiguousTransport(format!(
-                    "The connection to OpenFlux was lost before it answered {method} {path}. \
+                    "The connection to Keyglass was lost before it answered {method} {path}. \
                      The request may have run, so it was not replayed: {e}"
                 ))
             }
@@ -326,7 +326,7 @@ async fn daemon_req_json_with_timeout(
     }
     res.json().await.map_err(|e| {
         DaemonErr::AmbiguousTransport(format!(
-            "OpenFlux's answer to {method} {path} couldn't be read. \
+            "Keyglass's answer to {method} {path} couldn't be read. \
              The request may have run, so it was not replayed: {e}"
         ))
     })

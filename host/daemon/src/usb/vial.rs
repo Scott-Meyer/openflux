@@ -221,8 +221,8 @@ pub struct ModuleActionsMap {
 const BUILTINS: [(&str, &str, &str, &str); VIAL_BUILTIN_SLOTS] = [
     ("openflux.brightness_up", "Screen\nBri+", "OF_BRI+", "Increase keyboard display brightness"),
     ("openflux.brightness_down", "Screen\nBri-", "OF_BRI-", "Decrease keyboard display brightness"),
-    ("openflux.profile_next", "Profile\nNext", "OF_PRF+", "Switch to next OpenFlux profile"),
-    ("openflux.profile_prev", "Profile\nPrev", "OF_PRF-", "Switch to previous OpenFlux profile"),
+    ("openflux.profile_next", "Profile\nNext", "KG_PRF+", "Switch to next Keyglass profile"),
+    ("openflux.profile_prev", "Profile\nPrev", "KG_PRF-", "Switch to previous Keyglass profile"),
     ("openflux.actuation_next", "Act\nNext", "OF_ACT+", "Cycle to next actuation mode"),
     ("openflux.actuation_prev", "Act\nPrev", "OF_ACT-", "Cycle to previous actuation mode"),
     ("openflux.platform_linux", "Linux", "OF_LNX", "Switch platform mode to Linux"),
@@ -558,14 +558,14 @@ impl ModuleActionsMap {
             } else {
                 custom_keycodes.push(json!({
                     "name": format!("Slot\n{slot}"),
-                    "title": format!("Unused OpenFlux action slot {slot}"),
+                    "title": format!("Unused Keyglass action slot {slot}"),
                     "shortName": format!("OF_{slot}"),
                 }));
             }
         }
 
         json!({
-            "name": "OpenFlux Keyboard",
+            "name": "Keyglass Keyboard",
             "vendorId": "0x3761",
             "productId": "0x4015",
             "matrix": { "rows": 6, "cols": 16 },
