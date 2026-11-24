@@ -713,8 +713,23 @@ function on_render(ctx, stage)
         local img_path = rule.image
         if string.sub(img_path, 1, 9) == "module://" then
           local rest = string.sub(img_path, 10)
-          local parent = module.dir():gsub("/[^/]+$", "")
-          img_path = parent .. "/" .. rest
+          local mdir = module.dir()
+          local parent = mdir:gsub("/[^/]+$", "")
+          local cand = parent .. "/" .. rest
+          if string.sub(mdir, 1, 5) ~= "/usr/" and string.sub(mdir, 1, 6) ~= "/home/" then
+            -- On host, optional modules may live in `local/` or `installed/` while `keys-renderer` is `bundled/`.
+            local home = os.getenv("HOME")
+            if home and #home > 0 then
+              local local_p = home .. "/.local/share/openflux/v2/modules/local/" .. rest
+              local inst_p = home .. "/.local/share/openflux/v2/modules/installed/" .. rest
+              if fs.exists(local_p) then
+                cand = local_p
+              elseif fs.exists(inst_p) then
+                cand = inst_p
+              end
+            end
+          end
+          img_path = cand
         elseif string.sub(img_path, 1, 8) == "media://" then
           local fname = string.sub(img_path, 9)
           local mdir = module.dir()

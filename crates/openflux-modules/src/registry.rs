@@ -80,13 +80,21 @@ pub struct CuratedListEntry {
     pub category: ModuleCategory,
     pub description: String,
     pub source: String,
+    #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub runs_host_process: bool,
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CuratedListDocument {
     pub name: String,
     pub description: String,
-    #[serde(default)]
+    #[serde(default, alias = "modules")]
     pub entries: Vec<CuratedListEntry>,
 }
 

@@ -440,7 +440,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
             onClick={() => setView({ kind: "store" })}
           >
             <span className="kg-nav-glyph">+</span>
-            <span className="kg-nav-label">Add Module</span>
+            <span className="kg-nav-label">Manage Modules</span>
           </button>
         </nav>
 

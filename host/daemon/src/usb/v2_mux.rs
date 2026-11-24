@@ -380,6 +380,12 @@ impl V2UsbMux {
                 patterns: vec![
                     "host/#".into(),
                     "modules/#".into(),
+                    "profiles/#".into(),
+                    "system/actions".into(),
+                    "keyboard/attachments".into(),
+                    "layout/#".into(),
+                    "display/parallax".into(),
+                    "display/power".into(),
                     "fx/surface/impulse".into(),
                     "keys/providers/ability-deck".into(),
                     "keys/providers/streamdeck".into(),

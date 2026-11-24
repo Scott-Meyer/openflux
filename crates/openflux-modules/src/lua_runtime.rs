@@ -1021,6 +1021,15 @@ impl LoadedLuaModule {
             })?,
         )?;
         fs_tbl.set(
+            "exists",
+            self.lua.create_function(|_, path: String| {
+                if path.is_empty() || path.contains('\0') || path.contains("..") {
+                    return Ok(false);
+                }
+                Ok(std::path::Path::new(&path).is_file())
+            })?,
+        )?;
+        fs_tbl.set(
             "read_text",
             self.lua.create_function(|_, path: String| {
                 if path.is_empty() || path.contains('\0') {

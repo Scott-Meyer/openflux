@@ -14,8 +14,84 @@ fn repo_bundled_modules() -> PathBuf {
 fn fork_disclosure_diff_secret_stripping_and_pet_to_water_cross_module_composition() {
     let tmp = std::env::temp_dir().join(format!("openflux-mod-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
+    let bundled = tmp.join("bundled");
+    std::fs::create_dir_all(bundled.join("fx-water-fixture")).unwrap();
+    std::fs::create_dir_all(bundled.join("pet-fixture")).unwrap();
+    std::fs::write(
+        bundled.join("fx-water-fixture/module.toml"),
+        r#"
+id = "fx-water-fixture"
+name = "Water Fixture"
+version = "1.0.0"
+author = "KeyGlass"
+category = "effect"
+description = "Test water receiver"
+stages = ["distortion"]
+host_requirement = "none"
+[entrypoints]
+script = "script.lua"
+[channels]
+subscribes = ["fx/surface/impulse"]
+[[settings]]
+key = "api_key"
+label = "API Key"
+kind = "string"
+default = ""
+secret = true
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        bundled.join("fx-water-fixture/script.lua"),
+        r#"
+local pending = {}
+function on_event(topic, payload)
+  if topic == "fx/surface/impulse" and type(payload) == "table" then
+    table.insert(pending, payload)
+  end
+end
+function on_render(ctx, stage)
+  for _, p in ipairs(pending) do
+    ctx:wave_impulse(p.x or 100, p.y or 100, p.radius or 20, p.strength or 1.0)
+  end
+  pending = {}
+end
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        bundled.join("pet-fixture/module.toml"),
+        r#"
+id = "pet-fixture"
+name = "Pet Fixture"
+version = "1.0.0"
+author = "KeyGlass"
+category = "widget"
+description = "Test pet publisher"
+stages = ["world_overlay"]
+host_requirement = "none"
+[entrypoints]
+script = "script.lua"
+[channels]
+subscribes = ["modules/pet-fixture/command"]
+publishes = ["fx/surface/impulse"]
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        bundled.join("pet-fixture/script.lua"),
+        r#"
+function on_event(topic, payload)
+  if topic == "modules/pet-fixture/command" then
+    bus.publish("fx/surface/impulse", { x = 400, y = 500, radius = 24, strength = 0.9 }, false)
+  end
+end
+"#,
+    )
+    .unwrap();
+
     let reg = ModuleRegistry::new(
-        repo_bundled_modules(),
+        bundled,
         tmp.join("installed"),
         tmp.join("local"),
         tmp.join("state.json"),
@@ -23,12 +99,12 @@ fn fork_disclosure_diff_secret_stripping_and_pet_to_water_cross_module_compositi
 
     // 1. Forking a bundled module creates a Local tier override with forked_from metadata.
     let forked = reg
-        .fork_module("fx-water-ripple-3d", "my-water", Some("My Custom Water"))
+        .fork_module("fx-water-fixture", "my-water", Some("My Custom Water"))
         .unwrap();
     assert_eq!(forked.tier, ModuleTier::Local);
     assert_eq!(
         forked.manifest.forked_from.as_deref(),
-        Some("fx-water-ripple-3d")
+        Some("fx-water-fixture")
     );
 
     // 2. Host-service install disclosure flags host execution, and updating the script flags a diff.
@@ -53,14 +129,14 @@ fn fork_disclosure_diff_secret_stripping_and_pet_to_water_cross_module_compositi
         .iter()
         .any(|f| f.rel_path == "host/service.py"));
 
-    // 3. Preset export strips secret fields (`api_key` on widget-weather).
+    // 3. Preset export strips secret fields (`api_key`).
     let mut st = reg.load_state();
     st.modules.insert(
-        "widget-weather".into(),
+        "fx-water-fixture".into(),
         ModuleInstanceState {
             enabled: true,
-            slot: Some(1),
-            slot_pos: Some(1.0),
+            slot: None,
+            slot_pos: None,
             slot_span: None,
             pin_tab: None,
             config: BTreeMap::from([("api_key".into(), json!("secret-xyz"))]),
@@ -69,32 +145,32 @@ fn fork_disclosure_diff_secret_stripping_and_pet_to_water_cross_module_compositi
     reg.save_state(&st).unwrap();
     let preset = reg.export_preset("Test", "");
     assert!(
-        !preset.modules["widget-weather"]
+        !preset.modules["fx-water-fixture"]
             .config
             .contains_key("api_key"),
         "secret field must be stripped from exported preset"
     );
 
-    // 4. Cross-module composition: Idle Pet lands on a key -> publishes `fx/surface/impulse`
-    //    -> 3D Water Ripple receives it and emits a WaveImpulseCmd without knowing about the Pet!
+    // 4. Cross-module composition: Pet publishes `fx/surface/impulse`
+    //    -> Water receives it and emits a WaveImpulseCmd without knowing about the Pet!
     let broker = Broker::new("test");
     let geom = KeyboardGeometry::build(FrameLayout::Ansi);
     let mut rt = ModuleRuntime::new(broker.clone(), geom);
     let discovered = reg.discover();
     let states = BTreeMap::from([
         (
-            "companion-idle-pet".into(),
+            "pet-fixture".into(),
             ModuleInstanceState {
                 enabled: true,
-                slot: Some(3),
-                slot_pos: Some(3.0),
+                slot: None,
+                slot_pos: None,
                 slot_span: None,
                 pin_tab: None,
                 config: BTreeMap::new(),
             },
         ),
         (
-            "fx-water-ripple-3d".into(),
+            "fx-water-fixture".into(),
             ModuleInstanceState {
                 enabled: true,
                 slot: None,
@@ -108,7 +184,7 @@ fn fork_disclosure_diff_secret_stripping_and_pet_to_water_cross_module_compositi
     rt.sync_modules(&discovered, &states);
     broker
         .publish(
-            "modules/companion-idle-pet/command",
+            "modules/pet-fixture/command",
             json!({ "action": "roam", "target_key": 38 }),
             PublishOptions::default(),
         )
@@ -295,8 +371,8 @@ fn all_bundled_modules_pass_sandboxed_runtime_contract_validation() {
     );
     let discovered = reg.discover();
     assert!(
-        discovered.len() >= 20,
-        "expected bundled modules in repo, found {}",
+        discovered.len() >= 10,
+        "expected core bundled modules in repo, found {}",
         discovered.len()
     );
 
