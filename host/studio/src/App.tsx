@@ -450,7 +450,17 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
           </span>
         </button>
 
-        <div className="kg-sidebar-section-label">Modules</div>
+        <div className="kg-sidebar-section-header">
+          <span className="kg-sidebar-section-label">Modules</span>
+          <button
+            type="button"
+            className={`kg-sidebar-manage-btn ${view.kind === "store" ? "is-active" : ""}`}
+            onClick={() => setView({ kind: "store" })}
+            title="Manage, install, update, or remove modules"
+          >
+            + Manage
+          </button>
+        </div>
         <nav className="kg-module-nav">
           {sidebarModules.map((m) => {
             const isSel = view.kind === "module" && view.moduleId === m.id;
@@ -469,18 +479,19 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
               </button>
             );
           })}
-
-          <button
-            type="button"
-            className={`kg-nav-item kg-nav-add ${view.kind === "store" ? "is-active" : ""}`}
-            onClick={() => setView({ kind: "store" })}
-          >
-            <span className="kg-nav-glyph">+</span>
-            <span className="kg-nav-label">Manage Modules</span>
-          </button>
         </nav>
 
         <div className="kg-sidebar-footer">
+          <button
+            type="button"
+            className={`kg-nav-item ${view.kind === "store" ? "is-active" : ""}`}
+            onClick={() => setView({ kind: "store" })}
+          >
+            <span className="kg-nav-glyph" aria-hidden="true">
+              ⊞
+            </span>
+            <span className="kg-nav-label">Manage Modules</span>
+          </button>
           <button
             type="button"
             className="kg-nav-item"

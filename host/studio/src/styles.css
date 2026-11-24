@@ -2514,10 +2514,38 @@ input[type="text"],
   background: rgba(234, 179, 8, 0.09);
   border: 1px solid rgba(250, 204, 21, 0.3);
 }
+.kg-sidebar-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px 6px 6px;
+}
+.kg-sidebar-section-header .kg-sidebar-section-label {
+  padding: 0;
+  margin: 0;
+}
+.kg-sidebar-manage-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.kg-sidebar-manage-btn:hover,
+.kg-sidebar-manage-btn.is-active {
+  background: rgba(92, 225, 255, 0.14);
+  border-color: rgba(92, 225, 255, 0.45);
+  color: #e0f7ff;
+}
 .kg-store-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .kg-about-disclaimer {
   padding: 12px 14px;
