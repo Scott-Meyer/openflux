@@ -454,6 +454,7 @@ impl KeyboardV2Display {
             "layout/#".to_string(),
             "display/parallax".to_string(),
             "display/power".to_string(),
+            "ui/#".to_string(),
             "fx/surface/impulse".to_string(),
             "keys/providers/ability-deck".to_string(),
             "keys/providers/streamdeck".to_string(),
@@ -1141,8 +1142,24 @@ impl KeyboardV2Display {
             k.parallax_dy = dy as f32;
             k.visual_x = k.center_x + dx as f32;
             k.visual_y = k.center_y + dy as f32;
+            k.visual_rect = Some(openflux_bus::RectPx {
+                x: k.rect.x + dx as f32,
+                y: k.rect.y + dy as f32,
+                w: k.rect.w,
+                h: k.rect.h,
+            });
         }
+        // Rebuild the shared Key-SDF grid so physics/particles/effects collide against the
+        // true parallax-shifted optical keycap borders automatically!
+        self.sdf_grid = KeySdfGrid::build(&self.geometry);
         self.runtime.update_geometry(self.geometry.clone());
+        // Publish updated geometry on retained `keyboard/geometry` so every module subscribed to
+        // generally available key positioning gets live parallax coordinates & `visual_rect`s.
+        let _ = self.broker.publish_typed(
+            topics::KEYBOARD_GEOMETRY,
+            &self.geometry,
+            PublishOptions::retained().with_origin("keyboard"),
+        );
     }
 
     pub fn is_display_asleep(&self, now_ms: u64) -> bool {

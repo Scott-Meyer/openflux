@@ -16,6 +16,7 @@ local active_profile = { index = 0, id = "", name = "" }
 local anim_t = 0.0
 local needs_redraw = true
 local has_animated_rule = false
+local parallax_refresh_frames = 0
 
 -- Logical keyCode -> ANSI physical key_index lookup (declared BEFORE apply_hardware_keymap!)
 local KEYCODE_TO_INDEX = {
@@ -261,6 +262,13 @@ function on_event(topic, payload)
   elseif topic == "keyboard/geometry" and type(payload) == "table" then
     geom = payload
     publish_layout_regions()
+    needs_redraw = true
+  elseif topic == "display/parallax" then
+    -- Refresh live optical parallax from shared `keyboard.layout()` immediately and over the
+    -- next few frames (in case `apply_parallax_settings` runs right after event dispatch).
+    geom = keyboard.layout()
+    publish_layout_regions()
+    parallax_refresh_frames = 4
     needs_redraw = true
   elseif topic == "keyboard/keymap" and type(payload) == "table" then
     apply_hardware_keymap(payload)
@@ -596,6 +604,11 @@ end
 
 function on_render(ctx, stage)
   if stage ~= "under_key" or not geom or not geom.keys then return end
+  if parallax_refresh_frames > 0 then
+    geom = keyboard.layout()
+    parallax_refresh_frames = parallax_refresh_frames - 1
+    needs_redraw = true
+  end
   -- Zero-allocation fast path: when no modifiers, providers, app, or animated cooldowns changed,
   -- tell the compositor to keep the cached keycap overlay as-is (saves ~273 FFI text draws/frame!).
   if not needs_redraw and not has_animated_rule then
@@ -652,12 +665,13 @@ function on_render(ctx, stage)
   for _, key in ipairs(geom.keys) do
     local ki = key.key_index
     local w = winners[ki]
-    local r = key.rect
+    local r = key.visual_rect or key.rect
     local dx = key.parallax_dx or 0
     local dy = key.parallax_dy or 0
     local vx = (key.visual_x and key.visual_x > 0) and key.visual_x or (key.center_x + dx)
     local vy = (key.visual_y and key.visual_y > 0) and key.visual_y or (key.center_y + dy)
-    local rx, ry = r.x + dx, r.y + dy
+    local rx = key.visual_rect and r.x or (r.x + dx)
+    local ry = key.visual_rect and r.y or (r.y + dy)
 
     if w and w.mode ~= "hide" then
       local rule = w.rule

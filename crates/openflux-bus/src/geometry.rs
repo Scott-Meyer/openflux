@@ -74,6 +74,10 @@ pub struct KeyGeometry {
     pub visual_x: f32,
     #[serde(default)]
     pub visual_y: f32,
+    /// Parallax-shifted apparent keycap rectangle in display pixels so any module or physics
+    /// system (legends, key-bouncing particles, effects, companions) hits true optical borders.
+    #[serde(default)]
+    pub visual_rect: Option<RectPx>,
     #[serde(default)]
     pub parallax_dx: f32,
     #[serde(default)]
@@ -154,6 +158,7 @@ fn push_row_mm(
                 center_y: cy,
                 visual_x: cx,
                 visual_y: cy,
+                visual_rect: Some(rect),
                 parallax_dx: 0.0,
                 parallax_dy: 0.0,
                 center_mm_x: cx / PX_PER_MM,
@@ -331,11 +336,23 @@ impl KeyboardGeometry {
                 k.parallax_dy = dy_px;
                 k.visual_x = k.center_x + dx_px;
                 k.visual_y = k.center_y + dy_px;
+                k.visual_rect = Some(RectPx {
+                    x: k.rect.x + dx_px,
+                    y: k.rect.y + dy_px,
+                    w: k.rect.w,
+                    h: k.rect.h,
+                });
             } else {
                 k.parallax_dx = global_dx_px;
                 k.parallax_dy = global_dy_px;
                 k.visual_x = k.center_x + global_dx_px;
                 k.visual_y = k.center_y + global_dy_px;
+                k.visual_rect = Some(RectPx {
+                    x: k.rect.x + global_dx_px,
+                    y: k.rect.y + global_dy_px,
+                    w: k.rect.w,
+                    h: k.rect.h,
+                });
             }
         }
     }
@@ -354,7 +371,7 @@ impl KeyboardGeometry {
         let mut best_dist = f32::INFINITY;
         let mut best_key = 0u16;
         for k in &self.keys {
-            let d = k.rect.signed_distance_rounded(px, py, k.corner_radius_px);
+            let d = k.effective_visual_rect().signed_distance_rounded(px, py, k.corner_radius_px);
             if d < best_dist {
                 best_dist = d;
                 best_key = k.key_index;
@@ -385,11 +402,27 @@ impl KeyboardGeometry {
     fn raw_min_sdf(&self, px: f32, py: f32) -> f32 {
         let mut best = f32::INFINITY;
         for k in &self.keys {
-            let d = k.rect.signed_distance_rounded(px, py, k.corner_radius_px);
+            let d = k.effective_visual_rect().signed_distance_rounded(px, py, k.corner_radius_px);
             if d < best {
                 best = d;
             }
         }
         best
+    }
+}
+
+impl KeyGeometry {
+    /// Returns the parallax-shifted apparent keycap rectangle in display pixels.
+    pub fn effective_visual_rect(&self) -> RectPx {
+        if let Some(vr) = self.visual_rect {
+            vr
+        } else {
+            RectPx {
+                x: self.rect.x + self.parallax_dx,
+                y: self.rect.y + self.parallax_dy,
+                w: self.rect.w,
+                h: self.rect.h,
+            }
+        }
     }
 }

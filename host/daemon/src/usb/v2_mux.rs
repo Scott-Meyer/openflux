@@ -386,6 +386,7 @@ impl V2UsbMux {
                     "layout/#".into(),
                     "display/parallax".into(),
                     "display/power".into(),
+                    "ui/#".into(),
                     "fx/surface/impulse".into(),
                     "keys/providers/ability-deck".into(),
                     "keys/providers/streamdeck".into(),

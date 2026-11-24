@@ -15,7 +15,7 @@ stackable = true
 script = "script.lua"
 
 [channels]
-subscribes = ["keys/providers/#", "input/keys/event", "keyboard/state", "keyboard/geometry", "keyboard/keymap", "host/app/active", "host/profile/active"]
+subscribes = ["keys/providers/#", "input/keys/event", "keyboard/state", "keyboard/geometry", "display/parallax", "keyboard/keymap", "host/app/active", "host/profile/active"]
 publishes = ["layout/regions/keys", "layout/regions/slots"]
 
 [[settings]]
