@@ -61,7 +61,20 @@ static const uint8_t desc_hid_kbd_report[] = {
         HID_REPORT_SIZE  ( 3                                    ),
         HID_OUTPUT       ( HID_CONSTANT                         ),
     HID_COLLECTION_END,
-    TUD_HID_REPORT_DESC_CONSUMER(HID_REPORT_ID(REPORT_ID_CONSUMER)),
+    /* Report ID 2: Consumer Control (QMK Windows-11-tested 0x01..0x02A0 array so 0x0000 is
+     * strictly an out-of-range release/null sentinel for Windows hidparse.sys / hidserv). */
+    HID_USAGE_PAGE     ( HID_USAGE_PAGE_CONSUMER                ),
+    HID_USAGE          ( HID_USAGE_CONSUMER_CONTROL             ),
+    HID_COLLECTION     ( HID_COLLECTION_APPLICATION             ),
+        HID_REPORT_ID    ( REPORT_ID_CONSUMER                   )
+        HID_USAGE_MIN    ( 0x01                                 ),
+        HID_USAGE_MAX_N  ( 0x02A0, 2                            ),
+        HID_LOGICAL_MIN  ( 0x01                                 ),
+        HID_LOGICAL_MAX_N( 0x02A0, 2                            ),
+        HID_REPORT_COUNT ( 1                                    ),
+        HID_REPORT_SIZE  ( 16                                   ),
+        HID_INPUT        ( HID_DATA | HID_ARRAY | HID_ABSOLUTE  ),
+    HID_COLLECTION_END,
 };
 
 /* Dedicated vendor HID interface (ITF_NUM_HID_VENDOR) so host software can open it without triggering
@@ -186,7 +199,7 @@ static tusb_desc_device_t desc_device = {
     .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
     .idVendor = FW_USB_VID,
     .idProduct = FW_USB_PID,
-    .bcdDevice = 0x0102,
+    .bcdDevice = 0x0104,
     .iManufacturer = 0x01,
     .iProduct = 0x02,
     .iSerialNumber = 0x03,
@@ -194,8 +207,8 @@ static tusb_desc_device_t desc_device = {
 };
 
 const uint8_t *tud_descriptor_device_cb(void) {
-    /* Distinct bcdDevice when Classic HID Gamepad is enumerated so OSes cleanly refresh drivers. */
-    desc_device.bcdDevice = fw_usb_gamepad_enabled() ? 0x0103U : 0x0102U;
+    /* Distinct bcdDevice per USB descriptor revision & gamepad mode so Windows refreshes cached HID descriptors. */
+    desc_device.bcdDevice = fw_usb_gamepad_enabled() ? 0x0105U : 0x0104U;
     return (const uint8_t *)&desc_device;
 }
 
@@ -266,7 +279,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
 // clang-format off
 static const uint8_t desc_configuration_base[] = {
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL_BASE, 0, CONFIG_TOTAL_LEN_BASE, 0xA0, 100),
-    TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_KEYBOARD, sizeof(desc_hid_kbd_report), EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 1),
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_kbd_report), EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 1),
     TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, 0, EPNUM_VENDOR_OUT, EPNUM_VENDOR_IN, FW_USB_PACKET_SIZE),
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
     TUD_HID_DESCRIPTOR(ITF_NUM_HID_VENDOR, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_of_report), EPNUM_HID_VENDOR, 16, 1),
@@ -275,7 +288,7 @@ static const uint8_t desc_configuration_base[] = {
 
 static const uint8_t desc_configuration_gp[] = {
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL_GP, 0, CONFIG_TOTAL_LEN_GP, 0xA0, 100),
-    TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_KEYBOARD, sizeof(desc_hid_kbd_report), EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 1),
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_kbd_report), EPNUM_HID, CFG_TUD_HID_EP_BUFSIZE, 1),
     TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, 0, EPNUM_VENDOR_OUT, EPNUM_VENDOR_IN, FW_USB_PACKET_SIZE),
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
     TUD_HID_DESCRIPTOR(ITF_NUM_HID_VENDOR, 0, HID_ITF_PROTOCOL_NONE, sizeof(desc_hid_of_report), EPNUM_HID_VENDOR, 16, 1),

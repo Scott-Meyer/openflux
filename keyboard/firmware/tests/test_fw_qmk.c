@@ -386,6 +386,23 @@ static void test_per_layout_littlefs_persistence_and_uart_state(test_qmk_ctx_t *
         assert(hid.consumer_usage == 0U);
     }
 
+    /* Verify Fn (MO(1) at ANSI (5,6) = linear 80) + F12 (KC_VOLU=0xA9 at linear 12) emits
+     * Consumer Usage 0x00E9 on press and 0x0000 on release! */
+    {
+        uint8_t pressed[96] = {0};
+        fw_hid_report_t hid;
+        fw_qmk_clear_hid_queue();
+        pressed[80] = 1U; /* MO(1) */
+        fw_qmk_process_scan(pressed, 85U, 3028U, &hid);
+        pressed[12] = 1U; /* F12 -> KC_VOLU (0x00A9) on Layer 1 */
+        fw_qmk_process_scan(pressed, 85U, 3032U, &hid);
+        assert(hid.consumer_usage == 0x00E9U);
+        pressed[12] = 0U;
+        pressed[80] = 0U;
+        fw_qmk_process_scan(pressed, 85U, 3036U, &hid);
+        assert(hid.consumer_usage == 0U);
+    }
+
     /* Verify MSG_UPDATE QMK state header & FW_UART_MSG_RESOLVED_KEYS */
     fw_runtime_t rt;
     fw_runtime_init(&rt);

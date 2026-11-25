@@ -340,6 +340,13 @@ uint16_t fw_on_hid_get_report(uint8_t instance, uint8_t report_id, uint8_t *buff
         memcpy(buffer + 1, g_last_hid.nkro_bitmap, 32U);
         return 33U;
     }
+    if (report_id == 2U) {
+        if (reqlen < 2U)
+            return 0;
+        buffer[0] = (uint8_t)(g_last_hid.consumer_usage & 0xFFU);
+        buffer[1] = (uint8_t)(g_last_hid.consumer_usage >> 8);
+        return 2U;
+    }
     return 0;
 }
 
