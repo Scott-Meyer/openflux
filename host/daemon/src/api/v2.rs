@@ -313,31 +313,25 @@ fn resolve_bundled_asset_path(rel_or_abs: &str) -> Option<PathBuf> {
 }
 
 fn load_font_bytes() -> Option<Vec<u8>> {
-    let mut candidates = vec![
-        PathBuf::from("assets/bundled_fonts/Montserrat-Medium.ttf"),
-        PathBuf::from("assets/bundled_fonts/Montserrat-VariableFont_wght.ttf"),
-        PathBuf::from("dist/assets/fonts/Montserrat-Medium.ttf"),
-        PathBuf::from("dist/assets/fonts/Montserrat-VariableFont_wght.ttf"),
-    ];
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(pp) = exe.parent().and_then(|p| p.parent()) {
-            candidates.push(pp.join("Resources/assets/bundled_fonts/Montserrat-Medium.ttf"));
-            candidates.push(pp.join("Resources/assets/bundled_fonts/Montserrat-VariableFont_wght.ttf"));
+    for rel in [
+        "assets/bundled_fonts/Montserrat-Medium.ttf",
+        "assets/bundled_fonts/Montserrat-VariableFont_wght.ttf",
+        "dist/assets/fonts/Montserrat-Medium.ttf",
+        "dist/assets/fonts/Montserrat-VariableFont_wght.ttf",
+    ] {
+        if let Some(p) = resolve_bundled_asset_path(rel) {
+            if let Ok(b) = std::fs::read(&p) {
+                return Some(b);
+            }
         }
     }
-    if let Ok(home) = std::env::var("HOME") {
-        candidates.push(
-            PathBuf::from(&home)
-                .join("Applications/OpenFlux Studio.app/Contents/Resources/assets/bundled_fonts/Montserrat-Medium.ttf"),
-        );
-        candidates.push(
-            PathBuf::from(&home)
-                .join("Applications/OpenFlux Studio.app/Contents/Resources/assets/bundled_fonts/Montserrat-VariableFont_wght.ttf"),
-        );
-    }
-    candidates.push(PathBuf::from("/System/Library/Fonts/Helvetica.ttc"));
-    candidates.push(PathBuf::from("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"));
-    for p in candidates {
+    let fallbacks = [
+        PathBuf::from("/System/Library/Fonts/Helvetica.ttc"),
+        PathBuf::from("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        PathBuf::from(r"C:\Windows\Fonts\segoeui.ttf"),
+        PathBuf::from(r"C:\Windows\Fonts\arial.ttf"),
+    ];
+    for p in fallbacks {
         if let Ok(b) = std::fs::read(&p) {
             return Some(b);
         }

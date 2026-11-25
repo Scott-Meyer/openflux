@@ -2834,7 +2834,7 @@ fn format_perf_report(val: &Value) -> String {
     let host = &val["host"];
     let kb = &val["keyboard_perf"];
     out.push_str(&format!(
-        "KeyGlass Live Performance Profiler (usb={} · enabled={} · bus_seq={})\n",
+        "Keyglass Live Performance Profiler (usb={} · enabled={} · bus_seq={})\n",
         host["usb_protocol"].as_str().unwrap_or("offline"),
         host["enabled_modules"].as_u64().unwrap_or(0),
         host["bus_latest_seq"].as_u64().unwrap_or(0),

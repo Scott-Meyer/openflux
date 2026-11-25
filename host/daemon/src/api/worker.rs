@@ -373,8 +373,56 @@ fn spawn_macos_focus_watcher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
 /// Completely decoupled from USB — simply broadcasts `host/system/metrics`, `host/media/now_playing`,
 /// and `host/weather/current` onto the broker every ~1.5s regardless of USB state, so a USB
 /// reconnect/handshake can NEVER block computer stats or weather!
+#[cfg(not(target_os = "macos"))]
+fn spawn_platform_focus_watcher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
+    let _ = thread::Builder::new()
+        .name("openflux-focus-watch".into())
+        .spawn(move || {
+            let mut bridge = crate::bridges::create_platform_bridge();
+            let mut last_key = String::new();
+            while running.load(Ordering::Relaxed) {
+                if let Some(win) = bridge.active_window() {
+                    let key = format!("{}|{}|{}", win.app_id, win.process_name, win.window_title);
+                    if key != last_key && (!win.app_id.is_empty() || !win.process_name.is_empty()) {
+                        last_key = key;
+                        let (profile_index, profile_id, profile_name) = {
+                            let g = state.inner.lock().unwrap();
+                            let idx = g.desired_profile_index;
+                            let pid = g
+                                .profiles
+                                .get(idx)
+                                .map(|p| p.id.clone())
+                                .unwrap_or_else(|| "default".into());
+                            let pname = g
+                                .profiles
+                                .get(idx)
+                                .map(|p| p.name.clone())
+                                .unwrap_or_else(|| "Default".into());
+                            (idx, pid, pname)
+                        };
+                        let payload = serde_json::json!({
+                            "app_id": win.app_id,
+                            "process_name": win.process_name,
+                            "window_title": win.window_title,
+                            "profile_index": profile_index,
+                            "profile_id": profile_id,
+                            "profile_name": profile_name,
+                        });
+                        let _ = state.v2.broker.publish(
+                            openflux_bus::topics::HOST_APP_ACTIVE,
+                            payload,
+                            openflux_bus::PublishOptions::retained().with_origin("focus-watch"),
+                        );
+                        state.v2.evaluate_profiles();
+                    }
+                }
+                thread::sleep(Duration::from_millis(250));
+            }
+        });
+}
+
 #[cfg(target_os = "macos")]
-fn is_host_display_asleep() -> bool {
+fn is_host_display_asleep(_bridge: &mut dyn crate::bridges::OsSensorBridge) -> bool {
     #[link(name = "CoreGraphics", kind = "framework")]
     extern "C" {
         fn CGMainDisplayID() -> u32;
@@ -384,11 +432,13 @@ fn is_host_display_asleep() -> bool {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn is_host_display_asleep() -> bool {
-    false
+fn is_host_display_asleep(bridge: &mut dyn crate::bridges::OsSensorBridge) -> bool {
+    bridge.display_asleep()
 }
 
 fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
+    #[cfg(not(target_os = "macos"))]
+    spawn_platform_focus_watcher(state.clone(), running.clone());
     let _ = thread::Builder::new()
         .name("openflux-host-telemetry".into())
         .spawn(move || {
@@ -396,7 +446,7 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
             let mut last_time_pub: Option<Instant> = None;
             let mut last_display_asleep: Option<bool> = None;
             while running.load(Ordering::Relaxed) {
-                let display_asleep = is_host_display_asleep();
+                let display_asleep = is_host_display_asleep(bridge.as_mut());
                 if last_display_asleep != Some(display_asleep) {
                     last_display_asleep = Some(display_asleep);
                     let _ = state.v2.broker.publish(

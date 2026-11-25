@@ -564,7 +564,7 @@ impl UpdateService {
             ViewMode::NeedsConversion => {
                 return Err(WriteRefusal {
                     code: "conversionRequired",
-                    message: "The keyboard isn't fully running OpenFlux; convert it to OpenFlux before changing it".into(),
+                    message: "The keyboard isn't fully running Keyglass; convert it to Keyglass before changing it".into(),
                 })
             }
             ViewMode::Disconnected if !view.connected() => return Ok(()),
@@ -816,7 +816,7 @@ impl UpdateService {
             ViewMode::NeedsConversion => {
                 return Err(Refused::conflict(
                     "conversionRequired",
-                    "The keyboard isn't fully running OpenFlux; convert it instead",
+                    "The keyboard isn't fully running Keyglass; convert it instead",
                 ))
             }
             ViewMode::OpenFlux => {}

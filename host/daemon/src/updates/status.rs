@@ -324,7 +324,7 @@ fn state_reason(c: Component, s: &ComponentState) -> Option<String> {
                 .join("; "),
         )),
         ComponentState::ConversionRequired { .. } => {
-            Some("The keyboard isn't fully running OpenFlux; convert it to OpenFlux".into())
+            Some("The keyboard isn't fully running Keyglass; convert it to Keyglass".into())
         }
     }
 }
