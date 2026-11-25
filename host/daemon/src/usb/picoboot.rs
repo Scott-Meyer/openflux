@@ -432,45 +432,58 @@ pub fn flash_uf2_live(
         std::thread::sleep(std::time::Duration::from_millis(120));
     }
 
-    let mut pb = PicobootSession::open_at_path(&ctx, fw_bus, &fw_ports)?;
     let write_addr = RP2040_FLASH_BASE + plan.flash_offset;
-    let res = (|| -> Result<String, String> {
-        let _ = pb.cmd(PC_EXCLUSIVE_ACCESS, &[2], &[], 0)?;
-        let _ = pb.cmd(PC_EXIT_XIP, &[], &[], 0)?;
-        let lfs_before = format!(
-            "{:x}",
-            Sha256::digest(pb.read_flash(RP2040_LFS_START, RP2040_LFS_SIZE)?)
-        );
-        pb.flash_erase(write_addr, plan.image.len() as u32)?;
-        pb.write_flash(write_addr, &plan.image)?;
-        let verify_sha = format!(
-            "{:x}",
-            Sha256::digest(pb.read_flash(write_addr, plan.image.len() as u32)?)
-        );
-        if verify_sha != expected_sha {
-            return Err("PICOBOOT read-back after the write doesn't match the image".into());
+    let lfs_sha = match PicobootSession::open_at_path(&ctx, fw_bus, &fw_ports) {
+        Ok(mut pb) => {
+            let res = (|| -> Result<String, String> {
+                let _ = pb.cmd(PC_EXCLUSIVE_ACCESS, &[2], &[], 0)?;
+                let _ = pb.cmd(PC_EXIT_XIP, &[], &[], 0)?;
+                let lfs_before = format!(
+                    "{:x}",
+                    Sha256::digest(pb.read_flash(RP2040_LFS_START, RP2040_LFS_SIZE)?)
+                );
+                pb.flash_erase(write_addr, plan.image.len() as u32)?;
+                pb.write_flash(write_addr, &plan.image)?;
+                let verify_sha = format!(
+                    "{:x}",
+                    Sha256::digest(pb.read_flash(write_addr, plan.image.len() as u32)?)
+                );
+                if verify_sha != expected_sha {
+                    return Err("PICOBOOT read-back after the write doesn't match the image".into());
+                }
+                let lfs_after = format!(
+                    "{:x}",
+                    Sha256::digest(pb.read_flash(RP2040_LFS_START, RP2040_LFS_SIZE)?)
+                );
+                if lfs_after != lfs_before {
+                    return Err(CALIBRATION_CHANGED.into());
+                }
+                let mut rb_args = [0u8; 12];
+                rb_args[8..12].copy_from_slice(&100u32.to_le_bytes());
+                let _ = pb.cmd(PC_REBOOT, &rb_args, &[], 0);
+                Ok(lfs_after)
+            })();
+            let sha = match res {
+                Ok(s) => s,
+                Err(e) => {
+                    pb.reset_endpoints();
+                    return Err(e);
+                }
+            };
+            drop(pb);
+            sha
         }
-        let lfs_after = format!(
-            "{:x}",
-            Sha256::digest(pb.read_flash(RP2040_LFS_START, RP2040_LFS_SIZE)?)
-        );
-        if lfs_after != lfs_before {
-            return Err(CALIBRATION_CHANGED.into());
-        }
-        let mut rb_args = [0u8; 12];
-        rb_args[8..12].copy_from_slice(&100u32.to_le_bytes());
-        let _ = pb.cmd(PC_REBOOT, &rb_args, &[], 0);
-        Ok(lfs_after)
-    })();
-
-    let lfs_sha = match res {
-        Ok(s) => s,
-        Err(e) => {
-            pb.reset_endpoints();
-            return Err(e);
+        Err(picoboot_err) => {
+            #[cfg(target_os = "windows")]
+            {
+                flash_uf2_via_windows_rp2_volume(uf2_bytes, &picoboot_err)?
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                return Err(picoboot_err);
+            }
         }
     };
-    drop(pb);
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
     while std::time::Instant::now() < deadline {
@@ -495,6 +508,36 @@ pub fn flash_uf2_live(
     }
     Err(format!(
         "The keyboard firmware did not come back on bus {fw_bus} ports {fw_ports:?} after flashing"
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn flash_uf2_via_windows_rp2_volume(
+    uf2_bytes: &[u8],
+    picoboot_err: &str,
+) -> Result<String, String> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::time::Instant::now() < deadline {
+        for letter in b'D'..=b'Z' {
+            let root = format!("{}:\\", letter as char);
+            let info_path = std::path::Path::new(&root).join("INFO_UF2.TXT");
+            if let Ok(txt) = std::fs::read_to_string(&info_path) {
+                if txt.contains("RP2040") || txt.contains("RPI-RP2") {
+                    let dst = std::path::Path::new(&root).join("openflux-firmware.uf2");
+                    std::fs::write(&dst, uf2_bytes).map_err(|e| {
+                        format!(
+                            "PICOBOOT unavailable ({picoboot_err}); failed writing UF2 to {}: {e}",
+                            dst.display()
+                        )
+                    })?;
+                    return Ok("uf2-mass-storage".to_string());
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    Err(format!(
+        "PICOBOOT unavailable ({picoboot_err}) and no RPI-RP2 drive mounted on Windows"
     ))
 }
 
