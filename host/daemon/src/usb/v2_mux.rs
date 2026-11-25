@@ -320,6 +320,14 @@ impl V2UsbMux {
                 continue;
             };
             eprintln!("[openflux-v2-usb] Connected in pure full-duplex OFV2 multiplexed stream mode!");
+            // Disarm any pending bridge upgrade rollback watchdog once OFV2 is proven alive!
+            let disarm_ref = self.clone();
+            let _ = thread::Builder::new()
+                .name("openflux-v2-confirm-bridge".into())
+                .spawn(move || {
+                    thread::sleep(Duration::from_millis(600));
+                    let _ = disarm_ref.delete_file("/home/root/.openflux/rollback/bridge/armed");
+                });
             self.run_session(Arc::new(handle));
             drop(_usb_lock);
             self.connected.store(false, Ordering::Release);

@@ -75,6 +75,12 @@ fn validate_bridge_path(raw: &str, allow_ipk_root: bool) -> Result<PathBuf, Stri
     if raw == "/home/root/openflux" || raw.starts_with("/home/root/openflux/") {
         return Ok(p.to_path_buf());
     }
+    // Allow host USB install-confirmation to inspect/disarm the bridge rollback sentinel.
+    if raw == "/home/root/.openflux/rollback/bridge"
+        || raw == "/home/root/.openflux/rollback/bridge/armed"
+    {
+        return Ok(p.to_path_buf());
+    }
     if allow_ipk_root {
         if let Some(rest) = raw.strip_prefix("/home/root/") {
             if !rest.contains('/')
@@ -287,7 +293,8 @@ impl V2BridgeMux {
         };
         match req {
             BulkRpcRequest::GetVersions => {
-                let display_ver = std::fs::read_to_string("/usr/lib/openflux/display/version.txt")
+                let display_ver = std::fs::read_to_string("/home/root/.openflux/versions/display")
+                    .or_else(|_| std::fs::read_to_string("/usr/lib/openflux/display/version.txt"))
                     .or_else(|_| std::fs::read_to_string("/tmp/openflux_display_version.txt"))
                     .unwrap_or_else(|_| "2.0.0".into());
                 let os_ver = std::fs::read_to_string("/etc/openflux-os-version")
