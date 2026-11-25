@@ -5,7 +5,50 @@
 local last_caps = false
 local hw_keymap = nil
 local resolved_keys = nil
+local host_platform = "macos"
+local active_profile = nil
 local action_slots = {} -- numeric slot (0..95) -> system/actions entry
+
+local function normalize_os(val)
+  if type(val) ~= "string" then return nil end
+  local s = string.lower(val)
+  if s == "macos" or s == "darwin" or s == "osx" then return "macos" end
+  if s == "windows" or s == "win" or s == "win32" then return "windows" end
+  if s == "linux" then return "linux" end
+  return nil
+end
+
+local function effective_os()
+  local cfg = module.config()
+  local explicit = normalize_os(cfg.os_layout)
+  if explicit then return explicit end
+  if type(active_profile) == "table" then
+    local ov = active_profile.module_overrides
+    if type(ov) == "table" and type(ov["keys-keymap"]) == "table" then
+      local pov = normalize_os(ov["keys-keymap"].os_layout)
+      if pov then return pov end
+    end
+    if type(active_profile.tags) == "table" then
+      for _, t in ipairs(active_profile.tags) do
+        local tos = normalize_os(t)
+        if tos then return tos end
+      end
+    end
+  end
+  return normalize_os(host_platform) or "macos"
+end
+
+local function os_mod_entry(kind, os_name)
+  if kind == "gui" then
+    if os_name == "windows" then return { "Win", nil, "kbd_win" } end
+    if os_name == "linux" then return { "Super", nil, "kbd_win" } end
+    return { "Cmd", nil, "kbd_cmd" }
+  elseif kind == "alt" then
+    if os_name == "windows" or os_name == "linux" then return { "Alt", nil, nil } end
+    return { "Opt", nil, "kbd_opt" }
+  end
+  return nil
+end
 
 local function index_system_actions(payload)
   action_slots = {}
@@ -96,10 +139,17 @@ local QK_KB_LABELS = {
   [13] = { "Theme-", nil, "star" },
 }
 
-local function mod_short(m)
+local function mod_short(m, os_name)
   local b = m & 0x0F
   if b == 15 then return "Hyp" end
   if b == 7 then return "Meh" end
+  if os_name == "windows" or os_name == "linux" then
+    if b == 1 then return "Ctrl" end
+    if b == 2 then return "Shift" end
+    if b == 4 then return "Alt" end
+    if b == 8 then return os_name == "linux" and "Sup" or "Win" end
+    return "Mod"
+  end
   if b == 1 then return "⌃" end
   if b == 2 then return "⇧" end
   if b == 4 then return "⌥" end
@@ -107,10 +157,17 @@ local function mod_short(m)
   return "Mod"
 end
 
-local function mod_prefix_str(m)
+local function mod_prefix_str(m, os_name)
   local b = m & 0x0F
   if b == 15 then return "Hyp+" end
   local s = ""
+  if os_name == "windows" or os_name == "linux" then
+    if (b & 1) ~= 0 then s = s .. "C+" end
+    if (b & 4) ~= 0 then s = s .. "A+" end
+    if (b & 8) ~= 0 then s = s .. (os_name == "linux" and "S+" or "W+") end
+    if (b & 2) ~= 0 then s = s .. "Sh+" end
+    return s
+  end
   if (b & 1) ~= 0 then s = s .. "⌃" end
   if (b & 4) ~= 0 then s = s .. "⌥" end
   if (b & 8) ~= 0 then s = s .. "⌘" end
@@ -118,7 +175,7 @@ local function mod_prefix_str(m)
   return s
 end
 
-local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default)
+local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default, os_name)
   if not kc or kc == 0 or kc == 1 then return nil end
 
   -- Standard letter A..Z (0x04..0x1D)
@@ -134,7 +191,14 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default)
 
   -- Standard HID / Consumer / Modifier keys
   if kc <= 0xFF then
-    local m = HID_MAP[kc]
+    local m = nil
+    if kc == 0xE2 or kc == 0xE6 then
+      m = os_mod_entry("alt", os_name)
+    elseif kc == 0xE3 or kc == 0xE7 then
+      m = os_mod_entry("gui", os_name)
+    else
+      m = HID_MAP[kc]
+    end
     if m then
       return {
         key = ki,
@@ -163,11 +227,11 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default)
       end
     end
     -- Special macOS Opt+[ / Opt+] smart quotes
-    if (mods & 0x0F) == 4 and base == 0x2F then return { key = ki, label = "“", color = col } end
-    if (mods & 0x0F) == 4 and base == 0x30 then return { key = ki, label = "‘", color = col } end
+    if os_name == "macos" and (mods & 0x0F) == 4 and base == 0x2F then return { key = ki, label = "“", color = col } end
+    if os_name == "macos" and (mods & 0x0F) == 4 and base == 0x30 then return { key = ki, label = "‘", color = col } end
     -- Special Cmd+Ctrl+Shift+4 screenshot
-    if (mods & 0x0F) == 11 and base == 0x21 then return { key = ki, label = "Shot", icon = "cam", color = col } end
-    local pfx = mod_prefix_str(mods)
+    if os_name == "macos" and (mods & 0x0F) == 11 and base == 0x21 then return { key = ki, label = "Shot", icon = "cam", color = col } end
+    local pfx = mod_prefix_str(mods, os_name)
     if base >= 0x04 and base <= 0x1D then
       return { key = ki, label = pfx .. string.char(65 + (base - 0x04)), color = col }
     end
@@ -179,8 +243,8 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default)
   -- MT(mod, kc): 0x2000..0x3FFF
   if kc >= 0x2000 and kc <= 0x3FFF then
     local tap = kc & 0xFF
-    local r = rule_from_qmk_keycode(ki, tap, src_layer, lower_default) or { key = ki, label = "Tap" }
-    r.sub = mod_short((kc >> 8) & 0x1F)
+    local r = rule_from_qmk_keycode(ki, tap, src_layer, lower_default, os_name) or { key = ki, label = "Tap" }
+    r.sub = mod_short((kc >> 8) & 0x1F, os_name)
     return r
   end
 
@@ -188,7 +252,7 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default)
   if kc >= 0x4000 and kc <= 0x4FFF then
     local tap = kc & 0xFF
     local lyr = (kc >> 8) & 0x0F
-    local r = rule_from_qmk_keycode(ki, tap, src_layer, lower_default) or { key = ki, label = "Fn" }
+    local r = rule_from_qmk_keycode(ki, tap, src_layer, lower_default, os_name) or { key = ki, label = "Fn" }
     r.sub = "L" .. tostring(lyr)
     return r
   end
@@ -206,7 +270,7 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default)
   end
   -- OSM(mod): 0x5500..0x55FF
   if kc >= 0x5500 and kc <= 0x55FF then
-    return { key = ki, label = "OS " .. mod_short(kc & 0x1F) }
+    return { key = ki, label = "OS " .. mod_short(kc & 0x1F, os_name) }
   end
   -- TD(idx): 0x5700..0x57FF (Tap Dance)
   if kc >= 0x5700 and kc <= 0x57FF then
@@ -295,13 +359,21 @@ local KC_LABELS = {
   KC_OF_BRIGHTNESS_DOWN = { "Dim", nil, "brightness" },
 }
 
-local function rule_from_legacy_action(ki, act, lower_default)
+local function rule_from_legacy_action(ki, act, lower_default, os_name)
   if type(act) ~= "table" then return nil end
   if tonumber(act.type) == 2 or act.isMomentary == true or act.layerControlType == "momentaryLayer" then
     return { key = ki, label = "Fn", icon = "kbd_layer" }
   end
   local kc = string.upper(tostring(act.keyCode or ""))
   if kc == "" or kc == "KC_NO" or kc == "KC_TRANSPARENT" then return nil end
+  if kc == "KC_LEFT_ALT" or kc == "KC_RIGHT_ALT" or kc == "KC_LALT" or kc == "KC_RALT" then
+    local m = os_mod_entry("alt", os_name)
+    return { key = ki, label = m[1], shifted = m[2], icon = m[3] }
+  end
+  if kc == "KC_LEFT_GUI" or kc == "KC_RIGHT_GUI" or kc == "KC_LGUI" or kc == "KC_RGUI" then
+    local m = os_mod_entry("gui", os_name)
+    return { key = ki, label = m[1], shifted = m[2], icon = m[3] }
+  end
   local mapped = KC_LABELS[kc]
   if mapped then
     return { key = ki, label = mapped[1], shifted = mapped[2], icon = mapped[3] }
@@ -339,6 +411,7 @@ local function publish_keymap()
   local cfg = module.config()
   local lower_default = cfg.lowercase_default ~= false
   local vis = tostring(cfg.legend_visibility or "all")
+  local os_name = effective_os()
   local rules = {}
 
   if vis == "hidden" then
@@ -357,7 +430,7 @@ local function publish_keymap()
         local kc = tonumber(entry.keycode) or 0
         local sl = tonumber(entry.source_layer) or 0
         if should_show_key(kc, sl, vis) then
-          local r = rule_from_qmk_keycode(idx - 1, kc, sl, lower_default)
+          local r = rule_from_qmk_keycode(idx - 1, kc, sl, lower_default, os_name)
           if r then table.insert(rules, r) end
         end
       end
@@ -367,7 +440,7 @@ local function publish_keymap()
       local l0 = hw_keymap.layers[1]
       if l0 and type(l0.keyActions) == "table" and #l0.keyActions > 0 then
         for idx, act in ipairs(l0.keyActions) do
-          local r = rule_from_legacy_action(idx - 1, act, lower_default)
+          local r = rule_from_legacy_action(idx - 1, act, lower_default, os_name)
           if r then
             local skip = (vis == "hide_letters" and r.shift_case == true)
             if not skip then table.insert(rules, r) end
@@ -378,7 +451,14 @@ local function publish_keymap()
   end
 
   if #rules == 0 and vis == "all" then
-    -- Complete 85-key ANSI QWERTY fallback when keyboard is unplugged so KeyGlass previews
+    local gui_m = os_mod_entry("gui", os_name)
+    local alt_m = os_mod_entry("alt", os_name)
+    local mod_row = (os_name == "windows" or os_name == "linux") and {
+      { 74, "Ctrl", "kbd_ctrl" }, { 75, gui_m[1], gui_m[3] }, { 76, alt_m[1], alt_m[3] }, { 77, alt_m[1], alt_m[3] },
+    } or {
+      { 74, gui_m[1], gui_m[3] }, { 75, alt_m[1], alt_m[3] }, { 76, "Ctrl", "kbd_ctrl" }, { 77, "Ctrl", "kbd_ctrl" },
+    }
+    -- Complete 85-key ANSI QWERTY fallback when keyboard is unplugged so Keyglass previews
     -- always show crisp, realistic keycap legends!
     local fallback = {
       { 0, "Esc" }, { 1, "F1" }, { 2, "F2" }, { 3, "F3" }, { 4, "F4" }, { 5, "F5" }, { 6, "F6" },
@@ -400,7 +480,7 @@ local function publish_keymap()
       { 61, "z" }, { 62, "x" }, { 63, "c" }, { 64, "v" }, { 65, "b" }, { 66, "n" }, { 67, "m" },
       { 68, ",", nil, "<" }, { 69, ".", nil, ">" }, { 70, "/", nil, "?" },
       { 71, "Shift", "kbd_shift" }, { 72, "", "kbd_up" }, { 73, "PgDn", "kbd_pgdn" },
-      { 74, "Cmd", "kbd_cmd" }, { 75, "Opt", "kbd_opt" }, { 76, "Ctrl", "kbd_ctrl" }, { 77, "Ctrl", "kbd_ctrl" },
+      mod_row[1], mod_row[2], mod_row[3], mod_row[4],
       { 78, "", "kbd_space" }, { 79, "Fn", "kbd_layer" },
       { 80, "Reset", "refresh" }, { 81, "Pomo", "play" },
       { 82, "", "kbd_left" }, { 83, "", "kbd_down" }, { 84, "", "kbd_right" },
@@ -420,6 +500,12 @@ local function publish_keymap()
 end
 
 function on_init()
+  local hc = bus.get("host/connection")
+  if type(hc) == "table" and type(hc.host_platform) == "string" and #hc.host_platform > 0 then
+    host_platform = hc.host_platform
+  end
+  local ap = bus.get("profiles/active")
+  if type(ap) == "table" then active_profile = ap end
   local sa = bus.get("system/actions")
   if type(sa) == "table" then index_system_actions(sa) end
   local rk = bus.get("keyboard/resolved_keys")
@@ -430,7 +516,15 @@ function on_init()
 end
 
 function on_event(topic, payload)
-  if topic == "system/actions" and type(payload) == "table" then
+  if topic == "host/connection" and type(payload) == "table" then
+    if type(payload.host_platform) == "string" and #payload.host_platform > 0 and payload.host_platform ~= host_platform then
+      host_platform = payload.host_platform
+      publish_keymap()
+    end
+  elseif topic == "profiles/active" and type(payload) == "table" then
+    active_profile = payload
+    publish_keymap()
+  elseif topic == "system/actions" and type(payload) == "table" then
     index_system_actions(payload)
     publish_keymap()
   elseif topic == "keyboard/resolved_keys" and type(payload) == "table" then

@@ -149,10 +149,30 @@ local function parse_combo(str)
   return nil, 0
 end
 
-local function load_all_packs(accent)
+local function effective_is_macos()
+  local ap = bus.get("profiles/active")
+  if type(ap) == "table" then
+    local ov = ap.module_overrides
+    if type(ov) == "table" and type(ov["keys-keymap"]) == "table" then
+      local v = string.lower(tostring(ov["keys-keymap"].os_layout or ""))
+      if v == "windows" or v == "linux" then return false end
+      if v == "macos" or v == "darwin" then return true end
+    end
+    if type(ap.tags) == "table" then
+      for _, t in ipairs(ap.tags) do
+        local s = string.lower(tostring(t))
+        if s == "windows" or s == "linux" then return false end
+        if s == "macos" or s == "darwin" then return true end
+      end
+    end
+  end
   local hc = bus.get("host/connection")
   local plat = (type(hc) == "table" and type(hc.host_platform) == "string") and string.lower(hc.host_platform) or "macos"
-  local is_macos = (plat == "macos" or plat == "darwin" or plat == "")
+  return (plat == "macos" or plat == "darwin" or plat == "")
+end
+
+local function load_all_packs(accent)
+  local is_macos = effective_is_macos()
   local rules = base_common_rules(accent, is_macos)
   local dir, files = find_shortcuts_dir()
   if not dir then return rules end
@@ -170,8 +190,9 @@ local function load_all_packs(accent)
             local is_os_base = (fname == "macos.json" or fname == "windows.json")
             local app_tokens = {}
             if not is_os_base then
-              if type(doc.apps) == "table" and type(doc.apps.macos) == "table" then
-                for _, a in ipairs(doc.apps.macos) do
+              local app_list = type(doc.apps) == "table" and (is_macos and doc.apps.macos or doc.apps.windows) or nil
+              if type(app_list) == "table" then
+                for _, a in ipairs(app_list) do
                   if type(a) == "string" and #a > 0 then table.insert(app_tokens, a) end
                 end
               end
@@ -184,18 +205,33 @@ local function load_all_packs(accent)
             if not is_os_base and #app_tokens > 0 then
               when_tbl = { app = table.concat(app_tokens, ",") }
               prio = 35
-            elseif fname == "windows.json" then
+            elseif (is_macos and fname == "windows.json") or ((not is_macos) and fname == "macos.json") then
               rows = {}
             end
 
             for _, r in ipairs(rows) do
               if type(r) == "table" then
                 local kc, mods = nil, 0
-                if type(r.macKeyCode) == "string" and tonumber(r.macModifiers) and not r.macHasSecondKey then
-                  kc = r.macKeyCode
-                  mods = tonumber(r.macModifiers)
-                elseif type(r.mac) == "string" then
-                  kc, mods = parse_combo(r.mac)
+                if is_macos then
+                  if type(r.macKeyCode) == "string" and tonumber(r.macModifiers) and not r.macHasSecondKey then
+                    kc = r.macKeyCode
+                    mods = tonumber(r.macModifiers)
+                  elseif type(r.mac) == "string" then
+                    kc, mods = parse_combo(r.mac)
+                  end
+                else
+                  if type(r.winKeyCode) == "string" and tonumber(r.winModifiers) and not r.winHasSecondKey then
+                    kc = r.winKeyCode
+                    mods = tonumber(r.winModifiers)
+                  elseif type(r.win) == "string" then
+                    kc, mods = parse_combo(r.win)
+                  elseif type(r.macKeyCode) == "string" and tonumber(r.macModifiers) and not r.macHasSecondKey then
+                    kc = r.macKeyCode
+                    local m = tonumber(r.macModifiers)
+                    -- Remap Cmd (8) -> Ctrl (1) as graceful Windows fallback when no explicit win binding exists
+                    if (m & 8) ~= 0 then m = (m & ~8) | 1 end
+                    mods = m
+                  end
                 end
                 local lbl = tostring(r.label or r.name or "")
                 if type(kc) == "string" and #kc > 0 and mods > 0 and #lbl > 0 then
@@ -274,13 +310,29 @@ local function load_all_packs(accent)
   return rules
 end
 
-function on_init()
+local last_is_macos = nil
+
+local function publish_shortcuts()
   local accent = tostring(module.config().accent or "#5ce1ff")
+  last_is_macos = effective_is_macos()
   local rules = load_all_packs(accent)
-  module.log("info", "loaded " .. tostring(#rules) .. " declarative shortcut rules across all app packs")
+  module.log("info", "loaded " .. tostring(#rules) .. " declarative shortcut rules (" .. (last_is_macos and "macOS" or "Windows/Linux") .. ")")
   bus.publish("keys/providers/shortcuts", {
     priority = 30,
     mode = "replace",
     rules = rules,
   }, true)
+end
+
+function on_init()
+  publish_shortcuts()
+end
+
+function on_event(topic, _payload)
+  if topic == "host/connection" or topic == "profiles/active" then
+    local now_mac = effective_is_macos()
+    if now_mac ~= last_is_macos then
+      publish_shortcuts()
+    end
+  end
 end

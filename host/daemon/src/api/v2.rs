@@ -720,19 +720,57 @@ impl V2State {
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or_else(|| {
                 let legacy = self.load_context_rules();
-                let mut profiles = vec![ProfileEntry {
-                    id: "default".into(),
-                    name: "Default".into(),
-                    parent: None,
-                    enabled: true,
-                    match_apps: vec![],
-                    match_hosts: vec![],
-                    match_os: vec![],
-                    tags: vec!["base".into()],
-                    qmk_layer: None,
-                    top_bar_slots: None,
-                    module_overrides: BTreeMap::new(),
-                }];
+                let mut mac_overrides: BTreeMap<String, BTreeMap<String, Value>> = BTreeMap::new();
+                mac_overrides.insert(
+                    "keys-keymap".into(),
+                    BTreeMap::from([("os_layout".into(), Value::String("macos".into()))]),
+                );
+                let mut win_overrides: BTreeMap<String, BTreeMap<String, Value>> = BTreeMap::new();
+                win_overrides.insert(
+                    "keys-keymap".into(),
+                    BTreeMap::from([("os_layout".into(), Value::String("windows".into()))]),
+                );
+                let mut profiles = vec![
+                    ProfileEntry {
+                        id: "default".into(),
+                        name: "Default".into(),
+                        parent: None,
+                        enabled: true,
+                        match_apps: vec![],
+                        match_hosts: vec![],
+                        match_os: vec![],
+                        tags: vec!["base".into()],
+                        qmk_layer: None,
+                        top_bar_slots: None,
+                        module_overrides: BTreeMap::new(),
+                    },
+                    ProfileEntry {
+                        id: "macos".into(),
+                        name: "macOS".into(),
+                        parent: Some("default".into()),
+                        enabled: true,
+                        match_apps: vec![],
+                        match_hosts: vec![],
+                        match_os: vec!["macos".into()],
+                        tags: vec!["macos".into()],
+                        qmk_layer: None,
+                        top_bar_slots: None,
+                        module_overrides: mac_overrides,
+                    },
+                    ProfileEntry {
+                        id: "windows".into(),
+                        name: "Windows".into(),
+                        parent: Some("default".into()),
+                        enabled: true,
+                        match_apps: vec![],
+                        match_hosts: vec![],
+                        match_os: vec!["windows".into()],
+                        tags: vec!["windows".into()],
+                        qmk_layer: None,
+                        top_bar_slots: None,
+                        module_overrides: win_overrides,
+                    },
+                ];
                 for r in legacy.rules {
                     profiles.push(ProfileEntry {
                         id: r.id,

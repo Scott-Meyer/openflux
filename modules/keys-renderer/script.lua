@@ -436,6 +436,18 @@ local function draw_icon(ctx, icon, cx, cy, col, sc)
     end
     cmd_pass(1.2, 1.4, sh)
     cmd_pass(0, 0, b)
+  elseif icon == "kbd_win" then
+    local g = 1.6 * s
+    local q = 8.2 * s
+    local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }
+    local function win_pass(ox, oy, c)
+      ctx:round_rect(cx + ox - g - q, cy + oy - g - q, q, q, 1.4 * s, c, 0, { 0, 0, 0, 0 })
+      ctx:round_rect(cx + ox + g,     cy + oy - g - q, q, q, 1.4 * s, c, 0, { 0, 0, 0, 0 })
+      ctx:round_rect(cx + ox - g - q, cy + oy + g,     q, q, 1.4 * s, c, 0, { 0, 0, 0, 0 })
+      ctx:round_rect(cx + ox + g,     cy + oy + g,     q, q, 1.4 * s, c, 0, { 0, 0, 0, 0 })
+    end
+    win_pass(1.2, 1.4, sh)
+    win_pass(0, 0, b)
   elseif icon == "kbd_opt" then
     local w = 2.7 * s
     local sh = { 0, 0, 0, math.min(0.8, col[4] * 0.78) }

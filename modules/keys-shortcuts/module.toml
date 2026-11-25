@@ -30,7 +30,7 @@ builtin_view = "shortcuts"
 script = "script.lua"
 
 [channels]
-subscribes = ["host/app/shortcuts"]
+subscribes = ["host/app/shortcuts", "host/connection", "profiles/active"]
 publishes = ["keys/providers/shortcuts"]
 
 [[settings]]

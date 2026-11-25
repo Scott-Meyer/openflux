@@ -24,8 +24,15 @@ maturity = "stable"
 script = "script.lua"
 
 [channels]
-subscribes = ["keyboard/state", "keyboard/keymap", "keyboard/resolved_keys", "system/actions"]
+subscribes = ["keyboard/state", "keyboard/keymap", "keyboard/resolved_keys", "system/actions", "host/connection", "profiles/active"]
 publishes = ["keys/providers/keymap", "keys/providers/keymap-caps"]
+
+[[settings]]
+key = "os_layout"
+label = "Modifier Key Style"
+kind = "select"
+default = "auto"
+options = ["auto", "macos", "windows", "linux"]
 
 [[settings]]
 key = "lowercase_default"
