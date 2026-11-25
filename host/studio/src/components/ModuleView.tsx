@@ -275,6 +275,28 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
       <div className="kg-page-header">
         <div className="kg-page-title-row">
           <h1>{mod.manifest.name}</h1>
+          {mod.manifest.maturity && mod.manifest.maturity !== "stable" && (
+            <span
+              className="kg-pill-subtle"
+              style={{
+                color:
+                  mod.manifest.maturity === "alpha"
+                    ? "#fbbf24"
+                    : mod.manifest.maturity === "beta"
+                      ? "#a5b4fc"
+                      : "#fca5a5",
+                borderColor:
+                  mod.manifest.maturity === "alpha"
+                    ? "rgba(245,158,11,0.45)"
+                    : mod.manifest.maturity === "beta"
+                      ? "rgba(129,140,248,0.45)"
+                      : "rgba(248,113,113,0.45)",
+                textTransform: "capitalize",
+              }}
+            >
+              {mod.manifest.maturity}
+            </span>
+          )}
           <span className="kg-pill-subtle">
             v{mod.manifest.version} · {mod.tier === "bundled" ? "Core" : mod.tier}
             {mod.manifest.forked_from ? ` (fork of ${mod.manifest.forked_from})` : ""}

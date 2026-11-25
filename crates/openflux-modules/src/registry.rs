@@ -86,6 +86,8 @@ pub struct ModuleUpdateInfo {
     #[serde(default)]
     pub host_changed: bool,
     #[serde(default)]
+    pub maturity: crate::manifest::ModuleMaturity,
+    #[serde(default)]
     pub deprecated: bool,
     #[serde(default)]
     pub deprecation_message: Option<String>,
@@ -138,6 +140,8 @@ pub struct CuratedListEntry {
     pub changelog: Option<String>,
     #[serde(default)]
     pub changelog_url: Option<String>,
+    #[serde(default)]
+    pub maturity: crate::manifest::ModuleMaturity,
     #[serde(default)]
     pub deprecated: bool,
     #[serde(default)]
@@ -587,7 +591,23 @@ impl ModuleRegistry {
                     .as_deref()
                     .is_some_and(|s| !s.is_empty() && s != current_sha);
                 let has_update = version_diff || sha_diff;
-                let deprecated = entry.deprecated || inst_manifest.deprecated;
+                let deprecated = entry.deprecated
+                    || inst_manifest.deprecated
+                    || matches!(
+                        entry.maturity,
+                        crate::manifest::ModuleMaturity::Deprecated
+                            | crate::manifest::ModuleMaturity::Abandoned
+                    )
+                    || matches!(
+                        inst_manifest.maturity,
+                        crate::manifest::ModuleMaturity::Deprecated
+                            | crate::manifest::ModuleMaturity::Abandoned
+                    );
+                let maturity = if entry.maturity != crate::manifest::ModuleMaturity::Stable {
+                    entry.maturity
+                } else {
+                    inst_manifest.maturity
+                };
                 let deprecation_message = entry
                     .deprecation_message
                     .clone()
@@ -611,6 +631,7 @@ impl ModuleRegistry {
                     list_name: Some(list_name.clone()),
                     runs_host_process: entry.runs_host_process,
                     host_changed: entry.runs_host_process != inst_manifest.entrypoints.host.is_some(),
+                    maturity,
                     deprecated,
                     deprecation_message,
                     moved_to,
@@ -630,7 +651,23 @@ impl ModuleRegistry {
                             up_manifest.version != inst_manifest.version || up_sha != current_sha;
                         let host_changed =
                             up_manifest.entrypoints.host.is_some() != inst_manifest.entrypoints.host.is_some();
-                        let deprecated = up_manifest.deprecated || inst_manifest.deprecated;
+                        let deprecated = up_manifest.deprecated
+                            || inst_manifest.deprecated
+                            || matches!(
+                                up_manifest.maturity,
+                                crate::manifest::ModuleMaturity::Deprecated
+                                    | crate::manifest::ModuleMaturity::Abandoned
+                            )
+                            || matches!(
+                                inst_manifest.maturity,
+                                crate::manifest::ModuleMaturity::Deprecated
+                                    | crate::manifest::ModuleMaturity::Abandoned
+                            );
+                        let maturity = if up_manifest.maturity != crate::manifest::ModuleMaturity::Stable {
+                            up_manifest.maturity
+                        } else {
+                            inst_manifest.maturity
+                        };
                         let deprecation_message = up_manifest
                             .deprecation_message
                             .or_else(|| inst_manifest.deprecation_message.clone());
@@ -651,6 +688,7 @@ impl ModuleRegistry {
                             list_name: None,
                             runs_host_process: up_manifest.entrypoints.host.is_some(),
                             host_changed,
+                            maturity,
                             deprecated,
                             deprecation_message,
                             moved_to,

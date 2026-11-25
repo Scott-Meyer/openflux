@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 export type ModuleCategory = "effect" | "widget" | "background" | "companion" | "host_service";
 export type HostRequirement = "none" | "optional" | "required";
 export type ModuleTier = "bundled" | "installed" | "local";
+export type ModuleMaturity = "stable" | "beta" | "alpha" | "deprecated" | "abandoned";
 
 export interface SettingField {
   key: string;
@@ -51,6 +52,7 @@ export interface ModuleManifest {
   discord_url?: string | null;
   changelog?: string | null;
   changelog_url?: string | null;
+  maturity?: ModuleMaturity;
   deprecated?: boolean;
   deprecation_message?: string | null;
   moved_to?: string | null;
@@ -227,6 +229,7 @@ export interface ModuleUpdateInfo {
   list_name?: string | null;
   runs_host_process?: boolean;
   host_changed?: boolean;
+  maturity?: ModuleMaturity;
   deprecated?: boolean;
   deprecation_message?: string | null;
   moved_to?: string | null;

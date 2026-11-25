@@ -18,6 +18,8 @@ support_url = "https://github.com/keyglass-dev/keyglass/issues"
 discord_url = "https://discord.gg/keyglass"
 changelog = "Core Keyglass v2 built-in module."
 
+maturity = "stable"
+
 [ui]
 top_tab = true
 top_tab_label = "Shortcuts"

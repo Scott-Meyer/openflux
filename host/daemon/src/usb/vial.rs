@@ -727,6 +727,7 @@ mod tests {
             discord_url: None,
             changelog: None,
             changelog_url: None,
+            maturity: openflux_modules::ModuleMaturity::Stable,
             deprecated: false,
             deprecation_message: None,
             moved_to: None,

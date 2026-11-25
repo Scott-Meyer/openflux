@@ -18,6 +18,8 @@ support_url = "https://github.com/keyglass-dev/keyglass/issues"
 discord_url = "https://discord.gg/keyglass"
 changelog = "Core Keyglass v2 built-in module."
 
+maturity = "beta"
+
 [entrypoints]
 script = "script.lua"
 

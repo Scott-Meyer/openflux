@@ -30,12 +30,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "stable",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-water-ripple-3d",
-      "sha256": "0438dccb0e5c767ed8d39c312337c877f540ee5e00461ae93d60f3b7ca68b29d"
+      "sha256": "71cf67410ffb16f9725e02b8536f557a2d2e249a12e13ca1e67d3afbcc0554da"
     },
     {
       "id": "fx-analog-depth-glow",
@@ -62,12 +63,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "beta",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-analog-depth-glow",
-      "sha256": "85d156b3b338383b39474a7af4f31da5af0b75c260cbe99b5aeff0151dda60fd"
+      "sha256": "10085bcf80395306fd453aafeaa926be6f712bebca2f259f149246244b1048c5"
     },
     {
       "id": "bg-aurora-shader",
@@ -92,12 +94,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "beta",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/bg-aurora-shader",
-      "sha256": "cd8de0808c0c8dc595b6ce6016e97a6705ec6a56add63fad9784fc04e3dab5a7"
+      "sha256": "0ef49e0b792a5f298e83aa4546e06d9d12fdec91bf539e6ae9351a0156e98965"
     },
     {
       "id": "fx-classic-ripple",
@@ -122,12 +125,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "stable",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-classic-ripple",
-      "sha256": "fd224df2101f2a6189badcd178fc960861af36ce4a45084995f17b2d9be328b0"
+      "sha256": "5d8e75dbb9cb95e9b71d04935822b28dbc939040da90bebd1ad7d0e9562b977f"
     },
     {
       "id": "fx-classic-rings",
@@ -152,12 +156,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "stable",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-classic-rings",
-      "sha256": "9a20759f5fee603e224a84822f83f3b3898770f519c362c9b436473a995df421"
+      "sha256": "b241d6d5fa89fe52037bba485bb92087d770e99498fb3829a446a7cbb136deee"
     },
     {
       "id": "fx-classic-glow",
@@ -182,12 +187,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "stable",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-classic-glow",
-      "sha256": "732670b00fd6eed4c7851d897d750fcb62331f372ab6e113088ff49f7b4e4103"
+      "sha256": "2b635754d58d97b4dc14040e13354f18d4d198bd83a1988a8df12d9d7ab1e4c3"
     },
     {
       "id": "companion-idle-pet",
@@ -213,12 +219,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "beta",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/companion-idle-pet",
-      "sha256": "12f49c7f545d2123b4aa283209db7d4d107f087d9116f1785315e3c408468bae"
+      "sha256": "c4aee79066d6a19da5096853e734d7b1f196b450b2b2568f16176c5a0fe2f9a5"
     },
     {
       "id": "bg-stream",
@@ -245,12 +252,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "beta",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/bg-stream",
-      "sha256": "75034de0e34d5f331177c03cdf2e4f98afd07c37cd461d85d6a9eb8c5ef5f345"
+      "sha256": "13a89496de36049c4f63d2b93da9c549efaed75b0cdc158415214704a29f2f53"
     },
     {
       "id": "host-volume-osd",
@@ -276,12 +284,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "stable",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/host-volume-osd",
-      "sha256": "2bf5124d9e9ef08bfc09ccabfb5a9add827fb6e471d05f7c86657cc72d76119c"
+      "sha256": "f01de5ba156ea86975fd2cffa7fa59b3f4aa02bb5c8a12ed4cba5361b5558e86"
     },
     {
       "id": "widget-media",
@@ -306,12 +315,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "stable",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-media",
-      "sha256": "b2c15ba657e5f172bd562f5d8e454e0e9a9177837ff9c83df3fb7d3fbd88a7a6"
+      "sha256": "2dce2ebab8b55c7db7d7869672031d6e4d923d1a3b645349aac2d07f2aa45a88"
     },
     {
       "id": "widget-pomodoro",
@@ -337,12 +347,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "v2.0.1: Sharper session progress pill and verified registry update flow.",
       "changelog_url": null,
+      "maturity": "stable",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-pomodoro",
-      "sha256": "e85b832e2160fe074d85713d6ffb7d40384e3e6d80d629d694435afd0efbd459"
+      "sha256": "06092f859f6a4c1964b9b407f661df7466d1b7fff5b8d1285ba084f050182a75"
     },
     {
       "id": "widget-prusa-connect",
@@ -369,12 +380,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "beta",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-prusa-connect",
-      "sha256": "67ecc9dc36324f02cd12a7a13f3a8c57f040bdf753013a8e3e6b9b706eac1a52"
+      "sha256": "669b038ce0cf272b269ee29f4ad53e48d2dc4a0cd2fd70f8d96e7b418abb0d53"
     },
     {
       "id": "streamdeck-bridge",
@@ -401,12 +413,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "beta",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/streamdeck-bridge",
-      "sha256": "2c54a16528f296243432c9ea04b934dd6b0687eafa441653b3d2081963abc87e"
+      "sha256": "14af15e8edf69d0aae8b7aad5adfe32d85fbcaf037eea9bf3d43a810037d9afc"
     },
     {
       "id": "widget-system-load",
@@ -434,12 +447,13 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "stable",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-system-load",
-      "sha256": "deaed4f791c76034bcd626c216d0d6f94e199a86f17fed8c4b08599f1f617896"
+      "sha256": "d2cf3a451f3f04c69d2a24788994f84b01fcc7de766e6940cf248875a38a06db"
     },
     {
       "id": "widget-weather",
@@ -464,12 +478,43 @@
       "discord_url": "https://discord.gg/keyglass",
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
+      "maturity": "stable",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-weather",
-      "sha256": "06b6a4660ce6f8d5bd0904d5f8966cfc677404324477e143ad647564eab9e039"
+      "sha256": "e686b35c5b57cfabb3538bebee3f6b8b2946197f749f2f36791d7f1ebe8d3e22"
+    },
+    {
+      "id": "wow-key-faces",
+      "name": "WoW Key Faces",
+      "version": "0.1.0",
+      "description": "Show your imported World of Warcraft spell and item icons on the keys they are already bound to",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
+      "category": "effect",
+      "tags": [
+        "wow",
+        "game",
+        "keycaps"
+      ],
+      "host_requirement": "required",
+      "runs_host_process": false,
+      "slot_capable": false,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/wow-key-faces",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "Import existing Myslot bindings as app-scoped, modifier-aware key faces.",
+      "changelog_url": null,
+      "maturity": "alpha",
+      "deprecated": false,
+      "deprecation_message": null,
+      "moved_to": null,
+      "replaced_by": null,
+      "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/wow-key-faces",
+      "sha256": "26bf03ce40e65e4234cf70caaafe0ab31adf1b599dcccb378e529cdb9a8254bd"
     }
   ]
 }

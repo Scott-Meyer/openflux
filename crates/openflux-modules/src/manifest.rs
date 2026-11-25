@@ -228,6 +228,17 @@ fn default_span_one() -> f32 {
     1.0
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ModuleMaturity {
+    #[default]
+    Stable,
+    Beta,
+    Alpha,
+    Deprecated,
+    Abandoned,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModuleManifest {
     pub id: String,
@@ -253,6 +264,9 @@ pub struct ModuleManifest {
     pub changelog: Option<String>,
     #[serde(default)]
     pub changelog_url: Option<String>,
+    /// Release maturity / lifecycle status (`stable`, `beta`, `alpha`, `deprecated`, `abandoned`).
+    #[serde(default)]
+    pub maturity: ModuleMaturity,
     #[serde(default)]
     pub deprecated: bool,
     #[serde(default)]

@@ -31,6 +31,7 @@ interface CatalogEntry {
   discord_url?: string | null;
   changelog?: string | null;
   changelog_url?: string | null;
+  maturity?: "stable" | "beta" | "alpha" | "deprecated" | "abandoned";
   deprecated?: boolean;
   deprecation_message?: string | null;
   moved_to?: string | null;
@@ -50,6 +51,57 @@ const CATEGORY_TABS = [
   { id: "effect", label: "Effects" },
   { id: "host_service", label: "Integrations" },
 ] as const;
+
+const MaturityBadge: React.FC<{ maturity?: string; deprecated?: boolean }> = ({ maturity, deprecated }) => {
+  const m = (maturity || (deprecated ? "deprecated" : "stable")).toLowerCase();
+  if (m === "stable" && !deprecated) return null;
+  const styles: Record<string, { label: string; bg: string; color: string; border: string }> = {
+    alpha: {
+      label: "Alpha",
+      bg: "rgba(245, 158, 11, 0.16)",
+      color: "#fbbf24",
+      border: "rgba(245, 158, 11, 0.4)",
+    },
+    beta: {
+      label: "Beta",
+      bg: "rgba(99, 102, 241, 0.18)",
+      color: "#a5b4fc",
+      border: "rgba(129, 140, 248, 0.45)",
+    },
+    deprecated: {
+      label: "Deprecated",
+      bg: "rgba(239, 68, 68, 0.14)",
+      color: "#fca5a5",
+      border: "rgba(248, 113, 113, 0.4)",
+    },
+    abandoned: {
+      label: "Abandoned",
+      bg: "rgba(239, 68, 68, 0.16)",
+      color: "#f87171",
+      border: "rgba(248, 113, 113, 0.45)",
+    },
+  };
+  const st = styles[m] ?? styles.deprecated;
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        marginLeft: 6,
+        padding: "1px 6px",
+        borderRadius: 5,
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: "0.02em",
+        background: st.bg,
+        color: st.color,
+        border: `1px solid ${st.border}`,
+        verticalAlign: "middle",
+      }}
+    >
+      {st.label}
+    </span>
+  );
+};
 
 export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
   modules,
@@ -175,8 +227,9 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
   const filteredCatalog = useMemo(() => {
     const q = search.trim().toLowerCase();
     return catalogEntries.filter((e) => {
-      // Hide deprecated entries from default browse listings unless explicitly searched
-      if (e.deprecated && !q) return false;
+      // Hide deprecated/abandoned entries from default browse listings unless explicitly searched
+      const isRetired = e.deprecated || e.maturity === "deprecated" || e.maturity === "abandoned";
+      if (isRetired && !q) return false;
       if (listFilter !== "all" && e.listId !== listFilter) return false;
       if (catFilter === "keys") {
         if (!e.id.startsWith("keys-") && !(e.tags ?? []).includes("keys")) return false;
@@ -510,7 +563,8 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
                 <div key={m.id} className="kg-calm-card kg-store-item">
                   <div className="kg-calm-row">
                     <div>
-                      <strong>{m.manifest.name}</strong>{" "}
+                      <strong>{m.manifest.name}</strong>
+                      <MaturityBadge maturity={upd?.maturity || m.manifest.maturity} deprecated={m.manifest.deprecated} />{" "}
                       <span className="kg-muted" style={{ fontSize: 11 }}>
                         v{m.manifest.version} · {m.tier === "bundled" ? "Core" : m.tier} ·{" "}
                         {m.manifest.host_requirement === "none" ? "Sandboxed" : "Host Helper"}
@@ -663,7 +717,8 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
                   <div key={`${e.listId}:${e.id}`} className="kg-calm-card kg-store-item">
                     <div className="kg-calm-row">
                       <div>
-                        <strong>{e.name}</strong>{" "}
+                        <strong>{e.name}</strong>
+                        <MaturityBadge maturity={e.maturity} deprecated={e.deprecated} />{" "}
                         <span className="kg-muted" style={{ fontSize: 11 }}>
                           v{e.version} · {e.listName || "Registry"} ·{" "}
                           {e.runs_host_process ? "Host Helper" : "Sandboxed"}

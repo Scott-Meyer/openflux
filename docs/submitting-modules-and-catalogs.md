@@ -23,6 +23,7 @@ repository = "https://github.com/you/keyglass-my-tool"
 support_url = "https://github.com/you/keyglass-my-tool/issues"
 discord_url = "https://discord.gg/your-invite"
 changelog = "v1.0.0: Initial release."
+maturity = "beta"       # "stable" (default), "beta", "alpha", "deprecated", or "abandoned"
 category = "widget"
 tags = ["top-bar", "productivity"]
 stages = ["tile"]
@@ -99,6 +100,7 @@ If you ever rename your module, move it to a new repository/organization, or ret
 
 ```toml
 version = "1.2.1"
+maturity = "deprecated" # or "abandoned" if unmaintained with no replacement
 deprecated = true
 deprecation_message = "Moved to the new community repo with improved performance. Click Migrate to keep your settings."
 moved_to = "github:new-org/new-repo"      # New upstream source URL/path

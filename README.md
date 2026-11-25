@@ -3,32 +3,38 @@
 > [!IMPORTANT]
 > ## Keyglass is an independent project, not affiliated with or endorsed by Flux.
 
-Keyglass is open-source, modular keyboard software for the [Flux keyboard](https://fluxkeyboard.com) — a Hall-effect keyboard with a 1920×1080 display beneath clear keycaps and an onboard Linux SoC. It covers the full stack: RP2040 QMK/Vial + Analog Gamepad firmware, the RK3566 Wayland/EGL modular compositor, the `OFV2` priority-multiplexed USB bridge, and **Keyglass Studio** on your desktop.
+Keyglass is open-source, modular software for the [Flux keyboard](https://fluxkeyboard.com) — the Hall-effect keyboard with a 1920×1080 display beneath clear keycaps and an onboard Linux computer.
 
-## What Keyglass Does
+## Why Keyglass Is Different
 
-- **Modular Keyboard OS:** Every visual effect, top-bar widget, keycap legend provider, background, and integration is a hot-reloadable module running on a hierarchical pub/sub bus (`openflux-bus`). Core essentials ship built in; optional and community modules install and update independently from [keyglass-modules](https://github.com/keyglass-dev/keyglass-modules), the [keyglass-registry](https://github.com/keyglass-dev/keyglass-registry), third-party module lists (“Taps”), or direct GitHub repos.
-- **Native QMK/Vial Keymap & Hall-Effect Analog Gamepad:** Edit all layers, Tap/Hold (`MT`/`LT`), Tap Dance, 64 unified module action slots (`0x7E00..0x7E3F`), and 1000 Hz Hall-effect Analog Gamepad bindings directly in Keyglass Studio — with live optical-parallax-aligned keycap legends on the keyboard.
-- **Profiles & Multi-Computer Contexts:** Inheritable profiles (fall-through chains), per-app QMK layer switching, dynamic Touch Bar top-bar overrides, and per-host keyboard backups.
-- **Hardware-Accelerated Display & Top Attachments:** RKMPP hardware video decoding, custom GLSL shaders, 2D wave refraction & Key-SDF particles, optical parallax calibration (shared across legends and physics), automatic computer display sleep matching, and physical Top Attachment awareness (Clear Window, Rotary Dial, Slider, Macro, Opaque Cover).
-- **Safe, Reversible & Transparent:** Sandboxed Lua 5.4 execution with a 150 ms watchdog, mandatory pre-install permission disclosure (`Sandboxed Lua` vs. `Host Helper`), bearer-authenticated local API, and 1-click **Return to Stock** whenever you want factory software back.
+Stock Polymath software ships as a single closed application. **Keyglass is built as a modular keyboard OS.**
 
-## Developer & Module Authoring Tools
+Every background, keypress animation, keycap legend layer, top-bar widget, and computer integration is an independent module. Core essentials ship built in; everything else installs, updates, or forks on its own from community catalogs or direct GitHub repos without waiting on an app release. You only run the pieces you actually want, and you can inspect or edit any module yourself.
 
-- **Author & Fork Modules:** See [docs/making-modules.md](docs/making-modules.md) for creating local modules, forking any installed module to a local copy, and publishing to a Registry or custom list.
-- **Live Latency Profiler:** Run `fluxctl perf` (or `fluxctl perf --watch`) for live FPS, p50/p95/p99 frame intervals, hitch breakdown, RKMPP queue telemetry, and per-module Lua execution timings (`µs`).
-- **Built-In MCP Server:** Point Pi, Claude Code, Cursor, or any MCP client at `fluxctl mcp` for live status, performance profiling, module logs, bus inspection, and keyboard sync.
+## What Keyglass Gives You (Including Features Beyond Polymath)
 
-## Documentation
+- **Native QMK / Vial Keybindings & Layers:** Full 8-layer QMK/Vial keymaps edited live right inside Keyglass Studio — drag-and-drop bindings, Tap/Hold (`MT`/`LT`), Tap Dance, modifier combos, and 64 custom module action slots. Converts cleanly from stock keyboards (preserving your existing Polymath keybindings, calibration, and optional 1.5 press-refinement typing weights) while keeping optical-parallax-aligned legends on every key.
+- **Analog Gamepad Input *(Beta)*:** Turn any Hall-effect keys into 1000 Hz analog controller sticks, triggers, and buttons over Classic USB HID, with deadzone, saturation, response curves, and per-game layer switching.
+- **Reactive Key Animations & Hardware Video Backgrounds:** Key-bouncing sparks that collide with your parallax-aligned keycap borders, 3D viscosity water ripples, classic rings and glows, custom GLSL shaders, and smooth hardware-decoded 1080p looping video backgrounds.
+- **Modular Information Area & Physical Top Attachments:** Mix and match half-width or multi-slot top-bar widgets — Clock, Weather, System Load, Now Playing, Pomodoro, 3D printer status with live RTSP camera glance, and volume/notification HUD toasts — while automatically dodging physical snap-on Top Attachments (Rotary Dials, Sliders, Macro Bars, and Opaque Covers).
+- **Profiles, Multi-Computer Contexts & Stream Deck Plugins *(Beta)*:** Inheritable profile chains, automatic per-app switching with conflict diagnostics, Touch Bar top-bar swaps, and support for running real Elgato `.streamDeckPlugin` / `.sdPlugin` actions directly on your keycaps.
+- **Safe, Transparent & Reversible:** Sandboxed Lua 5.4 runtime with a 150 ms watchdog, mandatory pre-install permission disclosure (`Sandboxed` vs. `Host Helper`), honest `Alpha` / `Beta` / `Deprecated` / `Abandoned` maturity badges, full CLI/API/MCP parity (`fluxctl`, `fluxctl perf`, `fluxctl mcp`), and **1-click Return to Stock** that keeps factory calibration untouched.
 
-- [Installing Keyglass Studio](docs/installing.md)
-- [Converting a Flux Keyboard & Returning to Stock](docs/converting-a-keyboard.md)
-- [Making & Forking Modules](docs/making-modules.md)
-- [Submitting Modules, Publishing Catalogs & Deprecation](docs/submitting-modules-and-catalogs.md)
+## Getting Started
+
+1. **Install Keyglass Studio:** [docs/installing.md](docs/installing.md)
+2. **Convert your Flux keyboard (or return to stock anytime):** [docs/converting-a-keyboard.md](docs/converting-a-keyboard.md)
+3. **Add or build modules:**
+   - Browse first-party optional modules in [`keyglass-dev/keyglass-modules`](https://github.com/keyglass-dev/keyglass-modules) and the default catalog in [`keyglass-dev/keyglass-registry`](https://github.com/keyglass-dev/keyglass-registry).
+   - Write or fork your own module: [docs/making-modules.md](docs/making-modules.md)
+   - Publish a module, host your own catalog (“Tap”), or deprecate/rename a module: [docs/submitting-modules-and-catalogs.md](docs/submitting-modules-and-catalogs.md)
+
+## More Docs
+
 - [Architecture Overview](docs/architecture.md)
 - [Component Compatibility](docs/compatibility.md)
 - [Releasing](docs/releasing.md)
 
 ## License
 
-Dual-licensed under the [MIT License](LICENSE-MIT) or the [Apache License, Version 2.0](LICENSE-APACHE), at your option. See [NOTICE](NOTICE) for third-party licenses including QMK/Vial (GPL-2.0-or-later), FFmpeg, libusb, Lua 5.4, and Montserrat (SIL OFL).
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option. See [NOTICE](NOTICE) for third-party licenses including QMK/Vial (GPL-2.0-or-later), FFmpeg, libusb, Lua 5.4, and Montserrat (SIL OFL).

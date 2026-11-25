@@ -194,6 +194,7 @@ function sidebarLabel(m: V2ModuleRecord): string {
     "widget-system-load": "System Load",
     "widget-media": "Now Playing",
     "widget-pomodoro": "Pomodoro",
+    "fx-key-particles": "Key Sparks",
     "bg-media": "Background",
     "bg-aurora-shader": "Aurora Shader",
     "bg-stream": "Live Stream",
