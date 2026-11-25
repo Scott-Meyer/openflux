@@ -3217,7 +3217,14 @@ fn sync_v2_to_device(
             for entry in rd.flatten() {
                 let p = entry.path();
                 let name = entry.file_name().to_string_lossy().into_owned();
-                if name == ".git" || name == ".DS_Store" || name == "__pycache__" || name == "host" {
+                if name == ".git"
+                    || name == ".DS_Store"
+                    || name == "__pycache__"
+                    || name == "host"
+                    || name == "README.md"
+                    || name == "preview.gif"
+                    || name == "preview.png"
+                {
                     continue;
                 }
                 if p.is_dir() {

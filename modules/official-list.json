@@ -35,8 +35,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": "preview.gif",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-water-ripple-3d",
-      "sha256": "71cf67410ffb16f9725e02b8536f557a2d2e249a12e13ca1e67d3afbcc0554da"
+      "sha256": "0095bcd21b7df5bf61a3322da45a2b43175c9f2b622ddce2ca44700f1432b688"
     },
     {
       "id": "fx-analog-depth-glow",
@@ -68,8 +69,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": "preview.gif",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-analog-depth-glow",
-      "sha256": "10085bcf80395306fd453aafeaa926be6f712bebca2f259f149246244b1048c5"
+      "sha256": "badb466088115c510c02d77268f3f991918265f0ccec205693b0e191a9823db0"
     },
     {
       "id": "bg-aurora-shader",
@@ -99,8 +101,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": "preview.png",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/bg-aurora-shader",
-      "sha256": "0ef49e0b792a5f298e83aa4546e06d9d12fdec91bf539e6ae9351a0156e98965"
+      "sha256": "6948f392faaeb6243849e9602dd2bfac71661e53a37c2915de9df585dfce9d65"
     },
     {
       "id": "fx-classic-ripple",
@@ -130,8 +133,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": "preview.gif",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-classic-ripple",
-      "sha256": "5d8e75dbb9cb95e9b71d04935822b28dbc939040da90bebd1ad7d0e9562b977f"
+      "sha256": "c7da52865d623bb537cf9d6e599f0666b48f0c8f188c441e830ba60158f52669"
     },
     {
       "id": "fx-classic-rings",
@@ -161,8 +165,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": "preview.gif",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-classic-rings",
-      "sha256": "b241d6d5fa89fe52037bba485bb92087d770e99498fb3829a446a7cbb136deee"
+      "sha256": "44f983719aeba0dac8f635a6102eddd1fbe526ed6150872eff8d16714e8e0539"
     },
     {
       "id": "fx-classic-glow",
@@ -192,8 +197,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": "preview.gif",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/fx-classic-glow",
-      "sha256": "2b635754d58d97b4dc14040e13354f18d4d198bd83a1988a8df12d9d7ab1e4c3"
+      "sha256": "0426fd8598fbd00adf0909ffbdbf17a736eff1daabaa18e65d1d5578c83141c0"
     },
     {
       "id": "companion-idle-pet",
@@ -224,8 +230,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": "preview.gif",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/companion-idle-pet",
-      "sha256": "c4aee79066d6a19da5096853e734d7b1f196b450b2b2568f16176c5a0fe2f9a5"
+      "sha256": "e55dbb1469ccd800b8eb9c93be07cf45885c49a16e5a2420beaace797a9bba35"
     },
     {
       "id": "bg-stream",
@@ -257,8 +264,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/bg-stream",
-      "sha256": "13a89496de36049c4f63d2b93da9c549efaed75b0cdc158415214704a29f2f53"
+      "sha256": "f8ca3a77d4d55a9c25e3920930f23b9eb85920fee98fc51138a2349dcd09a045"
     },
     {
       "id": "host-volume-osd",
@@ -289,8 +297,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/host-volume-osd",
-      "sha256": "f01de5ba156ea86975fd2cffa7fa59b3f4aa02bb5c8a12ed4cba5361b5558e86"
+      "sha256": "5c262e8a6d839f8951fbbbecce1a2452062d63ecc47198ba78fbbf9ff9c22ee2"
     },
     {
       "id": "widget-media",
@@ -320,8 +329,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": "preview.png",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-media",
-      "sha256": "2dce2ebab8b55c7db7d7869672031d6e4d923d1a3b645349aac2d07f2aa45a88"
+      "sha256": "6f9ca731d80b08da870df54b84540b27f124781f9d9f6f1d3c32599b03e9b806"
     },
     {
       "id": "widget-pomodoro",
@@ -352,8 +362,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": "preview.png",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-pomodoro",
-      "sha256": "06092f859f6a4c1964b9b407f661df7466d1b7fff5b8d1285ba084f050182a75"
+      "sha256": "37f7125457d951ba91415b9054e304b1ff04c1fa8a53265f798cf6d78eba0bc5"
     },
     {
       "id": "widget-prusa-connect",
@@ -385,8 +396,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": "preview.png",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-prusa-connect",
-      "sha256": "669b038ce0cf272b269ee29f4ad53e48d2dc4a0cd2fd70f8d96e7b418abb0d53"
+      "sha256": "4f3e08d5f3bf92c037c8660c3735e0c1550b657e1d66e82f070b40b9046829bb"
     },
     {
       "id": "streamdeck-bridge",
@@ -418,8 +430,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/streamdeck-bridge",
-      "sha256": "14af15e8edf69d0aae8b7aad5adfe32d85fbcaf037eea9bf3d43a810037d9afc"
+      "sha256": "a056b3ec0d3b1dac918715aa2dc111744d98b77ce24865077dc424ab7f41ee5f"
     },
     {
       "id": "widget-system-load",
@@ -452,8 +465,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": "preview.png",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-system-load",
-      "sha256": "d2cf3a451f3f04c69d2a24788994f84b01fcc7de766e6940cf248875a38a06db"
+      "sha256": "de55f7fcc5e615d686d3a7847363f8c5033fac5be23af911c460cdeeb2a5fa99"
     },
     {
       "id": "widget-weather",
@@ -483,8 +497,9 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": "preview.png",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-weather",
-      "sha256": "e686b35c5b57cfabb3538bebee3f6b8b2946197f749f2f36791d7f1ebe8d3e22"
+      "sha256": "14542a035d131ea3564fc4769e8de5a2a8a9478f9afb2e76867d4446dab424f1"
     },
     {
       "id": "wow-key-faces",
@@ -513,6 +528,7 @@
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
+      "preview": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/wow-key-faces",
       "sha256": "26bf03ce40e65e4234cf70caaafe0ab31adf1b599dcccb378e529cdb9a8254bd"
     }

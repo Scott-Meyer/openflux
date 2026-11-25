@@ -5,6 +5,8 @@
 
 Keyglass is open-source, modular software for the [Flux keyboard](https://fluxkeyboard.com) — the Hall-effect keyboard with a 1920×1080 display beneath clear keycaps and an onboard Linux computer.
 
+![Keyglass Studio showing the 3D optical keyboard preview, top-bar widgets, and calm single-focus sidebar](docs/images/studio-home.png)
+
 ## Why Keyglass Is Different
 
 Stock Polymath software ships as a single closed application. **Keyglass is built as a modular keyboard OS.**
@@ -16,6 +18,11 @@ Every background, keypress animation, keycap legend layer, top-bar widget, and c
 - **Native QMK / Vial Keybindings & Layers:** Full 8-layer QMK/Vial keymaps edited live right inside Keyglass Studio — drag-and-drop bindings, Tap/Hold (`MT`/`LT`), Tap Dance, modifier combos, and 64 custom module action slots. Converts cleanly from stock keyboards (preserving your existing Polymath keybindings, calibration, and optional 1.5 press-refinement typing weights) while keeping optical-parallax-aligned legends on every key.
 - **Analog Gamepad Input *(Beta)*:** Turn any Hall-effect keys into 1000 Hz analog controller sticks, triggers, and buttons over Classic USB HID, with deadzone, saturation, response curves, and per-game layer switching.
 - **Reactive Key Animations & Hardware Video Backgrounds:** Key-bouncing sparks that collide with your parallax-aligned keycap borders, 3D viscosity water ripples, classic rings and glows, custom GLSL shaders, and smooth hardware-decoded 1080p looping video backgrounds.
+
+![Keyglass live display running 3D water ripples, bouncing key sparks, clock, system load, weather, and now playing over an ocean background](docs/images/display-showcase.png)
+
+![Animated keypress sparks bouncing off parallax-aligned keycap borders](docs/images/key-sparks.gif)
+
 - **Modular Information Area & Physical Top Attachments:** Mix and match half-width or multi-slot top-bar widgets — Clock, Weather, System Load, Now Playing, Pomodoro, 3D printer status with live RTSP camera glance, and volume/notification HUD toasts — while automatically dodging physical snap-on Top Attachments (Rotary Dials, Sliders, Macro Bars, and Opaque Covers).
 - **Profiles, Multi-Computer Contexts & Stream Deck Plugins *(Beta)*:** Inheritable profile chains, automatic per-app switching with conflict diagnostics, Touch Bar top-bar swaps, and support for running real Elgato `.streamDeckPlugin` / `.sdPlugin` actions directly on your keycaps.
 - **Safe, Transparent & Reversible:** Sandboxed Lua 5.4 runtime with a 150 ms watchdog, mandatory pre-install permission disclosure (`Sandboxed` vs. `Host Helper`), honest `Alpha` / `Beta` / `Deprecated` / `Abandoned` maturity badges, full CLI/API/MCP parity (`fluxctl`, `fluxctl perf`, `fluxctl mcp`), and **1-click Return to Stock** that keeps factory calibration untouched.
