@@ -357,12 +357,15 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
                     {p.name} {isPinned ? "📌" : ""}
                   </div>
                   <div className="kg-muted" style={{ fontSize: 11 }}>
-                    {parentName ? `↳ ${parentName}` : "Root"}
+                    {parentName ? `↳ ${parentName}` : "Root (All Computers)"}
+                    {p.match_os.length > 0 ? ` · ${p.match_os.join("/")}` : ""}
                     {p.qmk_layer != null ? ` · L${p.qmk_layer}` : ""}
                     {p.top_bar_slots ? " · Bar" : ""}
-                    {Object.keys(p.module_overrides ?? {}).length > 0
-                      ? ` · ${Object.keys(p.module_overrides).length} mod`
-                      : ""}
+                    {p.module_overrides?.["keys-keymap"]?.os_layout
+                      ? ` · Legends`
+                      : Object.keys(p.module_overrides ?? {}).length > 0
+                        ? ` · ${Object.keys(p.module_overrides).length} mod`
+                        : ""}
                   </div>
                 </span>
                 {isActive && <span className="kg-conn-dot is-on" title="Currently active profile" />}
