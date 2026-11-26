@@ -283,6 +283,16 @@ pub struct V2State {
     recent_apps: Mutex<std::collections::VecDeque<RecentAppEntry>>,
 }
 
+/// `"host"` for module actions whose module requires the computer; `None` (both sides
+/// dispatch, as before) for built-ins and keyboard-capable modules.
+fn action_dispatch_owner(
+    entry: &crate::usb::vial::ActionSlotEntry,
+    discovered: &BTreeMap<String, openflux_modules::DiscoveredModule>,
+) -> Option<&'static str> {
+    let dm = discovered.get(entry.module_id.as_str())?;
+    (dm.manifest.host_requirement == openflux_modules::HostRequirement::Required).then_some("host")
+}
+
 fn resolve_bundled_modules_dir() -> PathBuf {
     if let Ok(env_dir) = std::env::var("OPENFLUX_BUNDLED_MODULES_DIR") {
         if !env_dir.is_empty() {
@@ -1706,6 +1716,11 @@ impl V2State {
                         "active": entry.active,
                         // Keys bound to this slot only fire on this firmware or newer.
                         "requires_firmware": crate::usb::vial::slot_requires_firmware(*slot),
+                        // Who publishes this action's topic. A key press reaches both the host
+                        // (USB) and the keyboard (UART); the bus mirror would deliver a second
+                        // copy if both published. "host": the action belongs to a module that
+                        // needs the computer, so only the host publishes it.
+                        "dispatch": action_dispatch_owner(entry, &discovered),
                     }),
                 );
             }

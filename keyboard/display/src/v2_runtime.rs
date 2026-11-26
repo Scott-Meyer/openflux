@@ -790,9 +790,11 @@ impl KeyboardV2Display {
                 );
             }
             if let Some(topic) = m.get("topic").and_then(|v| v.as_str()) {
-                // Host-driven `modules/streamdeck/key` is already dispatched by host USB IF 4;
-                // never echo it from keyboard over BrokerMirror (prevents start+pause double-fire!).
-                if topic == "modules/streamdeck/key" {
+                // Actions owned by the host (modules that need the computer) are published by the
+                // host from the same key press over USB; publishing here too would reach the host
+                // a second time through the bus mirror and fire the action twice.
+                // (`modules/streamdeck/key` is for hosts that predate the `dispatch` field.)
+                if m.get("dispatch").and_then(|v| v.as_str()) == Some("host") || topic == "modules/streamdeck/key" {
                     return;
                 }
                 let retain = m.get("retain").and_then(|v| v.as_bool()).unwrap_or(false);
