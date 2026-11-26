@@ -420,7 +420,7 @@ static void qmk_cb_on_flux_action(uint16_t slot, bool pressed, uint8_t effective
     fw_runtime_handle_of_action(&g_rt, slot, pressed);
 
     uint8_t top_layer = 0U;
-    for (int l = 7; l >= 0; l--) {
+    for (int l = 15; l >= 0; l--) {
         if ((active_layers >> (uint32_t)l) & 1U) {
             top_layer = (uint8_t)l;
             break;

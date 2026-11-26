@@ -9,6 +9,8 @@ import {
 } from "../api/v2Client";
 import { BindingImportPanel } from "./BindingImportPanel";
 import { KeyboardSurface, type SurfaceKeyGeom } from "./KeyboardSurface";
+import { ListSettingEditor } from "./settings/ListSettingEditor";
+import { SettingControl } from "./settings/SettingControl";
 
 interface ModuleViewProps {
   mod: V2ModuleRecord;
@@ -20,20 +22,6 @@ interface ModuleViewProps {
   onOpenProfile?: (profileId: string) => void;
   onUninstalled?: () => void;
 }
-
-const KEY_INDEX_OPTIONS: Array<{ value: number; label: string }> = [
-  { value: 0, label: "Key 0 (Esc)" },
-  { value: 12, label: "Key 12 (F12)" },
-  { value: 13, label: "Key 13 (PrtSc)" },
-  { value: 14, label: "Key 14 (Ins)" },
-  { value: 15, label: "Key 15 (Del)" },
-  { value: 30, label: "Key 30 (Home)" },
-  { value: 45, label: "Key 45 (End)" },
-  { value: 59, label: "Key 59 (PgUp)" },
-  { value: 73, label: "Key 73 (PgDn)" },
-  { value: 80, label: "Key 80 (Bottom-Right 1)" },
-  { value: 81, label: "Key 81 (Bottom-Right 2)" },
-];
 
 export const ModuleView: React.FC<ModuleViewProps> = ({
   mod,
@@ -83,7 +71,7 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
   }, [mod.id, mod.tier, mod.manifest.version, mod.manifest.category]);
 
   useEffect(() => {
-    if (mod.manifest.settings.some((s) => s.kind === "file")) {
+    if (mod.manifest.settings.some((s) => s.kind === "file" || s.fields?.some((f) => f.kind === "file"))) {
       void v2Client
         .listMediaLibrary()
         .then((r) => setMediaFiles(r.files))
@@ -535,13 +523,12 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
           <div className="kg-muted">This module has no configurable settings.</div>
         ) : (
           mod.manifest.settings.map((field) => {
-            const cur = mod.state.config?.[field.key] ?? field.default ?? "";
             const fieldSrc = activeProfile?.field_sources?.[`${mod.id}.${field.key}`];
             const shadowedBy = fieldSrc && fieldSrc.profile_id !== "default" ? fieldSrc : null;
             return (
-              <div key={field.key} className="kg-setting-row">
+              <div key={field.key} className={`kg-setting-row${field.kind === "list" ? " is-stacked" : ""}`}>
                 <div className="kg-setting-meta">
-                  {field.kind === "boolean" ? (
+                  {field.kind !== "list" ? (
                     <label className="kg-setting-label" htmlFor={`module-setting-${field.key}`}>
                       {field.label}
                     </label>
@@ -567,90 +554,28 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
                     </div>
                   )}
                 </div>
-                <div className="kg-setting-ctrl">
-                  {field.kind === "boolean" ? (
-                    <input
-                      type="checkbox"
+                {field.kind !== "list" && (
+                  <div className="kg-setting-ctrl">
+                    <SettingControl
+                      field={field}
                       id={`module-setting-${field.key}`}
-                      checked={Boolean(cur)}
-                      onChange={(e) => void handleSettingChange(field.key, e.target.checked)}
+                      value={mod.state.config?.[field.key]}
+                      onChange={(v) => void handleSettingChange(field.key, v)}
+                      mediaFiles={mediaFiles}
+                      pickFile={pickFile}
                     />
-                  ) : field.kind === "select" ? (
-                    <select
-                      value={String(cur)}
-                      onChange={(e) => void handleSettingChange(field.key, e.target.value)}
-                    >
-                      {(field.options ?? []).map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
-                    </select>
-                  ) : field.kind === "number" ? (
-                    <div className="kg-range-wrap">
-                      <input
-                        type="range"
-                        min={field.min ?? 0}
-                        max={field.max ?? 100}
-                        step={(field.max ?? 100) - (field.min ?? 0) <= 5 ? 0.05 : 1}
-                        value={Number(cur) || 0}
-                        onChange={(e) => void handleSettingChange(field.key, Number(e.target.value))}
-                      />
-                      <span className="kg-range-val">{String(cur)}</span>
-                    </div>
-                  ) : field.kind === "color" ? (
-                    <input
-                      type="color"
-                      value={String(cur || "#4de1ff")}
-                      onChange={(e) => void handleSettingChange(field.key, e.target.value)}
-                    />
-                  ) : field.kind === "key" ? (
-                    <select
-                      value={Number(cur) || 0}
-                      onChange={(e) => void handleSettingChange(field.key, Number(e.target.value))}
-                    >
-                      {KEY_INDEX_OPTIONS.map((k) => (
-                        <option key={k.value} value={k.value}>
-                          {k.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : field.kind === "file" ? (
-                    <div className="kg-file-ctrl">
-                      {mediaFiles.length > 0 && (
-                        <select
-                          value={String(cur)}
-                          onChange={(e) => void handleSettingChange(field.key, e.target.value)}
-                        >
-                          <option value="">Choose library media…</option>
-                          {mediaFiles.map((f) => (
-                            <option key={f.path} value={f.path}>
-                              {f.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      {pickFile && (
-                        <button
-                          type="button"
-                          className="kg-btn-ghost"
-                          onClick={async () => {
-                            const p = await pickFile(`Select ${field.label}`);
-                            if (p) void handleSettingChange(field.key, p);
-                          }}
-                        >
-                          Browse…
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <input
-                      type={field.secret ? "password" : "text"}
-                      value={String(cur)}
-                      onChange={(e) => void handleSettingChange(field.key, e.target.value)}
-                    />
-                  )}
-                </div>
+                  </div>
+                )}
+                {field.kind === "list" && (
+                  <ListSettingEditor
+                    key={`${mod.id}:${field.key}`}
+                    field={field}
+                    value={mod.state.config?.[field.key]}
+                    onChange={(rows) => void handleSettingChange(field.key, rows)}
+                    mediaFiles={mediaFiles}
+                    pickFile={pickFile}
+                  />
+                )}
               </div>
             );
           })

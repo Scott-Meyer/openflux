@@ -257,6 +257,26 @@ static void test_flux_custom_action_no_os_keystroke(test_qmk_ctx_t *t) {
     assert(t->last_flux_slot == 35U && t->last_flux_pressed == false);
 }
 
+static void test_qk_user_module_actions_forward_their_slot(test_qmk_ctx_t *t) {
+    /* Every QK_USER code except the Globe key is a module action: slot = keycode - 0x7E00. */
+    static const uint16_t codes[] = { 0x7E40U, 0x7E5EU, 0x7E60U, 0x7FFFU };
+    for (unsigned i = 0; i < sizeof(codes) / sizeof(codes[0]); i++) {
+        vial_set_keycode(0U, 0U, 14U, codes[i], 2000U); /* same write time as the test before: keeps EEPROM debounce timing unchanged */
+        uint8_t pressed[96] = {0};
+        fw_hid_report_t hid;
+        uint32_t before = t->flux_event_count;
+        pressed[14] = 1U;
+        fw_qmk_process_scan(pressed, 85U, 2110U + i * 100U, &hid);
+        assert(t->flux_event_count == before + 1U);
+        assert(t->last_flux_slot == (uint16_t)(codes[i] - 0x7E00U) && t->last_flux_pressed == true);
+        assert(hid.modifiers == 0U && hid.keycodes[0] == 0U && hid.consumer_usage == 0U);
+        pressed[14] = 0U;
+        fw_qmk_process_scan(pressed, 85U, 2150U + i * 100U, &hid);
+        assert(t->last_flux_pressed == false);
+    }
+    vial_set_keycode(0U, 0U, 14U, 0x7E23U, 2000U);
+}
+
 static void test_analog_gamepad_math_and_curves(void) {
     fw_gamepad_config_t cfg;
     fw_gamepad_config_default(&cfg);
@@ -579,6 +599,7 @@ void test_fw_qmk(void) {
     test_vial_id_and_dynamic_def_cache_bust(&ctx);
     test_homerow_mods_and_rapid_trigger_guard(&ctx);
     test_flux_custom_action_no_os_keystroke(&ctx);
+    test_qk_user_module_actions_forward_their_slot(&ctx);
     test_per_layout_littlefs_persistence_and_uart_state(&ctx);
     test_one_time_legacy_keymap_upgrade_migration(&ctx);
     test_long_macro_zero_drops_and_load_error_safety(&ctx);

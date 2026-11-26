@@ -126,6 +126,7 @@ local GP_LABELS = {
 
 -- Built-in Flux QK_KB_0..13 actions (`0x7E00..0x7E0D`, matching fw_qmk_keymap.c / vial.rs)
 local QK_KB_LABELS = {
+  [95] = { "Globe" }, -- OF_GLOBE = QK_USER_31 (0x7E5F)
   [0]  = { "Bright", nil, "brightness" },
   [1]  = { "Dim", nil, "brightness" },
   [2]  = { "Prof+", nil, "star" },
@@ -286,9 +287,10 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default, os_name)
     }
   end
 
-  -- QK_KB_0..63 (`0x7E00..0x7E3F`) + QK_USER_0..31 (`0x7E40..0x7E5F`):
-  -- Built-in Flux actions (0..13), dynamic module actions (14..38), and fixed Analog Gamepad (39..63)!
-  if kc >= 0x7E00 and kc <= 0x7E5F then
+  -- QK_KB (`0x7E00..0x7E3F`) + QK_USER (`0x7E40..0x7FFF`), slot = keycode - 0x7E00:
+  -- built-in Flux actions (0..13), module actions (14..38 and 64..511), Analog Gamepad (39..63).
+  -- 0x7E5F (slot 95) is the firmware's Globe key, never an action (labelled in QK_KB_LABELS).
+  if kc >= 0x7E00 and kc <= 0x7FFF then
     local idx = kc - 0x7E00
     if GP_LABELS[idx] then
       return { key = ki, label = GP_LABELS[idx], color = "#58f29c" }

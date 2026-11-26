@@ -8,6 +8,7 @@ import {
   type V2ModuleRecord,
   v2Client,
 } from "../api/v2Client";
+import { ListSettingEditor } from "./settings/ListSettingEditor";
 
 interface ProfilesViewProps {
   modules: V2ModuleRecord[];
@@ -808,6 +809,62 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({
                     const ovVal = selected.module_overrides?.[targetOverrideMod.id]?.[field.key];
                     const hasOv = ovVal !== undefined;
                     const displayVal = hasOv ? ovVal : (targetOverrideMod.state.config?.[field.key] ?? field.default ?? "");
+                    if (field.kind === "list") {
+                      // A list override replaces the whole inherited list for this profile.
+                      const inherited = targetOverrideMod.state.config?.[field.key] ?? field.default;
+                      const count = Array.isArray(displayVal) ? displayVal.length : 0;
+                      return (
+                        <div key={field.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div className="kg-calm-row" style={{ fontSize: 12 }}>
+                            <span>
+                              {field.label}{" "}
+                              {hasOv ? (
+                                <span className="kg-pill-accent">Overridden</span>
+                              ) : (
+                                <span className="kg-muted">(inherited)</span>
+                              )}
+                            </span>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <span className="kg-muted">
+                                {count} item{count === 1 ? "" : "s"}
+                              </span>
+                              {hasOv ? (
+                                <button
+                                  type="button"
+                                  className="kg-btn-ghost"
+                                  onClick={() => setModuleOverride(selected, targetOverrideMod.id, field.key, undefined)}
+                                >
+                                  Reset
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="kg-btn-ghost"
+                                  onClick={() =>
+                                    setModuleOverride(
+                                      selected,
+                                      targetOverrideMod.id,
+                                      field.key,
+                                      Array.isArray(inherited) ? structuredClone(inherited) : [],
+                                    )
+                                  }
+                                >
+                                  Override
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {hasOv && (
+                            <ListSettingEditor
+                              key={`${selected.id}:${targetOverrideMod.id}:${field.key}`}
+                              field={field}
+                              value={ovVal}
+                              onChange={(rows) => setModuleOverride(selected, targetOverrideMod.id, field.key, rows)}
+                            />
+                          )}
+                        </div>
+                      );
+                    }
                     return (
                       <div key={field.key} className="kg-calm-row" style={{ fontSize: 12 }}>
                         <span>

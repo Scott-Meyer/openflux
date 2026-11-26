@@ -5,16 +5,24 @@ export type HostRequirement = "none" | "optional" | "required";
 export type ModuleTier = "bundled" | "installed" | "local";
 export type ModuleMaturity = "stable" | "beta" | "alpha" | "deprecated" | "abandoned";
 
+export type ScalarSettingKind = "number" | "boolean" | "string" | "color" | "select" | "file" | "key";
+export type SettingKind = ScalarSettingKind | "list";
+
 export interface SettingField {
   key: string;
   label: string;
-  kind: "number" | "boolean" | "string" | "color" | "select" | "file" | "key";
+  kind: SettingKind;
   default?: unknown;
   min?: number;
   max?: number;
   options?: string[];
   description?: string;
   secret?: boolean;
+  /**
+   * For `kind: "list"`: the schema of one row. The stored value is a JSON array of row objects keyed
+   * by these fields' keys. Row fields are always scalar (never lists). Absent for scalar settings.
+   */
+  fields?: SettingField[];
 }
 
 export interface ModuleUiSpec {
@@ -78,6 +86,8 @@ export interface ModuleManifest {
   };
   settings: SettingField[];
   actions?: ModuleActionField[];
+  /** The module declares more bindable actions at runtime on `system/actions/declared/<id>`. */
+  dynamic_actions?: boolean;
 }
 
 export interface ModuleInstanceState {

@@ -11,7 +11,7 @@ else()
     message(FATAL_ERROR "PICO_SDK_PATH must be set for RP2040 firmware build")
 endif()
 
-set(OPENFLUX_FIRMWARE_VERSION "2.1.5") # x-release-please-version
+set(OPENFLUX_FIRMWARE_VERSION "2.1.6") # x-release-please-version
 string(REGEX MATCH "^[0-9]+(\\.[0-9]+)*" _fw_cmake_version "${OPENFLUX_FIRMWARE_VERSION}")
 if("${_fw_cmake_version}" STREQUAL "")
     message(FATAL_ERROR "Invalid OPENFLUX_FIRMWARE_VERSION: ${OPENFLUX_FIRMWARE_VERSION}")

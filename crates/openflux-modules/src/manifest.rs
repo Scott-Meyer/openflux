@@ -134,6 +134,9 @@ pub enum SettingKind {
     Select,
     File,
     Key,
+    /// A list of rows; each row is an object whose keys are described by `fields`.
+    /// Stored as a JSON array in the module config (e.g. user-defined buttons).
+    List,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,6 +207,9 @@ pub struct SettingField {
     /// Secret fields (API keys, tokens) are automatically stripped when exporting a shared preset.
     #[serde(default)]
     pub secret: bool,
+    /// For `kind = "list"`: the schema of one row. Row fields may not themselves be lists.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<SettingField>,
 }
 
 /// Explicit top-bar placement contract advertised by a slot-capable module.
@@ -308,6 +314,15 @@ pub struct ModuleManifest {
     pub settings: Vec<SettingField>,
     #[serde(default)]
     pub actions: Vec<ModuleActionField>,
+    /// The module may declare more bindable key actions while it runs, by publishing a retained
+    /// `{ "actions": [ModuleActionField..] }` on `system/actions/declared/<id>`.
+    #[serde(default)]
+    pub dynamic_actions: bool,
+}
+
+/// Retained topic on which a `dynamic_actions` module declares its runtime actions.
+pub fn declared_actions_topic(module_id: &str) -> String {
+    format!("system/actions/declared/{module_id}")
 }
 
 fn default_true() -> bool {
@@ -360,6 +375,31 @@ impl ModuleManifest {
                         "{field} ({rel:?}) must be a relative path inside the module directory"
                     )));
                 }
+            }
+        }
+        for field in &self.settings {
+            match field.kind {
+                SettingKind::List => {
+                    if field.fields.is_empty() {
+                        return Err(ManifestError::Invalid(format!(
+                            "list setting {:?} must declare its row `fields`",
+                            field.key
+                        )));
+                    }
+                    if let Some(nested) = field.fields.iter().find(|f| f.kind == SettingKind::List) {
+                        return Err(ManifestError::Invalid(format!(
+                            "list setting {:?}: row field {:?} cannot itself be a list",
+                            field.key, nested.key
+                        )));
+                    }
+                }
+                _ if !field.fields.is_empty() => {
+                    return Err(ManifestError::Invalid(format!(
+                        "setting {:?}: `fields` is only valid for kind = \"list\"",
+                        field.key
+                    )));
+                }
+                _ => {}
             }
         }
         for pat in &self.channels.subscribes {

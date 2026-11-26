@@ -276,8 +276,11 @@ export function decodeQmkKeycode(
   if (gp) {
     return { label: gp.label, sub: "Pad", kind: "gamepad", accent: "#58f29c" };
   }
-  // QK_KB_0..63 (0x7E00..0x7E3F) + QK_USER_0..31 (0x7E40..0x7E5F)
-  if (kc >= 0x7e00 && kc <= 0x7e5f) {
+  // QK_USER_31 is the firmware's macOS Globe key, not an action.
+  if (kc === 0x7e5f) return { label: "Globe", kind: "basic" };
+  // Actions: QK_KB_0..63 (0x7E00..0x7E3F) + QK_USER (0x7E40..0x7FFF), slot = keycode - 0x7E00.
+  // Firmware before 2.1.6 only forwards QK_USER up to 0x7E5E.
+  if (kc >= 0x7e00 && kc <= 0x7fff) {
     const slot = kc - 0x7e00;
     const act = actionsBySlot[slot];
     if (act && slot >= 14) {

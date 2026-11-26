@@ -178,12 +178,26 @@ schema_version = "1.0.0"           # optional semver for your published payloads
 [[settings]]
 key = "speed"
 label = "Speed"
-kind = "number"                    # number | boolean | string | color | select | file | key
+kind = "number"                    # number | boolean | string | color | select | file | key | list
 default = 1.0
 min = 0.1
 max = 5.0
 # options = ["mode_a", "mode_b"]   # for kind = "select"
 # secret = true                    # stripped automatically when exporting shared presets!
+
+# A list setting is a JSON array of rows; `fields` describes one row (scalar kinds only).
+# Studio edits rows (add, remove, reorder); the CLI sets the whole array:
+#   fluxctl modules config my-module buttons='[{"label":"Movie"}]'
+[[settings]]
+key = "buttons"
+label = "Buttons"
+kind = "list"
+default = []
+  [[settings.fields]]
+  key = "label"
+  label = "Label"
+  kind = "string"
+  default = ""
 
 # Optional action buttons shown in Studio and triggerable via `fluxctl modules action`
 [[actions]]
@@ -193,6 +207,21 @@ topic = "modules/my-module/command"
 payload = { action = "pulse" }
 retain = false
 ```
+
+### Key Actions Defined at Runtime (`dynamic_actions`)
+
+`[[actions]]` are fixed in the manifest. A module whose actions come from its settings or the outside world (Stream Deck buttons, MQTT buttons) sets `dynamic_actions = true` and declares them while it runs, by publishing a retained message:
+
+```json
+// topic: system/actions/declared/<module-id>   (retain = true)
+{ "actions": [ { "id": "movie", "label": "Movie", "topic": "modules/my-module/key",
+                 "payload": { "button_id": "movie", "pressed": true },
+                 "mode": "hold", "release_payload": { "button_id": "movie", "pressed": false } } ] }
+```
+
+Each action has the same fields as `[[actions]]`. Republish the whole list whenever it changes; a null payload withdraws it. Keyglass gives every action a sticky slot keyed by its id, so key bindings survive edits, restarts and reordering. Keep ids stable.
+
+There are 472 module action slots, shared by every module. The first 56 work on any 2.x firmware; the rest need firmware 2.1.6 or newer (`requires_firmware` on the slot). Actions that don't get a slot are listed with a reason under `unassigned` on retained `system/actions`. `module_slots` shows `{ total, used }`.
 
 > **Note on `kind = "file"` settings:** If a user picks a local video or image file on their computer for any `kind = "file"` setting, OpenFlux automatically uploads it to `/home/root/openflux/media/` when syncing to the keyboard and rewrites the keyboard’s copy to the remote filename.
 

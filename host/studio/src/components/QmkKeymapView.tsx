@@ -64,6 +64,11 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
   const [selectedKey, setSelectedKey] = useState<number>(initialKey ?? 33); // Key W default
   const [editorMode, setEditorMode] = useState<EditorMode>("key");
   const [actionsBySlot, setActionsBySlot] = useState<Record<number, ActionSlotInfo>>({});
+  // Declared actions that have no slot (so can't be bound yet), and the shared module slot budget.
+  const [unassignedActions, setUnassignedActions] = useState<
+    { action_id: string; module_id: string; label: string; reason: string; detail?: string }[]
+  >([]);
+  const [moduleSlots, setModuleSlots] = useState<{ total: number; used: number } | null>(null);
   const [profiles, setProfiles] = useState<ProfileEntry[]>([]);
   const [manualProfileId, setManualProfileId] = useState<string | null>(null);
   const [activeProfile, setActiveProfile] = useState<ActiveProfileState | null>(null);
@@ -248,7 +253,15 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
   const loadActions = useCallback(async () => {
     try {
       const saRes = await v2Client.getBusRetained("system/actions");
-      const sa = saRes.messages[0]?.payload as { slots?: Record<string, ActionSlotInfo> } | undefined;
+      const sa = saRes.messages[0]?.payload as
+        | {
+            slots?: Record<string, ActionSlotInfo>;
+            unassigned?: { action_id: string; module_id: string; label: string; reason: string; detail?: string }[];
+            module_slots?: { total: number; used: number };
+          }
+        | undefined;
+      setUnassignedActions(sa?.unassigned ?? []);
+      setModuleSlots(sa?.module_slots ?? null);
       const map: Record<number, ActionSlotInfo> = {};
       if (sa?.slots) {
         for (const [k, v] of Object.entries(sa.slots)) {
@@ -314,7 +327,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
       setEditorMode("layer");
     } else if (currentKeycode >= 0x7e27 && currentKeycode <= 0x7e3f) {
       setEditorMode("gamepad");
-    } else if (currentKeycode >= 0x7e00 && currentKeycode <= 0x7e5f) {
+    } else if (currentKeycode >= 0x7e00 && currentKeycode <= 0x7fff && currentKeycode !== 0x7e5f) {
       setEditorMode("action");
     } else if (currentKeycode >= 0x0100 && currentKeycode <= 0x1fff) {
       const m = (currentKeycode >> 8) & 0x1f;
@@ -426,7 +439,8 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
 
   const actionList = useMemo(() => {
     return Object.values(actionsBySlot)
-      .filter((a) => a.slot < 39)
+      // Built-in (0..13) and module actions (14..38, 64..511 except 95); 39..63 are gamepad codes.
+      .filter((a) => a.slot < 39 || (a.slot >= 64 && a.slot <= 511 && a.slot !== 95))
       .sort((a, b) => a.slot - b.slot);
   }, [actionsBySlot]);
 
@@ -1110,6 +1124,24 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
                   );
                 })}
               </div>
+              {moduleSlots && (
+                <div className="kg-muted" style={{ fontSize: 11, marginTop: 8 }}>
+                  Module action slots: {moduleSlots.used} of {moduleSlots.total} in use.
+                </div>
+              )}
+              {unassignedActions.length > 0 && (
+                <div className="kg-muted" style={{ fontSize: 11, marginTop: 6 }}>
+                  <strong>Not bindable yet ({unassignedActions.length}):</strong>{" "}
+                  {unassignedActions
+                    .map(
+                      (u) =>
+                        `${u.label || u.action_id} (${u.module_id}: ${
+                          u.reason === "no_free_slot" ? "no free slot" : u.detail || u.reason
+                        })`,
+                    )
+                    .join(", ")}
+                </div>
+              )}
             </div>
           )}
 

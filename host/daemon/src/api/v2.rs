@@ -5,7 +5,7 @@
 //! presets, synthetic input simulation, and live GPU compositor previews (`openflux-compositor`).
 
 use crate::api::state::{default_data_dir, ApiState};
-use crate::usb::vial::{ModuleActionsMap, VialHidRelay, VIAL_RAW_EPSIZE};
+use crate::usb::vial::{DeclaredActions, ModuleActionsMap, VialHidRelay, MODULE_ACTION_SLOT_COUNT, VIAL_RAW_EPSIZE};
 use axum::extract::ws::{Message as WsMessage, WebSocket};
 use axum::extract::{Path as AxumPath, Query, Request, State, WebSocketUpgrade};
 use axum::http::StatusCode;
@@ -278,6 +278,8 @@ pub struct V2State {
     staged_installs: Mutex<BTreeMap<String, StagedInstallTicket>>,
     last_context_sig: Mutex<String>,
     profile_cmd_rx: Mutex<openflux_bus::Subscription>,
+    /// Wakes action reconciliation when a module (re)declares its runtime actions.
+    declared_actions_rx: Mutex<openflux_bus::Subscription>,
     recent_apps: Mutex<std::collections::VecDeque<RecentAppEntry>>,
 }
 
@@ -575,13 +577,16 @@ impl V2State {
 
         let vial_actions_path = base.join("v2/module_actions.json");
         let mut vial_actions = ModuleActionsMap::load(&vial_actions_path);
-        vial_actions.reconcile_from_registry(&registry);
+        vial_actions.reconcile_from_registry(&registry, &DeclaredActions::new());
         let _ = vial_actions.save(&vial_actions_path);
 
         let initial_sig = Self::compute_disk_sig(&registry);
         let profile_cmd_rx = broker
             .subscribe("profiles/command/#", SubscribeOptions::default())
             .expect("valid profile command sub");
+        let declared_actions_rx = broker
+            .subscribe(&openflux_modules::declared_actions_topic("+"), SubscribeOptions::default())
+            .expect("valid declared actions sub");
         let state = Arc::new(Self {
             broker,
             preview_broker,
@@ -599,6 +604,7 @@ impl V2State {
             staged_installs: Mutex::new(BTreeMap::new()),
             last_context_sig: Mutex::new(String::new()),
             profile_cmd_rx: Mutex::new(profile_cmd_rx),
+            declared_actions_rx: Mutex::new(declared_actions_rx),
             recent_apps: Mutex::new(std::collections::VecDeque::with_capacity(12)),
         });
 
@@ -1668,10 +1674,14 @@ impl V2State {
     pub fn publish_system_actions(&self) {
         let discovered = self.registry.discover();
         let mut slots_json = serde_json::Map::new();
+        let unassigned;
+        let used;
         {
             let mut map = self.vial_actions.lock().unwrap();
-            map.reconcile_from_registry(&self.registry);
+            map.reconcile_from_registry(&self.registry, &self.declared_actions());
             let _ = map.save(&self.vial_actions_path);
+            unassigned = map.unassigned.clone();
+            used = map.module_slots_used();
             for (slot, entry) in &map.entries {
                 let module_dir = discovered
                     .get(entry.module_id.as_str())
@@ -1694,15 +1704,55 @@ impl V2State {
                         "release_payload": entry.release_payload,
                         "retain": entry.retain,
                         "active": entry.active,
+                        // Keys bound to this slot only fire on this firmware or newer.
+                        "requires_firmware": crate::usb::vial::slot_requires_firmware(*slot),
                     }),
                 );
             }
         }
         let _ = self.broker.publish(
             "system/actions",
-            json!({ "slots": Value::Object(slots_json) }),
+            json!({
+                "slots": Value::Object(slots_json),
+                // Actions that are declared but have no slot (and so can't be bound), with why.
+                "unassigned": unassigned,
+                "module_slots": { "total": MODULE_ACTION_SLOT_COUNT, "used": used },
+            }),
             PublishOptions::retained(),
         );
+    }
+
+    /// Runtime actions currently declared (retained) by enabled `dynamic_actions` modules.
+    /// Reconcile ignores declarations from modules that are disabled or don't opt in.
+    pub fn declared_actions(&self) -> DeclaredActions {
+        let prefix = openflux_modules::declared_actions_topic("");
+        let mut out = DeclaredActions::new();
+        for msg in self
+            .broker
+            .query_retained(&openflux_modules::declared_actions_topic("+"))
+            .unwrap_or_default()
+        {
+            let Some(module_id) = msg.topic.strip_prefix(&prefix) else { continue };
+            let actions = msg
+                .payload
+                .get("actions")
+                .and_then(|a| a.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|a| serde_json::from_value::<openflux_modules::ModuleActionField>(a.clone()).ok())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            out.insert(module_id.to_string(), actions);
+        }
+        out
+    }
+
+    fn process_declared_actions(&self) {
+        let changed = !self.declared_actions_rx.lock().unwrap().drain().is_empty();
+        if changed {
+            self.publish_system_actions();
+        }
     }
 
     pub fn notify_modules_changed(&self, reason: &str, module_id: Option<&str>) {
@@ -1790,6 +1840,7 @@ impl V2State {
         }
         // Evaluate Profiles & Multi-Computer Context (`profiles/active`, Touch Bar swaps, QMK layers!)
         self.process_profile_commands();
+        self.process_declared_actions();
         self.evaluate_profiles();
         let reloaded = self.runtime.lock().unwrap().check_hot_reload();
         if !reloaded.is_empty() {
@@ -3877,8 +3928,9 @@ async fn vial_xfer_api(
 }
 
 async fn vial_actions_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let declared = state.v2.declared_actions();
     let mut map = state.v2.vial_actions.lock().unwrap();
-    map.reconcile_from_registry(&state.v2.registry);
+    map.reconcile_from_registry(&state.v2.registry, &declared);
     let _ = map.save(&state.v2.vial_actions_path);
     let vial_json = map.build_vial_json();
     (
@@ -3886,6 +3938,7 @@ async fn vial_actions_api(State(state): State<Arc<ApiState>>) -> impl IntoRespon
         Json(json!({
             "slots": map.slots,
             "entries": map.entries,
+            "unassigned": map.unassigned,
             "vial_json": vial_json,
         })),
     )
@@ -3893,8 +3946,9 @@ async fn vial_actions_api(State(state): State<Arc<ApiState>>) -> impl IntoRespon
 
 async fn vial_sync_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     let (xz_bytes, map_bytes, slot_count) = {
+        let declared = state.v2.declared_actions();
         let mut map = state.v2.vial_actions.lock().unwrap();
-        map.reconcile_from_registry(&state.v2.registry);
+        map.reconcile_from_registry(&state.v2.registry, &declared);
         let _ = map.save(&state.v2.vial_actions_path);
         let xz = match map.build_vial_xz() {
             Ok(b) => b,

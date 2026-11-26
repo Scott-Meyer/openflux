@@ -31,9 +31,9 @@ kind = "protocol"
 summary = "Bridge to pure-v2 display compositor channels (/tmp/openflux_bridge.sock + /tmp/openflux_v2.sock)."
 
 [interfaces.keymap]
-version = "2.0"
+version = "2.1"
 kind = "data"
-summary = "QMK/Vial 8-layer EEPROM keymap and 64-slot unified action table (0x7E00..0x7E3F) stored in LittleFS."
+summary = "QMK/Vial 16-layer EEPROM keymap stored in LittleFS. Action keycodes: QK_KB 0x7E00..0x7E3F plus QK_USER 0x7E40..0x7FFF (2.1 adds 0x7E60..0x7FFF), forwarded as slot = keycode - 0x7E00; 0x7E5F is Globe."
 
 [interfaces.profile-settings]
 version = "2.0"

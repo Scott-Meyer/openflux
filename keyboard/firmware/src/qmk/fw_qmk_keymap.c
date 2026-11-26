@@ -136,8 +136,10 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         fw_qmk_emit_custom_action((uint16_t)(keycode - 0x7E00U), record->event.pressed);
         return false;
     }
-    if (keycode >= QK_USER_0 && keycode < OF_GLOBE) {
-        fw_qmk_emit_custom_action((uint16_t)(64U + (keycode - QK_USER_0)), record->event.pressed);
+    /* QK_USER (0x7E40..0x7FFF, except OF_GLOBE): more module actions, slot = keycode - 0x7E00
+     * (slots 64..511). The host decides which action a slot is; firmware only forwards it. */
+    if (keycode >= QK_USER_0 && keycode <= QK_USER_MAX) {
+        fw_qmk_emit_custom_action((uint16_t)(keycode - 0x7E00U), record->event.pressed);
         return false;
     }
     return true;

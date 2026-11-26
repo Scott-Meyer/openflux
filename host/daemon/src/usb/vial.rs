@@ -15,14 +15,47 @@ pub const VIAL_USAGE_PAGE: u16 = 0xFF60;
 pub const VIAL_USAGE: u16 = 0x61;
 pub const VIAL_RAW_EPSIZE: usize = 32;
 pub const VIAL_KEYCODE_BASE: u16 = 0x7E00;
-/// 64 native Vial USER00..USER63 slots (`0x7E00..0x7E3F`):
-/// - `0..13`  (`0x7E00..0x7E0D`): 14 built-in OpenFlux actions
-/// - `14..38` (`0x7E0E..0x7E26`): 25 sticky dynamic module `[[actions]]` slots
-/// - `39..63` (`0x7E27..0x7E3F`): 25 fixed Hall-effect Analog Gamepad keycodes (`GP_*`)
+/// Action slots; a slot's keycode is always `0x7E00 + slot`.
+/// - `0..13`  (`0x7E00..0x7E0D`, QK_KB): 14 built-in OpenFlux actions
+/// - `14..38` (`0x7E0E..0x7E26`, QK_KB): 25 sticky module action slots
+/// - `39..63` (`0x7E27..0x7E3F`, QK_KB): 25 fixed Hall-effect Analog Gamepad keycodes (`GP_*`)
+/// - `64..94` (`0x7E40..0x7E5E`, QK_USER_0..30): 31 more module action slots (any firmware 2.x).
+/// - `95` (`0x7E5F`, QK_USER_31) is the firmware's macOS Globe key, not an action.
+/// - `96..511` (`0x7E60..0x7FFF`): the rest of QK_USER, 416 more module action slots, forwarded
+///   by firmware 2.1.6+. Allocated last, so older firmware only misses them past 56 actions.
+/// Vial only names the 64 QK_KB codes in `customKeycodes`; external Vial apps show QK_USER
+/// codes as raw numbers, while Studio and the keycaps label them.
 pub const VIAL_MAX_CUSTOM_SLOTS: usize = 64;
 pub const VIAL_BUILTIN_SLOTS: usize = 14;
 pub const VIAL_GAMEPAD_SLOT_START: usize = 39;
 pub const VIAL_GAMEPAD_SLOT_COUNT: usize = 25;
+pub const VIAL_USER_SLOT_START: usize = 64;
+pub const VIAL_USER_SLOT_COUNT: usize = 31;
+pub const VIAL_GLOBE_SLOT: u16 = 95;
+pub const VIAL_EXTENDED_SLOT_START: usize = 96;
+pub const VIAL_EXTENDED_SLOT_END: usize = 512; // exclusive; slot 511 = 0x7FFF = QK_USER_MAX
+/// First firmware that forwards slots `96..511`.
+pub const EXTENDED_SLOTS_MIN_FIRMWARE: &str = "2.1.6";
+
+/// Every slot a module action may occupy, in allocation order.
+fn module_action_slots() -> impl Iterator<Item = u16> + Clone {
+    (VIAL_BUILTIN_SLOTS as u16..VIAL_GAMEPAD_SLOT_START as u16)
+        .chain(VIAL_USER_SLOT_START as u16..(VIAL_USER_SLOT_START + VIAL_USER_SLOT_COUNT) as u16)
+        .chain(VIAL_EXTENDED_SLOT_START as u16..VIAL_EXTENDED_SLOT_END as u16)
+}
+
+/// The firmware version a slot needs, when it's newer than every 2.x firmware.
+pub fn slot_requires_firmware(slot: u16) -> Option<&'static str> {
+    (slot as usize >= VIAL_EXTENDED_SLOT_START).then_some(EXTENDED_SLOTS_MIN_FIRMWARE)
+}
+
+fn is_module_action_slot(slot: u16) -> bool {
+    module_action_slots().any(|s| s == slot)
+}
+
+pub const MODULE_ACTION_SLOT_COUNT: usize = (VIAL_GAMEPAD_SLOT_START - VIAL_BUILTIN_SLOTS)
+    + VIAL_USER_SLOT_COUNT
+    + (VIAL_EXTENDED_SLOT_END - VIAL_EXTENDED_SLOT_START);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VialStatus {
@@ -216,7 +249,24 @@ pub struct ModuleActionsMap {
     /// Rich per-slot metadata including target bus topic/payload and Vial labels.
     #[serde(default)]
     pub entries: BTreeMap<u16, ActionSlotEntry>,
+    /// Actions from the last reconcile that did not get a slot, and why.
+    #[serde(skip)]
+    pub unassigned: Vec<UnassignedAction>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UnassignedAction {
+    pub action_id: String,
+    pub module_id: String,
+    pub label: String,
+    /// `"no_free_slot"` or `"invalid"`.
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// Runtime actions declared by enabled `dynamic_actions` modules, keyed by module id.
+pub type DeclaredActions = BTreeMap<String, Vec<openflux_modules::ModuleActionField>>;
 
 const BUILTINS: [(&str, &str, &str, &str); VIAL_BUILTIN_SLOTS] = [
     ("openflux.brightness_up", "Screen\nBri+", "OF_BRI+", "Increase keyboard display brightness"),
@@ -263,6 +313,36 @@ const GAMEPAD_SLOTS: [(&str, &str, &str, &str); VIAL_GAMEPAD_SLOT_COUNT] = [
     ("gamepad.guide", "GP\nGuide", "GP_GUI", "Analog Gamepad — Guide / Home"),
 ];
 
+fn placeholder_entry(action_id: &str, module_id: &str, slot: u16) -> ActionSlotEntry {
+    ActionSlotEntry {
+        action_id: action_id.to_string(),
+        module_id: module_id.to_string(),
+        keycode: VIAL_KEYCODE_BASE + slot,
+        name: String::new(),
+        short_name: String::new(),
+        short_label: None,
+        title: String::new(),
+        icon: None,
+        accent: None,
+        mode: default_tap_mode(),
+        topic: None,
+        payload: Value::Null,
+        release_payload: None,
+        retain: false,
+        active: true,
+    }
+}
+
+fn validate_action(act: &openflux_modules::ModuleActionField) -> Result<(), String> {
+    if act.id.is_empty()
+        || act.id.len() > 64
+        || !act.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!("action id {:?} must be 1-64 chars of A-Z, a-z, 0-9, '-' or '_'", act.id));
+    }
+    openflux_bus::validate_topic(&act.topic).map_err(|e| format!("action topic {:?}: {e}", act.topic))
+}
+
 fn make_short_name(module_id: &str, action_id: &str) -> String {
     let mut base = module_id;
     for prefix in ["widget-", "ui-", "fx-", "bg-", "companion-", "dock-", "keys-"] {
@@ -307,6 +387,14 @@ impl ModuleActionsMap {
             .unwrap_or_default()
     }
 
+    /// Module action slots currently held by an enabled module's action.
+    pub fn module_slots_used(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|(&s, e)| is_module_action_slot(s) && e.active)
+            .count()
+    }
+
     pub fn save(&self, path: &Path) -> Result<(), String> {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -315,9 +403,10 @@ impl ModuleActionsMap {
         std::fs::write(path, text).map_err(|e| e.to_string())
     }
 
-    /// Reconcile enabled modules' `[[actions]]` into sticky slots `14..63` without shifting
-    /// previously assigned slots.
-    pub fn reconcile_from_manifests(&mut self, enabled_manifests: &[ModuleManifest]) {
+    /// Reconcile enabled modules' `[[actions]]`, plus the runtime actions declared by
+    /// `dynamic_actions` modules, into sticky module action slots without shifting previously
+    /// assigned slots. Actions that don't fit are listed in `unassigned`.
+    pub fn reconcile_from_manifests(&mut self, enabled_manifests: &[ModuleManifest], declared: &DeclaredActions) {
         // Ensure built-ins 0..13 always occupy their fixed slots.
         for (i, (id, name, short_name, title)) in BUILTINS.iter().enumerate() {
             let slot = i as u16;
@@ -358,83 +447,117 @@ impl ModuleActionsMap {
             );
         }
 
-        // Mark existing dynamic slots (14..38) inactive first; re-activate any still present.
+        // Mark existing module action slots inactive first; re-activate any still present.
         for (&slot, entry) in self.entries.iter_mut() {
-            let s = slot as usize;
-            if s >= VIAL_BUILTIN_SLOTS && s < VIAL_GAMEPAD_SLOT_START {
+            if is_module_action_slot(slot) {
                 entry.active = false;
             }
         }
+        self.unassigned.clear();
 
         let gamepad_enabled = enabled_manifests.iter().any(|m| m.id == "analog-gamepad");
 
+        // Every enabled action that should hold a slot, in declaration order.
+        let mut wanted: Vec<(&ModuleManifest, &openflux_modules::ModuleActionField, String)> = Vec::new();
         for manifest in enabled_manifests {
-            for act in &manifest.actions {
+            let declared = declared.get(&manifest.id).filter(|_| manifest.dynamic_actions);
+            for act in manifest.actions.iter().chain(declared.into_iter().flatten()) {
                 let full_id = format!("{}.{}", manifest.id, act.id);
                 // Built-in slots already cover pomodoro toggle/reset.
                 if BUILTINS.iter().any(|(bid, _, _, _)| *bid == full_id) {
                     continue;
                 }
-                let existing_slot = self
-                    .entries
-                    .iter()
-                    .find(|(&s, e)| {
-                        let su = s as usize;
-                        su >= VIAL_BUILTIN_SLOTS
-                            && su < VIAL_GAMEPAD_SLOT_START
-                            && e.action_id == full_id
-                    })
-                    .map(|(&s, _)| s);
-
-                let slot = if let Some(s) = existing_slot {
-                    s
-                } else {
-                    // Allocate lowest unused slot in 14..39 (reusing tombstoned slots only if full).
-                    let free = (VIAL_BUILTIN_SLOTS as u16..VIAL_GAMEPAD_SLOT_START as u16)
-                        .find(|s| !self.entries.contains_key(s))
-                        .or_else(|| {
-                            (VIAL_BUILTIN_SLOTS as u16..VIAL_GAMEPAD_SLOT_START as u16)
-                                .find(|s| self.entries.get(s).map(|e| !e.active).unwrap_or(true))
-                        });
-                    let Some(s) = free else {
-                        continue;
-                    };
-                    s
-                };
-
-                let short_name = act
-                    .short_label
-                    .as_deref()
-                    .filter(|s| !s.trim().is_empty())
-                    .map(|s| s.trim().chars().take(10).collect::<String>())
-                    .unwrap_or_else(|| make_short_name(&manifest.id, &act.id));
-
-                self.slots.insert(slot.to_string(), full_id.clone());
-                self.entries.insert(
-                    slot,
-                    ActionSlotEntry {
+                if let Err(detail) = validate_action(act) {
+                    self.unassigned.push(UnassignedAction {
                         action_id: full_id,
                         module_id: manifest.id.clone(),
-                        keycode: VIAL_KEYCODE_BASE + slot,
-                        name: format_keycap_name(act.short_label.as_deref().unwrap_or(&act.label)),
-                        short_name,
-                        short_label: act.short_label.clone(),
-                        title: format!("{} — {}", manifest.name, act.label),
-                        icon: act.icon.clone(),
-                        accent: act.accent.clone(),
-                        mode: if act.mode.eq_ignore_ascii_case("hold") {
-                            "hold".to_string()
-                        } else {
-                            "tap".to_string()
-                        },
-                        topic: Some(act.topic.clone()),
-                        payload: act.payload.clone(),
-                        release_payload: act.release_payload.clone(),
-                        retain: act.retain,
-                        active: true,
-                    },
-                );
+                        label: act.label.clone(),
+                        reason: "invalid".into(),
+                        detail: Some(detail),
+                    });
+                    continue;
+                }
+                // Declared twice (e.g. manifest and runtime): the first one wins.
+                if wanted.iter().any(|(_, _, id)| *id == full_id) {
+                    continue;
+                }
+                wanted.push((manifest, act, full_id));
             }
+        }
+
+        // Pass 1: actions that already own a slot keep it. Pass 2: new actions take the lowest
+        // never-used slot, else a slot whose action is gone (its old bindings then run this one).
+        // Doing every keeper first means a newcomer can never take a slot still in use.
+        let mut placed: Vec<(u16, usize)> = Vec::new();
+        let mut newcomers: Vec<usize> = Vec::new();
+        for (i, (_, _, full_id)) in wanted.iter().enumerate() {
+            let existing = self
+                .entries
+                .iter()
+                .find(|(&s, e)| is_module_action_slot(s) && e.action_id == *full_id)
+                .map(|(&s, _)| s);
+            match existing {
+                Some(slot) => {
+                    self.entries.get_mut(&slot).unwrap().active = true;
+                    placed.push((slot, i));
+                }
+                None => newcomers.push(i),
+            }
+        }
+        for i in newcomers {
+            let slot = module_action_slots()
+                .find(|s| !self.entries.contains_key(s))
+                .or_else(|| module_action_slots().find(|s| self.entries.get(s).is_some_and(|e| !e.active)));
+            let (manifest, act, full_id) = &wanted[i];
+            let Some(slot) = slot else {
+                self.unassigned.push(UnassignedAction {
+                    action_id: full_id.clone(),
+                    module_id: manifest.id.clone(),
+                    label: act.label.clone(),
+                    reason: "no_free_slot".into(),
+                    detail: Some(format!("all {MODULE_ACTION_SLOT_COUNT} module action slots are in use")),
+                });
+                continue;
+            };
+            // Claim it now so the next newcomer doesn't pick the same slot.
+            self.entries.insert(slot, placeholder_entry(full_id, &manifest.id, slot));
+            placed.push((slot, i));
+        }
+
+        for (slot, i) in placed {
+            let (manifest, act, full_id) = &wanted[i];
+            let short_name = act
+                .short_label
+                .as_deref()
+                .filter(|s| !s.trim().is_empty())
+                .map(|s| s.trim().chars().take(10).collect::<String>())
+                .unwrap_or_else(|| make_short_name(&manifest.id, &act.id));
+
+            self.slots.insert(slot.to_string(), full_id.clone());
+            self.entries.insert(
+                slot,
+                ActionSlotEntry {
+                    action_id: full_id.clone(),
+                    module_id: manifest.id.clone(),
+                    keycode: VIAL_KEYCODE_BASE + slot,
+                    name: format_keycap_name(act.short_label.as_deref().unwrap_or(&act.label)),
+                    short_name,
+                    short_label: act.short_label.clone(),
+                    title: format!("{} — {}", manifest.name, act.label),
+                    icon: act.icon.clone(),
+                    accent: act.accent.clone(),
+                    mode: if act.mode.eq_ignore_ascii_case("hold") {
+                        "hold".to_string()
+                    } else {
+                        "tap".to_string()
+                    },
+                    topic: Some(act.topic.clone()),
+                    payload: act.payload.clone(),
+                    release_payload: act.release_payload.clone(),
+                    retain: act.retain,
+                    active: true,
+                },
+            );
         }
 
         // Fixed 25-slot Analog Gamepad block (slots 39..63 = 0x7E27..0x7E3F): populated in
@@ -473,63 +596,15 @@ impl ModuleActionsMap {
         }
     }
 
-    pub fn reconcile_from_registry(&mut self, registry: &ModuleRegistry) {
+    pub fn reconcile_from_registry(&mut self, registry: &ModuleRegistry, declared: &DeclaredActions) {
         let discovered = registry.discover();
         let state_file = registry.load_state();
-        let mut enabled: Vec<ModuleManifest> = discovered
+        let enabled: Vec<ModuleManifest> = discovered
             .into_iter()
             .filter(|(id, _)| state_file.modules.get(id).map(|s| s.enabled).unwrap_or(false))
             .map(|(_, dm)| dm.manifest)
             .collect();
-
-        // Inject dynamic user-configured Stream Deck buttons (`streamdeck/buttons.json`) as real
-        // bindable QMK `mode = "hold"` actions on `streamdeck-bridge` so they can be placed on
-        // ANY key, on ANY layer (Base, Fn, Layer 2..7, Tap-Hold) in QMK Keymap!
-        if let Some(sd_manifest) = enabled.iter_mut().find(|m| m.id == "streamdeck-bridge") {
-            let sd_buttons_path = registry
-                .state_path
-                .parent()
-                .unwrap_or_else(|| std::path::Path::new("."))
-                .join("streamdeck/buttons.json");
-            if let Ok(raw) = std::fs::read_to_string(&sd_buttons_path) {
-                if let Ok(doc) = serde_json::from_str::<Value>(&raw) {
-                    if let Some(arr) = doc.get("buttons").and_then(|v| v.as_array()) {
-                        for b in arr {
-                            let Some(bid) = b.get("id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) else {
-                                continue;
-                            };
-                            let title = b
-                                .get("title")
-                                .and_then(|v| v.as_str())
-                                .filter(|s| !s.is_empty())
-                                .unwrap_or(bid);
-                            let icon = b
-                                .get("icon_media")
-                                .and_then(|v| v.as_str())
-                                .filter(|s| !s.is_empty())
-                                .map(|f| format!("media://{f}"));
-                            let accent = b
-                                .get("color")
-                                .and_then(|v| v.as_str())
-                                .map(str::to_string);
-                            sd_manifest.actions.push(openflux_modules::ModuleActionField {
-                                id: bid.to_string(),
-                                label: format!("SD: {title}"),
-                                topic: "modules/streamdeck/key".to_string(),
-                                payload: json!({ "button_id": bid, "pressed": true }),
-                                retain: false,
-                                short_label: Some(title.chars().take(8).collect()),
-                                icon,
-                                accent,
-                                mode: "hold".to_string(),
-                                release_payload: Some(json!({ "button_id": bid, "pressed": false })),
-                            });
-                        }
-                    }
-                }
-            }
-        }
-        self.reconcile_from_manifests(&enabled);
+        self.reconcile_from_manifests(&enabled, declared);
     }
 
     /// Build the dynamic `vial.json` document with `"customKeycodes"` populated from slots `0..max`.
@@ -746,6 +821,7 @@ mod tests {
             entrypoints: Default::default(),
             channels: Default::default(),
             settings: vec![],
+            dynamic_actions: false,
             actions: actions
                 .into_iter()
                 .map(|(aid, label)| ModuleActionField {
@@ -769,7 +845,7 @@ mod tests {
         let mut map = ModuleActionsMap::default();
         let m1 = fake_manifest("pet", vec![("feed", "Feed Pet")]);
         let m2 = fake_manifest("stream", vec![("mute", "Mute Stream")]);
-        map.reconcile_from_manifests(&[m1.clone(), m2.clone()]);
+        map.reconcile_from_manifests(&[m1.clone(), m2.clone()], &DeclaredActions::new());
         assert_eq!(map.slots.get("14").map(String::as_str), Some("pet.feed"));
         assert_eq!(map.slots.get("15").map(String::as_str), Some("stream.mute"));
         assert_eq!(map.entries.get(&14).unwrap().keycode, 0x7E0E);
@@ -777,7 +853,7 @@ mod tests {
         assert_eq!(map.entries.get(&14).unwrap().icon.as_deref(), Some("prusa-cam.png"));
 
         // Disable m1: m2 MUST stay at slot 15!
-        map.reconcile_from_manifests(&[m2.clone()]);
+        map.reconcile_from_manifests(&[m2.clone()], &DeclaredActions::new());
         assert_eq!(map.slots.get("15").map(String::as_str), Some("stream.mute"));
         assert!(!map.entries.get(&14).unwrap().active);
         assert!(map.entries.get(&15).unwrap().active);
@@ -792,7 +868,7 @@ mod tests {
             .collect();
         let m_many = fake_manifest("many", many_acts);
         let m_gp = fake_manifest("analog-gamepad", vec![]);
-        map.reconcile_from_manifests(&[m1, m2, m_many, m_gp]);
+        map.reconcile_from_manifests(&[m1, m2, m_many, m_gp], &DeclaredActions::new());
         assert_eq!(map.entries.len(), 64);
         assert_eq!(map.entries.get(&38).unwrap().keycode, 0x7E26);
         assert_eq!(map.entries.get(&39).unwrap().action_id, "gamepad.ls_up");
@@ -804,5 +880,82 @@ mod tests {
         assert_eq!(&xz[0..6], &[0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00]);
         assert_eq!(&xz[xz.len() - 2..], b"YZ");
         assert!(xz.len() <= 10240, "64-slot vial.json XZ ({} B) exceeds 10240 B cap", xz.len());
+    }
+
+    fn declared(module: &str, ids: &[&str]) -> DeclaredActions {
+        let mut d = DeclaredActions::new();
+        d.insert(
+            module.to_string(),
+            ids.iter()
+                .map(|id| ModuleActionField {
+                    id: id.to_string(),
+                    label: format!("Button {id}"),
+                    topic: format!("modules/{module}/key"),
+                    payload: json!({ "button_id": id, "pressed": true }),
+                    retain: false,
+                    short_label: None,
+                    icon: None,
+                    accent: None,
+                    mode: "hold".to_string(),
+                    release_payload: Some(json!({ "button_id": id, "pressed": false })),
+                })
+                .collect(),
+        );
+        d
+    }
+
+    #[test]
+    fn runtime_declared_actions_get_sticky_slots_past_the_qk_kb_range_and_report_overflow() {
+        let mut mqtt = fake_manifest("mqtt-bridge", vec![]);
+        mqtt.dynamic_actions = true;
+        let ids: Vec<String> = (0..60).map(|i| format!("b{i}")).collect();
+        let many: Vec<String> = (0..480).map(|i| format!("x{i}")).collect();
+        let many: Vec<&str> = many.iter().map(String::as_str).collect();
+        let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+
+        let mut map = ModuleActionsMap::default();
+        map.reconcile_from_manifests(&[mqtt.clone()], &declared("mqtt-bridge", &ids));
+
+        // The first 56 fill the slots every firmware forwards (25 QK_KB + 31 QK_USER); the rest
+        // go on past the Globe key into the range that needs firmware 2.1.6.
+        assert_eq!(map.module_slots_used(), 60);
+        assert!(map.unassigned.is_empty());
+        assert_eq!(map.entries[&14].action_id, "mqtt-bridge.b0");
+        assert_eq!(map.entries[&38].action_id, "mqtt-bridge.b24");
+        assert_eq!(map.entries[&64].action_id, "mqtt-bridge.b25");
+        assert_eq!(map.entries[&64].keycode, 0x7E40);
+        assert_eq!(map.entries[&94].keycode, 0x7E5E);
+        assert!(!map.entries.contains_key(&95), "0x7E5F is the firmware Globe key");
+        assert_eq!(map.entries[&96].action_id, "mqtt-bridge.b56");
+        assert_eq!(slot_requires_firmware(94), None);
+        assert_eq!(slot_requires_firmware(96), Some("2.1.6"));
+        assert_eq!(map.entries[&20].topic.as_deref(), Some("modules/mqtt-bridge/key"));
+
+        // Redeclaring in a different order keeps every existing binding where it was.
+        let mut reversed = ids.clone();
+        reversed.reverse();
+        map.reconcile_from_manifests(&[mqtt.clone()], &declared("mqtt-bridge", &reversed));
+        assert_eq!(map.entries[&14].action_id, "mqtt-bridge.b0");
+        assert_eq!(map.entries[&64].action_id, "mqtt-bridge.b25");
+
+        // Past every slot (472), the leftovers are reported, not dropped.
+        let mut full = ModuleActionsMap::default();
+        full.reconcile_from_manifests(&[mqtt.clone()], &declared("mqtt-bridge", &many));
+        assert_eq!(full.module_slots_used(), MODULE_ACTION_SLOT_COUNT);
+        assert_eq!(MODULE_ACTION_SLOT_COUNT, 472);
+        assert_eq!(full.entries[&511].keycode, 0x7FFF);
+        assert_eq!(full.unassigned.len(), 480 - 472);
+        assert!(full.unassigned.iter().all(|u| u.reason == "no_free_slot"));
+
+        // A module that hasn't opted in can't declare actions.
+        let plain = fake_manifest("plain", vec![]);
+        let mut fresh = ModuleActionsMap::default();
+        fresh.reconcile_from_manifests(&[plain], &declared("plain", &["x"]));
+        assert_eq!(fresh.module_slots_used(), 0);
+
+        // Invalid declarations are reported rather than silently dropped.
+        let mut bad = ModuleActionsMap::default();
+        bad.reconcile_from_manifests(&[mqtt], &declared("mqtt-bridge", &["has space"]));
+        assert_eq!(bad.unassigned[0].reason, "invalid");
     }
 }

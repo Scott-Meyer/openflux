@@ -29,7 +29,7 @@ pub use lua_runtime::{
 pub use manifest::{
     ChannelDeclarations, CompositorStage, Entrypoints, HostRequirement, ManifestError,
     ModuleActionField, ModuleCategory, ModuleDependency, ModuleManifest, ModuleMaturity,
-    ModuleUiSpec, SettingField, SettingKind, TopBarSpec,
+    ModuleUiSpec, SettingField, SettingKind, TopBarSpec, declared_actions_topic,
 };
 pub use registry::{
     CuratedListDocument, CuratedListEntry, CuratedListSubscription, DiscoveredModule,
