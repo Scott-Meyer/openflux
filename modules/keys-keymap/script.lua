@@ -143,6 +143,9 @@ local QK_KB_LABELS = {
   [13] = { "Theme-", nil, "star" },
 }
 
+-- Single macOS modifiers (QMK mod bits) -> keys-renderer vector icons.
+local MOD_ICONS = { [1] = "kbd_ctrl", [2] = "kbd_shift", [4] = "kbd_opt", [8] = "kbd_cmd" }
+
 local function mod_short(m, os_name)
   local b = m & 0x0F
   if b == 15 then return "Hyp" end
@@ -248,7 +251,14 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default, os_name)
   if kc >= 0x2000 and kc <= 0x3FFF then
     local tap = kc & 0xFF
     local r = rule_from_qmk_keycode(ki, tap, src_layer, lower_default, os_name) or { key = ki, label = "Tap" }
-    r.sub = mod_short((kc >> 8) & 0x1F, os_name)
+    local mods = (kc >> 8) & 0x1F
+    local mod_icon = MOD_ICONS[mods & 0x0F]
+    if mod_icon and os_name ~= "windows" and os_name ~= "linux" then
+      -- The keycap font has no ⌃⇧⌥⌘ glyphs; use the renderer's vector modifier icons.
+      r.corners = { tr = { icon = mod_icon } }
+    else
+      r.sub = mod_short(mods, os_name)
+    end
     return r
   end
 

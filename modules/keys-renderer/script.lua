@@ -24,7 +24,7 @@ local last_dt = 0.016
 
 -- Detail sits inset from the keycap edge: anything at the edge makes parallax and viewing-angle
 -- offsets obvious. Corner slots are this fraction of the key size in from each edge.
-local CORNER_INSET = 0.17
+local CORNER_INSET = 0.22
 -- The cooldown clock and progress ring stay this fraction of the half-size in from the edge.
 local RING_FRAC = 0.80
 
@@ -693,7 +693,7 @@ local function draw_corner(ctx, corner, item, rx, ry, r, col)
     local align = right and "right" or "left"
     -- Text hangs from the slot like a superscript (or sits on it, at the bottom).
     local ty = bottom and (cy - 13) or (cy - 7)
-    ctx:text(cx + (right and 6 or -6), ty, t, 13, { c[1], c[2], c[3], 0.95 }, align)
+    ctx:text(cx, ty, t, 13, { c[1], c[2], c[3], 0.95 }, align)
   end
 end
 
