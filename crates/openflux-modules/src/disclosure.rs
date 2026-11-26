@@ -207,7 +207,12 @@ pub fn inspect_module_dir(dir: &Path) -> Result<DisclosureReport, String> {
     if has_native_binaries {
         warnings.push("Contains native executable binary files.".to_string());
     }
-    if manifest.channels.subscribes.iter().any(|s| s.starts_with("input/keys")) {
+    let watches_raw_keys = manifest.channels.subscribes.iter().any(|s| {
+        s.starts_with("input/keys")
+            || openflux_bus::topic_matches(s, "input/keys/event")
+            || openflux_bus::topic_matches(s, "input/keys/analog")
+    });
+    if watches_raw_keys {
         warnings.push(
             "Subscribes to keyboard input events (key positions/timing can reflect typing)."
                 .to_string(),

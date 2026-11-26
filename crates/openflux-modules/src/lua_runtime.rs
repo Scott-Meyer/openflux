@@ -526,23 +526,44 @@ impl LoadedLuaModule {
         let lua = Lua::new_with(stdlib, LuaOptions::default())
             .expect("failed to initialize sandboxed Lua 5.4 VM");
 
-        // Strip dangerous globals & OS functions immediately after VM creation.
+        // Strip dangerous globals, C loaders, bytecode loading & OS functions immediately after VM creation.
         {
             let g = lua.globals();
             let _ = g.set("dofile", LuaValue::Nil);
             let _ = g.set("loadfile", LuaValue::Nil);
             let _ = g.set("io", LuaValue::Nil);
+            // Force `load()` to text-only ("t") so untrusted modules cannot supply crafted Lua bytecode.
+            if let Ok(orig_load) = g.get::<Function>("load") {
+                if let Ok(safe_load) = lua.create_function(
+                    move |_, (chunk, chunkname, _mode, env): (LuaValue, Option<String>, Option<String>, Option<LuaValue>)| {
+                        match env {
+                            Some(e) => orig_load.call::<LuaValue>((chunk, chunkname, "t", e)),
+                            None => orig_load.call::<LuaValue>((chunk, chunkname, "t")),
+                        }
+                    },
+                ) {
+                    let _ = g.set("load", safe_load);
+                }
+            }
             if let Ok(pkg) = g.get::<Table>("package") {
                 let _ = pkg.set("loadlib", LuaValue::Nil);
+                let _ = pkg.set("cpath", "");
+                // Remove Lua 5.4's C shared-library searchers (`searchers[3]` & `[4]`) so a module
+                // can NEVER `dlopen()` a `.so`/`.dylib`/`.dll` via `require()`!
+                if let Ok(searchers) = pkg.get::<Table>("searchers") {
+                    let _ = searchers.set(2, LuaValue::Nil);
+                    let _ = searchers.set(3, LuaValue::Nil);
+                    let _ = searchers.set(4, LuaValue::Nil);
+                }
             }
             if let Ok(os_tbl) = g.get::<Table>("os") {
                 for forbidden in ["execute", "remove", "rename", "tmpname", "exit", "setlocale"] {
                     let _ = os_tbl.set(forbidden, LuaValue::Nil);
                 }
-                // Restrict `os.getenv` strictly to `HOME` so Lua modules cannot exfiltrate secrets/tokens.
+                // Restrict `os.getenv` strictly to user base dir vars (never secrets/tokens).
                 if let Ok(safe_getenv) = lua.create_function(|_, key: String| {
-                    if key == "HOME" {
-                        Ok(std::env::var("HOME").ok())
+                    if key == "HOME" || key == "LOCALAPPDATA" {
+                        Ok(std::env::var(&key).ok())
                     } else {
                         Ok(None)
                     }
@@ -769,30 +790,68 @@ impl LoadedLuaModule {
         }
         globals.set("keyboard", kb_tbl)?;
 
-        // Point Lua `require()` at this module's folder (and sibling `_shared` helpers)
-        // so modules can cleanly split logic across multiple `.lua` files and share libraries!
+        // Install a strict, Lua-text-only `require()` searcher confined strictly to this module's
+        // canonical directory (and optional sibling `_shared` directory). Rejects `..`, symlinks
+        // escaping those roots, binary bytecode, and native `.so`/`.dylib`/`.dll` C modules!
         if let Ok(pkg) = globals.get::<Table>("package") {
-            let mod_root = self.discovered.path.to_string_lossy();
-            let shared_root = self
+            let _ = pkg.set("cpath", "");
+            let _ = pkg.set("path", "");
+            let mut req_roots: Vec<std::path::PathBuf> = Vec::new();
+            if let Ok(c) = std::fs::canonicalize(&self.discovered.path) {
+                req_roots.push(c);
+            }
+            if let Some(shared) = self
                 .discovered
                 .path
                 .parent()
-                .map(|p| p.join("_shared").to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let existing: String = pkg.get("path").unwrap_or_default();
-            let mut search = format!(
-                "{mod_root}/?.lua;{mod_root}/?/init.lua;{mod_root}/lib/?.lua"
-            );
-            if !shared_root.is_empty() {
-                search.push_str(&format!(
-                    ";{shared_root}/?.lua;{shared_root}/?/init.lua"
-                ));
+                .map(|p| p.join("_shared"))
+                .and_then(|p| std::fs::canonicalize(p).ok())
+            {
+                req_roots.push(shared);
             }
-            if !existing.is_empty() {
-                search.push(';');
-                search.push_str(&existing);
+            if let Ok(searchers) = pkg.get::<Table>("searchers") {
+                let confined_searcher = self.lua.create_function(move |lua, modname: String| {
+                    if modname.is_empty()
+                        || modname.contains("..")
+                        || modname.contains('/')
+                        || modname.contains('\\')
+                        || modname.contains('\0')
+                    {
+                        return Ok(LuaValue::String(
+                            lua.create_string("module name rejected by sandbox")?,
+                        ));
+                    }
+                    let rel = modname.replace('.', "/");
+                    let candidates_rel = [
+                        format!("{rel}.lua"),
+                        format!("{rel}/init.lua"),
+                        format!("lib/{rel}.lua"),
+                    ];
+                    for root in &req_roots {
+                        for crel in &candidates_rel {
+                            let p = root.join(crel);
+                            if let Ok(canon) = std::fs::canonicalize(&p) {
+                                if canon.starts_with(root) && canon.is_file() {
+                                    if let Ok(src) = std::fs::read_to_string(&canon) {
+                                        let loader = lua
+                                            .load(&src)
+                                            .set_name(canon.to_string_lossy().as_ref())
+                                            .set_mode(mlua::ChunkMode::Text)
+                                            .into_function()?;
+                                        return Ok(LuaValue::Function(loader));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Ok(LuaValue::String(
+                        lua.create_string(format!("no sandboxed Lua module '{modname}'"))?,
+                    ))
+                })?;
+                let _ = searchers.set(2, confined_searcher);
+                let _ = searchers.set(3, LuaValue::Nil);
+                let _ = searchers.set(4, LuaValue::Nil);
             }
-            let _ = pkg.set("path", search);
         }
 
         // `module` table
@@ -1024,52 +1083,145 @@ impl LoadedLuaModule {
         )?;
         globals.set("json", json_tbl)?;
 
+        // Build an explicit canonicalized allowlist of read-only directories for Lua `fs.*` so
+        // sandboxed modules can read their own files, sibling module assets (`module://`), shortcut
+        // packs, and user media — while NEVER reading `~/.ssh`, `/etc`, `desktop_token.txt`, or
+        // `api_tokens.json`!
+        let mut allowed_fs_roots: Vec<std::path::PathBuf> = Vec::new();
+        let mut push_root = |p: std::path::PathBuf| {
+            if let Ok(c) = std::fs::canonicalize(&p) {
+                if !allowed_fs_roots.contains(&c) {
+                    allowed_fs_roots.push(c);
+                }
+            }
+        };
+        push_root(self.discovered.path.clone());
+        if let Some(parent) = self.discovered.path.parent() {
+            // Allow sibling module assets (`module://<id>/<icon.png>`) and repo-relative `assets/shortcuts`
+            push_root(parent.to_path_buf());
+            if let Some(gp) = parent.parent() {
+                push_root(gp.join("assets").join("shortcuts"));
+                push_root(gp.join("modules"));
+            }
+        }
+        // Device SoC roots
+        push_root(std::path::PathBuf::from("/home/root/openflux/v2/modules"));
+        push_root(std::path::PathBuf::from("/home/root/openflux/shortcuts"));
+        push_root(std::path::PathBuf::from("/home/root/openflux/media"));
+        push_root(std::path::PathBuf::from("/usr/lib/openflux/display/modules"));
+        push_root(std::path::PathBuf::from("/usr/lib/openflux/display/shortcuts"));
+        // Host data & bundled app asset roots (explicitly NEVER `config/`!)
+        if let Ok(home) = std::env::var("HOME") {
+            let h = std::path::PathBuf::from(&home);
+            push_root(h.join(".local/share/openflux/v2/modules"));
+            push_root(h.join(".local/share/openflux/assets/shortcuts"));
+            push_root(h.join(".local/share/openflux/media"));
+            push_root(h.join("Applications/OpenFlux Studio.app/Contents/Resources/assets/shortcuts"));
+            push_root(h.join("Applications/OpenFlux Studio.app/Contents/Resources/modules"));
+        }
+        if let Ok(la) = std::env::var("LOCALAPPDATA") {
+            let base = std::path::PathBuf::from(&la).join("openflux");
+            push_root(base.join("v2").join("modules"));
+            push_root(base.join("assets").join("shortcuts"));
+            push_root(base.join("media"));
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                push_root(dir.join("assets").join("shortcuts"));
+                push_root(dir.join("modules"));
+                if let Some(pp) = dir.parent() {
+                    push_root(pp.join("Resources/assets/shortcuts"));
+                    push_root(pp.join("Resources/modules"));
+                }
+            }
+        }
+        let mut allowed_exact_files: Vec<std::path::PathBuf> = Vec::new();
+        for f in [
+            Some(std::path::PathBuf::from("/home/root/openflux/v2/custom_shortcuts.json")),
+            std::env::var("HOME")
+                .ok()
+                .map(|h| std::path::PathBuf::from(h).join(".local/share/openflux/config/custom_shortcuts.json")),
+            std::env::var("LOCALAPPDATA")
+                .ok()
+                .map(|la| std::path::PathBuf::from(la).join("openflux/config/custom_shortcuts.json")),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let Ok(c) = std::fs::canonicalize(&f) {
+                allowed_exact_files.push(c);
+            }
+        }
+        let allowed_roots = Arc::new(allowed_fs_roots);
+        let allowed_files = Arc::new(allowed_exact_files);
+        let is_allowed_path = {
+            let roots = allowed_roots.clone();
+            let files = allowed_files.clone();
+            move |raw: &str| -> Option<std::path::PathBuf> {
+                if raw.is_empty() || raw.contains('\0') {
+                    return None;
+                }
+                let canon = std::fs::canonicalize(raw).ok()?;
+                if roots.iter().any(|r| canon.starts_with(r)) || files.iter().any(|f| canon == *f) {
+                    Some(canon)
+                } else {
+                    None
+                }
+            }
+        };
+
         let fs_tbl = self.lua.create_table()?;
-        fs_tbl.set(
-            "list_dir",
-            self.lua.create_function(|lua, dir: String| {
-                let t = lua.create_table()?;
-                if dir.contains("..") {
-                    return Ok(t);
-                }
-                if let Ok(rd) = std::fs::read_dir(&dir) {
-                    let mut names: Vec<String> = rd
-                        .flatten()
-                        .filter_map(|e| e.file_name().into_string().ok())
-                        .collect();
-                    names.sort();
-                    for (i, n) in names.into_iter().enumerate() {
-                        t.set(i + 1, n)?;
+        {
+            let check = is_allowed_path.clone();
+            fs_tbl.set(
+                "list_dir",
+                self.lua.create_function(move |lua, dir: String| {
+                    let t = lua.create_table()?;
+                    let Some(canon) = check(&dir) else {
+                        return Ok(t);
+                    };
+                    if let Ok(rd) = std::fs::read_dir(&canon) {
+                        let mut names: Vec<String> = rd
+                            .flatten()
+                            .filter_map(|e| e.file_name().into_string().ok())
+                            .collect();
+                        names.sort();
+                        for (i, n) in names.into_iter().enumerate() {
+                            t.set(i + 1, n)?;
+                        }
                     }
-                }
-                Ok(t)
-            })?,
-        )?;
-        fs_tbl.set(
-            "exists",
-            self.lua.create_function(|_, path: String| {
-                if path.is_empty() || path.contains('\0') || path.contains("..") {
-                    return Ok(false);
-                }
-                Ok(std::path::Path::new(&path).is_file())
-            })?,
-        )?;
-        fs_tbl.set(
-            "read_text",
-            self.lua.create_function(|_, path: String| {
-                if path.is_empty() || path.contains('\0') {
-                    return Ok(None);
-                }
-                // Cap read size at 2 MB to prevent memory exhaustion in Lua modules
-                let Ok(meta) = std::fs::metadata(&path) else {
-                    return Ok(None);
-                };
-                if !meta.is_file() || meta.len() > 2 * 1024 * 1024 {
-                    return Ok(None);
-                }
-                Ok(std::fs::read_to_string(&path).ok())
-            })?,
-        )?;
+                    Ok(t)
+                })?,
+            )?;
+        }
+        {
+            let check = is_allowed_path.clone();
+            fs_tbl.set(
+                "exists",
+                self.lua.create_function(move |_, path: String| {
+                    Ok(check(&path).is_some_and(|p| p.is_file()))
+                })?,
+            )?;
+        }
+        {
+            let check = is_allowed_path.clone();
+            fs_tbl.set(
+                "read_text",
+                self.lua.create_function(move |_, path: String| {
+                    let Some(canon) = check(&path) else {
+                        return Ok(None);
+                    };
+                    // Cap read size at 2 MB to prevent memory exhaustion in Lua modules
+                    let Ok(meta) = std::fs::metadata(&canon) else {
+                        return Ok(None);
+                    };
+                    if !meta.is_file() || meta.len() > 2 * 1024 * 1024 {
+                        return Ok(None);
+                    }
+                    Ok(std::fs::read_to_string(&canon).ok())
+                })?,
+            )?;
+        }
         globals.set("fs", fs_tbl)?;
 
         // First-class `profile` API: gives EVERY module clean, read-only access to the active

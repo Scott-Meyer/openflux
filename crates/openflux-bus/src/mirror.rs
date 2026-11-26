@@ -79,6 +79,22 @@ pub struct BrokerMirror {
     last_advertised_patterns: Vec<String>,
 }
 
+/// Topics that must NEVER cross the `BrokerMirror` USB/peer boundary (even if a remote peer
+/// subscribes to `#` or `input/#`). Raw physical keystrokes and Hall-effect analog depths stay
+/// strictly local to the keyboard display SoC so no USB/HTTP/WS peer can passively keylog typing.
+pub fn is_mirror_blocked_topic(topic: &str) -> bool {
+    topic == "input/keys" || topic.starts_with("input/keys/")
+}
+
+fn is_mirror_blocked_pattern(pat: &str) -> bool {
+    let t = pat.trim();
+    t == "input/keys"
+        || t.starts_with("input/keys/")
+        || t == "input/#"
+        || t == "input/+/event"
+        || t == "input/+/analog"
+}
+
 impl BrokerMirror {
     pub fn new(broker: Broker, remote_node: impl Into<String>) -> Self {
         static NEXT_SID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -126,9 +142,10 @@ impl BrokerMirror {
             .broker
             .active_subscription_patterns_excluding(self.local_sub.id())
             .into_iter()
+            .filter(|p| !is_mirror_blocked_pattern(p))
             .collect();
         for p in extra_patterns {
-            if !p.trim().is_empty() {
+            if !p.trim().is_empty() && !is_mirror_blocked_pattern(p) {
                 set.insert(p.clone());
             }
         }
@@ -227,9 +244,13 @@ impl BrokerMirror {
     }
 
     /// Converts a local `BusMessage` into an outgoing `PeerBusFrame` if and only if:
-    /// 1. It did NOT come from the remote peer (loop-free), AND
-    /// 2. At least one of the remote peer's subscribed patterns matches `msg.topic`.
+    /// 1. It is not a non-mirrorable privacy-sensitive topic (`input/keys/*`),
+    /// 2. It did NOT come from the remote peer (loop-free), AND
+    /// 3. At least one of the remote peer's subscribed patterns matches `msg.topic`.
     pub fn maybe_outgoing_frame(&self, msg: &BusMessage) -> Option<PeerBusFrame> {
+        if is_mirror_blocked_topic(&msg.topic) {
+            return None;
+        }
         if let Some(ref orig) = msg.origin {
             if orig == &self.peer_origin_prefix || orig.starts_with(&format!("{}:", self.peer_origin_prefix)) {
                 return None;

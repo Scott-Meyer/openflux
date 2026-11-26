@@ -100,18 +100,21 @@ pub fn stage_module_source(
         return Err("module source cannot be empty".into());
     }
 
-    // 1. Direct local folder containing `module.toml`
+    // 1. Direct local folder containing `module.toml` — copy into a private immutable staging
+    // snapshot so TOCTOU edits between `/v2/modules/inspect` and `/v2/modules/install` cannot
+    // substitute unreviewed code after disclosure!
     let as_path = PathBuf::from(trimmed);
     if as_path.is_dir() && as_path.join("module.toml").is_file() {
         let abs = std::fs::canonicalize(&as_path).unwrap_or(as_path);
+        let snap = snapshot_local_module_dir(&abs)?;
         return Ok(StagedModuleSource {
-            module_dir: abs.clone(),
+            module_dir: snap.clone(),
             origin_source: abs.to_string_lossy().into_owned(),
             origin_kind: "local".into(),
             subdir: None,
             git_ref: None,
             list_id: None,
-            cleanup_dir: None,
+            cleanup_dir: Some(snap),
         });
     }
 
@@ -120,14 +123,15 @@ pub fn stage_module_source(
         let rel = repo_root.join(trimmed);
         if rel.is_dir() && rel.join("module.toml").is_file() {
             let abs = std::fs::canonicalize(&rel).unwrap_or(rel);
+            let snap = snapshot_local_module_dir(&abs)?;
             return Ok(StagedModuleSource {
-                module_dir: abs.clone(),
+                module_dir: snap.clone(),
                 origin_source: trimmed.to_string(),
                 origin_kind: "local".into(),
                 subdir: None,
                 git_ref: None,
                 list_id: None,
-                cleanup_dir: None,
+                cleanup_dir: Some(snap),
             });
         }
     }
@@ -189,11 +193,57 @@ fn make_temp_stage_dir(prefix: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+fn snapshot_local_module_dir(src: &Path) -> Result<PathBuf, String> {
+    let dst = make_temp_stage_dir("local")?;
+    let canon_src = std::fs::canonicalize(src).map_err(|e| e.to_string())?;
+    for entry in WalkDir::new(&canon_src).follow_links(false) {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.file_type().is_symlink() {
+            return Err(format!(
+                "refusing symlink inside staged module directory: {}",
+                entry.path().display()
+            ));
+        }
+        let rel = entry
+            .path()
+            .strip_prefix(&canon_src)
+            .map_err(|e| e.to_string())?;
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let target = dst.join(rel);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+        } else if entry.file_type().is_file() {
+            if let Some(p) = target.parent() {
+                std::fs::create_dir_all(p).map_err(|e| e.to_string())?;
+            }
+            std::fs::copy(entry.path(), &target).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(dst)
+}
+
 fn find_module_dir_in_tree(root: &Path, subdir: Option<&str>) -> Result<PathBuf, String> {
+    let canon_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     if let Some(sub) = subdir {
-        let candidate = root.join(sub);
-        if candidate.join("module.toml").is_file() {
-            return Ok(candidate);
+        let trimmed = sub.trim().trim_matches('/');
+        if trimmed.is_empty()
+            || trimmed.contains('\0')
+            || !Path::new(trimmed)
+                .components()
+                .all(|c| matches!(c, std::path::Component::Normal(_)))
+        {
+            return Err(format!("invalid subdir {sub:?}: must stay within repository root"));
+        }
+        let candidate = canon_root.join(trimmed);
+        let canon_cand = std::fs::canonicalize(&candidate)
+            .map_err(|_| format!("subdir {sub:?} does not exist"))?;
+        if !canon_cand.starts_with(&canon_root) {
+            return Err(format!("subdir {sub:?} escapes repository root"));
+        }
+        if canon_cand.join("module.toml").is_file() {
+            return Ok(canon_cand);
         }
         return Err(format!("subdir {sub:?} does not contain module.toml"));
     }

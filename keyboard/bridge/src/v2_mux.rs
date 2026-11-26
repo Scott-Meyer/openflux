@@ -20,6 +20,8 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
 pub const V2_MUX_SOCK_PATH: &str = "/tmp/openflux_v2.sock";
+const V2_MAX_FILE_BYTES: u64 = 128 * 1024 * 1024;
+const V2_MAX_CONCURRENT_PUTS: usize = 8;
 
 struct DisplayMuxClient {
     stream: UnixStream,
@@ -29,7 +31,18 @@ struct DisplayMuxClient {
 struct ActivePutFile {
     target_path: PathBuf,
     tmp_path: PathBuf,
-    file: File,
+    file: Option<File>,
+    written_bytes: u64,
+    committed: bool,
+}
+
+impl Drop for ActivePutFile {
+    fn drop(&mut self) {
+        self.file.take();
+        if !self.committed {
+            let _ = std::fs::remove_file(&self.tmp_path);
+        }
+    }
 }
 
 pub struct V2BridgeMux {
@@ -73,6 +86,7 @@ fn validate_bridge_path(raw: &str, allow_ipk_root: bool) -> Result<PathBuf, Stri
         }
     }
     if raw == "/home/root/openflux" || raw.starts_with("/home/root/openflux/") {
+        ensure_no_symlink_escape(p, Path::new("/home/root/openflux"))?;
         return Ok(p.to_path_buf());
     }
     // Allow host USB install-confirmation to inspect/disarm the bridge rollback sentinel.
@@ -94,6 +108,33 @@ fn validate_bridge_path(raw: &str, allow_ipk_root: bool) -> Result<PathBuf, Stri
         }
     }
     Err(format!("path outside /home/root/openflux/ rejected: {raw}"))
+}
+
+/// Walks up to the deepest existing ancestor of `target` and verifies its canonical path stays
+/// strictly inside `allowed_root` so a planted symlink directory cannot escape confinement.
+fn ensure_no_symlink_escape(target: &Path, allowed_root: &Path) -> Result<(), String> {
+    let Ok(canon_root) = std::fs::canonicalize(allowed_root) else {
+        return Ok(());
+    };
+    let mut cur = target;
+    loop {
+        if cur.exists() {
+            let canon = std::fs::canonicalize(cur)
+                .map_err(|e| format!("canonicalize {}: {e}", cur.display()))?;
+            if !canon.starts_with(&canon_root) {
+                return Err(format!(
+                    "symlink escape outside {} rejected: {}",
+                    allowed_root.display(),
+                    target.display()
+                ));
+            }
+            return Ok(());
+        }
+        match cur.parent() {
+            Some(p) if p != cur => cur = p,
+            _ => return Ok(()),
+        }
+    }
 }
 
 impl V2BridgeMux {
@@ -372,6 +413,23 @@ impl V2BridgeMux {
                     Ok(p) => p,
                     Err(message) => return BulkRpcResponse::Err { message },
                 };
+                match std::fs::metadata(&p) {
+                    Ok(meta) if meta.len() > V2_MAX_FILE_BYTES => {
+                        return BulkRpcResponse::Err {
+                            message: format!(
+                                "file exceeds maximum GetFile size ({} > {} bytes)",
+                                meta.len(),
+                                V2_MAX_FILE_BYTES
+                            ),
+                        };
+                    }
+                    Err(e) => {
+                        return BulkRpcResponse::Err {
+                            message: e.to_string(),
+                        };
+                    }
+                    Ok(_) => {}
+                }
                 match std::fs::read(&p) {
                     Ok(bytes) => {
                         let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
@@ -384,7 +442,21 @@ impl V2BridgeMux {
                     },
                 }
             }
-            BulkRpcRequest::PutFileStart { path, .. } => {
+            BulkRpcRequest::PutFileStart { path, total_len } => {
+                if total_len > V2_MAX_FILE_BYTES {
+                    return BulkRpcResponse::Err {
+                        message: format!(
+                            "upload exceeds maximum size ({total_len} > {V2_MAX_FILE_BYTES} bytes)"
+                        ),
+                    };
+                }
+                if self.active_puts.len() >= V2_MAX_CONCURRENT_PUTS
+                    && !self.active_puts.contains_key(&req_id)
+                {
+                    return BulkRpcResponse::Err {
+                        message: "too many concurrent PutFile transfers".into(),
+                    };
+                }
                 let target = match validate_bridge_path(&path, true) {
                     Ok(p) => p,
                     Err(message) => return BulkRpcResponse::Err { message },
@@ -397,14 +469,21 @@ impl V2BridgeMux {
                     }
                 }
                 let tmp = PathBuf::from(format!("{}.ofv2.tmp.{req_id}", target.display()));
-                match File::create(&tmp) {
+                let _ = std::fs::remove_file(&tmp);
+                match std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&tmp)
+                {
                     Ok(file) => {
                         self.active_puts.insert(
                             req_id,
                             ActivePutFile {
                                 target_path: target,
                                 tmp_path: tmp,
-                                file,
+                                file: Some(file),
+                                written_bytes: 0,
+                                committed: false,
                             },
                         );
                         BulkRpcResponse::Ok {
@@ -430,11 +509,23 @@ impl V2BridgeMux {
                         }
                     }
                 };
-                if let Err(e) = active.file.write_all(&bytes) {
+                if active.written_bytes.saturating_add(bytes.len() as u64) > V2_MAX_FILE_BYTES {
+                    self.active_puts.remove(&req_id);
+                    return BulkRpcResponse::Err {
+                        message: "upload exceeded maximum size limit".into(),
+                    };
+                }
+                let Some(file) = active.file.as_mut() else {
+                    return BulkRpcResponse::Err {
+                        message: "put file already closed".into(),
+                    };
+                };
+                if let Err(e) = file.write_all(&bytes) {
                     return BulkRpcResponse::Err {
                         message: format!("write chunk: {e}"),
                     };
                 }
+                active.written_bytes = active.written_bytes.saturating_add(bytes.len() as u64);
                 BulkRpcResponse::Ok {
                     data: serde_json::json!({ "written": bytes.len() }),
                 }
@@ -445,10 +536,12 @@ impl V2BridgeMux {
                         message: "no active PutFileStart for req_id".into(),
                     };
                 };
-                let _ = active.file.sync_all();
-                drop(active.file);
+                if let Some(f) = active.file.take() {
+                    let _ = f.sync_all();
+                }
                 match std::fs::rename(&active.tmp_path, &active.target_path) {
                     Ok(()) => {
+                        active.committed = true;
                         // Fsync parent directory so ext4 commits the directory entry immediately
                         // and sudden power loss cannot roll the renamed file back to its old inode!
                         if let Some(parent) = active.target_path.parent() {

@@ -344,6 +344,24 @@ impl ModuleManifest {
         if self.version.trim().is_empty() {
             return Err(ManifestError::Invalid("module version must not be empty".into()));
         }
+        for (field, ep) in [
+            ("entrypoints.script", self.entrypoints.script.as_deref()),
+            ("entrypoints.shader", self.entrypoints.shader.as_deref()),
+            ("entrypoints.host", self.entrypoints.host.as_deref()),
+        ] {
+            if let Some(rel) = ep {
+                if rel.trim().is_empty()
+                    || rel.contains('\0')
+                    || !std::path::Path::new(rel)
+                        .components()
+                        .all(|c| matches!(c, std::path::Component::Normal(_)))
+                {
+                    return Err(ManifestError::Invalid(format!(
+                        "{field} ({rel:?}) must be a relative path inside the module directory"
+                    )));
+                }
+            }
+        }
         for pat in &self.channels.subscribes {
             openflux_bus::validate_pattern(pat)
                 .map_err(|e| ManifestError::Invalid(format!("subscribe pattern {pat:?}: {e}")))?;

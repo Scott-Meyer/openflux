@@ -977,3 +977,97 @@ end
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn lua_sandbox_blocks_c_library_loading_bytecode_and_out_of_root_fs_reads() {
+    let tmp = std::env::temp_dir().join(format!(
+        "openflux-lua-sec-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let secret_file = tmp.join("outside_secret.txt");
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(&secret_file, "TOP_SECRET_TOKEN").unwrap();
+
+    let bundled = tmp.join("bundled");
+    let installed = tmp.join("installed");
+    let local = tmp.join("local");
+    let mod_dir = local.join("sec-probe");
+    std::fs::create_dir_all(&mod_dir).unwrap();
+    std::fs::write(mod_dir.join("own.txt"), "ALLOWED_OWN_FILE").unwrap();
+    std::fs::write(
+        mod_dir.join("module.toml"),
+        r#"
+id = "sec-probe"
+name = "Sec Probe"
+version = "1.0.0"
+description = "Sandbox security test"
+category = "effect"
+stages = ["under_key"]
+host_requirement = "none"
+[entrypoints]
+script = "script.lua"
+[channels]
+publishes = ["test/sec"]
+"#,
+    )
+    .unwrap();
+    let secret_escaped = secret_file.to_string_lossy().replace('\\', "\\\\");
+    std::fs::write(
+        mod_dir.join("script.lua"),
+        format!(
+            r#"
+function on_init()
+  local own = fs.read_text(module.dir() .. "/own.txt")
+  local outside = fs.read_text("{secret_escaped}")
+  local outside_exists = fs.exists("{secret_escaped}")
+  local bc_ok = load("\x1bLua\x54\x00") ~= nil
+  local has_c_searcher = (package.searchers[3] ~= nil) or (package.searchers[4] ~= nil)
+  local has_loadlib = (package.loadlib ~= nil)
+  local has_path_env = (os.getenv("PATH") ~= nil)
+  bus.publish("test/sec", {{
+    own = own,
+    outside = outside,
+    outside_exists = outside_exists,
+    bc_ok = bc_ok,
+    has_c_searcher = has_c_searcher,
+    has_loadlib = has_loadlib,
+    has_path_env = has_path_env,
+    cpath = package.cpath,
+  }}, true)
+end
+"#
+        ),
+    )
+    .unwrap();
+
+    let reg = ModuleRegistry::new(bundled, installed, local, tmp.join("state.json"));
+    let broker = Broker::new("sec-test");
+    let mut rt = ModuleRuntime::new(broker.clone(), KeyboardGeometry::build(FrameLayout::Ansi));
+    let discovered = reg.discover();
+    let states = BTreeMap::from([(
+        "sec-probe".into(),
+        ModuleInstanceState {
+            enabled: true,
+            ..Default::default()
+        },
+    )]);
+    rt.sync_modules(&discovered, &states);
+    let res = broker
+        .get_retained("test/sec")
+        .unwrap_or_else(|| panic!("no test/sec published; discovered={:?} statuses={:?}", discovered.keys().collect::<Vec<_>>(), rt.statuses()))
+        .payload;
+    assert_eq!(res["own"], json!("ALLOWED_OWN_FILE"));
+    assert!(res["outside"].is_null(), "must block fs.read_text outside allowed roots");
+    assert_eq!(res["outside_exists"], json!(false), "must block fs.exists outside allowed roots");
+    assert_eq!(res["bc_ok"], json!(false), "must block binary Lua bytecode in load()");
+    assert_eq!(res["has_c_searcher"], json!(false), "must strip C searchers [3]/[4]");
+    assert_eq!(res["has_loadlib"], json!(false), "must strip package.loadlib");
+    assert_eq!(res["has_path_env"], json!(false), "must restrict os.getenv");
+    assert_eq!(res["cpath"], json!(""), "package.cpath must be empty");
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}

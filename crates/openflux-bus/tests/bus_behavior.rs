@@ -125,9 +125,9 @@ fn mux_framing_and_subscription_driven_broker_mirroring() {
     let _kb_mod_sub = kb
         .subscribe("host/app/#", SubscribeOptions::default())
         .unwrap();
-    // Host module subscribes ONLY to `input/keys/event` (NOT analog!)
+    // Host module subscribes to `modules/demo/event` (and NOT `modules/demo/highfreq`)
     let _host_mod_sub = host
-        .subscribe("input/keys/event", SubscribeOptions::default())
+        .subscribe("modules/demo/event", SubscribeOptions::default())
         .unwrap();
 
     let mut host_mirror = BrokerMirror::new(host.clone(), "keyboard");
@@ -153,16 +153,16 @@ fn mux_framing_and_subscription_driven_broker_mirroring() {
     let host_sub_frame = host_mirror.build_subscribe_if_changed(&[], true).unwrap();
     kb_mirror.on_remote_frame(host_sub_frame);
 
-    // Keyboard publishes both keypress (subscribed on host) and 120Hz analog (NOT subscribed)
+    // Keyboard publishes both subscribed event and unsubscribed high-frequency telemetry
     kb.publish(
-        "input/keys/event",
-        json!({"key_index": 60}),
+        "modules/demo/event",
+        json!({"ok": true}),
         PublishOptions::default(),
     )
     .unwrap();
     kb.publish(
-        "input/keys/analog",
-        json!({"depth_um": 1200}),
+        "modules/demo/highfreq",
+        json!({"hz": 120}),
         PublishOptions::default(),
     )
     .unwrap();
@@ -170,13 +170,29 @@ fn mux_framing_and_subscription_driven_broker_mirroring() {
     assert_eq!(
         kb_out.len(),
         1,
-        "unsubscribed 120Hz analog must NOT cross USB"
+        "unsubscribed high-frequency telemetry must NOT cross USB"
     );
     for pf in kb_out {
         host_mirror.on_remote_frame(pf);
     }
     // Loop immunity: host_mirror must NOT echo keyboard's frame back!
     assert!(host_mirror.drain_outgoing().is_empty());
+
+    // Security invariant: raw keystrokes (`input/keys/*`) must NEVER cross BrokerMirror even if a
+    // peer explicitly subscribes to `#` or `input/#`!
+    kb_mirror.on_remote_frame(openflux_bus::PeerBusFrame::Subscribe {
+        node: "host".into(),
+        session_id: 999,
+        patterns: vec!["#".into(), "input/#".into(), "input/keys/event".into()],
+    });
+    kb.publish("input/keys/event", json!({"key_index": 60}), PublishOptions::default())
+        .unwrap();
+    kb.publish("input/keys/analog", json!({"depth_um": 1200}), PublishOptions::default())
+        .unwrap();
+    assert!(
+        kb_mirror.drain_outgoing().is_empty(),
+        "raw keystrokes and analog depths must NEVER be exported across BrokerMirror"
+    );
 
     // Disconnect purges peer-owned retained state cleanly (LWT)
     kb_mirror.on_disconnect();
@@ -215,7 +231,7 @@ fn mux_framing_and_subscription_driven_broker_mirroring() {
         );
     }
     // Verify keyboard -> host direction is ALREADY restored after keyboard-only restart!
-    kb2.publish("input/keys/event", json!({"key_index": 74}), PublishOptions::default())
+    kb2.publish("modules/demo/event", json!({"restored": true}), PublishOptions::default())
         .unwrap();
     assert_eq!(
         kb2_mirror.drain_outgoing().len(),

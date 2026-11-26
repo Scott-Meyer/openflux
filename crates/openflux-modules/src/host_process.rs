@@ -186,6 +186,10 @@ impl HostProcessManager {
         Ok(())
     }
 
+    pub fn running_ids(&self) -> Vec<String> {
+        self.running.keys().cloned().collect()
+    }
+
     pub fn stop_module(&mut self, id: &str) {
         self.failures.remove(id);
         if let Some(mut proc) = self.running.remove(id) {

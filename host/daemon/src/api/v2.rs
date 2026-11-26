@@ -1812,9 +1812,21 @@ impl V2State {
             .sync_modules(&host_logic_discovered, &state.modules);
 
         let mut hp = self.host_procs.lock().unwrap();
+        let desired_running: std::collections::HashSet<String> = discovered
+            .iter()
+            .filter(|(id, dm)| {
+                state.modules.get(*id).is_some_and(|s| s.enabled)
+                    && dm.manifest.entrypoints.host.is_some()
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for running_id in hp.running_ids() {
+            if !desired_running.contains(&running_id) {
+                hp.stop_module(&running_id);
+            }
+        }
         for (id, dm) in &discovered {
-            let enabled = state.modules.get(id).is_some_and(|s| s.enabled);
-            if enabled && dm.manifest.entrypoints.host.is_some() {
+            if desired_running.contains(id) {
                 let inst = state.modules.get(id).cloned().unwrap_or_default();
                 let _ = hp.start_module(dm, &inst);
             } else {
@@ -2409,6 +2421,9 @@ async fn install_module_api(
             let Some(ticket) = ticket else {
                 return Err("inspect_token expired or invalid; please re-inspect before installing".into());
             };
+            if ticket.created_at.elapsed() >= std::time::Duration::from_secs(15 * 60) {
+                return Err("inspect_token expired; please re-inspect before installing".into());
+            }
             if !accept {
                 return Ok((false, None, ticket.preview));
             }
@@ -4415,7 +4430,15 @@ async fn serve_streamdeck_plugin_asset_api(
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
         .collect();
-    if clean_id.is_empty() || clean_id.contains("..") || rel.contains("..") || rel.contains('\0') {
+    let rel_clean = rel.trim_start_matches(['/', '\\']);
+    if clean_id.is_empty()
+        || clean_id.contains("..")
+        || rel_clean.is_empty()
+        || rel_clean.contains('\0')
+        || !std::path::Path::new(rel_clean)
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
+    {
         return err_resp(StatusCode::BAD_REQUEST, "invalid plugin asset path").into_response();
     }
     let plugins_dir = streamdeck_root(&state).join("plugins");
@@ -4424,11 +4447,17 @@ async fn serve_streamdeck_plugin_asset_api(
     } else {
         format!("{clean_id}.sdPlugin")
     });
-    let file_path = pdir.join(rel.trim_start_matches('/'));
-    if !file_path.is_file() {
+    let Ok(canon_pdir) = std::fs::canonicalize(&pdir) else {
         return err_resp(StatusCode::NOT_FOUND, "plugin asset not found").into_response();
+    };
+    let file_path = canon_pdir.join(rel_clean);
+    let Ok(canon_file) = std::fs::canonicalize(&file_path) else {
+        return err_resp(StatusCode::NOT_FOUND, "plugin asset not found").into_response();
+    };
+    if !canon_file.starts_with(&canon_pdir) || !canon_file.is_file() {
+        return err_resp(StatusCode::FORBIDDEN, "plugin asset path escapes plugin directory").into_response();
     }
-    let Ok(bytes) = std::fs::read(&file_path) else {
+    let Ok(bytes) = std::fs::read(&canon_file) else {
         return err_resp(StatusCode::INTERNAL_SERVER_ERROR, "failed to read asset").into_response();
     };
     let lower = rel.to_ascii_lowercase();
@@ -4986,9 +5015,19 @@ async fn v2_auth_middleware(
             }
         });
 
-    if let Err((code, msg)) = state.verify_bearer(auth_owned.as_deref()) {
-        let status = StatusCode::from_u16(code).unwrap_or(StatusCode::UNAUTHORIZED);
-        return (status, Json(json!({ "error": msg }))).into_response();
+    match state.verify_bearer(auth_owned.as_deref()) {
+        Ok(crate::api::state::TokenKind::FirstParty) => {}
+        Ok(crate::api::state::TokenKind::ThirdParty { .. }) => {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(json!({ "error": "third-party tokens may not access the Keyglass v2 management & bus API" })),
+            )
+                .into_response();
+        }
+        Err((code, msg)) => {
+            let status = StatusCode::from_u16(code).unwrap_or(StatusCode::UNAUTHORIZED);
+            return (status, Json(json!({ "error": msg }))).into_response();
+        }
     }
 
     next.run(req).await

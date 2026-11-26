@@ -769,19 +769,30 @@ function on_render(ctx, stage)
         local img_path = rule.image
         if string.sub(img_path, 1, 9) == "module://" then
           local rest = string.sub(img_path, 10)
-          local mdir = module.dir()
+          local mdir = module.dir():gsub("\\", "/")
           local parent = mdir:gsub("/[^/]+$", "")
           local cand = parent .. "/" .. rest
           if string.sub(mdir, 1, 5) ~= "/usr/" and string.sub(mdir, 1, 6) ~= "/home/" then
-            -- On host, optional modules may live in `local/` or `installed/` while `keys-renderer` is `bundled/`.
+            -- On host (macOS, Linux, or Windows), optional modules may live in `local/` or `installed/`
+            -- while `keys-renderer` is `bundled/`.
+            local roots = {}
             local home = os.getenv("HOME")
             if home and #home > 0 then
-              local local_p = home .. "/.local/share/openflux/v2/modules/local/" .. rest
-              local inst_p = home .. "/.local/share/openflux/v2/modules/installed/" .. rest
+              table.insert(roots, home .. "/.local/share/openflux/v2/modules")
+            end
+            local localappdata = os.getenv("LOCALAPPDATA")
+            if localappdata and #localappdata > 0 then
+              table.insert(roots, localappdata:gsub("\\", "/") .. "/openflux/v2/modules")
+            end
+            for _, root in ipairs(roots) do
+              local local_p = root .. "/local/" .. rest
+              local inst_p = root .. "/installed/" .. rest
               if fs.exists(local_p) then
                 cand = local_p
+                break
               elseif fs.exists(inst_p) then
                 cand = inst_p
+                break
               end
             end
           end

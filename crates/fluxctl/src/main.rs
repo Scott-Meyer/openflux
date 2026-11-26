@@ -1942,9 +1942,16 @@ fn handle_lists(
                 .map(|l| l.source.clone())
                 .unwrap_or_else(|| id_or_path.clone());
             let text = if source.starts_with("http://") || source.starts_with("https://") {
-                daemon_client(5000)?
+                // Never use `daemon_client` (which attaches the local first-party bearer token and
+                // disables TLS verification for loopback self-signed certs!) for remote catalog URLs.
+                let catalog_http = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_millis(8000))
+                    .build()
+                    .map_err(|e| e.to_string())?;
+                catalog_http
                     .get(&source)
                     .send()
+                    .and_then(|r| r.error_for_status())
                     .and_then(|r| r.text())
                     .map_err(|e| e.to_string())?
             } else {
@@ -3043,12 +3050,60 @@ fn handle_mcp_tool_call(cli: &Cli, name: &str, args: &Value) -> Result<Value, St
             Ok(json!({ "daemon": st, "keyboard_software": sw }))
         }
         "keyglass_perf" => daemon_json(reqwest::Method::GET, &format!("{base}/v2/perf"), None, 3000),
-        "keyglass_modules_list" => daemon_json(reqwest::Method::GET, &format!("{base}/v2/modules"), None, 3000),
+        "keyglass_modules_list" => {
+            let mut val = daemon_json(reqwest::Method::GET, &format!("{base}/v2/modules"), None, 3000)?;
+            // Redact settings marked `kind == "secret"` before returning diagnostics to MCP clients.
+            if let Some(arr) = val.get_mut("modules").and_then(|v| v.as_array_mut()) {
+                for m in arr {
+                    let secret_keys: Vec<String> = m
+                        .pointer("/manifest/settings")
+                        .and_then(|s| s.as_array())
+                        .map(|list| {
+                            list.iter()
+                                .filter(|f| {
+                                    f.get("secret").and_then(|v| v.as_bool()) == Some(true)
+                                        || f.get("kind").and_then(|k| k.as_str()) == Some("secret")
+                                        || f.get("kind").and_then(|k| k.as_str()) == Some("password")
+                                })
+                                .filter_map(|f| f.get("key").and_then(|k| k.as_str()).map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    if let Some(cfg) = m.pointer_mut("/state/config").and_then(|c| c.as_object_mut()) {
+                        let all_keys: Vec<String> = cfg.keys().cloned().collect();
+                        for k in all_keys {
+                            let low = k.to_ascii_lowercase();
+                            let looks_secret = secret_keys.contains(&k)
+                                || low.contains("token")
+                                || low.contains("secret")
+                                || low.contains("password")
+                                || low.contains("api_key")
+                                || low.contains("apikey");
+                            if looks_secret {
+                                if let Some(slot) = cfg.get_mut(&k) {
+                                    if slot.as_str().is_some_and(|s| !s.is_empty()) {
+                                        *slot = json!("[REDACTED]");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(val)
+        }
         "keyglass_module_logs" => {
             let mid = args
                 .get("module_id")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| "missing module_id".to_string())?;
+            if mid.is_empty()
+                || !mid
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                return Err(format!("invalid module_id {mid:?}"));
+            }
             daemon_json(reqwest::Method::GET, &format!("{base}/v2/modules/{mid}/logs"), None, 3000)
         }
         "keyglass_bus_retained" => {
