@@ -72,6 +72,8 @@ struct RunningHostModule {
     _stdin_guard: Option<ChildStdin>,
     config_json: String,
     entry_path: std::path::PathBuf,
+    /// Module version + host entrypoint mtime; a change (install, update, local edit) restarts it.
+    code_sig: String,
     logs: Arc<Mutex<VecDeque<ModuleLogEntry>>>,
     exited: Option<Option<i32>>,
 }
@@ -116,12 +118,18 @@ impl HostProcessManager {
             return Err(err);
         }
         let cfg_json = serde_json::to_string(&instance.config).unwrap_or_else(|_| "{}".into());
+        let code_sig = format!(
+            "{}@{:?}",
+            discovered.manifest.version,
+            std::fs::metadata(&entry_path).and_then(|m| m.modified()).ok()
+        );
 
-        // Keep already-running host process alive when neither its config nor entrypoint changed!
+        // Keep an already-running host process alive when its config and code are unchanged.
         if let Some(existing) = self.running.get_mut(id) {
             if existing.exited.is_none()
                 && existing.config_json == cfg_json
                 && existing.entry_path == entry_path
+                && existing.code_sig == code_sig
                 && matches!(existing.child.try_wait(), Ok(None))
             {
                 self.failures.remove(id);
@@ -178,6 +186,7 @@ impl HostProcessManager {
                 child,
                 _stdin_guard: stdin_guard,
                 config_json: cfg_json,
+                code_sig,
                 entry_path,
                 logs,
                 exited: None,
