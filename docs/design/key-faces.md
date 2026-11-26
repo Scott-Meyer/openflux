@@ -76,8 +76,6 @@ All listed conditions must hold.
 
 `bus` may also be a list (all must hold). The renderer subscribes to exactly the topics conditions mention, and unsubscribes when no rule mentions them any more (at most 32, and no wildcards), so values from the computer arrive on the keyboard automatically. A topic with no value is *unavailable*. Every operator then fails except `exists = false`.
 
-`time` and `idle_ms` are not built yet.
-
 ## Signals: momentary looks
 
 Some things are events, not states: a notification, a build failing, a timer ending. Anything can publish on `keys/signal` (not retained):
@@ -101,7 +99,7 @@ The `keys-custom` module is now **Key Rules**. Its `rules` list holds the user's
 | Field | Meaning |
 |---|---|
 | `keys` | `F1-F4`, `Esc, a`, a group name, `row:N`, or `action:<id>`; comma-separated |
-| `layer` / `app` / `held` / `caps` | conditions |
+| `layer` / `app` / `held` / `caps` / `time` / `idle_seconds` | conditions |
 | `condition_topic`, `condition_path`, `condition_op`, `condition_value` | a `bus` condition |
 | `hide` | `legend` or `all` |
 | `label`, `icon`, `color` | the legend |
@@ -120,4 +118,4 @@ Per-key and per-action overrides from the Keycaps tab keep working, as patches a
 ## Performance
 
 - Legends and corners are a cached 2D layer. The renderer redraws it only when providers, held keys, modifiers, layer, app, conditions or signals change. Glow, outline pulses and fades are GPU passes every frame and don't invalidate the cache.
-- Conditions are re-evaluated on the events that can change them: provider changes, bus values they watch, layer, modifiers, app, and held keys (only when some rule uses `held`).
+- Conditions are re-evaluated on the events that can change them: provider changes, bus values they watch, layer, modifiers, app, and held keys (only when some rule uses `held`). Time and idle conditions are re-checked once a second, only while some rule uses them.

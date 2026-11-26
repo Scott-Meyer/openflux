@@ -88,6 +88,9 @@ local function row_to_parts(row)
   local held = str(row.held)
   if held == "held" then when.held = true elseif held == "not_held" then when.held = false end
   if str(row.caps) == "on" then when.caps = true elseif str(row.caps) == "off" then when.caps = false end
+  if str(row.time) then when.time = row.time end
+  local idle_s = tonumber(row.idle_seconds)
+  if idle_s and idle_s > 0 then when.idle_ms = math.floor(idle_s * 1000) end
   local topic = str(row.condition_topic)
   if topic then
     local op = str(row.condition_op) or "eq"

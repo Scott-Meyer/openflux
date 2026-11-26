@@ -173,6 +173,12 @@ enum KeyRulesCmd {
         /// on | off
         #[arg(long)]
         caps: Option<String>,
+        /// Only between these local times, e.g. 22:00-06:00.
+        #[arg(long)]
+        time: Option<String>,
+        /// Only after the keyboard has been idle this many seconds.
+        #[arg(long)]
+        idle_s: Option<u64>,
         /// Only when this retained bus topic...
         #[arg(long)]
         when_topic: Option<String>,
@@ -2449,7 +2455,7 @@ fn handle_keys(cli: &Cli, cmd: &KeysCmd) -> Result<(), String> {
             match cmd {
                 KeyRulesCmd::List => {}
                 KeyRulesCmd::Add {
-                    keys, name, layer, app, held, caps, when_topic, when_path, when_op, when_value, hide, label, icon,
+                    keys, name, layer, app, held, caps, time, idle_s, when_topic, when_path, when_op, when_value, hide, label, icon,
                     color, glow, glow_color, outline, outline_color, backdrop, corners, at,
                 } => {
                     let mut row = serde_json::Map::new();
@@ -2464,6 +2470,7 @@ fn handle_keys(cli: &Cli, cmd: &KeysCmd) -> Result<(), String> {
                     put("app", app);
                     put("held", held);
                     put("caps", caps);
+                    put("time", time);
                     put("condition_topic", when_topic);
                     put("condition_path", when_path);
                     put("condition_value", when_value);
@@ -2476,6 +2483,9 @@ fn handle_keys(cli: &Cli, cmd: &KeysCmd) -> Result<(), String> {
                     put("outline", outline);
                     put("outline_color", outline_color);
                     put("backdrop", backdrop);
+                    if let Some(i) = idle_s {
+                        row.insert("idle_seconds".into(), Value::from(*i));
+                    }
                     if when_topic.is_some() {
                         row.insert("condition_op".into(), Value::from(when_op.as_str()));
                     }

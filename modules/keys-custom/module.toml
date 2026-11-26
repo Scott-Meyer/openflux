@@ -82,6 +82,22 @@ description = "Later rules win over earlier ones. Keys: F1-F4, Esc, a, home_row,
   default = "any"
 
   [[settings.fields]]
+  key = "time"
+  label = "Only Between"
+  kind = "string"
+  default = ""
+  description = "Local time range, e.g. 22:00-06:00"
+
+  [[settings.fields]]
+  key = "idle_seconds"
+  label = "Only After Idle (s)"
+  kind = "number"
+  default = 0
+  min = 0
+  max = 86400
+  description = "0 = always"
+
+  [[settings.fields]]
   key = "condition_topic"
   label = "Only When Bus Topic"
   kind = "string"

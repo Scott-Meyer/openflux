@@ -32,6 +32,9 @@ local bus_values = {}         -- topic -> latest payload for topics conditions w
 local bus_watched = {}        -- topic -> true (runtime subscriptions owned by conditions)
 local MAX_WATCHED = 32
 local uses_held = false       -- some matching-candidate rule depends on held keys
+local uses_clock = false      -- some rule depends on time of day or idle time (re-checked each second)
+local idle_ms = 0
+local clock_tick = 0
 
 -- Signals: momentary effects (glow / outline) on keys, published on `keys/signal`.
 local signals = {}            -- id -> { keyset, fx = { glow?, outline? }, until_t, seq }
@@ -324,6 +327,28 @@ local function when_matches(when, ki)
     end
   end
   if when.caps ~= nil and (when.caps == true) ~= caps_lock then return false end
+  if when.time ~= nil then
+    -- "HH:MM-HH:MM" in local time; a range may wrap past midnight ("22:00-06:00").
+    uses_clock = true
+    local h1, m1, h2, m2 = string.match(tostring(when.time), "^%s*(%d+):(%d+)%s*%-%s*(%d+):(%d+)%s*$")
+    if not h1 then return false end
+    local t = os.date("*t")
+    local now = t.hour * 60 + t.min
+    local a, b = tonumber(h1) * 60 + tonumber(m1), tonumber(h2) * 60 + tonumber(m2)
+    local inside = (a <= b) and (now >= a and now < b) or (now >= a or now < b)
+    if not inside then return false end
+  end
+  if when.idle_ms ~= nil then
+    -- A number means "idle at least this long"; or { gt = ..., lt = ... }.
+    uses_clock = true
+    local c = when.idle_ms
+    if type(c) == "number" then
+      if idle_ms < c then return false end
+    elseif type(c) == "table" then
+      if c.gt ~= nil and not (idle_ms > tonumber(c.gt)) then return false end
+      if c.lt ~= nil and not (idle_ms < tonumber(c.lt)) then return false end
+    end
+  end
   if when.host ~= nil and (when.host == true) ~= host_connected then return false end
   if when.bus ~= nil and bus_cond_holds_ref then
     local list = (type(when.bus) == "table" and when.bus.topic == nil) and when.bus or { when.bus }
@@ -411,6 +436,10 @@ function on_event(topic, payload)
         held_by_idx[ki] = nil
       end
       if uses_held then needs_redraw = true end
+      if payload.kind == "press" then
+        if uses_clock and idle_ms > 0 then needs_redraw = true end
+        idle_ms = 0
+      end
       if not qmk_state_active then
         local prev_mask = current_mod_mask()
         local prev_fn = held.fn
@@ -425,6 +454,7 @@ function on_event(topic, payload)
       end
     end
   elseif topic == "keyboard/state" and type(payload) == "table" then
+    if tonumber(payload.idle_ms) then idle_ms = tonumber(payload.idle_ms) end
     local next_caps = (payload.caps_lock == true) or (payload.caps_word_active == true)
     local bf = tonumber(payload.active_layer_bitfield) or 1
     local def_bf = tonumber(payload.default_layer_bitfield) or 1
@@ -488,6 +518,14 @@ end
 function on_update(dt)
   anim_t = anim_t + dt
   last_dt = dt
+  if uses_clock then
+    clock_tick = clock_tick + dt
+    if clock_tick >= 1.0 then
+      clock_tick = 0
+      idle_ms = idle_ms + 1000 -- advanced locally between keyboard/state reports
+      needs_redraw = true
+    end
+  end
 end
 
 -- Crisp vector icon library shared by all shortcut packs, keymap media keys, and game decks!
@@ -1082,6 +1120,7 @@ end
 
 local function resolve_faces(mod_mask)
   uses_held = false
+  uses_clock = false
   local per_key = collect_matches(mod_mask)
   local wanted = wanted_bus_topics()
   local faces = {}
