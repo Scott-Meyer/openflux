@@ -31,6 +31,7 @@ static volatile uint8_t g_usb_gamepad_mounted = 0U;
 static uint8_t g_layer_override = 0xFFU; /* 0..7 = active App-Linking layer, 0xFF = profile default */
 static uint16_t g_gp_resolved_kc[FW_MAX_KEYS_PER_LAYOUT];
 static bool g_gp_resolved_valid = false;
+static bool g_force_resolved_dirty = false;
 static uint8_t g_gp_last_wire[FW_GP_REPORT_WIRE_LEN];
 static bool g_gp_has_sent = false;
 
@@ -512,6 +513,7 @@ static int on_layer_override(uint8_t layer, void *ctx) {
         g_layer_override = 0xFFU;
         (void)fw_runtime_set_active_profile(&g_rt, g_rt.active_profile);
         g_gp_resolved_valid = false;
+        g_force_resolved_dirty = true;
         return 0;
     }
     if (layer >= 8U)
@@ -519,6 +521,7 @@ static int on_layer_override(uint8_t layer, void *ctx) {
     g_layer_override = layer;
     fw_qmk_set_default_layer(layer);
     g_gp_resolved_valid = false;
+    g_force_resolved_dirty = true;
     return 0;
 }
 
@@ -609,6 +612,7 @@ int main(void) {
     uint32_t last_analog_tx_ms = 0U;
     uint32_t last_resolved_tx_ms = 0U;
     bool resolved_dirty = true;
+    bool last_bridge_connected = false;
     uint8_t last_leds = 0U;
     uint32_t last_profile = g_rt.active_profile;
     uint32_t last_act_mode = g_rt.active_actuation_mode;
@@ -820,6 +824,17 @@ int main(void) {
              cur_qmk_state.oneshot_mods != last_qmk_state.oneshot_mods) &&
             fw_qmk_has_enabled_key_overrides()) {
             qmk_faces_changed = 1;
+        }
+        /* Re-emit resolved key faces whenever the RK3566 bridge connects/reconnects after boot,
+         * or whenever 0x75 layer override is called (even if RP2040 was already on that layer). */
+        bool bridge_now_connected = time_us_64() < g_bridge_ack_expires_us;
+        if (bridge_now_connected && !last_bridge_connected) {
+            resolved_dirty = true;
+        }
+        last_bridge_connected = bridge_now_connected;
+        if (g_force_resolved_dirty) {
+            g_force_resolved_dirty = false;
+            resolved_dirty = true;
         }
         if (qmk_faces_changed) {
             resolved_dirty = true;
