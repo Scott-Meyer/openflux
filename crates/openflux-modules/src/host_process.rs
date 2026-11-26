@@ -291,6 +291,7 @@ fn build_host_command(entry: &std::path::Path) -> Command {
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
+    #[allow(unused_mut)]
     let mut cmd = match ext.as_str() {
         "py" => {
             #[cfg(target_os = "windows")]

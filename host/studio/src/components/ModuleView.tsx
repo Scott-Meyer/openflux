@@ -1,6 +1,7 @@
 import type React from "react";
 import { useEffect, useState } from "react";
 import {
+  type ActiveProfileState,
   type MediaLibraryFile,
   type ModuleUpdateInfo,
   type V2ModuleRecord,
@@ -12,9 +13,11 @@ import { KeyboardSurface, type SurfaceKeyGeom } from "./KeyboardSurface";
 interface ModuleViewProps {
   mod: V2ModuleRecord;
   keys: SurfaceKeyGeom[];
+  activeProfile?: ActiveProfileState | null;
   pickFile?: (title: string) => Promise<string | null>;
   onUpdated: () => Promise<void>;
   onOpenKeymap: (focusKey?: number) => void;
+  onOpenProfile?: (profileId: string) => void;
   onUninstalled?: () => void;
 }
 
@@ -35,9 +38,11 @@ const KEY_INDEX_OPTIONS: Array<{ value: number; label: string }> = [
 export const ModuleView: React.FC<ModuleViewProps> = ({
   mod,
   keys,
+  activeProfile,
   pickFile,
   onUpdated,
   onOpenKeymap,
+  onOpenProfile,
   onUninstalled,
 }) => {
   const [showPreview, setShowPreview] = useState(
@@ -515,11 +520,24 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
 
       {/* Clean Settings Card */}
       <div className="kg-calm-card kg-settings-stack">
+        {mod.manifest.settings.length > 0 && (
+          <div
+            className="kg-calm-row"
+            style={{ paddingBottom: 8, marginBottom: 4, borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+          >
+            <span className="kg-muted" style={{ fontSize: 11 }}>
+              Editing: <strong style={{ color: "rgba(255,255,255,0.85)" }}>Shared (Default)</strong> — applies across
+              computers unless overridden by an OS, computer, or app profile.
+            </span>
+          </div>
+        )}
         {mod.manifest.settings.length === 0 ? (
           <div className="kg-muted">This module has no configurable settings.</div>
         ) : (
           mod.manifest.settings.map((field) => {
             const cur = mod.state.config?.[field.key] ?? field.default ?? "";
+            const fieldSrc = activeProfile?.field_sources?.[`${mod.id}.${field.key}`];
+            const shadowedBy = fieldSrc && fieldSrc.profile_id !== "default" ? fieldSrc : null;
             return (
               <div key={field.key} className="kg-setting-row">
                 <div className="kg-setting-meta">
@@ -531,6 +549,23 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
                     <div className="kg-setting-label">{field.label}</div>
                   )}
                   {field.description && <div className="kg-muted">{field.description}</div>}
+                  {shadowedBy && (
+                    <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+                      <span style={{ color: "#7dd3fc" }}>
+                        Active value overridden by <strong>{shadowedBy.profile_name}</strong>
+                      </span>
+                      {onOpenProfile && (
+                        <button
+                          type="button"
+                          className="kg-btn-ghost"
+                          style={{ padding: "1px 7px", fontSize: 11 }}
+                          onClick={() => onOpenProfile(shadowedBy.profile_id)}
+                        >
+                          Edit in {shadowedBy.profile_name} →
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="kg-setting-ctrl">
                   {field.kind === "boolean" ? (

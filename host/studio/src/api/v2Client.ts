@@ -156,6 +156,7 @@ export interface ProfileEntry {
   name: string;
   parent?: string | null;
   enabled: boolean;
+  implicit?: boolean;
   match_apps: string[];
   match_hosts: string[];
   match_os: string[];
@@ -165,10 +166,29 @@ export interface ProfileEntry {
   module_overrides: Record<string, Record<string, unknown>>;
 }
 
+export interface ProfileStackLayer {
+  id: string;
+  name: string;
+  scope: "base" | "os" | "host" | "app" | string;
+  implicit: boolean;
+  pinned: boolean;
+  qmk_layer?: number | null;
+  override_count: number;
+  summary: string;
+}
+
+export interface ProfileFieldSource {
+  profile_id: string;
+  profile_name: string;
+  scope: string;
+}
+
 export interface ActiveProfileState {
   profile_id: string;
   profile_name: string;
   chain: string[];
+  stack?: ProfileStackLayer[];
+  field_sources?: Record<string, ProfileFieldSource>;
   source: string;
   manual_override: boolean;
   host?: HostIdentity;

@@ -11,6 +11,8 @@ import {
 
 interface ProfilesViewProps {
   modules: V2ModuleRecord[];
+  initialSelectedId?: string | null;
+  onActiveChanged?: () => void;
 }
 
 interface RecentAppEntry {
@@ -64,7 +66,11 @@ const LAYER_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "7", label: "Layer 7" },
 ];
 
-export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
+export const ProfilesView: React.FC<ProfilesViewProps> = ({
+  modules,
+  initialSelectedId,
+  onActiveChanged,
+}) => {
   const [profiles, setProfiles] = useState<ProfileEntry[]>([]);
   const [manualId, setManualId] = useState<string | null>(null);
   const [active, setActive] = useState<ActiveProfileState | null>(null);
@@ -72,9 +78,13 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
   const [hostNameDraft, setHostNameDraft] = useState("");
   const [recentApps, setRecentApps] = useState<RecentAppEntry[]>([]);
   const [activeMatch, setActiveMatch] = useState<ProfileMatchDiagnostics | null>(null);
-  const [selectedId, setSelectedId] = useState<string>("default");
+  const [selectedId, setSelectedId] = useState<string>(initialSelectedId || "default");
   const [overrideModId, setOverrideModId] = useState<string>("bg-media");
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialSelectedId) setSelectedId(initialSelectedId);
+  }, [initialSelectedId]);
 
   const slotWidgets = modules.filter((m) => m.manifest.slot_capable);
   const configurableMods = modules.filter((m) => m.manifest.settings.length > 0);
@@ -115,6 +125,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
       await v2Client.putProfiles(nextManual, nextProfiles);
       if (note) setStatusMsg(note);
       await loadAll();
+      onActiveChanged?.();
     } catch (err) {
       setStatusMsg(err instanceof Error ? err.message : String(err));
     }
@@ -168,11 +179,54 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
     void persist(nextManual, next, "Deleted profile.");
   };
 
+  const handleCreateComputerProfile = () => {
+    if (!host) return;
+    const slug = `host_${host.host_id.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+    if (profiles.some((p) => p.id === slug)) {
+      setSelectedId(slug);
+      return;
+    }
+    const nextP: ProfileEntry = {
+      id: slug,
+      name: host.host_name || "This Computer",
+      parent: "default",
+      enabled: true,
+      match_apps: [],
+      match_hosts: [host.host_name || host.host_id],
+      match_os: [host.os],
+      tags: [],
+      qmk_layer: null,
+      top_bar_slots: null,
+      module_overrides: {},
+    };
+    setSelectedId(slug);
+    void persist(manualId, [...profiles, nextP], `Added computer override for "${nextP.name}".`);
+  };
+
+  const resetBuiltinOsProfile = (id: string) => {
+    const next = profiles.map((p) =>
+      p.id === id
+        ? {
+            ...p,
+            enabled: true,
+            qmk_layer: null,
+            top_bar_slots: null,
+            module_overrides: {},
+            match_apps: [],
+            match_hosts: [],
+          }
+        : p,
+    );
+    const nextManual = manualId === id ? null : manualId;
+    void persist(nextManual, next, `Reset ${id === "macos" ? "macOS" : "Windows"} back to automatic legends & shortcuts.`);
+  };
+
   const handleSelectManual = async (pid: string | null) => {
     try {
       await v2Client.selectProfile(pid);
       setManualId(pid);
       await loadAll();
+      onActiveChanged?.();
       setStatusMsg(pid ? `Pinned profile "${pid}" manually.` : "Returned to automatic profile matching.");
     } catch (err) {
       setStatusMsg(err instanceof Error ? err.message : String(err));
@@ -213,12 +267,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
       <div className="kg-page-header">
         <div className="kg-page-title-row">
           <h1>Profiles</h1>
-          <span className="kg-pill-subtle">Module · Inheritance &amp; Multi-Computer</span>
-          {active && (
-            <span className="kg-status-badge is-ok">
-              Active: {active.profile_name} ({active.chain.join(" → ")})
-            </span>
-          )}
+          <span className="kg-pill-subtle">Shared → OS → Computer → App</span>
         </div>
         <div className="kg-header-actions">
           {manualId && (
@@ -227,30 +276,25 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
             </button>
           )}
           <button type="button" className="kg-btn-primary" onClick={handleCreateProfile}>
-            + New Profile
+            + New App Profile
           </button>
         </div>
       </div>
 
-      {/* Active Profile, Why-Matched & Competing Profiles Status Card */}
+      {/* Live Resolved Overlay Stack Card (Left-to-Right: Shared -> OS -> Computer -> App) */}
       {active && (
         <div
           className="kg-calm-card"
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: 8,
+            gap: 10,
             borderColor: manualId ? "rgba(92, 225, 255, 0.45)" : undefined,
           }}
         >
           <div className="kg-calm-row" style={{ flexWrap: "wrap" }}>
             <div>
-              <strong>
-                {manualId ? "📌 Pinned / Previewing:" : "Active Profile:"} {active.profile_name}
-              </strong>{" "}
-              <span className="kg-muted" style={{ fontSize: 11 }}>
-                ({active.chain.join(" → ")})
-              </span>
+              <strong>{manualId ? "📌 Pinned Overlay Stack:" : "Live Overlay Stack:"}</strong>
               <div className="kg-muted" style={{ fontSize: 12, marginTop: 3 }}>
                 {activeMatch?.reason || `Source: ${active.source}`}
                 {activeMatch?.evaluated_app_id && !activeMatch.current_app_is_studio && (
@@ -267,18 +311,52 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
                   Return to Automatic
                 </button>
               ) : (
-                selected && (
+                selected && selected.id !== "default" && (
                   <button
                     type="button"
                     className="kg-btn-ghost"
                     onClick={() => void handleSelectManual(selected.id)}
                   >
-                    Preview / Pin “{selected.name}”
+                    Pin “{selected.name}”
                   </button>
                 )
               )}
             </div>
           </div>
+
+          {Array.isArray(active.stack) && active.stack.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+              {active.stack.map((layer, idx) => (
+                <div key={`${layer.scope}-${layer.id}`} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {idx > 0 && <span className="kg-muted" style={{ fontSize: 12 }}>→</span>}
+                  <button
+                    type="button"
+                    className="kg-btn-ghost"
+                    onClick={() => setSelectedId(layer.id)}
+                    style={{
+                      padding: "4px 10px",
+                      fontSize: 12,
+                      borderColor:
+                        selected?.id === layer.id
+                          ? "rgba(92, 225, 255, 0.55)"
+                          : layer.pinned
+                            ? "rgba(92, 225, 255, 0.4)"
+                            : undefined,
+                    }}
+                    title={layer.summary}
+                  >
+                    <span style={{ fontWeight: 600 }}>
+                      {layer.pinned ? "📌 " : ""}
+                      {layer.name}
+                    </span>
+                    <span className="kg-muted" style={{ marginLeft: 6, fontSize: 11 }}>
+                      {layer.summary}
+                    </span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           {activeMatch?.conflicts && activeMatch.conflicts.length > 0 && (
             <div
               style={{
@@ -337,14 +415,41 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "256px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
-        {/* Profiles List with Inheritance & Pin Controls */}
-        <div className="kg-calm-card" style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10 }}>
-          {profiles.map((p) => {
+      <div style={{ display: "grid", gridTemplateColumns: "264px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+        {/* Grouped Profiles List: Shared Baseline / OS & Computers / Apps & Activities */}
+        {(() => {
+          const stackIds = new Set((active?.stack ?? []).map((s) => s.id));
+          const isOsOrHost = (p: ProfileEntry) =>
+            p.id !== "default" &&
+            p.match_apps.length === 0 &&
+            (p.match_os.length > 0 || p.match_hosts.length > 0);
+          const baseProfiles = profiles.filter((p) => p.id === "default");
+          const envProfiles = profiles.filter(isOsOrHost);
+          const appProfiles = profiles.filter((p) => p.id !== "default" && !isOsOrHost(p));
+
+          const renderItem = (p: ProfileEntry) => {
             const isSel = selected?.id === p.id;
-            const isActive = active?.profile_id === p.id;
+            const inLiveStack = stackIds.has(p.id) || active?.profile_id === p.id;
             const isPinned = manualId === p.id;
-            const parentName = p.parent ? profiles.find((x) => x.id === p.parent)?.name ?? p.parent : null;
+            const ovCount = Object.values(p.module_overrides ?? {}).reduce(
+              (acc, m) => acc + Object.keys(m ?? {}).length,
+              0,
+            );
+            const subtitle =
+              p.id === "default"
+                ? "All computers & apps"
+                : p.implicit
+                  ? p.id === "windows"
+                    ? "Auto · Win/Alt & Ctrl"
+                    : "Auto · Cmd/Opt & Cmd"
+                  : [
+                      p.match_hosts.length > 0 ? p.match_hosts[0] : null,
+                      p.qmk_layer != null ? `L${p.qmk_layer}` : null,
+                      p.top_bar_slots ? "Top Bar" : null,
+                      ovCount > 0 ? `${ovCount} override${ovCount === 1 ? "" : "s"}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "Inherits all settings";
             return (
               <button
                 key={p.id}
@@ -357,22 +462,78 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
                     {p.name} {isPinned ? "📌" : ""}
                   </div>
                   <div className="kg-muted" style={{ fontSize: 11 }}>
-                    {parentName ? `↳ ${parentName}` : "Root (All Computers)"}
-                    {p.match_os.length > 0 ? ` · ${p.match_os.join("/")}` : ""}
-                    {p.qmk_layer != null ? ` · L${p.qmk_layer}` : ""}
-                    {p.top_bar_slots ? " · Bar" : ""}
-                    {p.module_overrides?.["keys-keymap"]?.os_layout
-                      ? ` · Legends`
-                      : Object.keys(p.module_overrides ?? {}).length > 0
-                        ? ` · ${Object.keys(p.module_overrides).length} mod`
-                        : ""}
+                    {subtitle}
                   </div>
                 </span>
-                {isActive && <span className="kg-conn-dot is-on" title="Currently active profile" />}
+                {inLiveStack && <span className="kg-conn-dot is-on" title="Active in current overlay stack" />}
               </button>
             );
-          })}
-        </div>
+          };
+
+          return (
+            <div className="kg-calm-card" style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10 }}>
+              <div className="kg-muted" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", padding: "2px 6px" }}>
+                Shared Baseline
+              </div>
+              {baseProfiles.map(renderItem)}
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginTop: 8,
+                  padding: "2px 6px",
+                }}
+              >
+                <span className="kg-muted" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                  OS &amp; Computers
+                </span>
+                {host && (
+                  <button
+                    type="button"
+                    className="kg-btn-ghost"
+                    style={{ padding: "1px 6px", fontSize: 10 }}
+                    onClick={handleCreateComputerProfile}
+                    title={`Add per-computer override for ${host.host_name}`}
+                  >
+                    + This PC
+                  </button>
+                )}
+              </div>
+              {envProfiles.map(renderItem)}
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginTop: 8,
+                  padding: "2px 6px",
+                }}
+              >
+                <span className="kg-muted" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                  Apps &amp; Activities
+                </span>
+                <button
+                  type="button"
+                  className="kg-btn-ghost"
+                  style={{ padding: "1px 6px", fontSize: 10 }}
+                  onClick={handleCreateProfile}
+                >
+                  + App
+                </button>
+              </div>
+              {appProfiles.length === 0 ? (
+                <div className="kg-muted" style={{ fontSize: 11, padding: "4px 8px" }}>
+                  No app profiles yet. App profiles automatically stack on top of macOS or Windows.
+                </div>
+              ) : (
+                appProfiles.map(renderItem)
+              )}
+            </div>
+          );
+        })()}
 
         {/* Selected Profile Editor */}
         {selected && (
@@ -380,7 +541,13 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
             <div className="kg-calm-row" style={{ flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div className="kg-row-title">{selected.name}</div>
-                <span className="kg-pill-subtle">id: {selected.id}</span>
+                <span className="kg-pill-subtle">
+                  {selected.id === "default"
+                    ? "Shared baseline"
+                    : selected.implicit
+                      ? "Built-in OS (auto)"
+                      : `id: ${selected.id}`}
+                </span>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <button
@@ -390,10 +557,22 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ modules }) => {
                 >
                   {manualId === selected.id ? "Pinned Active (Unpin)" : "Pin Active Now"}
                 </button>
-                {selected.id !== "default" && (
-                  <button type="button" className="kg-btn-ghost" onClick={() => deleteProfile(selected.id)}>
-                    Delete
-                  </button>
+                {selected.id === "macos" || selected.id === "windows" ? (
+                  !selected.implicit && (
+                    <button
+                      type="button"
+                      className="kg-btn-ghost"
+                      onClick={() => resetBuiltinOsProfile(selected.id)}
+                    >
+                      Reset to Auto
+                    </button>
+                  )
+                ) : (
+                  selected.id !== "default" && (
+                    <button type="button" className="kg-btn-ghost" onClick={() => deleteProfile(selected.id)}>
+                      Delete
+                    </button>
+                  )
                 )}
               </div>
             </div>

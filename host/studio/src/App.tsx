@@ -2,7 +2,7 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DaemonClient } from "./api/daemonClient";
 import { createDaemonClient } from "./api/daemonClient";
-import { type V2ModuleRecord, v2Client } from "./api/v2Client";
+import { type ActiveProfileState, type V2ModuleRecord, v2Client } from "./api/v2Client";
 import { ActuationPanel } from "./components/ActuationPanel";
 import { DevicePanel } from "./components/DevicePanel";
 import { HomeView } from "./components/HomeView";
@@ -20,7 +20,7 @@ import { isKeyboardConnected, PLACEHOLDER_CONFIG } from "./types/openflux";
 
 export type StudioView =
   | { kind: "home" }
-  | { kind: "module"; moduleId: string; focusKey?: number | null }
+  | { kind: "module"; moduleId: string; focusKey?: number | null; focusProfileId?: string | null }
   | { kind: "actuation" }
   | { kind: "store" }
   | { kind: "device" };
@@ -220,10 +220,27 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
   const [syncing, setSyncing] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [previewTick, setPreviewTick] = useState(0);
+  const [activeProfile, setActiveProfile] = useState<ActiveProfileState | null>(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [htmlSdPlugins, setHtmlSdPlugins] = useState<Array<{ id: string; url: string }>>([]);
   const configRef = useRef<OpenFluxConfig>(config);
   const modulesRevRef = useRef<number | null>(null);
   configRef.current = config;
+
+  const refreshActiveProfile = useCallback(async () => {
+    try {
+      const res = await v2Client.getProfiles();
+      if (res?.active) setActiveProfile(res.active);
+    } catch {
+      // daemon may still be starting
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshActiveProfile();
+    const id = window.setInterval(() => void refreshActiveProfile(), 3000);
+    return () => window.clearInterval(id);
+  }, [refreshActiveProfile]);
 
   // Keep any imported HTML/JS `.sdPlugin` runtimes (like Task Timer's `index.html`) alive inside
   // hidden WebView iframes so they register on `sd_host.py`'s WebSocket server & update keycaps live!
@@ -482,7 +499,152 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
           })}
         </nav>
 
-        <div className="kg-sidebar-footer">
+        <div className="kg-sidebar-footer" style={{ position: "relative" }}>
+          {activeProfile && (() => {
+            const stack = activeProfile.stack ?? [];
+            const osLayer = stack.find((s) => s.scope === "os");
+            const appLayer = [...stack].reverse().find((s) => s.scope === "app");
+            const hostLayer = stack.find((s) => s.scope === "host");
+            const osLabel =
+              osLayer?.name ??
+              (activeProfile.host?.os === "windows"
+                ? "Windows"
+                : activeProfile.host?.os === "macos"
+                  ? "macOS"
+                  : activeProfile.host?.os || "Desktop");
+            const layerSuffix = activeProfile.qmk_layer != null ? ` (L${activeProfile.qmk_layer})` : "";
+            const chipText = activeProfile.manual_override
+              ? `📌 ${activeProfile.profile_name}${layerSuffix}`
+              : appLayer
+                ? `${appLayer.name} · ${osLabel}${layerSuffix}`
+                : hostLayer
+                  ? `${hostLayer.name} · ${osLabel}${layerSuffix}`
+                  : `${osLabel}${layerSuffix} · Shared`;
+            return (
+              <div style={{ marginBottom: 6 }}>
+                {profileMenuOpen && (
+                  <div
+                    className="kg-calm-card"
+                    style={{
+                      position: "absolute",
+                      left: 8,
+                      right: 8,
+                      bottom: "calc(100% + 6px)",
+                      zIndex: 40,
+                      padding: 10,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                      boxShadow: "0 12px 32px rgba(0, 0, 0, 0.55)",
+                      borderColor: "rgba(92, 225, 255, 0.28)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span className="kg-muted" style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        {activeProfile.manual_override ? "Pinned Overlay Stack" : "Live Overlay Stack"}
+                      </span>
+                      <button
+                        type="button"
+                        className="kg-btn-ghost"
+                        style={{ padding: "1px 6px", fontSize: 10 }}
+                        onClick={() => setProfileMenuOpen(false)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {stack.map((layer, idx) => (
+                      <button
+                        key={`${layer.scope}-${layer.id}`}
+                        type="button"
+                        className="kg-nav-item"
+                        style={{ padding: "5px 8px", textAlign: "left" }}
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          setView({ kind: "module", moduleId: "profiles", focusProfileId: layer.id });
+                        }}
+                      >
+                        <span style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600 }}>
+                            {idx > 0 ? "↳ " : ""}
+                            {layer.pinned ? "📌 " : ""}
+                            {layer.name}
+                          </div>
+                          <div className="kg-muted" style={{ fontSize: 10 }}>
+                            {layer.summary}
+                          </div>
+                        </span>
+                      </button>
+                    ))}
+                    <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                      {activeProfile.manual_override && (
+                        <button
+                          type="button"
+                          className="kg-btn-primary"
+                          style={{ flex: 1, padding: "4px 8px", fontSize: 11 }}
+                          onClick={async () => {
+                            await v2Client.selectProfile(null);
+                            await refreshActiveProfile();
+                            setProfileMenuOpen(false);
+                          }}
+                        >
+                          Return to Auto
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="kg-btn-ghost"
+                        style={{ flex: 1, padding: "4px 8px", fontSize: 11 }}
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          setView({ kind: "module", moduleId: "profiles" });
+                        }}
+                      >
+                        Open Profiles →
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <button
+                    type="button"
+                    className="kg-nav-item"
+                    style={{
+                      flex: 1,
+                      padding: "6px 10px",
+                      fontSize: 11,
+                      background: activeProfile.manual_override
+                        ? "rgba(92, 225, 255, 0.12)"
+                        : "rgba(255, 255, 255, 0.04)",
+                      border: activeProfile.manual_override
+                        ? "1px solid rgba(92, 225, 255, 0.35)"
+                        : "1px solid rgba(255, 255, 255, 0.08)",
+                    }}
+                    onClick={() => setProfileMenuOpen((v) => !v)}
+                    title="Inspect active profile overlay stack"
+                  >
+                    <span className="kg-conn-dot is-on" />
+                    <span className="kg-nav-label" style={{ fontSize: 11 }}>
+                      {chipText}
+                    </span>
+                  </button>
+                  {activeProfile.manual_override && (
+                    <button
+                      type="button"
+                      className="kg-btn-ghost"
+                      style={{ padding: "5px 7px", fontSize: 10 }}
+                      title="Return to automatic profile matching"
+                      onClick={async () => {
+                        await v2Client.selectProfile(null);
+                        await refreshActiveProfile();
+                      }}
+                    >
+                      Auto
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
           <button
             type="button"
             className={`kg-nav-item ${view.kind === "store" ? "is-active" : ""}`}
@@ -600,7 +762,11 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
         )}
 
         {view.kind === "module" && view.moduleId === "profiles" && (
-          <ProfilesView modules={modules} />
+          <ProfilesView
+            modules={modules}
+            initialSelectedId={view.focusProfileId}
+            onActiveChanged={() => void refreshActiveProfile()}
+          />
         )}
 
         {view.kind === "module" && view.moduleId === "streamdeck-bridge" && (
@@ -617,9 +783,11 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
             <ModuleView
               mod={activeMod}
               keys={geomKeys}
+              activeProfile={activeProfile}
               pickFile={(title) => client.pickFile(title)}
               onUpdated={refreshModules}
               onOpenKeymap={(k) => openModule("keys-keymap", k)}
+              onOpenProfile={(pid) => setView({ kind: "module", moduleId: "profiles", focusProfileId: pid })}
               onUninstalled={() => setView({ kind: "home" })}
             />
           )}

@@ -78,6 +78,10 @@ pub struct ProfileEntry {
     pub parent: Option<String>,
     #[serde(default = "default_ctx_enabled")]
     pub enabled: bool,
+    /// True for synthesized built-in OS scopes (`macos` / `windows`) that have no user customizations
+    /// persisted to disk yet. Editing/customizing one promotes it to a stored profile automatically.
+    #[serde(default)]
+    pub implicit: bool,
     #[serde(default)]
     pub match_apps: Vec<String>,
     #[serde(default)]
@@ -92,6 +96,27 @@ pub struct ProfileEntry {
     pub top_bar_slots: Option<Vec<ContextTopBarSlot>>,
     #[serde(default)]
     pub module_overrides: BTreeMap<String, BTreeMap<String, Value>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileStackLayer {
+    pub id: String,
+    pub name: String,
+    /// `"base"` | `"os"` | `"host"` | `"app"`
+    pub scope: String,
+    pub implicit: bool,
+    pub pinned: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qmk_layer: Option<u8>,
+    pub override_count: usize,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileFieldSource {
+    pub profile_id: String,
+    pub profile_name: String,
+    pub scope: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -720,63 +745,27 @@ impl V2State {
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or_else(|| {
                 let legacy = self.load_context_rules();
-                let mut mac_overrides: BTreeMap<String, BTreeMap<String, Value>> = BTreeMap::new();
-                mac_overrides.insert(
-                    "keys-keymap".into(),
-                    BTreeMap::from([("os_layout".into(), Value::String("macos".into()))]),
-                );
-                let mut win_overrides: BTreeMap<String, BTreeMap<String, Value>> = BTreeMap::new();
-                win_overrides.insert(
-                    "keys-keymap".into(),
-                    BTreeMap::from([("os_layout".into(), Value::String("windows".into()))]),
-                );
-                let mut profiles = vec![
-                    ProfileEntry {
-                        id: "default".into(),
-                        name: "Default".into(),
-                        parent: None,
-                        enabled: true,
-                        match_apps: vec![],
-                        match_hosts: vec![],
-                        match_os: vec![],
-                        tags: vec!["base".into()],
-                        qmk_layer: None,
-                        top_bar_slots: None,
-                        module_overrides: BTreeMap::new(),
-                    },
-                    ProfileEntry {
-                        id: "macos".into(),
-                        name: "macOS".into(),
-                        parent: Some("default".into()),
-                        enabled: true,
-                        match_apps: vec![],
-                        match_hosts: vec![],
-                        match_os: vec!["macos".into()],
-                        tags: vec!["macos".into()],
-                        qmk_layer: None,
-                        top_bar_slots: None,
-                        module_overrides: mac_overrides,
-                    },
-                    ProfileEntry {
-                        id: "windows".into(),
-                        name: "Windows".into(),
-                        parent: Some("default".into()),
-                        enabled: true,
-                        match_apps: vec![],
-                        match_hosts: vec![],
-                        match_os: vec!["windows".into()],
-                        tags: vec!["windows".into()],
-                        qmk_layer: None,
-                        top_bar_slots: None,
-                        module_overrides: win_overrides,
-                    },
-                ];
+                let mut profiles = vec![ProfileEntry {
+                    id: "default".into(),
+                    name: "Default".into(),
+                    parent: None,
+                    enabled: true,
+                    implicit: false,
+                    match_apps: vec![],
+                    match_hosts: vec![],
+                    match_os: vec![],
+                    tags: vec!["base".into()],
+                    qmk_layer: None,
+                    top_bar_slots: None,
+                    module_overrides: BTreeMap::new(),
+                }];
                 for r in legacy.rules {
                     profiles.push(ProfileEntry {
                         id: r.id,
                         name: r.name,
                         parent: Some("default".into()),
                         enabled: r.enabled,
+                        implicit: false,
                         match_apps: r.match_apps,
                         match_hosts: vec![],
                         match_os: vec![],
@@ -799,6 +788,7 @@ impl V2State {
                     name: "Default".into(),
                     parent: None,
                     enabled: true,
+                    implicit: false,
                     match_apps: vec![],
                     match_hosts: vec![],
                     match_os: vec![],
@@ -812,12 +802,71 @@ impl V2State {
         doc
     }
 
+    /// Returns the effective profile list including built-in implicit OS scopes (`macos`, `windows`)
+    /// whenever the user hasn't explicitly customized them on disk yet.
+    pub fn effective_profiles(&self, doc: &ProfilesFile) -> Vec<ProfileEntry> {
+        let mut out = doc.profiles.clone();
+        for p in &mut out {
+            p.implicit = false;
+        }
+        let mut insert_at = out
+            .iter()
+            .position(|p| p.id == "default")
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        for (id, name, os_tag) in [
+            ("macos", "macOS", "macos"),
+            ("windows", "Windows", "windows"),
+        ] {
+            if !out.iter().any(|p| p.id == id) {
+                out.insert(
+                    insert_at,
+                    ProfileEntry {
+                        id: id.into(),
+                        name: name.into(),
+                        parent: Some("default".into()),
+                        enabled: true,
+                        implicit: true,
+                        match_apps: vec![],
+                        match_hosts: vec![],
+                        match_os: vec![os_tag.into()],
+                        tags: vec![os_tag.into()],
+                        qmk_layer: None,
+                        top_bar_slots: None,
+                        module_overrides: BTreeMap::new(),
+                    },
+                );
+                insert_at += 1;
+            }
+        }
+        out
+    }
+
     pub fn save_profiles(&self, doc: &ProfilesFile) -> Result<(), String> {
         let p = self.profiles_path();
         if let Some(parent) = p.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let txt = serde_json::to_string_pretty(doc).map_err(|e| e.to_string())?;
+        // Only persist OS scopes (`macos` / `windows`) when the user actually customized them;
+        // otherwise keep them implicit so fresh installs stay clean and drift-free.
+        let mut clean = doc.clone();
+        clean.profiles.retain(|entry| {
+            let is_builtin_os = entry.id == "macos" || entry.id == "windows";
+            if !is_builtin_os {
+                return true;
+            }
+            let has_customization = entry.qmk_layer.is_some()
+                || entry.top_bar_slots.is_some()
+                || entry.module_overrides.values().any(|kv| !kv.is_empty())
+                || !entry.match_apps.is_empty()
+                || !entry.match_hosts.is_empty()
+                || !entry.enabled;
+            has_customization
+        });
+        for entry in &mut clean.profiles {
+            entry.implicit = false;
+        }
+        let txt = serde_json::to_string_pretty(&clean).map_err(|e| e.to_string())?;
         std::fs::write(&p, txt).map_err(|e| e.to_string())?;
         *self.last_context_sig.lock().unwrap() = String::new();
         self.evaluate_profiles();
@@ -926,6 +975,7 @@ impl V2State {
     pub fn evaluate_profiles(&self) {
         let host = self.load_host_identity();
         let doc = self.load_profiles();
+        let eff_profiles = self.effective_profiles(&doc);
         let app_msg = self.broker.get_retained("host/app/active");
         let app_id = app_msg
             .as_ref()
@@ -946,7 +996,21 @@ impl V2State {
         let current_is_studio = is_studio_foreground_app(&app_id, &app_display);
 
         let by_id: BTreeMap<&str, &ProfileEntry> =
-            doc.profiles.iter().map(|p| (p.id.as_str(), p)).collect();
+            eff_profiles.iter().map(|p| (p.id.as_str(), p)).collect();
+
+        let classify_scope = |p: &ProfileEntry| -> &'static str {
+            if p.id == "default" {
+                "base"
+            } else if !p.match_apps.is_empty() {
+                "app"
+            } else if !p.match_hosts.is_empty() {
+                "host"
+            } else if !p.match_os.is_empty() {
+                "os"
+            } else {
+                "app"
+            }
+        };
 
         let host_matches = |p: &ProfileEntry| -> bool {
             let ok_os = p.match_os.is_empty()
@@ -958,10 +1022,10 @@ impl V2State {
             ok_os && ok_host
         };
 
-        // Collect all matching app profiles with specificity ranking:
-        // exact_app_id (3) > exact_process (2) > substring (1), preserving definition order on ties.
+        // Collect matching App profiles ranked by specificity:
+        // exact_app_id (3) > exact_process (2) > substring (1), definition order on ties.
         let mut app_candidates: Vec<(u8, usize, &ProfileEntry, &'static str, String)> = Vec::new();
-        for (idx, p) in doc.profiles.iter().enumerate() {
+        for (idx, p) in eff_profiles.iter().enumerate() {
             if !p.enabled || p.id == "default" || p.match_apps.is_empty() || !host_matches(p) {
                 continue;
             }
@@ -973,46 +1037,75 @@ impl V2State {
         }
         app_candidates.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
 
-        let (selected_id, source, manual_override, match_kind, matched_rule, reason, conflicts): (
-            &str,
-            String,
+        let pinned_entry = doc
+            .manual_profile_id
+            .as_deref()
+            .and_then(|mid| by_id.get(mid).copied());
+        let pinned_scope = pinned_entry.map(classify_scope);
+
+        // Ordered 4-tier overlay stack (base -> os -> host -> app):
+        //   Tier 1: Shared baseline (`default`)
+        //   Tier 2: OS scope (`macos` / `windows`, automatic unless user pins a different OS scope)
+        //   Tier 3: This Computer (`match_hosts` entry, optional per-machine delta)
+        //   Tier 4: Active App / Activity (pinned App OR foreground app match, plus any app sub-parents)
+        let mut stack_entries: Vec<(&ProfileEntry, &'static str, bool)> = Vec::new();
+        if let Some(def) = by_id.get("default").copied() {
+            stack_entries.push((def, "base", pinned_scope == Some("base")));
+        }
+
+        // Tier 2: OS scope
+        let os_entry: Option<(&ProfileEntry, bool)> = if pinned_scope == Some("os") {
+            pinned_entry.map(|p| (p, true))
+        } else {
+            eff_profiles
+                .iter()
+                .find(|p| {
+                    p.enabled
+                        && classify_scope(p) == "os"
+                        && p.match_os.iter().any(|o| o.eq_ignore_ascii_case(&host.os))
+                })
+                .map(|p| (p, false))
+        };
+        if let Some((os_p, is_pin)) = os_entry {
+            stack_entries.push((os_p, "os", is_pin));
+        }
+
+        // Tier 3: Computer / host scope
+        let host_entry: Option<(&ProfileEntry, bool)> = if pinned_scope == Some("host") {
+            pinned_entry.map(|p| (p, true))
+        } else {
+            eff_profiles
+                .iter()
+                .find(|p| p.enabled && classify_scope(p) == "host" && host_matches(p))
+                .map(|p| (p, false))
+        };
+        if let Some((host_p, is_pin)) = host_entry {
+            stack_entries.push((host_p, "host", is_pin));
+        }
+
+        // Tier 4: App / Activity scope (stacks cleanly ON TOP OF OS & Computer layers!)
+        let (app_winner, app_pinned, app_match_kind, app_matched_rule, app_conflicts): (
+            Option<&ProfileEntry>,
             bool,
-            &'static str,
+            Option<&'static str>,
             Option<String>,
-            String,
             Vec<ProfileConflictInfo>,
-        ) = if let Some(ref mid) = doc.manual_profile_id {
-            if let Some(p) = by_id.get(mid.as_str()) {
-                let confs = app_candidates
-                    .iter()
-                    .filter(|(_, _, cp, _, _)| cp.id != p.id)
-                    .map(|(_, _, cp, kind, rule)| ProfileConflictInfo {
-                        profile_id: cp.id.clone(),
-                        profile_name: cp.name.clone(),
-                        matched_rule: rule.clone(),
-                        match_kind: (*kind).to_string(),
-                    })
-                    .collect();
-                (
-                    mid.as_str(),
-                    "manual".to_string(),
-                    true,
-                    "pinned",
-                    None,
-                    format!("Pinned manually ({})", p.name),
-                    confs,
-                )
-            } else {
-                (
-                    "default",
-                    "default".to_string(),
-                    false,
-                    "default",
-                    None,
-                    "Default fallback profile".to_string(),
-                    Vec::new(),
-                )
-            }
+        ) = if pinned_scope == Some("base") {
+            // Pinning `default` explicitly suppresses automatic app matching.
+            (None, false, None, None, Vec::new())
+        } else if pinned_scope == Some("app") {
+            let p = pinned_entry.unwrap();
+            let confs = app_candidates
+                .iter()
+                .filter(|(_, _, cp, _, _)| cp.id != p.id)
+                .map(|(_, _, cp, kind, rule)| ProfileConflictInfo {
+                    profile_id: cp.id.clone(),
+                    profile_name: cp.name.clone(),
+                    matched_rule: rule.clone(),
+                    match_kind: (*kind).to_string(),
+                })
+                .collect();
+            (Some(p), true, Some("pinned"), None, confs)
         } else if let Some((_, _, winner, kind, rule)) = app_candidates.first() {
             let confs = app_candidates
                 .iter()
@@ -1024,109 +1117,231 @@ impl V2State {
                     match_kind: (*ck).to_string(),
                 })
                 .collect();
-            let app_label = if !app_display.is_empty() {
-                app_display.as_str()
-            } else {
-                app_id.as_str()
-            };
-            let kind_human = match *kind {
-                "exact_app_id" => "exact app ID",
-                "exact_process" => "exact process",
-                _ => "broad substring",
-            };
-            (
-                winner.id.as_str(),
-                format!("app:{app_label}"),
-                false,
-                *kind,
-                Some(rule.clone()),
-                format!("Matched {kind_human} \"{rule}\" on {app_label}"),
-                confs,
-            )
-        } else if let Some(host_hit) = doc.profiles.iter().find(|p| {
-            p.enabled
-                && p.id != "default"
-                && p.match_apps.is_empty()
-                && (!p.match_hosts.is_empty() || !p.match_os.is_empty())
-                && host_matches(p)
-        }) {
-            (
-                host_hit.id.as_str(),
-                format!("host:{}", host.host_name),
-                false,
-                "host",
-                Some(host.host_name.clone()),
-                format!("Matched computer/OS scope ({}, {})", host.host_name, host.os),
-                Vec::new(),
-            )
+            (Some(*winner), false, Some(*kind), Some(rule.clone()), confs)
         } else {
-            (
-                "default",
-                "default".to_string(),
-                false,
-                "default",
-                None,
-                if current_is_studio {
-                    "Default profile (Keyglass Studio is focused — switch to a target app or Pin a profile to preview)".to_string()
-                } else {
-                    "Default fallback profile (no app rule matched)".to_string()
-                },
-                Vec::new(),
-            )
+            (None, false, None, None, Vec::new())
         };
 
-        // Cycle-safe inheritance fall-through chain: child -> parent -> ... -> default
-        let mut chain_entries: Vec<&ProfileEntry> = Vec::new();
-        let mut cur_opt = by_id.get(selected_id).copied();
-        let mut visited = std::collections::HashSet::new();
-        while let Some(entry) = cur_opt {
-            if !visited.insert(entry.id.as_str()) || chain_entries.len() >= 16 {
-                break;
+        // If an app profile has app-scoped parents (e.g. `VS Code › Debugging`), include those
+        // parent app layers before the child without duplicating base/os/host tiers.
+        if let Some(app_p) = app_winner {
+            let existing_ids: std::collections::HashSet<&str> =
+                stack_entries.iter().map(|(e, _, _)| e.id.as_str()).collect();
+            let mut app_chain: Vec<&ProfileEntry> = Vec::new();
+            let mut cur_opt = Some(app_p);
+            let mut seen = std::collections::HashSet::new();
+            while let Some(e) = cur_opt {
+                if !seen.insert(e.id.as_str()) || existing_ids.contains(e.id.as_str()) || app_chain.len() >= 8 {
+                    break;
+                }
+                let sc = classify_scope(e);
+                if sc == "base" || sc == "os" || sc == "host" {
+                    break;
+                }
+                app_chain.push(e);
+                cur_opt = e.parent.as_deref().and_then(|pid| by_id.get(pid).copied());
             }
-            chain_entries.push(entry);
-            cur_opt = entry
-                .parent
-                .as_deref()
-                .and_then(|pid| by_id.get(pid).copied());
-        }
-        if !visited.contains("default") {
-            if let Some(def) = by_id.get("default").copied() {
-                chain_entries.push(def);
+            for e in app_chain.into_iter().rev() {
+                let is_pin = app_pinned && e.id == app_p.id;
+                stack_entries.push((e, "app", is_pin));
             }
         }
 
-        let chain_ids: Vec<String> = chain_entries.iter().map(|e| e.id.clone()).collect();
+        // Merge base -> top per setting and record exact per-field provenance!
         let mut tags: Vec<String> = Vec::new();
         let mut qmk_layer: Option<u8> = None;
         let mut top_bar_slots: Option<Vec<ContextTopBarSlot>> = None;
         let mut merged_overrides: BTreeMap<String, BTreeMap<String, Value>> = BTreeMap::new();
+        let mut field_sources: BTreeMap<String, ProfileFieldSource> = BTreeMap::new();
+        let mut stack_summary: Vec<ProfileStackLayer> = Vec::new();
 
-        for e in &chain_entries {
+        for (e, scope, is_pin) in &stack_entries {
+            let mut ov_count = 0usize;
+            let mut parts: Vec<String> = Vec::new();
             for t in &e.tags {
                 if !tags.iter().any(|x| x.eq_ignore_ascii_case(t)) {
                     tags.push(t.clone());
                 }
             }
-            if qmk_layer.is_none() && e.qmk_layer.is_some() {
-                qmk_layer = e.qmk_layer;
+            if let Some(l) = e.qmk_layer {
+                qmk_layer = Some(l);
+                ov_count += 1;
+                parts.push(format!("Layer {l}"));
+                field_sources.insert(
+                    "qmk_layer".into(),
+                    ProfileFieldSource {
+                        profile_id: e.id.clone(),
+                        profile_name: e.name.clone(),
+                        scope: (*scope).to_string(),
+                    },
+                );
             }
-            if top_bar_slots.is_none() && e.top_bar_slots.is_some() {
-                top_bar_slots = e.top_bar_slots.clone();
+            if let Some(slots) = &e.top_bar_slots {
+                top_bar_slots = Some(slots.clone());
+                ov_count += 1;
+                parts.push("Top Bar".into());
+                field_sources.insert(
+                    "top_bar_slots".into(),
+                    ProfileFieldSource {
+                        profile_id: e.id.clone(),
+                        profile_name: e.name.clone(),
+                        scope: (*scope).to_string(),
+                    },
+                );
             }
-        }
-        for e in chain_entries.iter().rev() {
             for (mod_id, kv) in &e.module_overrides {
+                if kv.is_empty() {
+                    continue;
+                }
                 let target = merged_overrides.entry(mod_id.clone()).or_default();
                 for (k, v) in kv {
                     target.insert(k.clone(), v.clone());
+                    ov_count += 1;
+                    field_sources.insert(
+                        format!("{mod_id}.{k}"),
+                        ProfileFieldSource {
+                            profile_id: e.id.clone(),
+                            profile_name: e.name.clone(),
+                            scope: (*scope).to_string(),
+                        },
+                    );
                 }
             }
+            if !e.module_overrides.is_empty() {
+                let mod_keys: usize = e.module_overrides.values().map(|m| m.len()).sum();
+                if mod_keys > 0 {
+                    parts.push(if mod_keys == 1 {
+                        "1 setting".into()
+                    } else {
+                        format!("{mod_keys} settings")
+                    });
+                }
+            }
+            let summary = if *scope == "base" {
+                "Shared setup".into()
+            } else if *scope == "os" && e.implicit && parts.is_empty() {
+                if e.id == "windows" {
+                    "Auto: Win/Alt legends & Ctrl shortcuts".into()
+                } else {
+                    "Auto: Cmd/Opt legends & Cmd shortcuts".into()
+                }
+            } else if parts.is_empty() {
+                "Inherits all settings".into()
+            } else {
+                parts.join(" · ")
+            };
+            stack_summary.push(ProfileStackLayer {
+                id: e.id.clone(),
+                name: e.name.clone(),
+                scope: (*scope).to_string(),
+                implicit: e.implicit,
+                pinned: *is_pin,
+                qmk_layer: e.qmk_layer,
+                override_count: ov_count,
+                summary,
+            });
         }
 
-        let profile_name = chain_entries
-            .first()
-            .map(|e| e.name.clone())
-            .unwrap_or_else(|| "Default".into());
+        // Primary displayed profile: highest non-implicit layer (or "default" if only default + implicit OS).
+        let manual_override = pinned_entry.is_some();
+        let top_active = stack_entries
+            .iter()
+            .rev()
+            .find(|(e, _, is_pin)| !e.implicit || *is_pin)
+            .map(|(e, sc, _)| (*e, *sc))
+            .unwrap_or_else(|| (stack_entries[0].0, "base"));
+
+        let selected_id = top_active.0.id.as_str();
+        let profile_name = top_active.0.name.clone();
+        // Backwards-compatible `chain` (most-specific -> base)
+        let chain_ids: Vec<String> = stack_entries
+            .iter()
+            .rev()
+            .map(|(e, _, _)| e.id.clone())
+            .collect();
+
+        let (source, match_kind, matched_rule, reason, conflicts) = if let Some(pin_p) = pinned_entry {
+            let p_scope = classify_scope(pin_p);
+            let rsn = match p_scope {
+                "app" => format!(
+                    "Pinned app profile ({}) on top of {}",
+                    pin_p.name,
+                    os_entry.map(|(o, _)| o.name.as_str()).unwrap_or(&host.os)
+                ),
+                "os" => format!("Pinned OS scope ({})", pin_p.name),
+                "host" => format!("Pinned computer scope ({})", pin_p.name),
+                _ => "Pinned to Shared baseline (auto app switching paused)".to_string(),
+            };
+            ("manual".to_string(), "pinned", None, rsn, app_conflicts)
+        } else if app_winner.is_some() {
+            let app_label = if !app_display.is_empty() {
+                app_display.as_str()
+            } else {
+                app_id.as_str()
+            };
+            let kind = app_match_kind.unwrap_or("substring");
+            let kind_human = match kind {
+                "exact_app_id" => "exact app ID",
+                "exact_process" => "exact process",
+                _ => "broad substring",
+            };
+            let rsn = format!(
+                "Matched {kind_human} \"{}\" on {app_label} (stacked over {})",
+                app_matched_rule.as_deref().unwrap_or(""),
+                os_entry.map(|(o, _)| o.name.as_str()).unwrap_or(&host.os)
+            );
+            (
+                format!("app:{app_label}"),
+                kind,
+                app_matched_rule,
+                rsn,
+                app_conflicts,
+            )
+        } else if let Some((host_p, _)) = host_entry {
+            (
+                format!("host:{}", host.host_name),
+                "host",
+                Some(host.host_name.clone()),
+                format!("Active computer override ({})", host_p.name),
+                Vec::new(),
+            )
+        } else if let Some((os_p, _)) = os_entry {
+            if !os_p.implicit {
+                (
+                    format!("os:{}", host.os),
+                    "os",
+                    Some(host.os.clone()),
+                    format!("Active OS overrides ({} on {})", os_p.name, host.host_name),
+                    Vec::new(),
+                )
+            } else {
+                (
+                    "default".to_string(),
+                    "default",
+                    None,
+                    if current_is_studio {
+                        format!(
+                            "Shared setup with automatic {} legends (Studio focused)",
+                            os_p.name
+                        )
+                    } else {
+                        format!(
+                            "Shared setup with automatic {} legends (no app profile matched)",
+                            os_p.name
+                        )
+                    },
+                    Vec::new(),
+                )
+            }
+        } else {
+            (
+                "default".to_string(),
+                "default",
+                None,
+                "Shared baseline setup".to_string(),
+                Vec::new(),
+            )
+        };
 
         let active_match = ProfileMatchDiagnostics {
             profile_id: selected_id.to_string(),
@@ -1145,6 +1360,8 @@ impl V2State {
             "profile_id": selected_id,
             "profile_name": profile_name,
             "chain": chain_ids,
+            "stack": stack_summary,
+            "field_sources": field_sources,
             "source": source,
             "manual_override": manual_override,
             "active_match": active_match,
@@ -4382,12 +4599,13 @@ async fn put_host_identity_api(
 
 async fn get_profiles_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     let doc = state.v2.load_profiles();
+    let eff = state.v2.effective_profiles(&doc);
     let active = state
         .v2
         .broker
         .get_retained("profiles/active")
         .map(|m| m.payload)
-        .unwrap_or_else(|| json!({ "profile_id": "default", "profile_name": "Default", "chain": ["default"] }));
+        .unwrap_or_else(|| json!({ "profile_id": "default", "profile_name": "Default", "chain": ["default"], "stack": [], "field_sources": {} }));
     let host = state.v2.load_host_identity();
     let current_app = state
         .v2
@@ -4400,7 +4618,7 @@ async fn get_profiles_api(State(state): State<Arc<ApiState>>) -> impl IntoRespon
         StatusCode::OK,
         Json(json!({
             "manual_profile_id": doc.manual_profile_id,
-            "profiles": doc.profiles,
+            "profiles": eff,
             "active": active,
             "active_match": active_match,
             "host": host,
@@ -4415,7 +4633,11 @@ async fn put_profiles_api(
     Json(body): Json<ProfilesFile>,
 ) -> impl IntoResponse {
     match state.v2.save_profiles(&body) {
-        Ok(()) => (StatusCode::OK, Json(json!({ "ok": true, "profiles": body.profiles }))),
+        Ok(()) => {
+            let fresh = state.v2.load_profiles();
+            let eff = state.v2.effective_profiles(&fresh);
+            (StatusCode::OK, Json(json!({ "ok": true, "profiles": eff })))
+        }
         Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e),
     }
 }
@@ -5088,6 +5310,7 @@ publishes = []
                     name: "Default".into(),
                     parent: None,
                     enabled: true,
+                    implicit: false,
                     match_apps: vec![],
                     match_hosts: vec![],
                     match_os: vec![],
@@ -5101,6 +5324,7 @@ publishes = []
                     name: "Broad Warcraft".into(),
                     parent: Some("default".into()),
                     enabled: true,
+                    implicit: false,
                     match_apps: vec!["warcraft".into()],
                     match_hosts: vec![],
                     match_os: vec![],
@@ -5114,6 +5338,7 @@ publishes = []
                     name: "WoW Exact".into(),
                     parent: Some("default".into()),
                     enabled: true,
+                    implicit: false,
                     match_apps: vec!["com.blizzard.worldofwarcraft".into()],
                     match_hosts: vec![],
                     match_os: vec![],
@@ -5192,6 +5417,156 @@ publishes = []
         let active_auto = v2.broker.get_retained("profiles/active").unwrap().payload;
         assert_eq!(active_auto["profile_id"], "broad_game");
         assert_eq!(active_auto["active_match"]["pinned"], false);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn profile_overlay_stack_preserves_os_and_host_under_apps_and_pins() {
+        let tmp = std::env::temp_dir().join(format!(
+            "openflux-profile-stack-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let v2 = V2State::new(Some(tmp.clone()), None);
+        v2.save_host_identity(&HostIdentity {
+            host_id: "windows-penguin".into(),
+            host_name: "Penguin".into(),
+            os: "windows".into(),
+        })
+        .unwrap();
+
+        // 1. Fresh install: only `default` on disk, implicit `macos`/`windows` synthesized, Windows auto-stacked.
+        v2.evaluate_profiles();
+        let fresh = v2.broker.get_retained("profiles/active").unwrap().payload;
+        assert_eq!(fresh["profile_id"], "default");
+        assert_eq!(fresh["stack"][0]["id"], "default");
+        assert_eq!(fresh["stack"][1]["id"], "windows");
+        assert_eq!(fresh["stack"][1]["implicit"], true);
+
+        // 2. Customize Windows (Layer 1) + Penguin (computer override) + cross-OS WoW (no qmk_layer)
+        let mut win_ov = BTreeMap::new();
+        win_ov.insert(
+            "keys-keymap".into(),
+            BTreeMap::from([("os_layout".into(), json!("windows"))]),
+        );
+        let mut host_ov = BTreeMap::new();
+        host_ov.insert(
+            "bg-media".into(),
+            BTreeMap::from([("bg_dimming".into(), json!(25))]),
+        );
+        let mut wow_ov = BTreeMap::new();
+        wow_ov.insert(
+            "wow-key-faces".into(),
+            BTreeMap::from([("visibility".into(), json!("Always show"))]),
+        );
+        let doc = ProfilesFile {
+            manual_profile_id: None,
+            profiles: vec![
+                ProfileEntry {
+                    id: "default".into(),
+                    name: "Default".into(),
+                    parent: None,
+                    enabled: true,
+                    implicit: false,
+                    match_apps: vec![],
+                    match_hosts: vec![],
+                    match_os: vec![],
+                    tags: vec!["base".into()],
+                    qmk_layer: None,
+                    top_bar_slots: None,
+                    module_overrides: BTreeMap::new(),
+                },
+                ProfileEntry {
+                    id: "windows".into(),
+                    name: "Windows".into(),
+                    parent: Some("default".into()),
+                    enabled: true,
+                    implicit: false,
+                    match_apps: vec![],
+                    match_hosts: vec![],
+                    match_os: vec!["windows".into()],
+                    tags: vec!["windows".into()],
+                    qmk_layer: Some(1),
+                    top_bar_slots: None,
+                    module_overrides: win_ov,
+                },
+                ProfileEntry {
+                    id: "penguin".into(),
+                    name: "Penguin".into(),
+                    parent: Some("default".into()),
+                    enabled: true,
+                    implicit: false,
+                    match_apps: vec![],
+                    match_hosts: vec!["Penguin".into()],
+                    match_os: vec![],
+                    tags: vec![],
+                    qmk_layer: None,
+                    top_bar_slots: None,
+                    module_overrides: host_ov,
+                },
+                ProfileEntry {
+                    id: "wow".into(),
+                    name: "World of Warcraft".into(),
+                    parent: Some("default".into()),
+                    enabled: true,
+                    implicit: false,
+                    match_apps: vec!["Wow.exe".into()],
+                    match_hosts: vec![],
+                    match_os: vec![],
+                    tags: vec![],
+                    qmk_layer: None,
+                    top_bar_slots: None,
+                    module_overrides: wow_ov,
+                },
+            ],
+        };
+        v2.save_profiles(&doc).unwrap();
+
+        // Focus WoW on Penguin -> stack MUST be Default -> Windows -> Penguin -> WoW!
+        let _ = v2.broker.publish(
+            "host/app/active",
+            json!({ "app_id": "Wow.exe", "process_name": "Wow.exe", "window_title": "World of Warcraft" }),
+            PublishOptions::retained(),
+        );
+        v2.evaluate_profiles();
+        let active = v2.broker.get_retained("profiles/active").unwrap().payload;
+        let stack_ids: Vec<&str> = active["stack"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(stack_ids, vec!["default", "windows", "penguin", "wow"]);
+        assert_eq!(active["qmk_layer"], 1);
+        assert_eq!(active["field_sources"]["qmk_layer"]["profile_id"], "windows");
+        assert_eq!(active["field_sources"]["bg-media.bg_dimming"]["profile_id"], "penguin");
+        assert_eq!(active["field_sources"]["wow-key-faces.visibility"]["profile_id"], "wow");
+        assert_eq!(active["module_overrides"]["bg-media"]["bg_dimming"], 25);
+        assert_eq!(active["module_overrides"]["wow-key-faces"]["visibility"], "Always show");
+
+        // 3. Pinning WoW manually STILL preserves Windows (Layer 1) & Penguin underneath!
+        let _ = v2.broker.publish(
+            "host/app/active",
+            json!({ "app_id": "explorer.exe", "process_name": "explorer.exe", "window_title": "" }),
+            PublishOptions::retained(),
+        );
+        let mut pin_doc = doc.clone();
+        pin_doc.manual_profile_id = Some("wow".into());
+        v2.save_profiles(&pin_doc).unwrap();
+        let pinned = v2.broker.get_retained("profiles/active").unwrap().payload;
+        let pin_stack: Vec<&str> = pinned["stack"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(pin_stack, vec!["default", "windows", "penguin", "wow"]);
+        assert_eq!(pinned["qmk_layer"], 1);
+        assert_eq!(pinned["active_match"]["pinned"], true);
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
