@@ -504,6 +504,7 @@ struct LoadedLuaModule {
     subscriptions: Arc<Mutex<Vec<Subscription>>>,
     logs: LogBuffer,
     deadline: Arc<Mutex<Option<std::time::Instant>>>,
+    net_state: Arc<Mutex<crate::net_bridge::ModuleNetState>>,
     script_mtime: Option<SystemTime>,
     manifest_mtime: Option<SystemTime>,
     healthy: bool,
@@ -512,6 +513,14 @@ struct LoadedLuaModule {
     ema_step_us: f64,
     max_step_us: u64,
     events_last: u32,
+}
+
+impl Drop for LoadedLuaModule {
+    fn drop(&mut self) {
+        if let Ok(mut ns) = self.net_state.lock() {
+            ns.close_all();
+        }
+    }
 }
 
 fn file_mtime(path: &Path) -> Option<SystemTime> {
@@ -524,6 +533,7 @@ impl LoadedLuaModule {
         instance: ModuleInstanceState,
         broker: Broker,
         geometry: Arc<RwLock<KeyboardGeometry>>,
+        host_network_enabled: bool,
     ) -> Self {
         let logs = LogBuffer::default();
         let subscriptions: Arc<Mutex<Vec<Subscription>>> = Arc::new(Mutex::new(Vec::new()));
@@ -613,6 +623,7 @@ impl LoadedLuaModule {
         let script_mtime = script_path.as_deref().and_then(file_mtime);
         let manifest_mtime = file_mtime(&discovered.path.join("module.toml"));
 
+        let net_state = Arc::new(Mutex::new(crate::net_bridge::ModuleNetState::default()));
         let mut loaded = Self {
             discovered,
             instance,
@@ -620,6 +631,7 @@ impl LoadedLuaModule {
             subscriptions,
             logs,
             deadline,
+            net_state,
             script_mtime,
             manifest_mtime,
             healthy: true,
@@ -630,7 +642,7 @@ impl LoadedLuaModule {
             events_last: 0,
         };
 
-        if let Err(e) = loaded.init_bindings(broker, geometry) {
+        if let Err(e) = loaded.init_bindings(broker, geometry, host_network_enabled) {
             loaded.record_error(format!("init_bindings failed: {e}"));
             return loaded;
         }
@@ -681,8 +693,15 @@ impl LoadedLuaModule {
         &self,
         broker: Broker,
         geometry: Arc<RwLock<KeyboardGeometry>>,
+        host_network_enabled: bool,
     ) -> mlua::Result<()> {
         let globals = self.lua.globals();
+        #[cfg(feature = "host-net")]
+        if host_network_enabled && self.discovered.manifest.permissions.network {
+            crate::net_bridge::install_net_table(&self.lua, self.net_state.clone())?;
+        }
+        #[cfg(not(feature = "host-net"))]
+        let _ = host_network_enabled;
 
         // Pre-subscribe to manifest channels so modules receive events automatically.
         {
@@ -1415,6 +1434,7 @@ pub struct ModuleRuntime {
     broker: Broker,
     geometry: Arc<RwLock<KeyboardGeometry>>,
     modules: BTreeMap<String, LoadedLuaModule>,
+    host_network_enabled: bool,
     elapsed_sec: f32,
     tiles_dirty: bool,
     last_tile_render_ms: u64,
@@ -1430,6 +1450,7 @@ impl ModuleRuntime {
             broker,
             geometry: Arc::new(RwLock::new(geometry)),
             modules: BTreeMap::new(),
+            host_network_enabled: false,
             elapsed_sec: 0.0,
             tiles_dirty: true,
             last_tile_render_ms: 0,
@@ -1438,6 +1459,13 @@ impl ModuleRuntime {
             cached_tile_top_fade: 0.0,
             cached_tile_streams: Vec::new(),
         }
+    }
+
+    /// Enables opt-in host-side network APIs (`net.http`, `net.tcp_*`) ONLY for modules that
+    /// declare `[permissions] network = true` in `module.toml`. Never enabled on keyboard display.
+    pub fn with_host_network(mut self, enabled: bool) -> Self {
+        self.host_network_enabled = enabled;
+        self
     }
 
     pub fn geometry(&self) -> KeyboardGeometry {
@@ -1507,12 +1535,16 @@ impl ModuleRuntime {
             };
             if should_reload {
                 self.tiles_dirty = true;
+                // Drop any previous instance FIRST so open TCP/TLS sockets close cleanly before
+                // the replacement instance opens a new connection (e.g. MQTT client_id handoff).
+                self.modules.remove(&id);
                 self.broker.purge_origin(&format!("module:{id}"));
                 let loaded = LoadedLuaModule::load(
                     dm.clone(),
                     inst,
                     self.broker.clone(),
                     self.geometry.clone(),
+                    self.host_network_enabled,
                 );
                 self.modules.insert(id, loaded);
             }
@@ -1563,15 +1595,18 @@ impl ModuleRuntime {
         for id in ids {
             if let Some(old) = self.modules.remove(&id) {
                 let mut dm = old.discovered.clone();
+                let inst = old.instance.clone();
+                drop(old);
                 if let Ok(fresh_manifest) = crate::manifest::ModuleManifest::load_from_dir(&dm.path)
                 {
                     dm.manifest = fresh_manifest;
                 }
                 let loaded = LoadedLuaModule::load(
                     dm,
-                    old.instance,
+                    inst,
                     self.broker.clone(),
                     self.geometry.clone(),
+                    self.host_network_enabled,
                 );
                 self.modules.insert(id.clone(), loaded);
                 reloaded.push(id);
@@ -1583,14 +1618,17 @@ impl ModuleRuntime {
     pub fn reload_module(&mut self, id: &str) -> bool {
         if let Some(old) = self.modules.remove(id) {
             let mut dm = old.discovered.clone();
+            let inst = old.instance.clone();
+            drop(old);
             if let Ok(fresh) = crate::manifest::ModuleManifest::load_from_dir(&dm.path) {
                 dm.manifest = fresh;
             }
             let loaded = LoadedLuaModule::load(
                 dm,
-                old.instance,
+                inst,
                 self.broker.clone(),
                 self.geometry.clone(),
+                self.host_network_enabled,
             );
             self.modules.insert(id.to_string(), loaded);
             true

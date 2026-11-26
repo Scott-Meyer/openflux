@@ -3518,15 +3518,20 @@ dependencies = [
 name = "openflux-modules"
 version = "2.0.0-alpha.1"
 dependencies = [
+ "base64 0.22.1",
  "libc",
  "mlua",
  "openflux-bus",
+ "reqwest 0.12.28",
+ "rustls",
+ "rustls-native-certs",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.21",
  "toml 0.8.2",
  "walkdir",
+ "webpki-roots",
 ]
 
 [[package]]

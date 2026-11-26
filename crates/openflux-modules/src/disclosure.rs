@@ -207,6 +207,12 @@ pub fn inspect_module_dir(dir: &Path) -> Result<DisclosureReport, String> {
     if has_native_binaries {
         warnings.push("Contains native executable binary files.".to_string());
     }
+    if manifest.permissions.network {
+        warnings.push(
+            "Requests outbound host network access (HTTP/TCP via net.http / net.tcp_*)."
+                .to_string(),
+        );
+    }
     let watches_raw_keys = manifest.channels.subscribes.iter().any(|s| {
         s.starts_with("input/keys")
             || openflux_bus::topic_matches(s, "input/keys/event")

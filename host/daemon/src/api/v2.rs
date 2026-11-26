@@ -490,7 +490,8 @@ impl V2State {
         // never write onto the live keyboard-mirrored `broker` (no split-brain `keys/providers/*`,
         // no unplug keycap blanking, no double-firing actions!).
         let mut runtime = ModuleRuntime::new(preview_broker.clone(), geometry.clone());
-        let mut host_logic_runtime = ModuleRuntime::new(broker.clone(), geometry.clone());
+        let mut host_logic_runtime =
+            ModuleRuntime::new(broker.clone(), geometry.clone()).with_host_network(true);
         let discovered = registry.discover();
         let mut state_file = registry.load_state();
 
@@ -574,7 +575,10 @@ impl V2State {
         runtime.sync_modules(&discovered, &state_file.modules);
         let host_logic_discovered: BTreeMap<String, _> = discovered
             .iter()
-            .filter(|(_, dm)| dm.manifest.stages.is_empty() && dm.manifest.entrypoints.script.is_some())
+            .filter(|(_, dm)| {
+                dm.manifest.entrypoints.script.is_some()
+                    && (dm.manifest.stages.is_empty() || dm.manifest.permissions.network)
+            })
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
         host_logic_runtime.sync_modules(&host_logic_discovered, &state_file.modules);
@@ -636,6 +640,28 @@ impl V2State {
             recent_apps: Mutex::new(std::collections::VecDeque::with_capacity(12)),
             streamdeck_asset_token,
         });
+
+        // High-responsiveness 30 Hz host-side Lua runtime ticker: delivers bus events & ticks
+        // `on_update` promptly (<33 ms) for host-logic and opt-in network modules (`mqtt-bridge`,
+        // `widget-prusa-connect`, `host-volume-osd`, `analog-gamepad`) with ~0% idle CPU.
+        let weak_lua = Arc::downgrade(&state);
+        std::thread::Builder::new()
+            .name("openflux-v2-host-lua".into())
+            .spawn(move || {
+                let mut last_tick = std::time::Instant::now();
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(33));
+                    let Some(st) = weak_lua.upgrade() else {
+                        break;
+                    };
+                    let dt = last_tick.elapsed().as_secs_f32().clamp(0.005, 0.25);
+                    last_tick = std::time::Instant::now();
+                    if let Ok(mut hrt) = st.host_logic_runtime.try_lock() {
+                        let _ = hrt.step_frame(dt, openflux_bus::now_unix_ms());
+                    };
+                }
+            })
+            .ok();
 
         // Background watcher: detects direct edits to script.lua / module.toml / new local
         // folders / modules_state.json written by an AI agent or external editor and pushes
@@ -1866,11 +1892,10 @@ impl V2State {
             self.sync_all_with_reason("disk_changed", None);
             return;
         }
-        // Step non-display host-logic Lua modules (e.g. `analog-gamepad` App Linking on `host/app/active`)
+        // Hot-reload check for host-logic / host-network Lua modules (30 Hz stepping runs on `openflux-v2-host-lua`)
         {
             let mut hrt = self.host_logic_runtime.lock().unwrap();
             let _ = hrt.check_hot_reload();
-            let _ = hrt.step_frame(0.35, openflux_bus::now_unix_ms());
         }
         // Evaluate Profiles & Multi-Computer Context (`profiles/active`, Touch Bar swaps, QMK layers!)
         self.process_profile_commands();
@@ -1897,7 +1922,10 @@ impl V2State {
             .sync_modules(&discovered, &state.modules);
         let host_logic_discovered: BTreeMap<String, _> = discovered
             .iter()
-            .filter(|(_, dm)| dm.manifest.stages.is_empty() && dm.manifest.entrypoints.script.is_some())
+            .filter(|(_, dm)| {
+                dm.manifest.entrypoints.script.is_some()
+                    && (dm.manifest.stages.is_empty() || dm.manifest.permissions.network)
+            })
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
         self.host_logic_runtime

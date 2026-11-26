@@ -245,6 +245,14 @@ pub enum ModuleMaturity {
     Abandoned,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModulePermissions {
+    /// Opt-in outbound host network access (`net.http`, `net.tcp_*`) inside `openfluxd`'s
+    /// host-side Lua runtime. Always `false` by default and ALWAYS unavailable on the keyboard SoC.
+    #[serde(default)]
+    pub network: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModuleManifest {
     pub id: String,
@@ -310,6 +318,8 @@ pub struct ModuleManifest {
     pub entrypoints: Entrypoints,
     #[serde(default)]
     pub channels: ChannelDeclarations,
+    #[serde(default)]
+    pub permissions: ModulePermissions,
     #[serde(default)]
     pub settings: Vec<SettingField>,
     #[serde(default)]

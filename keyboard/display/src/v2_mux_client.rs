@@ -100,10 +100,37 @@ impl V2MuxClient {
             return;
         };
         let encoded = frame.to_mux_frame().encode();
-        if s.write_all(&encoded).is_err() {
-            self.stream = None;
-            self.decoder.clear();
-            self.streams.clear();
+        // The Unix socket is non-blocking, so large retained bursts (e.g. 53 KB `keyboard/geometry`
+        // + `resolved_keys` right after reconnect) can briefly hit `WouldBlock`. Retry smoothly up
+        // to 100 ms before treating the peer as dead instead of dropping the link mid-replay!
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(100);
+        let mut written = 0usize;
+        while written < encoded.len() {
+            match s.write(&encoded[written..]) {
+                Ok(0) => {
+                    self.stream = None;
+                    self.decoder.clear();
+                    self.streams.clear();
+                    return;
+                }
+                Ok(n) => written += n,
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    if std::time::Instant::now() >= deadline {
+                        self.stream = None;
+                        self.decoder.clear();
+                        self.streams.clear();
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                Err(_) => {
+                    self.stream = None;
+                    self.decoder.clear();
+                    self.streams.clear();
+                    return;
+                }
+            }
         }
     }
 

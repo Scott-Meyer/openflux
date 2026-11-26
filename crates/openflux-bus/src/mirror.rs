@@ -280,8 +280,15 @@ impl BrokerMirror {
             .collect()
     }
 
-    /// Called when the USB link disconnects: cleans up peer-owned retained topics (LWT) and resets state.
+    /// Called when the USB link disconnects: cleans up peer-owned retained topics (LWT),
+    /// rotates `session_id` so the next reconnect ALWAYS triggers symmetric Subscribe + retained
+    /// replay on the surviving peer, and resets mirror state.
     pub fn on_disconnect(&mut self) {
+        static RECONNECT_SID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let seq = RECONNECT_SID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.session_id = (crate::broker::now_unix_ms() << 16)
+            ^ (seq.wrapping_mul(0x9E37_79B9))
+            ^ (std::process::id() as u64);
         self.remote_patterns.clear();
         self.last_advertised_patterns.clear();
         self.last_remote_session_id = None;

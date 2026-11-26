@@ -1071,3 +1071,193 @@ end
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+#[cfg(feature = "host-net")]
+#[test]
+fn opt_in_host_network_perm_disclosure_tcp_binary_roundtrip_http_and_unload_cleanup() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    let tmp = std::env::temp_dir().join(format!(
+        "openflux-lua-net-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let local = tmp.join("local");
+
+    // 1. Start a tiny loopback TCP echo server + loopback HTTP server
+    let tcp_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let tcp_port = tcp_listener.local_addr().unwrap().port();
+    let tcp_eof_seen = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let eof_flag = tcp_eof_seen.clone();
+    std::thread::spawn(move || {
+        if let Ok((mut s, _)) = tcp_listener.accept() {
+            let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(3)));
+            let mut buf = [0u8; 64];
+            if let Ok(n) = s.read(&mut buf) {
+                let _ = s.write_all(&buf[..n]);
+                let _ = s.flush();
+            }
+            // Wait for client close on module unload!
+            if let Ok(0) = s.read(&mut buf) {
+                eof_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+    });
+
+    let http_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let http_port = http_listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        if let Ok((mut s, _)) = http_listener.accept() {
+            let mut req_buf = [0u8; 1024];
+            let _ = s.read(&mut req_buf);
+            let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 13\r\nConnection: close\r\n\r\n{\"pong\":true}";
+            let _ = s.write_all(resp.as_bytes());
+        }
+    });
+
+    // 2. Module WITHOUT permissions.network must see `net == nil` even on host_network runtime!
+    let no_net_dir = local.join("no-net");
+    std::fs::create_dir_all(&no_net_dir).unwrap();
+    std::fs::write(
+        no_net_dir.join("module.toml"),
+        r#"
+id = "no-net"
+name = "No Net"
+version = "1.0.0"
+description = "Should not receive net table"
+category = "effect"
+stages = []
+[entrypoints]
+script = "script.lua"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        no_net_dir.join("script.lua"),
+        r#"function on_init() bus.publish("test/no-net", { has_net = (net ~= nil) }, true) end"#,
+    )
+    .unwrap();
+
+    // 3. Module WITH permissions.network = true gets `net.tcp_*` & `net.http` AND disclosure warning!
+    let with_net_dir = local.join("with-net");
+    std::fs::create_dir_all(&with_net_dir).unwrap();
+    std::fs::write(
+        with_net_dir.join("module.toml"),
+        r#"
+id = "with-net"
+name = "With Net"
+version = "1.0.0"
+description = "Uses host net API"
+category = "effect"
+stages = []
+[permissions]
+network = true
+[entrypoints]
+script = "script.lua"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        with_net_dir.join("script.lua"),
+        format!(
+            r#"
+local sock_id = nil
+local sent_n = 0
+local http_res = nil
+local got = nil
+function on_init()
+  local id, err = net.tcp_connect("127.0.0.1", {tcp_port}, {{ timeout_ms = 2000 }})
+  sock_id = id
+  if id then
+    sent_n = net.tcp_send(id, "\x00\x01hello\xff") or 0
+  end
+  http_res = net.http({{ url = "http://127.0.0.1:{http_port}/ping", timeout_ms = 2000 }})
+  bus.publish("test/with-net", {{
+    connected = (id ~= nil),
+    err = err,
+    sent = sent_n,
+    echo_match = false,
+    http_ok = http_res.ok,
+    http_status = http_res.status,
+    http_body = http_res.body,
+  }}, true)
+end
+function on_update(dt)
+  if sock_id and not got then
+    local chunk = net.tcp_recv(sock_id, 64)
+    if chunk then
+      got = chunk
+      bus.publish("test/with-net", {{
+        connected = true,
+        sent = sent_n,
+        echo_len = #got,
+        echo_match = (got == "\x00\x01hello\xff"),
+        http_ok = http_res.ok,
+        http_status = http_res.status,
+        http_body = http_res.body,
+      }}, true)
+    end
+  end
+end
+"#
+        ),
+    )
+    .unwrap();
+
+    // Disclosure check
+    let disc = openflux_modules::inspect_module_dir(&with_net_dir).unwrap();
+    assert!(
+        disc.warnings.iter().any(|w| w.contains("outbound host network")),
+        "expected outbound host network disclosure warning, got: {:?}",
+        disc.warnings
+    );
+
+    let reg = ModuleRegistry::new(tmp.join("b"), tmp.join("i"), local, tmp.join("state.json"));
+    let broker = Broker::new("net-test");
+    let mut rt = ModuleRuntime::new(broker.clone(), KeyboardGeometry::build(FrameLayout::Ansi))
+        .with_host_network(true);
+    let discovered = reg.discover();
+    let states = BTreeMap::from([
+        ("no-net".into(), ModuleInstanceState { enabled: true, ..Default::default() }),
+        ("with-net".into(), ModuleInstanceState { enabled: true, ..Default::default() }),
+    ]);
+    rt.sync_modules(&discovered, &states);
+
+    assert_eq!(broker.get_retained("test/no-net").unwrap().payload["has_net"], json!(false));
+    for i in 0..40 {
+        rt.step_frame(0.016, 100 + i * 16);
+        if broker
+            .get_retained("test/with-net")
+            .is_some_and(|m| m.payload["echo_match"] == json!(true))
+        {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let res = broker.get_retained("test/with-net").unwrap().payload;
+    assert_eq!(res["connected"], json!(true), "tcp_connect failed: {res}");
+    assert_eq!(res["sent"], json!(8));
+    assert_eq!(res["echo_match"], json!(true), "binary TCP roundtrip mismatch: {res}");
+    assert_eq!(res["http_ok"], json!(true), "http failed: {res}");
+    assert_eq!(res["http_status"], json!(200));
+    assert_eq!(res["http_body"], json!("{\"pong\":true}"));
+
+    // Disable module -> open TCP socket MUST close cleanly so server observes EOF (MQTT Last-Will!)
+    rt.sync_modules(&discovered, &BTreeMap::new());
+    for _ in 0..40 {
+        if tcp_eof_seen.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    assert!(
+        tcp_eof_seen.load(std::sync::atomic::Ordering::SeqCst),
+        "disabling module must cleanly close all open TCP sockets"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}

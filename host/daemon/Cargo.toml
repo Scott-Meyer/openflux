@@ -14,7 +14,7 @@ base64 = "0.22"
 bytes = "1"
 openflux-bus = { path = "../../crates/openflux-bus" }
 openflux-compositor = { path = "../../crates/openflux-compositor" }
-openflux-modules = { path = "../../crates/openflux-modules" }
+openflux-modules = { path = "../../crates/openflux-modules", features = ["host-net"] }
 openflux-update = { path = "../../crates/openflux-update", default-features = false }
 getrandom = "0.2"
 http-body = "1"

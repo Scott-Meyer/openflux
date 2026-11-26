@@ -7,6 +7,7 @@ pub mod installer;
 pub mod ir;
 pub mod lua_runtime;
 pub mod manifest;
+pub mod net_bridge;
 pub mod registry;
 pub mod validator;
 
@@ -29,7 +30,8 @@ pub use lua_runtime::{
 pub use manifest::{
     ChannelDeclarations, CompositorStage, Entrypoints, HostRequirement, ManifestError,
     ModuleActionField, ModuleCategory, ModuleDependency, ModuleManifest, ModuleMaturity,
-    ModuleUiSpec, SettingField, SettingKind, TopBarSpec, declared_actions_topic,
+    ModulePermissions, ModuleUiSpec, SettingField, SettingKind, TopBarSpec,
+    declared_actions_topic,
 };
 pub use registry::{
     CuratedListDocument, CuratedListEntry, CuratedListSubscription, DiscoveredModule,
