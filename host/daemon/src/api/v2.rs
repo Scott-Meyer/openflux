@@ -3407,6 +3407,8 @@ struct KeyboardSyncBody {
 struct DeviceSyncMeta {
     host_id: String,
     #[serde(default)]
+    host_name: Option<String>,
+    #[serde(default)]
     synced_at_ms: u64,
     #[serde(default)]
     state_sha256: String,
@@ -3471,6 +3473,14 @@ async fn keyboard_adopt_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespo
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
         .to_path_buf();
+    let installed_dir = state.v2.registry.installed_dir.clone();
+    let existing_discovered: std::collections::HashSet<String> = state
+        .v2
+        .registry
+        .discover()
+        .keys()
+        .cloned()
+        .collect();
     let media_dir = default_data_dir().join("media");
     let local_marker_path = local_last_synced_path(&kb_state_path);
     let device = state.device.clone();
@@ -3485,6 +3495,58 @@ async fn keyboard_adopt_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespo
 
         let _ = std::fs::create_dir_all(&media_dir);
         let mut adopted_media: Vec<String> = Vec::new();
+        let mut adopted_modules: Vec<String> = Vec::new();
+        // Pull any enabled optional modules that aren't already present on this computer!
+        for (mod_id, inst) in &adopted.modules {
+            if !inst.enabled || existing_discovered.contains(mod_id) {
+                continue;
+            }
+            if mod_id.is_empty()
+                || !mod_id
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+            {
+                continue;
+            }
+            let remote_toml = format!("/home/root/openflux/v2/modules/{mod_id}/module.toml");
+            let Ok(toml_bytes) = device.get_file(&remote_toml) else {
+                continue;
+            };
+            let dst_dir = installed_dir.join(mod_id);
+            let _ = std::fs::create_dir_all(&dst_dir);
+            let _ = std::fs::write(dst_dir.join("module.toml"), &toml_bytes);
+            let Ok(manifest) = openflux_modules::ModuleManifest::load_from_dir(&dst_dir) else {
+                let _ = std::fs::remove_dir_all(&dst_dir);
+                continue;
+            };
+            let mut rel_files: Vec<String> = Vec::new();
+            if let Some(ep) = &manifest.entrypoints.script {
+                rel_files.push(ep.clone());
+            }
+            if let Some(ep) = &manifest.entrypoints.shader {
+                rel_files.push(ep.clone());
+            }
+            if let Some(ep) = &manifest.entrypoints.host {
+                rel_files.push(ep.clone());
+            }
+            rel_files.push(".openflux-source.json".into());
+            for rel in rel_files {
+                if !std::path::Path::new(&rel)
+                    .components()
+                    .all(|c| matches!(c, std::path::Component::Normal(_)))
+                {
+                    continue;
+                }
+                if let Ok(b) = device.get_file(&format!("/home/root/openflux/v2/modules/{mod_id}/{rel}")) {
+                    let target = dst_dir.join(&rel);
+                    if let Some(p) = target.parent() {
+                        let _ = std::fs::create_dir_all(p);
+                    }
+                    let _ = std::fs::write(&target, b);
+                }
+            }
+            adopted_modules.push(mod_id.clone());
+        }
         // Rewrite `/home/root/openflux/media/<file>` paths cleanly to this computer's local media dir
         // and pull missing media files from the keyboard!
         for inst in adopted.modules.values_mut() {
@@ -3531,6 +3593,7 @@ async fn keyboard_adopt_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespo
         Ok(json!({
             "ok": true,
             "enabled_modules": enabled_count,
+            "adopted_modules": adopted_modules,
             "downloaded_media": adopted_media,
         }))
     })
@@ -3565,7 +3628,9 @@ async fn keyboard_sync_v2(
     let mut kb_state = state.v2.registry.load_state();
     let kb_state_path = state.v2.registry.state_path.clone();
     let local_marker_path = local_last_synced_path(&kb_state_path);
-    let host_id_for_sync = state.v2.load_host_identity().host_id;
+    let host_ident = state.v2.load_host_identity();
+    let host_id_for_sync = host_ident.host_id.clone();
+    let host_name_for_sync = host_ident.host_name.clone();
     let device = state.device.clone();
     let broker = state.v2.broker.clone();
 
@@ -3618,6 +3683,7 @@ async fn keyboard_sync_v2(
             if report.persisted_verified {
                 let marker = DeviceSyncMeta {
                     host_id: host_id_meta,
+                    host_name: Some(host_name_for_sync.clone()),
                     synced_at_ms: openflux_bus::now_unix_ms(),
                     state_sha256: report.expected_state_sha256.clone(),
                     enabled_modules: Vec::new(),
@@ -3971,6 +4037,7 @@ fn sync_v2_to_device(
         .collect();
     let meta = DeviceSyncMeta {
         host_id: host_id_for_sync.to_string(),
+        host_name: None,
         synced_at_ms: openflux_bus::now_unix_ms(),
         state_sha256: expected_state_sha256.clone(),
         enabled_modules,

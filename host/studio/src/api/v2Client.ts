@@ -528,6 +528,7 @@ export const v2Client = {
       local_host_id: string;
       remote?: {
         host_id: string;
+        host_name?: string | null;
         synced_at_ms: number;
         state_sha256: string;
         enabled_modules: string[];
@@ -538,6 +539,7 @@ export const v2Client = {
     v2Call<{
       ok: boolean;
       enabled_modules: number;
+      adopted_modules?: string[];
       downloaded_media: string[];
     }>("POST", "/v2/keyboard/adopt", {}),
   renderPreviewFrame: (steps = 2, step_ms = 16.667, width = 960, height = 540, overlay_only = false) =>

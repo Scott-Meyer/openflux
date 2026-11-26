@@ -218,6 +218,11 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
   const [previewRects, setPreviewRects] = useState<PreviewKeyRect[]>([]);
   const [selectedKeyIndex, setSelectedKeyIndex] = useState<number | null>(0);
   const [syncing, setSyncing] = useState(false);
+  const [syncConflict, setSyncConflict] = useState<{
+    remoteHost: string;
+    enabledCount: number;
+    bgMedia?: string | null;
+  } | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [previewTick, setPreviewTick] = useState(0);
   const [activeProfile, setActiveProfile] = useState<ActiveProfileState | null>(null);
@@ -404,39 +409,10 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
     [client],
   );
 
-  const handleSyncToKeyboard = async () => {
+  const runKeyboardPush = async (force: boolean) => {
     setSyncing(true);
     setToastMsg(null);
     try {
-      let force = false;
-      const chk = await v2Client.checkKeyboardSync().catch(() => null);
-      if (chk?.conflict && chk.remote) {
-        const bgNote = chk.remote.bg_media ? ` (background: ${chk.remote.bg_media})` : "";
-        const adopt = window.confirm(
-          `This keyboard already has a setup synced from "${chk.remote.host_id}" (${chk.remote.enabled_modules.length} modules${bgNote}).\n\n` +
-            `Click OK to ADOPT the keyboard's setup onto this computer (keeps your video & modules).\n` +
-            `Click Cancel to choose whether to overwrite the keyboard instead.`,
-        );
-        if (adopt) {
-          const adopted = await v2Client.adoptFromKeyboard();
-          await refreshModules();
-          setToastMsg(
-            `Adopted ${adopted.enabled_modules} modules from keyboard${
-              adopted.downloaded_media.length > 0 ? ` (+ ${adopted.downloaded_media.length} media)` : ""
-            }.`,
-          );
-          return;
-        }
-        const overwrite = window.confirm(
-          `Replace the keyboard's setup from "${chk.remote.host_id}" with this computer's setup?`,
-        );
-        if (!overwrite) {
-          setToastMsg("Sync canceled — keyboard setup untouched.");
-          return;
-        }
-        force = true;
-      }
-
       const res = await v2Client.syncToKeyboard(force);
       if (!res.ok || res.persisted_verified === false) {
         setToastMsg(res.persisted_error ?? "Couldn't verify the settings on the keyboard.");
@@ -457,6 +433,52 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
     } finally {
       setSyncing(false);
     }
+  };
+
+  const handleAdoptFromKeyboard = async () => {
+    setSyncConflict(null);
+    setSyncing(true);
+    setToastMsg(null);
+    try {
+      const adopted = await v2Client.adoptFromKeyboard();
+      await refreshModules();
+      await refreshActiveProfile();
+      const extras = [
+        adopted.adopted_modules && adopted.adopted_modules.length > 0
+          ? `${adopted.adopted_modules.length} modules`
+          : null,
+        adopted.downloaded_media.length > 0 ? `${adopted.downloaded_media.length} media` : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      setToastMsg(
+        `Copied keyboard setup onto this computer (${adopted.enabled_modules} active${extras ? ` · downloaded ${extras}` : ""}).`,
+      );
+    } catch (err) {
+      setToastMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSyncToKeyboard = async () => {
+    setSyncing(true);
+    setToastMsg(null);
+    try {
+      const chk = await v2Client.checkKeyboardSync().catch(() => null);
+      if (chk?.conflict && chk.remote) {
+        setSyncConflict({
+          remoteHost: chk.remote.host_name || chk.remote.host_id,
+          enabledCount: chk.remote.enabled_modules.length,
+          bgMedia: chk.remote.bg_media,
+        });
+        setSyncing(false);
+        return;
+      }
+    } catch {
+      // fall through to normal sync
+    }
+    await runKeyboardPush(false);
   };
 
   // Sidebar shows ONLY the user's currently active modules (calm, thin-shell 5a/5b design)
@@ -869,6 +891,95 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
           </div>
         )}
       </main>
+
+      {/* Multi-Computer Sync Conflict Modal (3 unmistakable explicit buttons — zero OK/Cancel guessing!) */}
+      {syncConflict && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="kg-sync-conflict-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100,
+            background: "rgba(4, 7, 13, 0.72)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={() => setSyncConflict(null)}
+        >
+          <div
+            className="kg-calm-card"
+            style={{
+              width: "100%",
+              maxWidth: 460,
+              padding: 22,
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+              borderColor: "rgba(92, 225, 255, 0.35)",
+              boxShadow: "0 24px 64px rgba(0, 0, 0, 0.65)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <h2 id="kg-sync-conflict-title" style={{ margin: 0, fontSize: 17 }}>
+                Keyboard Setup From Another Computer
+              </h2>
+              <p className="kg-muted" style={{ margin: "8px 0 0", fontSize: 13, lineHeight: 1.45 }}>
+                This keyboard is currently running a setup from{" "}
+                <strong style={{ color: "#eef4ff" }}>{syncConflict.remoteHost}</strong> ({syncConflict.enabledCount}{" "}
+                active modules
+                {syncConflict.bgMedia ? ` · background: ${syncConflict.bgMedia}` : ""}).
+              </p>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button
+                type="button"
+                className="kg-btn-primary"
+                style={{ width: "100%", textAlign: "left", padding: "10px 14px" }}
+                onClick={() => void handleAdoptFromKeyboard()}
+              >
+                <div style={{ fontWeight: 600 }}>Copy Setup from Keyboard to This Computer</div>
+                <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>
+                  Recommended — keeps your keyboard’s video, modules, and settings.
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className="kg-btn-ghost kg-btn-danger-ghost"
+                style={{ width: "100%", textAlign: "left", padding: "10px 14px" }}
+                onClick={() => {
+                  setSyncConflict(null);
+                  void runKeyboardPush(true);
+                }}
+              >
+                <div style={{ fontWeight: 600 }}>Overwrite Keyboard with This Computer</div>
+                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
+                  Replaces what’s on the keyboard with this computer’s current setup.
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className="kg-btn-ghost"
+                style={{ width: "100%", padding: "8px 14px" }}
+                onClick={() => {
+                  setSyncConflict(null);
+                  setToastMsg("Sync canceled — keyboard setup untouched.");
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hidden WebView host for HTML/JS `.sdPlugin` packages (e.g. Task Timer's index.html) */}
       {htmlSdPlugins.map((hp) => (
