@@ -303,6 +303,15 @@ fn hash_draw_list(cmds: &[openflux_modules::DrawCommand]) -> u64 {
                 hash_f32(&mut h, *width);
                 hash_color(&mut h, color);
             }
+            DrawCommand::Pie { cx, cy, r, start_deg, end_deg, color } => {
+                10u8.hash(&mut h);
+                hash_f32(&mut h, *cx);
+                hash_f32(&mut h, *cy);
+                hash_f32(&mut h, *r);
+                hash_f32(&mut h, *start_deg);
+                hash_f32(&mut h, *end_deg);
+                hash_color(&mut h, color);
+            }
             DrawCommand::Text { x, y, text, size, color, align } => {
                 8u8.hash(&mut h);
                 hash_f32(&mut h, *x);
@@ -632,8 +641,9 @@ impl KeyboardV2Display {
                                 KeyEventKind::Release
                             },
                             timestamp_ms: now_ms,
-                            x_px: key.center_x,
-                            y_px: key.center_y,
+                            // Where the key appears (parallax-corrected), so effects line up with it.
+                            x_px: key.visual_x,
+                            y_px: key.visual_y,
                             w_px: key.rect.w,
                             h_px: key.rect.h,
                             uv_x: key.uv_x,
@@ -873,8 +883,8 @@ impl KeyboardV2Display {
                             key_index,
                             depth_um,
                             vel,
-                            key.center_x,
-                            key.center_y,
+                            key.visual_x,
+                            key.visual_y,
                         ));
                     }
                 }

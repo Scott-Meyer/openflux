@@ -18,6 +18,15 @@ local needs_redraw = true
 local has_animated_rule = false
 local parallax_refresh_frames = 0
 local show_alignment_grid = false
+local glow_targets = {} -- key_index -> { x, y, strength, color, pulse } from the last full redraw
+local glow_levels = {}  -- key_index -> { level 0..1, x, y, color }, eased toward its target every frame
+local last_dt = 0.016
+
+-- Detail sits inset from the keycap edge: anything at the edge makes parallax and viewing-angle
+-- offsets obvious. Corner slots are this fraction of the key size in from each edge.
+local CORNER_INSET = 0.17
+-- The cooldown clock and progress ring stay this fraction of the half-size in from the edge.
+local RING_FRAC = 0.80
 
 -- Logical keyCode -> ANSI physical key_index lookup (declared BEFORE apply_hardware_keymap!)
 local KEYCODE_TO_INDEX = {
@@ -299,6 +308,7 @@ end
 
 function on_update(dt)
   anim_t = anim_t + dt
+  last_dt = dt
 end
 
 -- Crisp vector icon library shared by all shortcut packs, keymap media keys, and game decks!
@@ -625,8 +635,71 @@ local function draw_icon(ctx, icon, cx, cy, col, sc)
   end
 end
 
+-- `rule.glow`: true, a strength (0..1), or { strength, color, pulse }.
+local function glow_spec(rule, col)
+  local g = rule.glow
+  if g == nil or g == false then return nil end
+  local spec = { strength = 1.0, color = col, pulse = false }
+  if type(g) == "number" then
+    spec.strength = math.max(0, math.min(1, g))
+  elseif type(g) == "table" then
+    spec.strength = math.max(0, math.min(1, tonumber(g.strength) or 1.0))
+    if type(g.color) == "string" then spec.color = parse_hex(g.color, col) end
+    spec.pulse = g.pulse == true
+  end
+  return spec
+end
+
+-- Soft glows behind icons. GPU glow calls are separate from the cached 2D layer, so this runs
+-- every frame (even when the legends are reused) and fades smoothly in and out.
+local function draw_glows(ctx)
+  local k = math.min(1, last_dt * 6.0) -- ~0.4 s ease
+  for ki, tgt in pairs(glow_targets) do
+    local target = tgt.strength
+    if tgt.pulse then target = target * (0.55 + 0.45 * math.sin(anim_t * 4.0)) end
+    local g = glow_levels[ki] or { level = 0 }
+    g.level = g.level + (target - g.level) * k
+    g.x, g.y, g.color = tgt.x, tgt.y, tgt.color -- fading-out glows keep their last position
+    glow_levels[ki] = g
+  end
+  for ki, g in pairs(glow_levels) do
+    if not glow_targets[ki] then g.level = g.level * (1 - k) end
+    if g.level < 0.004 then
+      glow_levels[ki] = nil
+    else
+      local c = g.color
+      ctx:key_glow("glow", g.x, g.y, 22, 22, 30.0, 0.0, g.level * 0.55, { c[1], c[2], c[3], g.level })
+    end
+  end
+end
+
+-- One inset corner slot. `item` is text, or { text | icon | dot = true | dot = "on"/"off", color }.
+local function draw_corner(ctx, corner, item, rx, ry, r, col)
+  if item == nil or item == false then return end
+  if type(item) ~= "table" then item = { text = tostring(item) } end
+  local c = type(item.color) == "string" and parse_hex(item.color, col) or col
+  local right = corner == "tr" or corner == "br"
+  local bottom = corner == "bl" or corner == "br"
+  local cx = right and (rx + r.w * (1 - CORNER_INSET)) or (rx + r.w * CORNER_INSET)
+  local cy = bottom and (ry + r.h * (1 - CORNER_INSET)) or (ry + r.h * CORNER_INSET)
+  if item.dot ~= nil then
+    local on = item.dot == true or item.dot == "on"
+    local dc = on and (type(item.color) == "string" and c or { 0.35, 1.0, 0.55, 1.0 }) or { 0.45, 0.5, 0.58, 0.5 }
+    ctx:circle(cx, cy, 6.0, { dc[1], dc[2], dc[3], dc[4] or 1.0 })
+  elseif type(item.icon) == "string" and #item.icon > 0 then
+    draw_icon(ctx, item.icon, cx, cy, { c[1], c[2], c[3], 0.95 }, 0.55)
+  elseif item.text ~= nil and tostring(item.text) ~= "" then
+    local t = tostring(item.text)
+    local align = right and "right" or "left"
+    -- Text hangs from the slot like a superscript (or sits on it, at the bottom).
+    local ty = bottom and (cy - 13) or (cy - 7)
+    ctx:text(cx + (right and 6 or -6), ty, t, 13, { c[1], c[2], c[3], 0.95 }, align)
+  end
+end
+
 function on_render(ctx, stage)
   if stage ~= "under_key" or not geom or not geom.keys then return end
+  draw_glows(ctx)
   if parallax_refresh_frames > 0 then
     geom = keyboard.layout()
     parallax_refresh_frames = parallax_refresh_frames - 1
@@ -640,6 +713,7 @@ function on_render(ctx, stage)
   end
   needs_redraw = false
   has_animated_rule = false
+  glow_targets = {}
   local default_col = module.color("legend_color", "#f2f7ff")
   local mod_mask = current_mod_mask()
 
@@ -763,6 +837,12 @@ function on_render(ctx, stage)
 
       local has_img = type(rule.image) == "string" and #rule.image > 0
       local has_icon = type(rule.icon) == "string" and #rule.icon > 0
+      local gspec = glow_spec(rule, col)
+      if gspec then
+        -- Centered on the symbol (icon/image sit above a caption) or on the legend.
+        local gy = ((has_icon or has_img) and #label > 0) and (vy - 10) or vy
+        glow_targets[ki] = { x = vx, y = gy, strength = gspec.strength, color = gspec.color, pulse = gspec.pulse }
+      end
       if has_img then
         -- Resolve portable `module://<id>/<rel>` and `media://<fname>` asset refs locally on
         -- BOTH Mac and keyboard so cross-device BrokerMirror messages never break image paths!
@@ -868,14 +948,26 @@ function on_render(ctx, stage)
       local max_cd = tonumber(rule.max_cd) or 0
       if cd > 0 and max_cd > 0 then
         local frac = math.max(0.0, math.min(1.0, cd / max_cd))
+        local ring_r = math.min(r.w, r.h) * 0.5 * RING_FRAC
         if on_cd then
-          local ch = (r.h - 10) * frac
-          ctx:round_rect(rx + 5, ry + r.h - 5 - ch, r.w - 10, ch, 6, { 0.01, 0.02, 0.05, 0.58 }, 0, { 0, 0, 0, 0 })
+          if rule.cd_style == "curtain" then
+            -- Edge-to-edge curtain (opt-in).
+            local ch = (r.h - 10) * frac
+            ctx:round_rect(rx + 5, ry + r.h - 5 - ch, r.w - 10, ch, 6, { 0.01, 0.02, 0.05, 0.58 }, 0, { 0, 0, 0, 0 })
+          else
+            -- Clock sweep centered on the key: the shaded sector is the time left, and it
+            -- shrinks clockwise from 12 o'clock as the cooldown runs out.
+            ctx:pie(vx, vy, ring_r, -90 + (1.0 - frac) * 360.0, 270, { 0.01, 0.02, 0.05, 0.55 })
+          end
           local cd_s = (cd >= 10) and string.format("%d", math.ceil(cd)) or string.format("%.1f", cd)
           ctx:text(vx + 1, vy - 15 + 1, cd_s, 26, { 0, 0, 0, 0.85 }, "center")
           ctx:text(vx, vy - 15, cd_s, 26, { 1, 1, 1, 0.98 }, "center")
-        else
+        elseif rule.progress_style == "edge" then
+          -- Recharge bar along the top edge (opt-in).
           ctx:rect(rx + 10, ry + 6, (r.w - 20) * (1.0 - frac), 3.5, { col[1], col[2], col[3], 0.9 })
+        else
+          -- Recharge progress as a thin ring around the center.
+          ctx:arc(vx, vy, ring_r, -90, -90 + (1.0 - frac) * 360.0, 2.5, { col[1], col[2], col[3], 0.85 })
         end
       end
 
@@ -884,28 +976,37 @@ function on_render(ctx, stage)
         local pct = math.floor(tonumber(rule.ult_pct) + 0.5)
         ctx:arc(vx, vy - 11, 21, -90, -90 + (pct / 100.0) * 360.0, 2.8, { col[1], col[2], col[3], 0.92 })
         if pct < 100 then
-          ctx:text(rx + r.w - 8, ry + 6, string.format("%d%%", pct), 12, { 1.0, 0.94, 0.65, 0.95 }, "right")
+          draw_corner(ctx, "tr", { text = string.format("%d%%", pct), color = "#fff0a6" }, rx, ry, r, col)
         end
       end
 
-      -- Charge pill or sub-label (e.g. ammo "12/30")
-      if (tonumber(rule.max_charges) or 0) > 0 then
-        local bx, by = rx + r.w - 24, ry + 6
-        ctx:round_rect(bx, by, 18, 18, 6, { 0.04, 0.06, 0.11, 0.82 }, 1.2, col)
-        ctx:text(bx + 9, by + 1, tostring(rule.charges or 0), 13, { 1, 1, 1, 0.98 }, "center")
-      elseif type(rule.sub) == "string" and #rule.sub > 0 then
-        ctx:text(rx + r.w - 8, ry + 6, rule.sub, 12, { col[1], col[2], col[3], 0.92 }, "right")
-      elseif rule.toggled ~= nil then
-        local led = rule.toggled and { 0.35, 1.0, 0.55, 1.0 } or { 0.45, 0.5, 0.58, 0.45 }
-        ctx:circle(rx + r.w - 13, ry + 13, 4.2, led)
+      -- Corner slots (inset from the edge). `rule.corners = { tl, tr, bl, br }`, each text or
+      -- { text | icon | dot, color }. The older single-purpose fields fill the top-right slot.
+      local corners = type(rule.corners) == "table" and rule.corners or {}
+      local tr = corners.tr
+      if tr == nil then
+        if (tonumber(rule.max_charges) or 0) > 0 then
+          tr = { text = tostring(rule.charges or 0) }
+        elseif type(rule.sub) == "string" and #rule.sub > 0 then
+          tr = { text = rule.sub }
+        elseif rule.toggled ~= nil then
+          tr = { dot = rule.toggled == true }
+        end
       end
+      if rule.ult_pct == nil or math.floor(tonumber(rule.ult_pct) + 0.5) >= 100 then
+        draw_corner(ctx, "tr", tr, rx, ry, r, col)
+      end
+      draw_corner(ctx, "tl", corners.tl, rx, ry, r, col)
+      draw_corner(ctx, "bl", corners.bl, rx, ry, r, col)
+      draw_corner(ctx, "br", corners.br, rx, ry, r, col)
     end
 
-    -- Non-replacing corner badges (`mode = "badge"`, e.g. Caps Lock active dot)
+    -- Non-replacing badges (`mode = "badge"`, e.g. Caps Lock active dot): a dot in the
+    -- top-right slot, or wherever `corner` says.
     if badges[ki] then
       for _, br in ipairs(badges[ki]) do
-        local bc = parse_hex(br.color, { 0.35, 0.92, 1.0, 1.0 })
-        ctx:circle(rx + r.w - 13, ry + 13, 4.5, bc)
+        local corner = (br.corner == "tl" or br.corner == "bl" or br.corner == "br") and br.corner or "tr"
+        draw_corner(ctx, corner, { dot = true, color = type(br.color) == "string" and br.color or "#59ebff" }, rx, ry, r, default_col)
       end
     end
   end

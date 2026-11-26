@@ -43,6 +43,8 @@ pub struct KeyEvent {
     pub key_index: u16,
     pub kind: KeyEventKind,
     pub timestamp_ms: u64,
+    /// Key center as the viewer sees it: the parallax-corrected `visual_x`/`visual_y`, so
+    /// anything drawn at it lines up with the keycap's legend.
     pub x_px: f32,
     pub y_px: f32,
     pub w_px: f32,

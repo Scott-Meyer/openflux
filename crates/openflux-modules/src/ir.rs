@@ -78,6 +78,15 @@ pub enum DrawCommand {
         width: f32,
         color: [f32; 4],
     },
+    /// Filled circle sector (a clock wedge). Degrees: 0 = 3 o'clock, -90 = 12 o'clock, clockwise.
+    Pie {
+        cx: f32,
+        cy: f32,
+        r: f32,
+        start_deg: f32,
+        end_deg: f32,
+        color: [f32; 4],
+    },
     Text {
         x: f32,
         y: f32,

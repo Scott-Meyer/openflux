@@ -246,6 +246,20 @@ impl UserData for RenderCtxHandle {
             },
         );
         methods.add_method(
+            "pie",
+            |_, this, (cx, cy, r, start_deg, end_deg, color): (f32, f32, f32, f32, f32, Option<LuaValue>)| {
+                this.push_draw(DrawCommand::Pie {
+                    cx,
+                    cy,
+                    r,
+                    start_deg,
+                    end_deg,
+                    color: lua_color(color, [1.0, 1.0, 1.0, 1.0]),
+                });
+                Ok(())
+            },
+        );
+        methods.add_method(
             "text",
             |_,
              this,

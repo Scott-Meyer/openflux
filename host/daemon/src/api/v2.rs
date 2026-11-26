@@ -3068,8 +3068,8 @@ async fn simulate_key(
             KeyEventKind::Press
         },
         timestamp_ms: now_ms,
-        x_px: k.center_x,
-        y_px: k.center_y,
+        x_px: k.visual_x,
+        y_px: k.visual_y,
         w_px: k.rect.w,
         h_px: k.rect.h,
         uv_x: k.uv_x,
@@ -3088,8 +3088,8 @@ async fn simulate_key(
         body.key_index,
         body.depth_um,
         body.velocity_um_s,
-        k.center_x,
-        k.center_y,
+        k.visual_x,
+        k.visual_y,
     );
     let _ = state.v2.preview_broker.publish_typed(
         topics::INPUT_KEYS_ANALOG,
@@ -3128,8 +3128,8 @@ async fn simulate_physics_burst(State(state): State<Arc<ApiState>>) -> impl Into
                 key_index,
                 kind: KeyEventKind::Press,
                 timestamp_ms: now_ms,
-                x_px: k.center_x,
-                y_px: k.center_y,
+                x_px: k.visual_x,
+                y_px: k.visual_y,
                 w_px: k.rect.w,
                 h_px: k.rect.h,
                 uv_x: k.uv_x,
@@ -3149,8 +3149,8 @@ async fn simulate_physics_burst(State(state): State<Arc<ApiState>>) -> impl Into
                 key_index,
                 depth,
                 vel,
-                k.center_x,
-                k.center_y,
+                k.visual_x,
+                k.visual_y,
             ));
         }
     }

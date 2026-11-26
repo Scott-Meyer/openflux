@@ -167,6 +167,16 @@ impl Canvas2D {
                 } => {
                     self.draw_arc(*cx, *cy, *r, *start_deg, *end_deg, *width, *color);
                 }
+                DrawCommand::Pie {
+                    cx,
+                    cy,
+                    r,
+                    start_deg,
+                    end_deg,
+                    color,
+                } => {
+                    self.draw_pie(*cx, *cy, *r, *start_deg, *end_deg, *color);
+                }
                 DrawCommand::Text {
                     x,
                     y,
@@ -498,6 +508,46 @@ impl Canvas2D {
             self.draw_line(prev_x, prev_y, nx, ny, width, color);
             prev_x = nx;
             prev_y = ny;
+        }
+    }
+
+    /// Anti-aliased filled sector, swept clockwise from `start_deg` to `end_deg`.
+    fn draw_pie(&mut self, cx: f32, cy: f32, r: f32, start_deg: f32, end_deg: f32, color: [f32; 4]) {
+        let sweep = (end_deg - start_deg).clamp(-360.0, 360.0);
+        if sweep.abs() < 0.1 || r <= 0.5 || color[3] <= 0.001 {
+            return;
+        }
+        let (start, sweep) = if sweep < 0.0 { (start_deg + sweep, -sweep) } else { (start_deg, sweep) };
+        let (bx0, by0, bx1, by1) = self.bounds(cx - r - 2.0, cy - r - 2.0, cx + r + 2.0, cy + r + 2.0);
+        let (s_cos, s_sin) = (start.to_radians().cos(), start.to_radians().sin());
+        let end = start + sweep;
+        let (e_cos, e_sin) = (end.to_radians().cos(), end.to_radians().sin());
+        for py in by0..by1 {
+            let dy = py as f32 + 0.5 - cy;
+            for px in bx0..bx1 {
+                let dx = px as f32 + 0.5 - cx;
+                let dist = (dx * dx + dy * dy).sqrt();
+                let cov_r = (r - dist + 0.5).clamp(0.0, 1.0);
+                if cov_r <= 0.0 {
+                    continue;
+                }
+                let cov = if sweep >= 359.9 {
+                    cov_r
+                } else {
+                    let a = (dy.atan2(dx).to_degrees() - start).rem_euclid(360.0);
+                    // Distance (px) to each straight edge, measured only along that edge's ray.
+                    let edge = |c: f32, s: f32| {
+                        let along = dx * c + dy * s;
+                        if along <= 0.0 { dist } else { (dx * s - dy * c).abs() }
+                    };
+                    let d_edge = edge(s_cos, s_sin).min(edge(e_cos, e_sin));
+                    let cov_a = if a <= sweep { (0.5 + d_edge).clamp(0.0, 1.0) } else { (0.5 - d_edge).clamp(0.0, 1.0) };
+                    cov_r * cov_a
+                };
+                if cov > 0.0 {
+                    self.blend_px(px, py, color, cov);
+                }
+            }
         }
     }
 

@@ -276,6 +276,7 @@ All colors are `{ r, g, b, a }` with floats in `0.0..1.0`.
 - `ctx:ellipse(cx, cy, rx, ry, color)`
 - `ctx:line(x1, y1, x2, y2, width, color)`
 - `ctx:arc(cx, cy, r, start_deg, end_deg, width, color)`
+- `ctx:pie(cx, cy, r, start_deg, end_deg, color)` — filled sector (e.g. a clock wedge); `-90` is 12 o'clock, angles run clockwise.
 - `ctx:text(x, y, str, size_px, color, align)` — `align` is `"left"`, `"center"`, or `"right"`.
 - `ctx:image(x, y, w, h, path, tint_color)` — renders a PNG/JPEG file (relative paths resolve against `module.dir()`).
 - `ctx:keep_layer()` — in `under_key`, tells the compositor nothing changed since last frame so it reuses the cached 2D overlay at zero CPU cost.
@@ -350,6 +351,20 @@ end
 
 When your module is disabled or crashes, OpenFlux’s Last-Will cleanup (`purge_origin`) removes `keys/providers/my-macros` automatically so keys revert cleanly.
 
+Besides `label`, `icon`/`image` and `color`, a rule can carry extra detail. All of it is centered on the key or inset from its edge, because anything at a keycap's edge makes parallax and viewing-angle offsets obvious.
+
+| Field | Effect |
+|---|---|
+| `glow = true` / `0.5` / `{ strength, color, pulse }` | Soft glow behind the icon (or legend) that fades in and out; `pulse` breathes |
+| `corners = { tl, tr, bl, br }` | Inset corner slots, each text (superscript-style) or `{ text \| icon \| dot = true/false, color }` |
+| `sub = "21°"` / `toggled = true/false` | Shorthands for top-right corner text / status dot |
+| `cd`, `max_cd` | Cooldown as a clock sweep centered on the key; `cd_style = "curtain"` for the edge-to-edge curtain |
+| `charges`, `max_charges` | Charge count in the top-right corner; recharge shows as a ring, or `progress_style = "edge"` for a bar along the top |
+| `ult_pct` | Ring around the icon, percent in the top-right corner |
+| `tile_bg = true` | Opt-in frame around the whole keycap |
+
+Badge rules (`mode = "badge"`) draw a dot in the top-right slot, or `corner = "tl" | "bl" | "br"`.
+
 ### Recipe C — Custom Cross-Platform GLSL Shader (Works on Both Desktop & Keyboard!)
 
 Write **one** `.glsl` file implementing `vec4 effect_main(vec2 uv)`. OpenFlux wraps it automatically for both desktop `wgpu` (Metal/Vulkan/DX12) and the keyboard’s Mali-G52 GLES 2.0.
@@ -399,7 +414,7 @@ Your script can publish to the bus (`POST /v2/bus/pub`), subscribe to keyboard e
 
 | Topic | Retained | Payload Shape |
 |---|---|---|
-| `input/keys/event` | No | `{ key_index, kind: "press"\|"release", x_px, y_px, w_px, h_px, row, col, depth_um, velocity_um_s }` |
+| `input/keys/event` | No | `{ key_index, kind: "press"\|"release", x_px, y_px, w_px, h_px, row, col, depth_um, velocity_um_s }`; `x_px, y_px` is where the key appears (parallax-corrected center) |
 | `input/keys/analog` | No | `{ timestamp_ms, samples: [{ key_index, depth_um, velocity_um_s, x_px, y_px }] }` |
 | `keyboard/state` | Yes | `{ caps_lock, num_lock, scroll_lock, active_layer_bitfield, idle_ms }` |
 | `keyboard/keymap` | Yes | Active hardware keymap layers & `keyActions` |
