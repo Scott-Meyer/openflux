@@ -18,9 +18,26 @@ local needs_redraw = true
 local has_animated_rule = false
 local parallax_refresh_frames = 0
 local show_alignment_grid = false
-local glow_targets = {} -- key_index -> { x, y, strength, color, pulse } from the last full redraw
-local glow_levels = {}  -- key_index -> { level 0..1, x, y, color }, eased toward its target every frame
+local fx_targets = {}  -- key_index -> { glow?, outline?, backdrop? } from the last full redraw
+local fx_levels = {}   -- "<key>:<part>" -> { level 0..1, spec }, eased toward its target every frame
 local last_dt = 0.016
+local key_boxes = {}   -- key_index -> { x, y, w, h } visual center + size (from the last redraw)
+local blank_keys = {}  -- key_index -> true while a Blank rule wins (suppresses signals too)
+
+-- Conditions & selectors state
+local host_connected = true
+local resolved = nil          -- keyboard/resolved_keys payload
+local action_keycodes = {}    -- action_id -> numeric keycode (from system/actions)
+local bus_values = {}         -- topic -> latest payload for topics conditions watch
+local bus_watched = {}        -- topic -> true (runtime subscriptions owned by conditions)
+local MAX_WATCHED = 32
+local uses_held = false       -- some matching-candidate rule depends on held keys
+
+-- Signals: momentary effects (glow / outline) on keys, published on `keys/signal`.
+local signals = {}            -- id -> { keyset, fx = { glow?, outline? }, until_t, seq }
+local signal_seq = 0
+local MAX_SIGNALS = 48
+local MAX_SIGNAL_MS = 60000
 
 -- Detail sits inset from the keycap edge: anything at the edge makes parallax and viewing-angle
 -- offsets obvious. Corner slots are this fraction of the key size in from each edge.
@@ -173,8 +190,147 @@ local function matches_csv(haystack, csv)
   return false
 end
 
-local function when_matches(when)
+local function resolve_key_idx(k)
+  if type(k) == "number" then return math.floor(k) end
+  if type(k) == "string" then
+    local n = tonumber(k)
+    if n then return math.floor(n) end
+    local up = string.upper(k)
+    return KEYCODE_TO_INDEX[up] or KEYCODE_TO_INDEX[KEYCODE_ALIAS[up] or ""]
+  end
+  return nil
+end
+
+-- Named key groups (physical ANSI positions).
+local GROUP_NAMES = {
+  fkeys = { "KC_F1", "KC_F2", "KC_F3", "KC_F4", "KC_F5", "KC_F6", "KC_F7", "KC_F8", "KC_F9", "KC_F10", "KC_F11", "KC_F12" },
+  numbers = { "KC_GRV", "KC_1", "KC_2", "KC_3", "KC_4", "KC_5", "KC_6", "KC_7", "KC_8", "KC_9", "KC_0", "KC_MINS", "KC_EQL" },
+  home_row = { "KC_A", "KC_S", "KC_D", "KC_F", "KC_G", "KC_H", "KC_J", "KC_K", "KC_L", "KC_SCLN", "KC_QUOT" },
+  arrows = { "KC_UP", "KC_LEFT", "KC_DOWN", "KC_RGHT" },
+  nav = { "KC_INS", "KC_HOME", "KC_PGUP", "KC_PGDN", "KC_END", "KC_DEL" },
+  mods = { "KC_LSFT", "KC_RSFT", "KC_LCTL", "KC_RCTL", "KC_LALT", "KC_RALT", "KC_LGUI", "KC_RGUI" },
+}
+local group_cache = {}
+
+local function group_keys(name)
+  if group_cache[name] then return group_cache[name] end
+  local out = {}
+  if name == "all" or name == "letters" or string.sub(name, 1, 4) == "row:" then
+    local row = string.sub(name, 1, 4) == "row:" and tonumber(string.sub(name, 5)) or nil
+    for _, k in ipairs((geom and geom.keys) or {}) do
+      if name == "all" or (row ~= nil and k.row == row) then table.insert(out, k.key_index) end
+    end
+    if name == "letters" then
+      for c = string.byte("A"), string.byte("Z") do
+        local ki = resolve_key_idx("KC_" .. string.char(c))
+        if ki then table.insert(out, ki) end
+      end
+    end
+  else
+    for _, kn in ipairs(GROUP_NAMES[name] or {}) do
+      local ki = resolve_key_idx(kn)
+      if ki then table.insert(out, ki) end
+    end
+  end
+  if geom and geom.keys then group_cache[name] = out end
+  return out
+end
+
+-- Every physical key a rule (or signal) targets: `key`, `keys`, `group`, or `action`
+-- (wherever that action is bound on the active layer).
+local function rule_targets(rule)
+  if rule.group ~= nil then return group_keys(tostring(rule.group)) end
+  if rule.action ~= nil then
+    local kc = action_keycodes[tostring(rule.action)]
+    local out = {}
+    if kc and type(resolved) == "table" and type(resolved.keys) == "table" then
+      for idx, e in ipairs(resolved.keys) do
+        if type(e) == "table" and math.floor(tonumber(e.keycode) or -1) == kc then table.insert(out, idx - 1) end
+      end
+    end
+    return out
+  end
+  if type(rule.keys) == "table" then
+    local out = {}
+    for _, k in ipairs(rule.keys) do
+      local ki = resolve_key_idx(k)
+      if ki ~= nil then table.insert(out, ki) end
+    end
+    return out
+  end
+  local ki = resolve_key_idx(rule.key)
+  if ki ~= nil then return { ki } end
+  return {}
+end
+
+-- `bus` condition: { topic, path?, eq | ne | ["in"] | exists | gt | lt | gte | lte | contains }.
+-- A topic with no value (never published, cleared, or not mirrored yet) is *unavailable*:
+-- the condition is false whatever the operator, except `exists = false`.
+local function bus_value(topic, path)
+  local v = bus_values[topic]
+  if v == nil then return nil end
+  if type(path) == "string" and #path > 0 then
+    for part in string.gmatch(path, "[^%.]+") do
+      if type(v) ~= "table" then return nil end
+      local n = tonumber(part)
+      v = (n and v[n + 1] ~= nil) and v[n + 1] or v[part]
+      if v == nil then return nil end
+    end
+  end
+  return v
+end
+
+local function same(a, b)
+  if type(a) == "number" or type(b) == "number" then return tonumber(a) ~= nil and tonumber(a) == tonumber(b) end
+  if type(a) == "boolean" or type(b) == "boolean" then return tostring(a) == tostring(b) end
+  return tostring(a) == tostring(b)
+end
+
+local function bus_cond_holds(c, wanted_topics)
+  if type(c) ~= "table" or type(c.topic) ~= "string" or #c.topic == 0 then return false end
+  if wanted_topics then wanted_topics[c.topic] = true end
+  local v = bus_value(c.topic, c.path)
+  if c.exists ~= nil then return (v ~= nil) == (c.exists == true) end
+  if v == nil then return false end
+  if c.eq ~= nil and not same(v, c.eq) then return false end
+  if c.ne ~= nil and same(v, c.ne) then return false end
+  if type(c["in"]) == "table" then
+    local hit = false
+    for _, x in ipairs(c["in"]) do if same(v, x) then hit = true break end end
+    if not hit then return false end
+  end
+  local nv = tonumber(v)
+  if c.gt ~= nil and not (nv and nv > tonumber(c.gt)) then return false end
+  if c.lt ~= nil and not (nv and nv < tonumber(c.lt)) then return false end
+  if c.gte ~= nil and not (nv and nv >= tonumber(c.gte)) then return false end
+  if c.lte ~= nil and not (nv and nv <= tonumber(c.lte)) then return false end
+  if c.contains ~= nil and not string.find(tostring(v), tostring(c.contains), 1, true) then return false end
+  return true
+end
+
+local bus_cond_holds_ref = bus_cond_holds
+
+local wanted_topics_ref = nil  -- topics conditions referenced during the current resolve
+
+local function when_matches(when, ki)
   if type(when) ~= "table" then return true end
+  if when.held ~= nil then
+    uses_held = true
+    if type(when.held) == "boolean" then
+      if ki == nil or (held_by_idx[ki] == true) ~= when.held then return false end
+    else
+      local hk = resolve_key_idx(when.held)
+      if hk == nil or not held_by_idx[hk] then return false end
+    end
+  end
+  if when.caps ~= nil and (when.caps == true) ~= caps_lock then return false end
+  if when.host ~= nil and (when.host == true) ~= host_connected then return false end
+  if when.bus ~= nil and bus_cond_holds_ref then
+    local list = (type(when.bus) == "table" and when.bus.topic == nil) and when.bus or { when.bus }
+    for _, c in ipairs(list) do
+      if not bus_cond_holds_ref(c, wanted_topics_ref) then return false end
+    end
+  end
   if when.app and #tostring(when.app) > 0 then
     local app_s = tostring(active_app.process_name or "") .. " " .. tostring(active_app.app_id or "") .. " " .. tostring(active_app.window_title or "")
     if not matches_csv(app_s, tostring(when.app)) then return false end
@@ -192,16 +348,6 @@ local function when_matches(when)
   return true
 end
 
-local function resolve_key_idx(k)
-  if type(k) == "number" then return math.floor(k) end
-  if type(k) == "string" then
-    local n = tonumber(k)
-    if n then return math.floor(n) end
-    local up = string.upper(k)
-    return KEYCODE_TO_INDEX[up] or KEYCODE_TO_INDEX[KEYCODE_ALIAS[up] or ""]
-  end
-  return nil
-end
 
 local function parse_hex(hex, fallback)
   if type(hex) ~= "string" then return fallback end
@@ -215,7 +361,39 @@ local function parse_hex(hex, fallback)
   return fallback
 end
 
+local handle_signal, handle_inspect -- defined after the face resolver
+
 function on_event(topic, payload)
+  if bus_watched[topic] then
+    -- A topic some rule's `when.bus` condition watches (can also be one handled below).
+    bus_values[topic] = payload
+    needs_redraw = true
+  end
+  if topic == "keys/signal" then
+    if type(payload) == "table" then handle_signal(payload) end
+    return
+  elseif topic == "keys/inspect/request" then
+    if type(payload) == "table" then handle_inspect(payload) end
+    return
+  elseif topic == "keyboard/resolved_keys" then
+    resolved = type(payload) == "table" and payload or nil
+    needs_redraw = true
+    return
+  elseif topic == "system/actions" then
+    action_keycodes = {}
+    local slots = type(payload) == "table" and (payload.slots or payload) or {}
+    for _, a in pairs(slots) do
+      if type(a) == "table" and type(a.action_id) == "string" and tonumber(a.keycode) then
+        action_keycodes[a.action_id] = math.floor(tonumber(a.keycode))
+      end
+    end
+    needs_redraw = true
+    return
+  elseif topic == "host/connection" then
+    local now = type(payload) == "table" and payload.connected ~= false
+    if now ~= host_connected then host_connected = now; needs_redraw = true end
+    return
+  end
   if string.sub(topic, 1, 15) == "keys/providers/" then
     -- Erlang/MQTT LWT tombstone (`nil` / null payload) removes the dead/disabled provider cleanly!
     if type(payload) == "table" then
@@ -232,6 +410,7 @@ function on_event(topic, payload)
       elseif payload.kind == "release" then
         held_by_idx[ki] = nil
       end
+      if uses_held then needs_redraw = true end
       if not qmk_state_active then
         local prev_mask = current_mod_mask()
         local prev_fn = held.fn
@@ -635,40 +814,90 @@ local function draw_icon(ctx, icon, cx, cy, col, sc)
   end
 end
 
--- `rule.glow`: true, a strength (0..1), or { strength, color, pulse }.
-local function glow_spec(rule, col)
-  local g = rule.glow
-  if g == nil or g == false then return nil end
+-- ===== Effect parts (GPU, drawn every frame, fade in/out) =====
+-- glow     = true | 0..1 | { strength, color, pulse }                 soft glow behind the symbol
+-- outline  = true | { color, shape = "ring"|"window"|"edge", width, strength, pulse }
+-- backdrop = "#rrggbb" | { color, alpha, shape = "window"|"edge", pulse }
+local FX_PARTS = { "backdrop", "glow", "outline" }
+
+local function fx_spec(part, v, col)
+  if v == nil or v == false then return nil end
   local spec = { strength = 1.0, color = col, pulse = false }
-  if type(g) == "number" then
-    spec.strength = math.max(0, math.min(1, g))
-  elseif type(g) == "table" then
-    spec.strength = math.max(0, math.min(1, tonumber(g.strength) or 1.0))
-    if type(g.color) == "string" then spec.color = parse_hex(g.color, col) end
-    spec.pulse = g.pulse == true
+  if part == "backdrop" then spec.strength = 0.55; spec.shape = "window" end
+  if part == "outline" then spec.shape = "ring"; spec.width = 2.5 end
+  if type(v) == "number" then
+    spec.strength = math.max(0, math.min(1, v))
+  elseif type(v) == "string" then
+    spec.color = parse_hex(v, col)
+  elseif type(v) == "table" then
+    if v.strength ~= nil then spec.strength = math.max(0, math.min(1, tonumber(v.strength) or 1)) end
+    if part == "backdrop" and v.alpha ~= nil then spec.strength = math.max(0, math.min(1, tonumber(v.alpha) or 0.55)) end
+    if type(v.color) == "string" then spec.color = parse_hex(v.color, col) end
+    if type(v.shape) == "string" then spec.shape = v.shape end
+    if v.width ~= nil then spec.width = math.max(1, math.min(6, tonumber(v.width) or 2.5)) end
+    spec.pulse = v.pulse == true
   end
   return spec
 end
 
--- Soft glows behind icons. GPU glow calls are separate from the cached 2D layer, so this runs
--- every frame (even when the legends are reused) and fades smoothly in and out.
-local function draw_glows(ctx)
-  local k = math.min(1, last_dt * 6.0) -- ~0.4 s ease
-  for ki, tgt in pairs(glow_targets) do
-    local target = tgt.strength
-    if tgt.pulse then target = target * (0.55 + 0.45 * math.sin(anim_t * 4.0)) end
-    local g = glow_levels[ki] or { level = 0 }
-    g.level = g.level + (target - g.level) * k
-    g.x, g.y, g.color = tgt.x, tgt.y, tgt.color -- fading-out glows keep their last position
-    glow_levels[ki] = g
-  end
-  for ki, g in pairs(glow_levels) do
-    if not glow_targets[ki] then g.level = g.level * (1 - k) end
-    if g.level < 0.004 then
-      glow_levels[ki] = nil
+local function draw_fx_part(ctx, part, box, spec, lvl)
+  local c = spec.color or { 1, 1, 1, 1 }
+  local a = lvl * spec.strength
+  local col = { c[1], c[2], c[3], math.min(1, a) }
+  local inset = math.min(box.w, box.h) * 0.15 -- the keycap's clear window (same on wide keys)
+  if part == "glow" then
+    ctx:key_glow("glow", box.x, box.gy or box.y, 22, 22, 30.0, 0.0, a * 0.55, col)
+  elseif part == "outline" then
+    if spec.shape == "edge" then
+      ctx:key_glow("ring", box.x, box.y, box.w - 8, box.h - 8, 1.0, spec.width, a, col)
+    elseif spec.shape == "window" then
+      ctx:key_glow("ring", box.x, box.y, box.w - inset * 2, box.h - inset * 2, 1.0, spec.width, a, col)
     else
-      local c = g.color
-      ctx:key_glow("glow", g.x, g.y, 22, 22, 30.0, 0.0, g.level * 0.55, { c[1], c[2], c[3], g.level })
+      ctx:key_glow("ripple", box.x, box.y, 2.0, 2.0, math.min(box.w, box.h) * 0.5 * RING_FRAC, spec.width, a, col)
+    end
+  elseif part == "backdrop" then
+    local w = spec.shape == "edge" and (box.w - 8) or (box.w - inset * 2)
+    local h = spec.shape == "edge" and (box.h - 8) or (box.h - inset * 2)
+    ctx:key_glow("solid", box.x, box.y, w, h, 1.0, 0.0, a, col)
+  end
+end
+
+-- Active signals' effects on a key, newest first (only glow / outline).
+local function signal_fx(ki)
+  local best = nil
+  for _, sg in pairs(signals) do
+    if sg.until_t > anim_t and sg.keyset[ki] and (best == nil or sg.seq > best.seq) then best = sg end
+  end
+  return best
+end
+
+local function draw_fx(ctx)
+  local k = math.min(1, last_dt * 6.0) -- ~0.4 s ease
+  local pulse_f = 0.55 + 0.45 * math.sin(anim_t * 4.0)
+  local seen = {}
+  for ki, box in pairs(key_boxes) do
+    local tg = (not blank_keys[ki]) and fx_targets[ki] or nil
+    local sg = (not blank_keys[ki]) and signal_fx(ki) or nil
+    for _, part in ipairs(FX_PARTS) do
+      local spec = sg and sg.fx and sg.fx[part] or (tg and tg[part]) or nil
+      local id = ki .. ":" .. part
+      local st = fx_levels[id]
+      if spec then
+        seen[id] = true
+        st = st or { level = 0 }
+        local target = spec.pulse and pulse_f or 1.0
+        st.level = st.level + (target - st.level) * k
+        st.spec, st.box = spec, box
+        fx_levels[id] = st
+      end
+    end
+  end
+  for id, st in pairs(fx_levels) do
+    if not seen[id] then st.level = st.level * (1 - k) end
+    if st.level < 0.004 then
+      fx_levels[id] = nil
+    else
+      draw_fx_part(ctx, string.match(id, ":(%a+)$"), st.box, st.spec, st.level)
     end
   end
 end
@@ -680,8 +909,10 @@ local function draw_corner(ctx, corner, item, rx, ry, r, col)
   local c = type(item.color) == "string" and parse_hex(item.color, col) or col
   local right = corner == "tr" or corner == "br"
   local bottom = corner == "bl" or corner == "br"
-  local cx = right and (rx + r.w * (1 - CORNER_INSET)) or (rx + r.w * CORNER_INSET)
-  local cy = bottom and (ry + r.h * (1 - CORNER_INSET)) or (ry + r.h * CORNER_INSET)
+  -- Inset by a fraction of the key's short side, so wide keys (Space, Shift) match the rest.
+  local inset = math.min(r.w, r.h) * CORNER_INSET
+  local cx = right and (rx + r.w - inset) or (rx + inset)
+  local cy = bottom and (ry + r.h - inset) or (ry + inset)
   if item.dot ~= nil then
     local on = item.dot == true or item.dot == "on"
     local dc = on and (type(item.color) == "string" and c or { 0.35, 1.0, 0.55, 1.0 }) or { 0.45, 0.5, 0.58, 0.5 }
@@ -697,9 +928,261 @@ local function draw_corner(ctx, corner, item, rx, ry, r, col)
   end
 end
 
+-- ===== Face resolution =====
+-- Every rule that matches a key is folded from low to high precedence (priority, then provider
+-- topic, then position): `replace` resets the face, `patch` edits named parts, `hide` blanks the
+-- key, `badge` sets a dot in one corner slot. Omitted fields inherit, `false` clears.
+local META = { key = true, keys = true, group = true, action = true, mode = true, priority = true,
+  when = true, mods = true, corner = true, hide = true, sub = true, toggled = true }
+local LEGEND_PARTS = { "label", "shifted", "icon", "image", "shift_case" }
+
+local function normalized_corners(rule)
+  local c = nil
+  if type(rule.corners) == "table" then
+    c = {}
+    for slot, item in pairs(rule.corners) do c[slot] = item end
+  elseif rule.corners == false then
+    c = false
+  end
+  -- Shorthands land in the top-right slot (an explicit corners.tr wins).
+  if rule.sub ~= nil or rule.toggled ~= nil then
+    if c == nil or c == false then c = {} end
+    if c.tr == nil then
+      if rule.sub == false then
+        c.tr = false
+      elseif type(rule.sub) == "string" and #rule.sub > 0 then
+        c.tr = { text = rule.sub }
+      elseif rule.toggled ~= nil then
+        c.tr = { dot = rule.toggled == true } -- false = a dimmed "off" dot
+      end
+    end
+  end
+  return c
+end
+
+local function apply_rule(face, rule, mode)
+  if mode == "hide" or rule.hide == "all" then
+    return { blank = true }
+  end
+  if mode == "badge" then
+    face = face or {}
+    local slot = (rule.corner == "tl" or rule.corner == "bl" or rule.corner == "br") and rule.corner or "tr"
+    local corners = {}
+    for k2, v2 in pairs(face.corners or {}) do corners[k2] = v2 end
+    corners[slot] = { dot = true, color = type(rule.color) == "string" and rule.color or "#59ebff" }
+    face.corners = corners
+    return face
+  end
+  if mode == "replace" or face == nil or face.blank then face = {} end
+  if rule.hide == "legend" or rule.hide == true then
+    for _, f in ipairs(LEGEND_PARTS) do face[f] = nil end
+  end
+  for k2, v2 in pairs(rule) do
+    if not META[k2] and k2 ~= "corners" then
+      if v2 == false then
+        face[k2] = nil
+      else
+        face[k2] = v2
+        -- One symbol at a time: setting an icon clears an inherited image, and vice versa.
+        if k2 == "icon" then face.image = nil elseif k2 == "image" then face.icon = nil end
+      end
+    end
+  end
+  local c = normalized_corners(rule)
+  if c == false then
+    face.corners = nil
+  elseif c ~= nil then
+    local merged = {}
+    if mode ~= "replace" then
+      for k2, v2 in pairs(face.corners or {}) do merged[k2] = v2 end
+    end
+    for slot, item in pairs(c) do
+      if item == false then merged[slot] = nil else merged[slot] = item end
+    end
+    face.corners = merged
+  end
+  return face
+end
+
+-- Collect matching rules per key: key_index -> list of { prio, ord, mode, rule, topic }.
+local function collect_matches(mod_mask, only_key, explain)
+  local per_key = {}
+  local wanted = {}
+  wanted_topics_ref = wanted
+  local prov_topics = {}
+  for t, _ in pairs(providers) do table.insert(prov_topics, t) end
+  table.sort(prov_topics)
+  local ord = 0
+  for pi, ptopic in ipairs(prov_topics) do
+    local prov = providers[ptopic]
+    if type(prov) == "table" and type(prov.rules) == "table" then
+      local prov_ok = when_matches(prov.when)
+      local base_prio = tonumber(prov.priority) or 10
+      local base_mode = tostring(prov.mode or "replace")
+      for ri, rule in ipairs(prov.rules) do
+        if type(rule) == "table" then
+          ord = ord + 1
+          -- Fast path: integer `mods` check before anything else (~727 shortcut rules).
+          local r_mods = rule.mods
+          local mods_ok = (r_mods == nil or r_mods == mod_mask)
+          if (mods_ok and prov_ok) or explain then
+            for _, ki in ipairs(rule_targets(rule)) do
+              if only_key == nil or only_key == ki then
+                local ok = mods_ok and prov_ok and (rule.when == nil or when_matches(rule.when, ki))
+                if ok or explain then
+                  local lst = per_key[ki]
+                  if not lst then lst = {}; per_key[ki] = lst end
+                  table.insert(lst, {
+                    prio = tonumber(rule.priority) or base_prio, ord = ord, mode = tostring(rule.mode or base_mode),
+                    rule = rule, topic = ptopic, index = ri, matched = ok,
+                    why = (not ok) and ((not prov_ok and "provider condition") or (not mods_ok and "modifiers") or "condition") or nil,
+                  })
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  wanted_topics_ref = nil
+  return per_key, wanted
+end
+
+local function sort_matches(lst)
+  table.sort(lst, function(a, b)
+    if a.prio ~= b.prio then return a.prio < b.prio end
+    return a.ord < b.ord
+  end)
+end
+
+-- Topics that any rule's `when.bus` mentions, matched or not (so subscriptions don't churn as
+-- modifiers or layers change).
+local function wanted_bus_topics()
+  local wanted = {}
+  local function scan(when)
+    if type(when) ~= "table" or when.bus == nil then return end
+    local list = (type(when.bus) == "table" and when.bus.topic == nil) and when.bus or { when.bus }
+    for _, c in ipairs(list) do
+      if type(c) == "table" and type(c.topic) == "string" and #c.topic > 0 then wanted[c.topic] = true end
+    end
+  end
+  for _, prov in pairs(providers) do
+    if type(prov) == "table" then
+      scan(prov.when)
+      if type(prov.rules) == "table" then
+        for _, rule in ipairs(prov.rules) do
+          if type(rule) == "table" and rule.when ~= nil then scan(rule.when) end
+        end
+      end
+    end
+  end
+  return wanted
+end
+
+local function resolve_faces(mod_mask)
+  uses_held = false
+  local per_key = collect_matches(mod_mask)
+  local wanted = wanted_bus_topics()
+  local faces = {}
+  for ki, lst in pairs(per_key) do
+    if #lst > 1 then sort_matches(lst) end
+    local face = nil
+    for _, m in ipairs(lst) do face = apply_rule(face, m.rule, m.mode) end
+    faces[ki] = face
+  end
+  -- Keep runtime subscriptions in step with the topics conditions mention (capped).
+  local count = 0
+  for t, _ in pairs(bus_watched) do
+    if not wanted[t] then
+      bus.unsubscribe(t)
+      bus_watched[t] = nil
+      bus_values[t] = nil
+    else
+      count = count + 1
+    end
+  end
+  for t, _ in pairs(wanted) do
+    if not bus_watched[t] and count < MAX_WATCHED and not string.find(t, "[#+]") then
+      bus_watched[t] = true
+      bus_values[t] = bus.get(t)
+      bus.subscribe(t)
+      count = count + 1
+      needs_redraw = true -- re-resolve with the value we just read
+    end
+  end
+  return faces
+end
+
+handle_signal = function(p)
+  local id = tostring(p.id or "")
+  if p.clear == true then
+    if #id > 0 then signals[id] = nil end
+    return
+  end
+  local set = type(p.set) == "table" and p.set or { glow = true }
+  local fx = {}
+  local col = parse_hex(type(p.color) == "string" and p.color or nil, { 1.0, 0.82, 0.4, 1.0 })
+  for _, part in ipairs({ "glow", "outline" }) do
+    if set[part] ~= nil then fx[part] = fx_spec(part, set[part], col) end
+  end
+  if not next(fx) then return end
+  local keyset = {}
+  for _, ki in ipairs(rule_targets(p)) do keyset[ki] = true end
+  if not next(keyset) then return end
+  if #id == 0 then id = "anon:" .. tostring(anim_t) end
+  local count = 0
+  local oldest_id, oldest_seq = nil, math.huge
+  for sid, sg in pairs(signals) do
+    if sg.until_t <= anim_t then
+      signals[sid] = nil
+    else
+      count = count + 1
+      if sg.seq < oldest_seq then oldest_id, oldest_seq = sid, sg.seq end
+    end
+  end
+  if not signals[id] and count >= MAX_SIGNALS and oldest_id then signals[oldest_id] = nil end
+  local dur = math.max(50, math.min(MAX_SIGNAL_MS, tonumber(p.duration_ms) or 2000))
+  signal_seq = (signal_seq or 0) + 1
+  -- Re-sending an id refreshes its deadline and its look.
+  signals[id] = { keyset = keyset, fx = fx, until_t = anim_t + dur / 1000.0, seq = signal_seq }
+end
+
+handle_inspect = function(p)
+  local ki = resolve_key_idx(p.key)
+  if ki == nil then return end
+  local per_key = collect_matches(current_mod_mask(), ki, true)
+  local lst = per_key[ki] or {}
+  sort_matches(lst)
+  local steps, face = {}, nil
+  for _, m in ipairs(lst) do
+    local step = { provider = m.topic, rule = m.index, priority = m.prio, mode = m.mode, matched = m.matched }
+    if m.matched then
+      face = apply_rule(face, m.rule, m.mode)
+    else
+      step.skipped = m.why
+    end
+    table.insert(steps, step)
+  end
+  local out_face = {}
+  for k2, v2 in pairs(face or {}) do
+    if type(v2) ~= "function" then out_face[k2] = v2 end
+  end
+  local sg = signal_fx(ki)
+  bus.publish("keys/inspect/result", {
+    key = ki,
+    request_id = p.request_id,
+    layer = active_layer,
+    mods = current_mod_mask(),
+    steps = steps, -- low to high precedence; later matched steps override earlier ones
+    face = out_face,
+    signal = sg and { until_ms = math.floor((sg.until_t - anim_t) * 1000) } or nil,
+  }, false)
+end
+
 function on_render(ctx, stage)
   if stage ~= "under_key" or not geom or not geom.keys then return end
-  draw_glows(ctx)
+  draw_fx(ctx)
   if parallax_refresh_frames > 0 then
     geom = keyboard.layout()
     parallax_refresh_frames = parallax_refresh_frames - 1
@@ -713,55 +1196,16 @@ function on_render(ctx, stage)
   end
   needs_redraw = false
   has_animated_rule = false
-  glow_targets = {}
+  fx_targets = {}
+  blank_keys = {}
   local default_col = module.color("legend_color", "#f2f7ff")
   local mod_mask = current_mod_mask()
-
-  -- Deterministic per-key claim reduction across ALL active providers in ONE atomic frame!
-  local winners = {} -- key_index -> { priority, mode, rule }
-  local badges = {}  -- key_index -> list of badge rules
-
-  -- Deterministic sorted iteration across ALL active providers in ONE atomic frame!
-  -- Fast path: check integer `rule.mods` BEFORE string `when_matches` so all ~727 shortcut
-  -- rules reject in a single integer compare (~0.05ms instead of 30ms of Lua string matching!).
-  local prov_topics = {}
-  for t, _ in pairs(providers) do table.insert(prov_topics, t) end
-  table.sort(prov_topics)
-  for _, ptopic in ipairs(prov_topics) do
-    local prov = providers[ptopic]
-    if type(prov) == "table" and type(prov.rules) == "table" and when_matches(prov.when) then
-      local base_prio = tonumber(prov.priority) or 10
-      local base_mode = tostring(prov.mode or "replace")
-      for _, rule in ipairs(prov.rules) do
-        if type(rule) == "table" then
-          local r_mods = rule.mods
-          if r_mods == nil or r_mods == mod_mask then
-            if rule.when == nil or when_matches(rule.when) then
-              local ki = resolve_key_idx(rule.key)
-              if ki ~= nil then
-                local prio = rule.priority or base_prio
-                local rmode = rule.mode or base_mode
-                if rmode == "badge" then
-                  badges[ki] = badges[ki] or {}
-                  table.insert(badges[ki], rule)
-                else
-                  local cur = winners[ki]
-                  if not cur or prio >= cur.priority then
-                    winners[ki] = { priority = prio, mode = rmode, rule = rule }
-                  end
-                end
-              end
-            end
-          end
-        end
-      end
-    end
-  end
+  local faces = resolve_faces(mod_mask)
 
   -- Render ONLY the winning face for each physical key at its parallax-shifted visual position!
   for _, key in ipairs(geom.keys) do
     local ki = key.key_index
-    local w = winners[ki]
+    local face = faces[ki]
     local r = key.visual_rect or key.rect
     local dx = key.parallax_dx or 0
     local dy = key.parallax_dy or 0
@@ -769,6 +1213,8 @@ function on_render(ctx, stage)
     local vy = (key.visual_y and key.visual_y > 0) and key.visual_y or (key.center_y + dy)
     local rx = key.visual_rect and r.x or (r.x + dx)
     local ry = key.visual_rect and r.y or (r.y + dy)
+    key_boxes[ki] = { x = vx, y = vy, w = r.w, h = r.h }
+    if face and face.blank then blank_keys[ki] = true end
 
     -- Optical Parallax Alignment Grid: crisp cyan inner-window calibration box + center
     -- crosshair (`+`) inset to match the physical clear acrylic window inside each keycap
@@ -789,8 +1235,8 @@ function on_render(ctx, stage)
       ctx:line(vx, vy - 7, vx, vy + 7, 1.8, { 1.0, 0.82, 0.25, 0.95 })
     end
 
-    if w and w.mode ~= "hide" then
-      local rule = w.rule
+    if face and not face.blank then
+      local rule = face
       local col = parse_hex(rule.color, default_col)
       local on_cd = (tonumber(rule.cd) or 0) > 0 and ((tonumber(rule.max_charges) or 0) == 0 or (tonumber(rule.charges) or 0) == 0)
       local ult_ready = (rule.ult_pct ~= nil and tonumber(rule.ult_pct) >= 100)
@@ -837,12 +1283,14 @@ function on_render(ctx, stage)
 
       local has_img = type(rule.image) == "string" and #rule.image > 0
       local has_icon = type(rule.icon) == "string" and #rule.icon > 0
-      local gspec = glow_spec(rule, col)
-      if gspec then
-        -- Centered on the symbol (icon/image sit above a caption) or on the legend.
-        local gy = ((has_icon or has_img) and #label > 0) and (vy - 10) or vy
-        glow_targets[ki] = { x = vx, y = gy, strength = gspec.strength, color = gspec.color, pulse = gspec.pulse }
+      -- Effect parts: glow centers on the symbol (icon/image sit above a caption) or the legend.
+      key_boxes[ki].gy = ((has_icon or has_img) and #label > 0) and (vy - 10) or vy
+      local tg = nil
+      for _, part in ipairs(FX_PARTS) do
+        local spec = fx_spec(part, rule[part], col)
+        if spec then tg = tg or {}; tg[part] = spec end
       end
+      fx_targets[ki] = tg
       if has_img then
         -- Resolve portable `module://<id>/<rel>` and `media://<fname>` asset refs locally on
         -- BOTH Mac and keyboard so cross-device BrokerMirror messages never break image paths!
@@ -984,14 +1432,8 @@ function on_render(ctx, stage)
       -- { text | icon | dot, color }. The older single-purpose fields fill the top-right slot.
       local corners = type(rule.corners) == "table" and rule.corners or {}
       local tr = corners.tr
-      if tr == nil then
-        if (tonumber(rule.max_charges) or 0) > 0 then
-          tr = { text = tostring(rule.charges or 0) }
-        elseif type(rule.sub) == "string" and #rule.sub > 0 then
-          tr = { text = rule.sub }
-        elseif rule.toggled ~= nil then
-          tr = { dot = rule.toggled == true }
-        end
+      if tr == nil and (tonumber(rule.max_charges) or 0) > 0 then
+        tr = { text = tostring(rule.charges or 0) }
       end
       if rule.ult_pct == nil or math.floor(tonumber(rule.ult_pct) + 0.5) >= 100 then
         draw_corner(ctx, "tr", tr, rx, ry, r, col)
@@ -1001,13 +1443,5 @@ function on_render(ctx, stage)
       draw_corner(ctx, "br", corners.br, rx, ry, r, col)
     end
 
-    -- Non-replacing badges (`mode = "badge"`, e.g. Caps Lock active dot): a dot in the
-    -- top-right slot, or wherever `corner` says.
-    if badges[ki] then
-      for _, br in ipairs(badges[ki]) do
-        local corner = (br.corner == "tl" or br.corner == "bl" or br.corner == "br") and br.corner or "tr"
-        draw_corner(ctx, corner, { dot = true, color = type(br.color) == "string" and br.color or "#59ebff" }, rx, ry, r, default_col)
-      end
-    end
   end
 end

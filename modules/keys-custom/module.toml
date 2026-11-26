@@ -1,12 +1,12 @@
 id = "keys-custom"
-name = "Custom Keycap Visuals"
-version = "2.0.0"
-description = "Per-key and per-action visual overrides (custom labels, colors, borders, vector icons, and PNG images) layered cleanly above base keymap and shortcuts"
+name = "Key Rules"
+version = "3.0.0"
+description = "Your own rules for what keys show: hide legends (keeping layer and modifier markers), relabel, recolor, add glows, outlines, backdrops and corner text, on chosen keys, layers, apps, held keys or live bus values"
 author = "Keyglass"
 category = "effect"
 tags = ["keys", "core", "icons", "custom", "keymap"]
 depends = [{ role = "keys_renderer" }]
-stages = ["under_key"]
+stages = []
 host_requirement = "none"
 slot_capable = false
 stackable = true
@@ -16,7 +16,7 @@ homepage = "https://github.com/keyglass-dev/keyglass/tree/main/modules/keys-cust
 repository = "https://github.com/keyglass-dev/keyglass"
 support_url = "https://github.com/keyglass-dev/keyglass/issues"
 discord_url = "https://discord.gg/keyglass"
-changelog = "Core Keyglass v2 built-in module."
+changelog = "v3.0.0: Key Rules. A rules list (keys, conditions, look) on top of the per-key and per-action overrides. Overrides now edit the face instead of replacing it, so binding markers like L2 stay; background and border now draw (as an inset backdrop and outline)."
 
 maturity = "stable"
 
@@ -24,5 +24,170 @@ maturity = "stable"
 script = "script.lua"
 
 [channels]
-subscribes = ["keyboard/resolved_keys", "system/actions"]
+subscribes = []
 publishes = ["keys/providers/custom"]
+
+[[settings]]
+key = "rules"
+label = "Rules"
+kind = "list"
+default = []
+description = "Later rules win over earlier ones. Keys: F1-F4, Esc, a, home_row, fkeys, numbers, letters, mods, arrows, nav, all, row:N, or action:<action id>."
+
+  [[settings.fields]]
+  key = "name"
+  label = "Name"
+  kind = "string"
+  default = ""
+
+  [[settings.fields]]
+  key = "enabled"
+  label = "Enabled"
+  kind = "boolean"
+  default = true
+
+  [[settings.fields]]
+  key = "keys"
+  label = "Keys"
+  kind = "string"
+  default = ""
+  description = "e.g. all, F1-F4, home_row, Esc, action:mqtt-bridge.scene_on"
+
+  [[settings.fields]]
+  key = "layer"
+  label = "Only on Layer"
+  kind = "select"
+  options = ["any", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]
+  default = "any"
+
+  [[settings.fields]]
+  key = "app"
+  label = "Only in Apps"
+  kind = "string"
+  default = ""
+  description = "Comma-separated app names, e.g. obs,zoom"
+
+  [[settings.fields]]
+  key = "held"
+  label = "While Key Is"
+  kind = "select"
+  options = ["any", "held", "not_held"]
+  default = "any"
+
+  [[settings.fields]]
+  key = "caps"
+  label = "While Caps Lock Is"
+  kind = "select"
+  options = ["any", "on", "off"]
+  default = "any"
+
+  [[settings.fields]]
+  key = "condition_topic"
+  label = "Only When Bus Topic"
+  kind = "string"
+  default = ""
+  description = "A retained bus topic, e.g. modules/mqtt-bridge/status"
+
+  [[settings.fields]]
+  key = "condition_path"
+  label = "Value at Path"
+  kind = "string"
+  default = ""
+  description = "Dot path into the JSON value, e.g. buttons.0.value"
+
+  [[settings.fields]]
+  key = "condition_op"
+  label = "Is"
+  kind = "select"
+  options = ["eq", "ne", "in", "gt", "lt", "contains", "exists", "missing"]
+  default = "eq"
+
+  [[settings.fields]]
+  key = "condition_value"
+  label = "Value"
+  kind = "string"
+  default = ""
+
+  [[settings.fields]]
+  key = "hide"
+  label = "Hide"
+  kind = "select"
+  options = ["nothing", "legend", "all"]
+  default = "nothing"
+  description = "legend: the letter/label and icon (layer and modifier markers stay). all: a blank key."
+
+  [[settings.fields]]
+  key = "label"
+  label = "Label"
+  kind = "string"
+  default = ""
+
+  [[settings.fields]]
+  key = "icon"
+  label = "Icon"
+  kind = "string"
+  default = ""
+
+  [[settings.fields]]
+  key = "color"
+  label = "Legend Color"
+  kind = "string"
+  default = ""
+  description = "#rrggbb, empty keeps the current color"
+
+  [[settings.fields]]
+  key = "glow"
+  label = "Glow"
+  kind = "select"
+  options = ["none", "soft", "subtle", "pulse"]
+  default = "none"
+
+  [[settings.fields]]
+  key = "glow_color"
+  label = "Glow Color"
+  kind = "string"
+  default = ""
+
+  [[settings.fields]]
+  key = "outline"
+  label = "Outline"
+  kind = "select"
+  options = ["none", "ring", "window", "edge"]
+  default = "none"
+
+  [[settings.fields]]
+  key = "outline_color"
+  label = "Outline Color"
+  kind = "string"
+  default = ""
+
+  [[settings.fields]]
+  key = "backdrop"
+  label = "Backdrop Color"
+  kind = "string"
+  default = ""
+
+  [[settings.fields]]
+  key = "corner_tl"
+  label = "Top-Left Corner"
+  kind = "string"
+  default = ""
+  description = "Text, dot, icon:<name>, or none to clear it"
+
+  [[settings.fields]]
+  key = "corner_tr"
+  label = "Top-Right Corner"
+  kind = "string"
+  default = ""
+
+  [[settings.fields]]
+  key = "corner_bl"
+  label = "Bottom-Left Corner"
+  kind = "string"
+  default = ""
+
+  [[settings.fields]]
+  key = "corner_br"
+  label = "Bottom-Right Corner"
+  kind = "string"
+  default = ""

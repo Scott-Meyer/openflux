@@ -723,11 +723,35 @@ impl LoadedLuaModule {
             bus_tbl.set(
                 "subscribe",
                 self.lua.create_function(move |_, pattern: String| {
+                    // Idempotent: subscribing to a pattern you already have is a no-op (so it
+                    // doesn't replay retained messages again or pile up handles).
+                    let mut subs = subs_ref.lock().unwrap();
+                    if subs.iter().any(|s| s.pattern() == pattern) {
+                        return Ok(false);
+                    }
                     let sub = broker_sub
                         .subscribe(pattern, SubscribeOptions::with_retained())
                         .map_err(|e| mlua::Error::RuntimeError(e.to_string()))?;
-                    subs_ref.lock().unwrap().push(sub);
-                    Ok(())
+                    subs.push(sub);
+                    Ok(true)
+                })?,
+            )?;
+        }
+        {
+            // Drops this module's runtime subscription to exactly `pattern` (manifest
+            // `channels.subscribes` patterns can't be dropped). Returns whether one was removed.
+            let subs_ref = self.subscriptions.clone();
+            let manifest_patterns: Vec<String> = self.discovered.manifest.channels.subscribes.clone();
+            bus_tbl.set(
+                "unsubscribe",
+                self.lua.create_function(move |_, pattern: String| {
+                    if manifest_patterns.iter().any(|p| *p == pattern) {
+                        return Ok(false);
+                    }
+                    let mut subs = subs_ref.lock().unwrap();
+                    let before = subs.len();
+                    subs.retain(|s| s.pattern() != pattern);
+                    Ok(subs.len() != before)
                 })?,
             )?;
         }

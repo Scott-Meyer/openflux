@@ -446,6 +446,7 @@ local function publish_keymap()
       mode = "replace",
       rules = {},
     }, true)
+    bus.publish("keys/providers/keymap-bindings", nil, true)
     return
   end
 
@@ -518,11 +519,29 @@ local function publish_keymap()
     end
   end
 
+  -- Binding markers (layer-tap `L2`, mod-tap modifiers) are facts about the binding, not part
+  -- of the legend: publish them as their own patch so they survive other modules' faces and
+  -- "hide the legend" rules (a user rule can still hide them explicitly).
+  local bindings = {}
+  for _, r in ipairs(rules) do
+    local tr = (type(r.corners) == "table" and r.corners.tr) or (type(r.sub) == "string" and #r.sub > 0 and { text = r.sub }) or nil
+    if tr then
+      table.insert(bindings, { key = r.key, corners = { tr = tr } })
+      r.sub = nil
+      r.corners = nil
+    end
+  end
+
   bus.publish("keys/providers/keymap", {
     priority = 10,
     mode = "replace",
     rules = rules,
   }, true)
+  if #bindings > 0 then
+    bus.publish("keys/providers/keymap-bindings", { priority = 90, mode = "patch", rules = bindings }, true)
+  else
+    bus.publish("keys/providers/keymap-bindings", nil, true)
+  end
 end
 
 function on_init()

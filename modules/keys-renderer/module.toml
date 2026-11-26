@@ -24,8 +24,8 @@ maturity = "stable"
 script = "script.lua"
 
 [channels]
-subscribes = ["keys/providers/#", "input/keys/event", "keyboard/state", "keyboard/geometry", "display/parallax", "keyboard/keymap", "host/app/active", "host/profile/active"]
-publishes = ["layout/regions/keys", "layout/regions/slots"]
+subscribes = ["keys/providers/#", "input/keys/event", "keyboard/state", "keyboard/geometry", "display/parallax", "keyboard/keymap", "host/app/active", "host/profile/active", "keyboard/resolved_keys", "system/actions", "host/connection", "keys/signal", "keys/inspect/request"]
+publishes = ["layout/regions/keys", "layout/regions/slots", "keys/inspect/result"]
 
 [[settings]]
 key = "legend_style"
