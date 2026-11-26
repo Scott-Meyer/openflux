@@ -1,6 +1,6 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { v2Client } from "../api/v2Client";
+import { type ActiveProfileState, type ProfileEntry, v2Client } from "../api/v2Client";
 import {
   ANALOG_GAMEPAD_KEYS,
   type ActionSlotInfo,
@@ -25,11 +25,25 @@ interface QmkKeymapViewProps {
   keys: SurfaceKeyGeom[];
   initialKey?: number | null;
   onSynced?: () => void;
+  onOpenProfile?: (profileId: string) => void;
 }
 
 type EditorMode = "key" | "combo" | "hold_tap" | "layer" | "action" | "gamepad";
 
-const LAYER_NAMES = ["Base", "Fn", "Gaming", "Layer 3", "Layer 4", "Layer 5", "Layer 6", "Layer 7"];
+const LAYER_NAMES = ["Base", "Layer 1", "Layer 2", "Layer 3", "Layer 4", "Layer 5", "Layer 6", "Layer 7"];
+
+/** Standard ANSI A..Z letter positions (row, col, HID keycode) for 1-click "Fill Plain QWERTY". */
+const PLAIN_QWERTY_LETTERS: Array<[number, number, number]> = [
+  // Row 2: Q..P
+  [2, 1, 0x14], [2, 2, 0x1a], [2, 3, 0x08], [2, 4, 0x15], [2, 5, 0x17],
+  [2, 6, 0x1c], [2, 7, 0x18], [2, 8, 0x0c], [2, 9, 0x12], [2, 10, 0x13],
+  // Row 3: A..L + ;
+  [3, 1, 0x04], [3, 2, 0x16], [3, 3, 0x07], [3, 4, 0x09], [3, 5, 0x0a],
+  [3, 6, 0x0b], [3, 7, 0x0d], [3, 8, 0x0e], [3, 9, 0x0f], [3, 10, 0x33],
+  // Row 4: Z..M
+  [4, 1, 0x1d], [4, 2, 0x1b], [4, 3, 0x06], [4, 4, 0x19], [4, 5, 0x05],
+  [4, 6, 0x11], [4, 7, 0x10],
+];
 
 const TAP_KEY_CHOICES = KEY_PICKER_GROUPS.filter(
   (g) => g.group !== "Special" && g.group !== "Media & System",
@@ -37,7 +51,12 @@ const TAP_KEY_CHOICES = KEY_PICKER_GROUPS.filter(
   .flatMap((g) => g.keys)
   .filter((k) => k.code <= 0xff);
 
-export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, onSynced }) => {
+export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
+  keys,
+  initialKey,
+  onSynced,
+  onOpenProfile,
+}) => {
   const [connected, setConnected] = useState<boolean | null>(null);
   const [layerCount, setLayerCount] = useState<number>(8);
   const [keymaps, setKeymaps] = useState<number[][][]>([]);
@@ -45,8 +64,11 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
   const [selectedKey, setSelectedKey] = useState<number>(initialKey ?? 33); // Key W default
   const [editorMode, setEditorMode] = useState<EditorMode>("key");
   const [actionsBySlot, setActionsBySlot] = useState<Record<number, ActionSlotInfo>>({});
+  const [profiles, setProfiles] = useState<ProfileEntry[]>([]);
+  const [activeProfile, setActiveProfile] = useState<ActiveProfileState | null>(null);
   const [search, setSearch] = useState("");
   const [capturing, setCapturing] = useState(false);
+  const [fillingQwerty, setFillingQwerty] = useState(false);
   const [statusNote, setStatusNote] = useState<string | null>(null);
   const [syncingActions, setSyncingActions] = useState(false);
 
@@ -72,6 +94,67 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
   useEffect(() => {
     if (initialKey != null) setSelectedKey(initialKey);
   }, [initialKey]);
+
+  const loadProfiles = useCallback(async () => {
+    try {
+      const res = await v2Client.getProfiles();
+      setProfiles(res.profiles ?? []);
+      setActiveProfile(res.active ?? null);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadProfiles();
+    const id = window.setInterval(() => void loadProfiles(), 3000);
+    return () => window.clearInterval(id);
+  }, [loadProfiles]);
+
+  const profilesByLayer = useMemo(() => {
+    const map: Record<number, ProfileEntry[]> = {};
+    for (const p of profiles) {
+      if (p.enabled && typeof p.qmk_layer === "number") {
+        if (!map[p.qmk_layer]) map[p.qmk_layer] = [];
+        map[p.qmk_layer].push(p);
+      }
+    }
+    return map;
+  }, [profiles]);
+
+  const handleFillPlainQwerty = async () => {
+    if (!connected) {
+      setStatusNote("Connect your keyboard via USB to write Layer keycodes.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Fill Layer ${activeLayer} letters (Q–P, A–;, Z–M) with plain QWERTY (no mod-taps or layer-taps)?\n\nAll other keys on Layer ${activeLayer} remain unchanged.`,
+      )
+    ) {
+      return;
+    }
+    setFillingQwerty(true);
+    setStatusNote(`Writing ${PLAIN_QWERTY_LETTERS.length} plain QWERTY keys to Layer ${activeLayer}…`);
+    try {
+      for (const [r, c, kc] of PLAIN_QWERTY_LETTERS) {
+        await vialSetKeycode(activeLayer, r, c, kc);
+      }
+      setKeymaps((prev) => {
+        const next = prev.map((lyr) => lyr.map((row) => [...row]));
+        for (const [r, c, kc] of PLAIN_QWERTY_LETTERS) {
+          if (next[activeLayer]?.[r]) next[activeLayer][r][c] = kc;
+        }
+        return next;
+      });
+      setStatusNote(`Filled Layer ${activeLayer} with plain QWERTY (no mod-taps/layer-taps).`);
+      onSynced?.();
+    } catch (err) {
+      setStatusNote(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFillingQwerty(false);
+    }
+  };
 
   const loadActions = useCallback(async () => {
     try {
@@ -327,31 +410,133 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
         </div>
       </div>
 
-      {/* Layer Switcher Pills */}
+      {/* Layer Switcher Pills (with live Profile links!) */}
       <div className="kg-layer-pills" role="tablist" aria-label="QMK Layers">
-        {Array.from({ length: Math.min(layerCount, 8) }, (_, idx) => (
+        {Array.from({ length: Math.min(layerCount, 8) }, (_, idx) => {
+          const linkedProfs = profilesByLayer[idx] ?? [];
+          const isLiveDefault = activeProfile?.qmk_layer === idx || (activeProfile?.qmk_layer == null && idx === 0);
+          const pillLabel =
+            linkedProfs.length > 0
+              ? `L${idx} · ${linkedProfs.map((p) => p.name).join(" / ")}`
+              : `L${idx} · ${LAYER_NAMES[idx] ?? `Layer ${idx}`}`;
+          return (
+            <button
+              key={idx}
+              type="button"
+              role="tab"
+              aria-selected={activeLayer === idx}
+              className={`kg-layer-pill ${activeLayer === idx ? "is-active" : ""}`}
+              onClick={() => setActiveLayer(idx)}
+              title={
+                linkedProfs.length > 0
+                  ? `Layer ${idx} — Activated by profile: ${linkedProfs.map((p) => p.name).join(", ")}`
+                  : `Layer ${idx}`
+              }
+            >
+              {isLiveDefault && (
+                <span
+                  className="kg-conn-dot is-on"
+                  style={{ display: "inline-block", marginRight: 6, verticalAlign: "middle" }}
+                  title="Active default layer on this computer"
+                />
+              )}
+              {pillLabel}
+            </button>
+          );
+        })}
+        {activeLayer > 0 && connected && (
           <button
-            key={idx}
             type="button"
-            role="tab"
-            aria-selected={activeLayer === idx}
-            className={`kg-layer-pill ${activeLayer === idx ? "is-active" : ""}`}
-            onClick={() => setActiveLayer(idx)}
+            className="kg-btn-ghost"
+            style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 11 }}
+            disabled={fillingQwerty}
+            onClick={() => void handleFillPlainQwerty()}
+            title="Fill Q–P, A–;, Z–M on this layer with plain QWERTY letters (no tap-hold / mod-taps)"
           >
-            L{idx} · {LAYER_NAMES[idx] ?? `Layer ${idx}`}
+            {fillingQwerty ? "Filling…" : `Fill L${activeLayer} Plain QWERTY`}
           </button>
-        ))}
+        )}
       </div>
+
+      {/* Active Layer Profile Banner / Double-Click Quick-Capture Banner */}
+      {(() => {
+        const linkedProfs = profilesByLayer[activeLayer] ?? [];
+        if (capturing) {
+          return (
+            <div
+              className="kg-calm-card kg-calm-row"
+              style={{ borderColor: "rgba(92, 225, 255, 0.55)", background: "rgba(92, 225, 255, 0.08)" }}
+            >
+              <div style={{ fontSize: 12 }}>
+                <strong style={{ color: "#7dd3fc" }}>Listening for key press on Key {selectedKey} (L{activeLayer})…</strong>{" "}
+                <span className="kg-muted">Press any physical key on your keyboard to bind it immediately.</span>
+              </div>
+              <button type="button" className="kg-btn-ghost" onClick={() => setCapturing(false)}>
+                Cancel
+              </button>
+            </div>
+          );
+        }
+        if (linkedProfs.length > 0) {
+          return (
+            <div className="kg-calm-card kg-calm-row" style={{ padding: "8px 14px" }}>
+              <div style={{ fontSize: 12 }}>
+                <strong>Layer {activeLayer}</strong> is automatically selected by{" "}
+                {linkedProfs.map((p, i) => (
+                  <span key={p.id}>
+                    {i > 0 ? ", " : ""}
+                    <strong>{p.name}</strong>
+                    {p.match_os.length > 0 ? ` (${p.match_os.join("/")})` : ""}
+                  </span>
+                ))}
+                {activeProfile?.qmk_layer === activeLayer ? (
+                  <span style={{ color: "#58f29c", marginLeft: 8 }}>● Active now</span>
+                ) : null}
+              </div>
+              {onOpenProfile && (
+                <button
+                  type="button"
+                  className="kg-btn-ghost"
+                  style={{ padding: "2px 8px", fontSize: 11 }}
+                  onClick={() => onOpenProfile(linkedProfs[0].id)}
+                >
+                  Open {linkedProfs[0].name} Profile →
+                </button>
+              )}
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* Shared Interactive 85-Key Keyboard */}
       <div className="kg-surface-wrap">
         <KeyboardSurface
           keys={keys}
           selectedKey={selectedKey}
-          onSelectKey={(k) => setSelectedKey(k)}
+          onSelectKey={(k) => {
+            setSelectedKey(k);
+            if (capturing) setCapturing(false);
+          }}
+          onDoubleClickKey={(k) => {
+            setSelectedKey(k);
+            setCapturing(true);
+            setStatusNote(`Listening on Key ${k} (L${activeLayer}) — press any key to bind it.`);
+          }}
           onDropOnKey={handleDropOnKey}
-          topBarSummary={`Editing Layer ${activeLayer} (${LAYER_NAMES[activeLayer] ?? `L${activeLayer}`}) — Click any key or drag any binding below onto a keycap`}
+          topBarSummary={`Editing Layer ${activeLayer} — Click a key, double-click a key & type to quick-bind, or drag any binding below`}
           renderKey={(k) => {
+            const isCap = capturing && selectedKey === k.index;
+            if (isCap) {
+              return {
+                label: "Type…",
+                sub: "listen",
+                color: "#5ce1ff",
+                border: "rgba(92, 225, 255, 0.9)",
+                bg: "rgba(92, 225, 255, 0.16)",
+                title: `Listening for physical key press on Key ${k.index}`,
+              };
+            }
             const kc = keymaps[activeLayer]?.[k.row]?.[k.col] ?? 0;
             const dec = decodeQmkKeycode(kc, actionsBySlot);
             return {
@@ -367,7 +552,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({ keys, initialKey, 
                     : dec.kind === "layer" || dec.kind === "hold_tap"
                       ? "#a78bfa"
                       : undefined,
-              title: `Key ${k.index} (R${k.row} C${k.col}) · ${dec.label} (0x${kc.toString(16).toUpperCase().padStart(4, "0")})`,
+              title: `Key ${k.index} (R${k.row} C${k.col}) · ${dec.label} (0x${kc.toString(16).toUpperCase().padStart(4, "0")}) — Double-click to quick-bind`,
             };
           }}
         />

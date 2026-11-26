@@ -29,6 +29,8 @@ interface KeyboardSurfaceProps {
   selectedKey: number | null;
   topBarSelected?: boolean;
   onSelectKey?: (keyIndex: number) => void;
+  /** Optional double-click handler (e.g. quick-capture physical key press in QMK Keymap). */
+  onDoubleClickKey?: (keyIndex: number) => void;
   /** Optional drag-and-drop handler: allows dragging keycodes/actions straight onto any keycap. */
   onDropOnKey?: (keyIndex: number, dt: DataTransfer) => void;
   onSelectTopBar?: () => void;
@@ -118,6 +120,7 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
   selectedKey,
   topBarSelected = false,
   onSelectKey,
+  onDoubleClickKey,
   onDropOnKey,
   onSelectTopBar,
   showLivePreview = false,
@@ -209,6 +212,7 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
               key={k.index}
               type="button"
               onClick={() => onSelectKey?.(k.index)}
+              onDoubleClick={() => onDoubleClickKey?.(k.index)}
               onMouseEnter={() => setHoveredKey(k.index)}
               onMouseLeave={() => setHoveredKey((prev) => (prev === k.index ? null : prev))}
               onDragOver={

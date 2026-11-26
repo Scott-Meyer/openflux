@@ -704,6 +704,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
             keys={geomKeys}
             initialKey={view.focusKey}
             onSynced={() => setPreviewTick((t) => t + 1)}
+            onOpenProfile={(pid) => setView({ kind: "module", moduleId: "profiles", focusProfileId: pid })}
           />
         )}
 
