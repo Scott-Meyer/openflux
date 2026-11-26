@@ -320,55 +320,55 @@ local function when_matches(when, ki)
   if when.held ~= nil then
     uses_held = true
     if type(when.held) == "boolean" then
-      if ki == nil or (held_by_idx[ki] == true) ~= when.held then return false end
+      if ki == nil or (held_by_idx[ki] == true) ~= when.held then return false, "held" end
     else
       local hk = resolve_key_idx(when.held)
-      if hk == nil or not held_by_idx[hk] then return false end
+      if hk == nil or not held_by_idx[hk] then return false, "held" end
     end
   end
-  if when.caps ~= nil and (when.caps == true) ~= caps_lock then return false end
+  if when.caps ~= nil and (when.caps == true) ~= caps_lock then return false, "caps" end
   if when.time ~= nil then
     -- "HH:MM-HH:MM" in local time; a range may wrap past midnight ("22:00-06:00").
     uses_clock = true
     local h1, m1, h2, m2 = string.match(tostring(when.time), "^%s*(%d+):(%d+)%s*%-%s*(%d+):(%d+)%s*$")
-    if not h1 then return false end
+    if not h1 then return false, "time" end
     local t = os.date("*t")
     local now = t.hour * 60 + t.min
     local a, b = tonumber(h1) * 60 + tonumber(m1), tonumber(h2) * 60 + tonumber(m2)
     local inside = (a <= b) and (now >= a and now < b) or (now >= a or now < b)
-    if not inside then return false end
+    if not inside then return false, "time" end
   end
   if when.idle_ms ~= nil then
     -- A number means "idle at least this long"; or { gt = ..., lt = ... }.
     uses_clock = true
     local c = when.idle_ms
     if type(c) == "number" then
-      if idle_ms < c then return false end
+      if idle_ms < c then return false, "idle" end
     elseif type(c) == "table" then
-      if c.gt ~= nil and not (idle_ms > tonumber(c.gt)) then return false end
-      if c.lt ~= nil and not (idle_ms < tonumber(c.lt)) then return false end
+      if c.gt ~= nil and not (idle_ms > tonumber(c.gt)) then return false, "idle" end
+      if c.lt ~= nil and not (idle_ms < tonumber(c.lt)) then return false, "idle" end
     end
   end
-  if when.host ~= nil and (when.host == true) ~= host_connected then return false end
+  if when.host ~= nil and (when.host == true) ~= host_connected then return false, "host" end
   if when.bus ~= nil and bus_cond_holds_ref then
     local list = (type(when.bus) == "table" and when.bus.topic == nil) and when.bus or { when.bus }
     for _, c in ipairs(list) do
-      if not bus_cond_holds_ref(c, wanted_topics_ref) then return false end
+      if not bus_cond_holds_ref(c, wanted_topics_ref) then return false, "bus " .. tostring(c.topic) end
     end
   end
   if when.app and #tostring(when.app) > 0 then
     local app_s = tostring(active_app.process_name or "") .. " " .. tostring(active_app.app_id or "") .. " " .. tostring(active_app.window_title or "")
-    if not matches_csv(app_s, tostring(when.app)) then return false end
+    if not matches_csv(app_s, tostring(when.app)) then return false, "app" end
   end
   if when.profile and #tostring(when.profile) > 0 then
     local prof_s = tostring(active_profile.name or "") .. " " .. tostring(active_profile.id or "") .. " " .. tostring(active_app.profile_name or "")
-    if not matches_csv(prof_s, tostring(when.profile)) then return false end
+    if not matches_csv(prof_s, tostring(when.profile)) then return false, "profile" end
   end
   if when.layer ~= nil and tonumber(when.layer) ~= active_layer then
-    return false
+    return false, "layer"
   end
   if when.fn ~= nil and (when.fn == true) ~= held.fn then
-    return false
+    return false, "fn"
   end
   return true
 end
@@ -971,7 +971,7 @@ end
 -- topic, then position): `replace` resets the face, `patch` edits named parts, `hide` blanks the
 -- key, `badge` sets a dot in one corner slot. Omitted fields inherit, `false` clears.
 local META = { key = true, keys = true, group = true, action = true, mode = true, priority = true,
-  when = true, mods = true, corner = true, hide = true, sub = true, toggled = true }
+  when = true, mods = true, corner = true, hide = true, sub = true, toggled = true, source = true, name = true }
 local LEGEND_PARTS = { "label", "shifted", "icon", "image", "shift_case" }
 
 local function normalized_corners(rule)
@@ -1066,14 +1066,16 @@ local function collect_matches(mod_mask, only_key, explain)
           if (mods_ok and prov_ok) or explain then
             for _, ki in ipairs(rule_targets(rule)) do
               if only_key == nil or only_key == ki then
-                local ok = mods_ok and prov_ok and (rule.when == nil or when_matches(rule.when, ki))
+                local wm, wwhy = true, nil
+                if mods_ok and prov_ok and rule.when ~= nil then wm, wwhy = when_matches(rule.when, ki) end
+                local ok = mods_ok and prov_ok and wm
                 if ok or explain then
                   local lst = per_key[ki]
                   if not lst then lst = {}; per_key[ki] = lst end
                   table.insert(lst, {
                     prio = tonumber(rule.priority) or base_prio, ord = ord, mode = tostring(rule.mode or base_mode),
                     rule = rule, topic = ptopic, index = ri, matched = ok,
-                    why = (not ok) and ((not prov_ok and "provider condition") or (not mods_ok and "modifiers") or "condition") or nil,
+                    why = (not ok) and ((not prov_ok and "provider condition") or (not mods_ok and "modifiers") or wwhy or "condition") or nil,
                   })
                 end
               end
@@ -1195,7 +1197,8 @@ handle_inspect = function(p)
   sort_matches(lst)
   local steps, face = {}, nil
   for _, m in ipairs(lst) do
-    local step = { provider = m.topic, rule = m.index, priority = m.prio, mode = m.mode, matched = m.matched }
+    local step = { provider = m.topic, rule = m.index, priority = m.prio, mode = m.mode, matched = m.matched,
+      source = m.rule.source, name = m.rule.name }
     if m.matched then
       face = apply_rule(face, m.rule, m.mode)
     else

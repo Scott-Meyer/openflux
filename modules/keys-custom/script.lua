@@ -81,6 +81,13 @@ local function row_to_parts(row)
     if str(v) == "none" then corners[slot] = false else corners[slot] = corner_item(v) end
   end
   if next(corners) then set.corners = corners end
+  -- `clear`: parts to remove from the face underneath (comma-separated).
+  local CLEARABLE = { label = true, shifted = true, icon = true, image = true, color = true,
+    glow = true, outline = true, backdrop = true, corners = true }
+  for part in string.gmatch(tostring(row.clear or ""), "[^,]+") do
+    part = trim(part)
+    if CLEARABLE[part] then set[part] = false end
+  end
 
   local layer = str(row.layer)
   if layer and layer ~= "any" and tonumber(layer) then when.layer = tonumber(layer) end
@@ -108,9 +115,9 @@ local function row_to_parts(row)
   return set, next(when) and when or nil
 end
 
-local function emit(rules, sels, set, when, prio)
+local function emit(rules, sels, set, when, prio, source, name)
   for _, sel in ipairs(sels) do
-    local r = { priority = prio, when = when }
+    local r = { priority = prio, when = when, source = source, name = name }
     for k, v in pairs(sel) do r[k] = v end
     for k, v in pairs(set) do r[k] = v end
     table.insert(rules, r)
@@ -139,7 +146,7 @@ local function publish_rules()
   local by_action = type(cfg.by_action) == "table" and cfg.by_action or {}
   for action_id, ov in pairs(by_action) do
     local set = legacy_set(ov)
-    if set then emit(rules, { { action = action_id } }, set, nil, USER_BAND) end
+    if set then emit(rules, { { action = action_id } }, set, nil, USER_BAND, "by_action:" .. action_id) end
   end
   local by_key = type(cfg.by_key) == "table" and cfg.by_key or {}
   for kstr, ov in pairs(by_key) do
@@ -147,7 +154,7 @@ local function publish_rules()
     local set = legacy_set(ov)
     if set and idx_s then
       local when = (lyr_s ~= "*" and tonumber(lyr_s)) and { layer = tonumber(lyr_s) } or nil
-      emit(rules, { { key = tonumber(idx_s) } }, set, when, USER_BAND + 1)
+      emit(rules, { { key = tonumber(idx_s) } }, set, when, USER_BAND + 1, "by_key:" .. tostring(kstr))
     end
   end
 
@@ -159,7 +166,7 @@ local function publish_rules()
       if type(row) == "table" and row.enabled ~= false then
         local sels = parse_keys(row.keys)
         local set, when = row_to_parts(row)
-        if #sels > 0 and next(set) then emit(rules, sels, set, when, USER_BAND + 10 + i) end
+        if #sels > 0 and next(set) then emit(rules, sels, set, when, USER_BAND + 10 + i, "rules:" .. i, str(row.name)) end
       end
     end
   end
