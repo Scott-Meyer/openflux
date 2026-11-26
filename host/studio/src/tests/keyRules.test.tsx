@@ -298,7 +298,7 @@ it("explains the focused key from the renderer's answer, and test-pulses it", as
   );
 });
 
-it("keeps the quick per-key override, as a patch that hides only the legend", async () => {
+it("puts a quick override in the rules list, as a patch that hides only the legend", async () => {
   const daemon = stubDaemon({ rules: [{ keys: "Esc", glow: "soft" }] });
   const board = await openTab();
   await waitFor(() => expect(keyButton(board, "Caps")).toBeTruthy());
@@ -307,9 +307,20 @@ it("keeps the quick per-key override, as a patch that hides only the legend", as
   fireEvent.change(within(panel).getByLabelText("Backdrop (inset tint)"), { target: { value: "#123456" } });
   fireEvent.click(within(panel).getByLabelText("Hide the legend (layer and modifier markers stay)"));
   fireEvent.click(within(panel).getByRole("button", { name: "Apply override" }));
-  await waitFor(() => expect(daemon.config().by_key).toEqual({ "0:46": { bg: "#123456", hide: true } }));
-  expect(daemon.rules()).toEqual([{ keys: "Esc", glow: "soft" }]); // rules untouched
+  // It's an ordinary rule after the existing one (so it wins), visible in the list.
+  await waitFor(() => expect(daemon.rules()).toHaveLength(2));
+  expect(daemon.rules()[0]).toEqual({ keys: "Esc", glow: "soft" });
+  expect(daemon.rules()[1]).toMatchObject({ override: "key:0:46", keys: "#46", layer: "0", hide: "legend", backdrop: "#123456" });
+  expect(within(screen.getByRole("list", { name: "Your rules" })).getAllByRole("listitem")).toHaveLength(2);
   await waitFor(() => expect(keyButton(board, "Caps").textContent).toBe("L2"));
+});
+
+it("moves older overrides into the rules list", async () => {
+  const daemon = stubDaemon({ rules: [{ keys: "Esc", glow: "soft" }], by_key: { "0:47": { hide: true } }, by_action: {} });
+  await openTab();
+  await waitFor(() => expect(daemon.rules()).toHaveLength(2));
+  expect(daemon.rules()[0]).toMatchObject({ override: "key:0:47", keys: "#47", layer: "0", hide: "legend" });
+  expect(daemon.config().by_key).toEqual({});
 });
 
 it("keeps a rule added while a refresh was already on its way", async () => {

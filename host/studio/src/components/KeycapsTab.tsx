@@ -17,7 +17,15 @@ import { OverrideEditor } from "./keyRules/OverrideEditor";
 import { RuleEditor } from "./keyRules/RuleEditor";
 import { RuleList } from "./keyRules/RuleList";
 import type { CustomOverride, DescribeContext, RuleRow } from "./keyRules/rules";
-import { customProviderRules, describeKeys, newRule, QUICK_LOOKS } from "./keyRules/rules";
+import {
+  applyOverrides,
+  customProviderRules,
+  describeKeys,
+  legacyOverrideRows,
+  newRule,
+  overrideMaps,
+  QUICK_LOOKS,
+} from "./keyRules/rules";
 import { WhyPanel } from "./keyRules/WhyPanel";
 
 interface ActionEntry {
@@ -83,10 +91,10 @@ export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile, initialKey }) 
   const [actionsByKc, setActionsByKc] = useState<Record<number, ActionEntry>>({});
   const [providers, setProviders] = useState<ProviderPayload[]>([]);
   const [keymap, setKeymap] = useState<unknown>(undefined);
-  const [byKey, setByKey] = useState<Record<string, CustomOverride>>({});
-  const [byAction, setByAction] = useState<Record<string, CustomOverride>>({});
   const [moduleEnabled, setModuleEnabled] = useState<boolean | null>(null);
   const [rows, setRows] = useState<unknown[]>([]);
+  // Quick overrides are rows in the list (marked `override`); the panel edits them as maps.
+  const { byKey, byAction } = useMemo(() => overrideMaps(rows), [rows]);
   const [loaded, setLoaded] = useState(false);
 
   const [focusKey, setFocusKey] = useState<number>(initialKey ?? 0);
@@ -96,7 +104,7 @@ export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile, initialKey }) 
   // The map shows one layer, so a new rule starts on that layer; unticking makes it every layer.
   const [onlyThisLayer, setOnlyThisLayer] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
-  const [savingOverride, setSavingOverride] = useState(false);
+  const savingOverride = false;
   const [savedTick, setSavedTick] = useState(0);
 
   // ----- Saving rows: batched while typing, never overwritten by a poll while unsent -----
@@ -212,9 +220,14 @@ export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile, initialKey }) 
         by_key?: Record<string, CustomOverride>;
         by_action?: Record<string, CustomOverride>;
       };
-      setByKey(cfg.by_key ?? {});
-      setByAction(cfg.by_action ?? {});
-      const stored = storedRules(cfg.rules);
+      const legacy = legacyOverrideRows(cfg.by_key, cfg.by_action, (mk) => mk);
+      let stored = storedRules(cfg.rules);
+      if (legacy.length > 0 && genAtStart === editGen.current && !pending.current.rows && !pending.current.inflight) {
+        // Older overrides lived outside the list; move them in (first, as they were below every rule).
+        stored = [...legacy, ...stored];
+        await v2Client.updateModuleState("keys-custom", { config: { rules: stored, by_key: {}, by_action: {} } });
+        serverRows.current = "";
+      }
       const json = JSON.stringify(stored);
       const p = pending.current;
       const editedSince = genAtStart !== editGen.current;
@@ -267,8 +280,8 @@ export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile, initialKey }) 
   const describe: DescribeContext = useMemo(() => ({ resolver, keyName }), [resolver, keyName]);
 
   const customRules = useMemo(
-    () => customProviderRules({ rules: rows, by_key: byKey, by_action: byAction }, resolver),
-    [rows, byKey, byAction, resolver],
+    () => customProviderRules({ rules: rows }, resolver),
+    [rows, resolver],
   );
   const faces = useMemo(
     () =>
@@ -360,23 +373,20 @@ export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile, initialKey }) 
     nextByAction: Record<string, CustomOverride>,
     message: string,
   ) => {
-    setSavingOverride(true);
-    try {
-      await v2Client.updateModuleState("keys-custom", {
-        ...(moduleEnabled === false ? { enabled: true } : {}),
-        config: { by_key: nextByKey, by_action: nextByAction },
-      });
-      setByKey(nextByKey);
-      setByAction(nextByAction);
-      setStatus(message);
-      setSavedTick((t) => t + 1);
-      scheduleSync();
-    } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSavingOverride(false);
-    }
+    const nameFor = (mk: string) => {
+      if (mk.startsWith("action:")) {
+        const id = mk.slice(7);
+        const a = Object.values(actionsByKc).find((x) => x.action_id === id);
+        return a?.label || id;
+      }
+      const m = /^key:([^:]+):(\d+)$/.exec(mk);
+      if (!m) return mk;
+      return `${keyName(Number(m[2]))}${m[1] === "*" ? "" : ` on layer ${m[1]}`}`;
+    };
+    commitRows(applyOverrides(rows, nextByKey, nextByAction, nameFor));
+    setStatus(message);
   };
+
 
   const focusAction = actionsByKc[resolvedKeycodes[focusKey]];
   const focusName = keyName(focusKey);

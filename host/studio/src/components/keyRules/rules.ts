@@ -371,6 +371,133 @@ function rowSelectors(spec: unknown, r: KeyResolver): RendererRule[] {
   return keys.length > 0 ? [{ keys }] : [];
 }
 
+/**
+ * Quick overrides live in the rules list as ordinary rows marked with `override`:
+ * "key:<layer|*>:<index>" or "action:<action_id>". (The older `by_key` / `by_action` config maps
+ * are migrated into such rows.) The renderer ignores the marker; Studio uses it to find the row
+ * the quick-override panel edits.
+ */
+export function overrideMarker(kind: "key" | "action", id: string): string {
+  return `${kind}:${id}`;
+}
+
+export function overrideToRow(marker: string, ov: CustomOverride, displayName: string): RuleRow {
+  const isAction = marker.startsWith("action:");
+  const rest = marker.slice(marker.indexOf(":") + 1);
+  let keys = "";
+  let layer = "any";
+  if (isAction) {
+    keys = `action:${rest}`;
+  } else {
+    const m = /^([^:]+):(\d+)$/.exec(rest);
+    keys = m ? `#${m[2]}` : "";
+    layer = m && m[1] !== "*" ? m[1] : "any";
+  }
+  const row: RuleRow = {
+    name: `Override: ${displayName}`,
+    enabled: true,
+    override: marker,
+    keys,
+    layer,
+    app: "",
+    held: "any",
+    caps: "any",
+    hide: ov.hide ? "legend" : "nothing",
+  };
+  if (ov.label) row.label = ov.label;
+  if (ov.color) row.color = ov.color;
+  if (ov.icon) row.icon = ov.icon;
+  if (ov.image) row.image = ov.image;
+  if (ov.bg) row.backdrop = ov.bg;
+  if (ov.border) {
+    row.outline = "window";
+    row.outline_color = ov.border;
+  }
+  return row;
+}
+
+export function rowToOverride(row: RuleRow): CustomOverride {
+  const ov: CustomOverride = {};
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : undefined);
+  if (str(row.label)) ov.label = row.label as string;
+  if (str(row.color)) ov.color = row.color as string;
+  if (str(row.icon)) ov.icon = row.icon as string;
+  if (str(row.image)) ov.image = row.image as string;
+  if (str(row.backdrop)) ov.bg = row.backdrop as string;
+  if (row.outline === "window" && str(row.outline_color)) ov.border = row.outline_color as string;
+  if (row.hide === "legend") ov.hide = true;
+  return ov;
+}
+
+/** The quick overrides held in `rows`, as the by-key / by-action maps the override panel edits. */
+export function overrideMaps(rows: unknown[]): {
+  byKey: Record<string, CustomOverride>;
+  byAction: Record<string, CustomOverride>;
+} {
+  const byKey: Record<string, CustomOverride> = {};
+  const byAction: Record<string, CustomOverride> = {};
+  for (const r of rows) {
+    const row = r as RuleRow;
+    const mk = typeof row?.override === "string" ? row.override : "";
+    if (mk.startsWith("key:")) byKey[mk.slice(4)] = rowToOverride(row);
+    else if (mk.startsWith("action:")) byAction[mk.slice(7)] = rowToOverride(row);
+  }
+  return { byKey, byAction };
+}
+
+/**
+ * Rows after the override panel saves `nextByKey` / `nextByAction`: existing override rows are
+ * updated in place or removed; new overrides are added at the end, so this key's own
+ * override wins over broader rules.
+ */
+export function applyOverrides(
+  rows: unknown[],
+  nextByKey: Record<string, CustomOverride>,
+  nextByAction: Record<string, CustomOverride>,
+  nameFor: (marker: string) => string,
+): unknown[] {
+  const wanted = new Map<string, CustomOverride>();
+  for (const [k, ov] of Object.entries(nextByKey)) wanted.set(overrideMarker("key", k), ov);
+  for (const [a, ov] of Object.entries(nextByAction)) wanted.set(overrideMarker("action", a), ov);
+  const seen = new Set<string>();
+  const out: unknown[] = [];
+  for (const r of rows) {
+    const row = r as RuleRow;
+    const mk = typeof row?.override === "string" ? row.override : "";
+    if (!mk) {
+      out.push(r);
+      continue;
+    }
+    const ov = wanted.get(mk);
+    if (!ov) continue; // removed
+    seen.add(mk);
+    const fresh = overrideToRow(mk, ov, nameFor(mk));
+    out.push({ ...row, ...fresh, name: row.name || fresh.name, enabled: row.enabled ?? true });
+  }
+  for (const [mk, ov] of wanted) {
+    if (!seen.has(mk)) out.push(overrideToRow(mk, ov, nameFor(mk)));
+  }
+  return out;
+}
+
+/** Older `by_key` / `by_action` maps as override rows (they were below all rules, so they go first). */
+export function legacyOverrideRows(
+  byKey: Record<string, CustomOverride> | undefined,
+  byAction: Record<string, CustomOverride> | undefined,
+  nameFor: (marker: string) => string,
+): RuleRow[] {
+  const out: RuleRow[] = [];
+  for (const [a, ov] of Object.entries(byAction ?? {})) {
+    const mk = overrideMarker("action", a);
+    out.push(overrideToRow(mk, ov, nameFor(mk)));
+  }
+  for (const [k, ov] of Object.entries(byKey ?? {})) {
+    const mk = overrideMarker("key", k);
+    out.push(overrideToRow(mk, ov, nameFor(mk)));
+  }
+  return out;
+}
+
 export interface CustomOverride {
   label?: string;
   color?: string;

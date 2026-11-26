@@ -17,7 +17,7 @@ export interface OverrideEditorProps {
   action?: OverrideAction;
   byKey: Record<string, CustomOverride>;
   byAction: Record<string, CustomOverride>;
-  /** Saves both override maps (the `by_key` / `by_action` config of Key Rules). */
+  /** Saves both override maps; the caller stores them as override rows in the rules list. */
   onSave: (
     byKey: Record<string, CustomOverride>,
     byAction: Record<string, CustomOverride>,
@@ -30,8 +30,8 @@ export interface OverrideEditorProps {
 type Scope = "action" | "key_layer" | "key_all";
 
 /**
- * The per-key / per-action override: the quick way to change one key. It's a patch at the
- * bottom of the Key Rules band, so binding markers stay and Key Rules rows still win.
+ * The per-key / per-action override: the quick way to change one key. It's stored as a row in
+ * the rules list (marked `override`), so it's visible and orderable like any rule.
  */
 export const OverrideEditor: React.FC<OverrideEditorProps> = ({
   keyIndex,
@@ -126,8 +126,8 @@ export const OverrideEditor: React.FC<OverrideEditorProps> = ({
     <section className="card kr-override" aria-label="Quick override">
       <h3>Quick override for {keyName}</h3>
       <small className="muted">
-        Changes one key without a rule. It edits whatever the key shows, so layer-tap and modifier markers stay, and Key
-        Rules still win over it.
+        The quick way to change just this key. It's saved as a rule in your list (added at the end, so it wins), and it
+        edits whatever the key shows, so layer-tap and modifier markers stay.
       </small>
       <label className="field" style={{ marginTop: 10 }}>
         <span>Applies to</span>
