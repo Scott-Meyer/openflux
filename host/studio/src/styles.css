@@ -3017,3 +3017,492 @@ input[type="text"],
   border-radius: 6px;
   padding: 7px 9px;
 }
+
+/* ---------- Key Rules (Keycaps tab) ---------- */
+.kr-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.kr-board-head,
+.kr-why-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.kr-board-head h3,
+.kr-why-head h3 {
+  margin: 0 0 2px;
+  white-space: normal;
+}
+.kr-groups,
+.kr-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.kr-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e2e8f0;
+  font-size: 12px;
+  cursor: pointer;
+}
+.kr-chip:hover {
+  border-color: rgba(45, 212, 191, 0.5);
+}
+.kr-chip.is-active {
+  border-color: var(--accent);
+  background: rgba(45, 212, 191, 0.16);
+  color: #ffffff;
+}
+.kr-chip.is-quiet {
+  color: var(--text-muted);
+  background: none;
+}
+
+/* The map: each key is a little screen. Everything inside sits centered or inset. */
+.kr-map {
+  position: relative;
+  width: 100%;
+  background: rgba(8, 12, 20, 0.92);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.kr-map-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.kr-key {
+  position: absolute;
+  padding: 2px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.kr-key-screen {
+  position: absolute;
+  inset: 2px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  container-type: size;
+}
+.kr-key:hover .kr-key-screen {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.kr-key.is-blank .kr-key-screen {
+  background: rgba(0, 0, 0, 0.35);
+}
+.kr-key.is-selected .kr-key-screen {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: rgba(45, 212, 191, 0.12);
+}
+.kr-key.is-focus .kr-key-screen {
+  box-shadow: 0 0 0 2px #4de1ff;
+}
+.kr-key.is-highlight .kr-key-screen {
+  outline: 1.5px dashed #c4b5fd;
+  outline-offset: -4px;
+}
+.kr-legend {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(7px, 1.05vw, 13px);
+  font-weight: 600;
+  line-height: 1.05;
+  pointer-events: none;
+}
+.kr-legend-label {
+  max-width: 88%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kr-legend-symbol {
+  font-size: 1.15em;
+}
+.kr-corner {
+  position: absolute;
+  font-size: clamp(6px, 0.7vw, 9px);
+  font-weight: 600;
+  opacity: 0.9;
+  pointer-events: none;
+  line-height: 1;
+}
+/* Corner items sit inset, like the renderer's (about a fifth of the key in). */
+.kr-corner.is-tl { top: 16%; left: 16%; }
+.kr-corner.is-tr { top: 16%; right: 16%; }
+.kr-corner.is-bl { bottom: 16%; left: 16%; }
+.kr-corner.is-br { bottom: 16%; right: 16%; }
+.kr-corner-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+.kr-fx-glow {
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(2px);
+}
+.kr-fx-outline {
+  position: absolute;
+  pointer-events: none;
+  border: 1.5px solid;
+}
+.kr-fx-outline.is-ring {
+  top: 50%;
+  left: 50%;
+  width: 80cqmin;
+  height: 80cqmin;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+}
+.kr-fx-outline.is-window {
+  inset: 15cqmin;
+  border-radius: 4px;
+}
+.kr-fx-outline.is-edge {
+  inset: 3px;
+  border-radius: 5px;
+}
+.kr-fx-backdrop {
+  position: absolute;
+  inset: 15cqmin;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.kr-fx-backdrop.is-edge {
+  inset: 3px;
+}
+.kr-fx-glow.is-pulse,
+.kr-fx-outline.is-pulse {
+  animation: kr-pulse 1.6s ease-in-out infinite;
+}
+@keyframes kr-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kr-fx-glow.is-pulse,
+  .kr-fx-outline.is-pulse {
+    animation: none;
+  }
+}
+.kr-mark {
+  position: absolute;
+  top: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.kr-mark.is-action { left: 6px; }
+.kr-mark.is-override { left: 13px; background: #4de1ff; }
+.kr-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+.kr-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  vertical-align: -1px;
+  margin-right: 4px;
+}
+.kr-swatch.is-selected { border: 1.5px solid var(--accent); background: rgba(45, 212, 191, 0.12); }
+.kr-swatch.is-highlight { border: 1.5px dashed #c4b5fd; }
+.kr-swatch.is-override { background: #4de1ff; border-radius: 50%; width: 6px; height: 6px; }
+.kr-swatch.is-action { background: #fa6831; border-radius: 50%; width: 6px; height: 6px; }
+
+.kr-composer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(45, 212, 191, 0.06);
+  border: 1px solid rgba(45, 212, 191, 0.18);
+  font-size: 13px;
+}
+.kr-composer-looks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kr-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .kr-columns { grid-template-columns: minmax(0, 1fr); }
+}
+.kr-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.kr-binding {
+  font-size: 12px;
+  padding: 0 4px;
+}
+
+.kr-rules {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kr-rule {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+.kr-rule.is-open {
+  border-color: rgba(196, 181, 253, 0.4);
+}
+.kr-rule.is-off .kr-rule-text {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.kr-rule-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+}
+.kr-rule-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px;
+  border: none;
+  background: none;
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.kr-rule-num {
+  color: var(--text-muted);
+  font-size: 11px;
+  min-width: 14px;
+}
+.kr-rule-body {
+  padding: 8px 14px 14px 36px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.kr-empty {
+  padding: 8px 0;
+}
+.kr-cli-note {
+  display: block;
+  margin-top: 10px;
+}
+
+.kr-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.kr-sentence {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: rgba(196, 181, 253, 0.08);
+  color: #ede9fe;
+  font-size: 13px;
+}
+.kr-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kr-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  font-weight: 600;
+}
+.kr-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.kr-inline > input[type="text"] {
+  flex: 1;
+  min-width: 120px;
+}
+.kr-cond {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+}
+.kr-cond input[type="text"] {
+  flex: 1;
+  min-width: 110px;
+}
+.kr-cond input[type="number"] {
+  width: 80px;
+  background: var(--bg-input);
+  color: #eef1f5;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.kr-cond select,
+.kr-part select {
+  background: var(--bg-input);
+  color: #eef1f5;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.kr-x {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+.kr-x:hover {
+  color: #fca5a5;
+}
+.kr-part {
+  display: grid;
+  grid-template-columns: 118px auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  min-height: 32px;
+}
+.kr-part-name {
+  color: #cbd5e1;
+}
+.kr-part.is-set .kr-part-name {
+  color: #ffffff;
+  font-weight: 600;
+}
+.kr-part-hint {
+  margin: -2px 0 4px;
+}
+.kr-tri .kg-seg-btn {
+  padding: 4px 9px;
+  font-size: 11px;
+}
+.kr-color {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.kr-color input[type="color"] {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: none;
+}
+.kr-color input[type="text"] {
+  width: 92px;
+}
+
+.kr-why-face {
+  margin: 4px 0;
+  font-size: 13px;
+  color: #f1f5f9;
+}
+.kr-steps {
+  margin: 10px 0 0;
+  padding: 0 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.kr-steps li.is-top {
+  color: #ffffff;
+}
+.kr-step-who {
+  font-weight: 600;
+}
+.kr-step-meta {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+}
+.kr-skipped {
+  margin-top: 10px;
+  font-size: 12px;
+}
+.kr-skipped ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.kr-override h3 {
+  margin-bottom: 4px;
+}
+.kr-composer-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+.kr-cond-break {
+  flex-basis: 100%;
+  height: 0;
+}
+.kr-part.is-corner .kr-part-name {
+  padding-left: 14px;
+}
+.btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

@@ -1,606 +1,564 @@
-// TODO(ui-overhaul): Unify Keymap (Vialite bindings) + Keycap Visuals/Overrides + Module Action
-// discovery into one cohesive keyboard editor so users don't bounce between separate sub-tabs.
+// The Keycaps tab: where people build Key Rules (the `keys-custom` module), starting from the
+// keyboard. Pick keys on the map (or a group), say what they should show and when, and see it on
+// the map. The side panel asks the renderer why the focused key looks the way it does.
+//
+// Rules are the module's `rules` setting, the same rows `fluxctl keys rules …` and
+// `fluxctl modules config keys-custom --set rules='[...]'` edit. Studio patches rows in place, so
+// fields it doesn't know about survive, and a change made elsewhere shows up here.
 import type React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v2Client } from "../api/v2Client";
-
-interface KeyGeom {
-  index: number;
-  center_x: number;
-  center_y: number;
-  rect: { x: number; y: number; w: number; h: number };
-}
-
-interface ResolvedKey {
-  keycode: number;
-  source_layer: number;
-}
+import type { Face, ProviderPayload } from "./keyRules/faces";
+import { resolveFaces } from "./keyRules/faces";
+import type { MapKey } from "./keyRules/KeyFaceMap";
+import { KeyFaceMap } from "./keyRules/KeyFaceMap";
+import { buildKeyResolver, formatKeySpec, KEY_GROUPS, parseKeySpec } from "./keyRules/keyNames";
+import { OverrideEditor } from "./keyRules/OverrideEditor";
+import { RuleEditor } from "./keyRules/RuleEditor";
+import { RuleList } from "./keyRules/RuleList";
+import type { CustomOverride, DescribeContext, RuleRow } from "./keyRules/rules";
+import { customProviderRules, describeKeys, newRule, QUICK_LOOKS } from "./keyRules/rules";
+import { WhyPanel } from "./keyRules/WhyPanel";
 
 interface ActionEntry {
   slot: number;
-  keycode?: number;
+  keycode: number;
   action_id: string;
   module_id?: string;
   label?: string;
-  short_label?: string;
-  icon?: string;
   accent?: string;
   mode?: string;
-  topic?: string;
-}
-
-interface ProviderRule {
-  key?: number | string;
-  mods?: number;
-  priority?: number;
-  label?: string;
-  shifted?: string;
-  icon?: string;
-  image?: string;
-  color?: string;
-  bg?: string;
-  border?: string;
-}
-
-interface ProviderClaim {
-  topic: string;
-  priority: number;
-  rule: ProviderRule;
-}
-
-interface CustomOverride {
-  label?: string;
-  color?: string;
-  bg?: string;
-  border?: string;
-  icon?: string;
-  image?: string;
-  hide?: boolean;
 }
 
 interface KeycapsTabProps {
   pickFile?: (title: string) => Promise<string | null>;
+  /** Key to focus first (e.g. opened from Home's "Override"). */
+  initialKey?: number | null;
 }
 
-const BUILTIN_ICONS = [
-  "",
-  "cam",
-  "play",
-  "refresh",
-  "brightness",
-  "volume",
-  "mic",
-  "power",
-  "star",
-  "copy",
-  "paste",
-  "cut",
-  "undo",
-  "redo",
-  "save",
-  "search",
-  "print",
-  "close",
-  "plus",
-  "select_all",
-];
+const CUSTOM_TOPIC = "keys/providers/custom";
+
+const ICON_NAMES: Record<string, string> = {
+  kbd_up: "Up",
+  kbd_down: "Down",
+  kbd_left: "Left",
+  kbd_right: "Right",
+  kbd_space: "Space",
+  kbd_shift: "Shift",
+  kbd_enter: "Enter",
+  kbd_bksp: "Backspace",
+  kbd_tab: "Tab",
+  kbd_caps: "Caps Lock",
+  kbd_ctrl: "Ctrl",
+  kbd_cmd: "Cmd",
+  kbd_alt: "Alt",
+  kbd_layer: "Fn",
+  kbd_home: "Home",
+  kbd_end: "End",
+  kbd_pgup: "PgUp",
+  kbd_pgdn: "PgDn",
+};
 
 function formatHexKeycode(kc: number): string {
   return `0x${kc.toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
-export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile }) => {
-  const [keys, setKeys] = useState<KeyGeom[]>([]);
-  const [resolved, setResolved] = useState<ResolvedKey[]>([]);
-  const [activeLayer, setActiveLayer] = useState<number>(0);
-  const [actionsByKc, setActionsByKc] = useState<Record<number, ActionEntry>>({});
-  const [providersByKey, setProvidersByKey] = useState<Record<number, ProviderClaim[]>>({});
-  const [byKeyOverrides, setByKeyOverrides] = useState<Record<string, CustomOverride>>({});
-  const [byActionOverrides, setByActionOverrides] = useState<Record<string, CustomOverride>>({});
-  const [selectedKey, setSelectedKey] = useState<number>(13);
-  const [scope, setScope] = useState<"action" | "key_layer" | "key_all">("key_layer");
-  const [draft, setDraft] = useState<CustomOverride>({});
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  const loadLiveState = useCallback(async () => {
+function storedRules(v: unknown): unknown[] {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string") {
     try {
-      const [geomRes, rkRes, actRes, provRes, modsRes] = await Promise.all([
+      const p = JSON.parse(v);
+      return Array.isArray(p) ? p : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile, initialKey }) => {
+  const [keys, setKeys] = useState<MapKey[]>([]);
+  const [resolvedKeycodes, setResolvedKeycodes] = useState<number[]>([]);
+  const [activeLayer, setActiveLayer] = useState(0);
+  const [actionsByKc, setActionsByKc] = useState<Record<number, ActionEntry>>({});
+  const [providers, setProviders] = useState<ProviderPayload[]>([]);
+  const [keymap, setKeymap] = useState<unknown>(undefined);
+  const [byKey, setByKey] = useState<Record<string, CustomOverride>>({});
+  const [byAction, setByAction] = useState<Record<string, CustomOverride>>({});
+  const [moduleEnabled, setModuleEnabled] = useState<boolean | null>(null);
+  const [rows, setRows] = useState<unknown[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  const [focusKey, setFocusKey] = useState<number>(initialKey ?? 0);
+  const [selection, setSelection] = useState<number[]>([initialKey ?? 0]);
+  const [selectionGroup, setSelectionGroup] = useState<string | null>(null);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [onlyThisLayer, setOnlyThisLayer] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [savingOverride, setSavingOverride] = useState(false);
+  const [savedTick, setSavedTick] = useState(0);
+
+  // ----- Saving rows: batched while typing, never overwritten by a poll while unsent -----
+  const serverRows = useRef<string>("");
+  const pending = useRef<{ rows: unknown[] | null; timer: number | null; inflight: boolean }>({
+    rows: null,
+    timer: null,
+    inflight: false,
+  });
+  const syncTimer = useRef<number | null>(null);
+  const enabledRef = useRef<boolean | null>(null);
+  enabledRef.current = moduleEnabled;
+
+  const scheduleSync = useCallback(() => {
+    if (syncTimer.current !== null) window.clearTimeout(syncTimer.current);
+    syncTimer.current = window.setTimeout(() => {
+      syncTimer.current = null;
+      void v2Client.syncToKeyboard().catch(() => {});
+    }, 600);
+  }, []);
+
+  const flush = useCallback(async () => {
+    const p = pending.current;
+    if (p.timer !== null) {
+      window.clearTimeout(p.timer);
+      p.timer = null;
+    }
+    if (p.inflight || !p.rows) return;
+    const toSave = p.rows;
+    p.rows = null;
+    p.inflight = true;
+    try {
+      await v2Client.updateModuleState("keys-custom", {
+        ...(enabledRef.current === false ? { enabled: true } : {}),
+        config: { rules: toSave },
+      });
+      serverRows.current = JSON.stringify(toSave);
+      if (enabledRef.current === false) setModuleEnabled(true);
+      setStatus(null);
+      setSavedTick((t) => t + 1);
+      scheduleSync();
+    } catch (err) {
+      setStatus(`Couldn't save Key Rules: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      p.inflight = false;
+      if (p.rows) void flush();
+    }
+  }, [scheduleSync]);
+
+  const commitRows = useCallback(
+    (next: unknown[], batch = false) => {
+      setRows(next);
+      const p = pending.current;
+      p.rows = next;
+      if (p.timer !== null) window.clearTimeout(p.timer);
+      p.timer = window.setTimeout(() => void flush(), batch ? 450 : 0);
+    },
+    [flush],
+  );
+
+  useEffect(
+    () => () => {
+      void flush();
+      if (syncTimer.current !== null) window.clearTimeout(syncTimer.current);
+    },
+    [flush],
+  );
+
+  // ----- Live state -----
+  const load = useCallback(async () => {
+    try {
+      const [geomRes, rkRes, actRes, provRes, kmRes, modsRes] = await Promise.all([
         v2Client.getBusRetained("keyboard/geometry"),
         v2Client.getBusRetained("keyboard/resolved_keys"),
         v2Client.getBusRetained("system/actions"),
         v2Client.getBusRetained("keys/providers/#"),
+        v2Client.getBusRetained("keyboard/keymap").catch(() => ({ messages: [] })),
         v2Client.listModules(),
       ]);
-
-      const gPayload = geomRes.messages[0]?.payload as {
-        keys?: Array<KeyGeom & { key_index?: number }>;
-      } | undefined;
-      if (Array.isArray(gPayload?.keys)) {
+      const g = geomRes.messages[0]?.payload as { keys?: Array<MapKey & { key_index?: number }> } | undefined;
+      if (Array.isArray(g?.keys)) {
         setKeys(
-          gPayload.keys.map((k, idx) => ({
-            ...k,
-            index: typeof k.key_index === "number" ? k.key_index : typeof k.index === "number" ? k.index : idx,
+          g.keys.map((k, i) => ({
+            index: typeof k.key_index === "number" ? k.key_index : typeof k.index === "number" ? k.index : i,
+            rect: k.rect,
+            row: k.row,
           })),
         );
       }
-
-      const rkPayload = rkRes.messages[0]?.payload as
-        | { active_layer?: number; keys?: ResolvedKey[] }
-        | undefined;
-      if (typeof rkPayload?.active_layer === "number") {
-        setActiveLayer(rkPayload.active_layer);
-      }
-      if (Array.isArray(rkPayload?.keys)) {
-        setResolved(rkPayload.keys);
-      }
-
-      const actPayload = actRes.messages[0]?.payload as
-        | { slots?: Record<string, ActionEntry> }
+      const rk = rkRes.messages[0]?.payload as { active_layer?: number; keys?: Array<{ keycode: number }> } | undefined;
+      if (typeof rk?.active_layer === "number") setActiveLayer(rk.active_layer);
+      if (Array.isArray(rk?.keys)) setResolvedKeycodes(rk.keys.map((k) => Number(k?.keycode)));
+      const act = actRes.messages[0]?.payload as
+        | { slots?: Record<string, Omit<ActionEntry, "slot" | "keycode"> & { keycode?: number }> }
         | undefined;
       const actMap: Record<number, ActionEntry> = {};
-      if (actPayload?.slots) {
-        for (const [slotStr, entry] of Object.entries(actPayload.slots)) {
-          const slotNum = Number(slotStr);
-          const kc = typeof entry.keycode === "number" ? entry.keycode : 0x7e00 + slotNum;
-          actMap[kc] = { ...entry, slot: slotNum, keycode: kc };
-        }
+      for (const [slot, e] of Object.entries(act?.slots ?? {})) {
+        const kc = typeof e.keycode === "number" ? e.keycode : 0x7e00 + Number(slot);
+        actMap[kc] = { ...e, slot: Number(slot), keycode: kc };
       }
       setActionsByKc(actMap);
+      setProviders(provRes.messages.map((m) => ({ topic: m.topic, payload: m.payload })));
+      setKeymap(kmRes.messages[0]?.payload);
 
-      const claimsMap: Record<number, ProviderClaim[]> = {};
-      for (const msg of provRes.messages) {
-        const p = msg.payload as { priority?: number; rules?: ProviderRule[] } | null;
-        if (!p || !Array.isArray(p.rules)) continue;
-        const basePrio = typeof p.priority === "number" ? p.priority : 10;
-        for (const rule of p.rules) {
-          // Only show base / non-modifier claims in the static overview
-          if (typeof rule.mods === "number" && rule.mods > 0) continue;
-          if (typeof rule.key !== "number") continue;
-          const prio = typeof rule.priority === "number" ? rule.priority : basePrio;
-          const arr = claimsMap[rule.key] ?? [];
-          arr.push({ topic: msg.topic.replace("keys/providers/", ""), priority: prio, rule });
-          claimsMap[rule.key] = arr;
-        }
-      }
-      for (const k of Object.keys(claimsMap)) {
-        claimsMap[Number(k)].sort((a, b) => b.priority - a.priority);
-      }
-      setProvidersByKey(claimsMap);
-
-      const customMod = modsRes.modules.find((m) => m.id === "keys-custom");
-      const cfg = (customMod?.state.config ?? {}) as {
+      const mod = modsRes.modules.find((m) => m.id === "keys-custom");
+      setModuleEnabled(mod ? mod.state.enabled : null);
+      const cfg = (mod?.state.config ?? {}) as {
+        rules?: unknown;
         by_key?: Record<string, CustomOverride>;
         by_action?: Record<string, CustomOverride>;
       };
-      setByKeyOverrides(cfg.by_key ?? {});
-      setByActionOverrides(cfg.by_action ?? {});
+      setByKey(cfg.by_key ?? {});
+      setByAction(cfg.by_action ?? {});
+      const stored = storedRules(cfg.rules);
+      const json = JSON.stringify(stored);
+      const p = pending.current;
+      if (json !== serverRows.current && !p.rows && !p.inflight && p.timer === null) {
+        serverRows.current = json;
+        setRows(stored);
+      }
+      setLoaded(true);
     } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setStatus(err instanceof Error ? err.message : String(err));
     }
   }, []);
 
   useEffect(() => {
-    void loadLiveState();
-    const t = window.setInterval(() => void loadLiveState(), 2500);
+    void load();
+    const t = window.setInterval(() => void load(), 2500);
     return () => window.clearInterval(t);
-  }, [loadLiveState]);
+  }, [load]);
 
-  const selectedResolved = resolved[selectedKey];
-  const selectedAction = selectedResolved ? actionsByKc[selectedResolved.keycode] : undefined;
-  const selectedClaims = providersByKey[selectedKey] ?? [];
-  const selectedWinner = selectedClaims[0];
+  // ----- Derived: names, faces -----
+  const actionKeycodes = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const a of Object.values(actionsByKc)) m[a.action_id] = a.keycode;
+    return m;
+  }, [actionsByKc]);
+  const resolver = useMemo(
+    () => buildKeyResolver({ keys, keymap, resolvedKeycodes, actionKeycodes }),
+    [keys, keymap, resolvedKeycodes, actionKeycodes],
+  );
 
-  // Sync draft editor when clicking a new key or changing scope
-  useEffect(() => {
-    if (selectedAction && byActionOverrides[selectedAction.action_id]) {
-      setScope("action");
-      setDraft({ ...byActionOverrides[selectedAction.action_id] });
-    } else if (byKeyOverrides[`${activeLayer}:${selectedKey}`]) {
-      setScope("key_layer");
-      setDraft({ ...byKeyOverrides[`${activeLayer}:${selectedKey}`] });
-    } else if (byKeyOverrides[`*:${selectedKey}`]) {
-      setScope("key_all");
-      setDraft({ ...byKeyOverrides[`*:${selectedKey}`] });
-    } else {
-      setScope(selectedAction ? "action" : "key_layer");
-      setDraft({});
+  const baseFaces = useMemo(
+    () =>
+      resolveFaces(
+        providers.filter((p) => p.topic !== CUSTOM_TOPIC),
+        { resolver, activeLayer },
+      ),
+    [providers, resolver, activeLayer],
+  );
+  const keyName = useCallback(
+    (i: number): string => {
+      const f: Face | undefined = baseFaces.get(i);
+      const label = f?.label?.trim();
+      if (label) return label.length === 1 ? label.toUpperCase() : label;
+      if (f?.icon && ICON_NAMES[f.icon]) return ICON_NAMES[f.icon];
+      const tok = resolver.tokenFor(i);
+      return tok.startsWith("#") ? `Key ${i}` : tok === "comma" ? "," : tok.replace(/^KC_/, "");
+    },
+    [baseFaces, resolver],
+  );
+  const describe: DescribeContext = useMemo(() => ({ resolver, keyName }), [resolver, keyName]);
+
+  const customRules = useMemo(
+    () => customProviderRules({ rules: rows, by_key: byKey, by_action: byAction }, resolver),
+    [rows, byKey, byAction, resolver],
+  );
+  const faces = useMemo(
+    () =>
+      resolveFaces(providers, {
+        resolver,
+        activeLayer,
+        overrideTopic: { topic: CUSTOM_TOPIC, priority: 100, mode: "patch", rules: customRules },
+        previewSource: openIndex !== null ? `rules:${openIndex + 1}` : null,
+      }),
+    [providers, resolver, activeLayer, customRules, openIndex],
+  );
+
+  const openRow = openIndex !== null ? (rows[openIndex] as RuleRow | undefined) : undefined;
+  const highlight = useMemo(
+    () => new Set(openRow ? parseKeySpec(openRow.keys, resolver).indices : []),
+    [openRow, resolver],
+  );
+  const selectionSet = useMemo(() => new Set(selection), [selection]);
+  const selectionSpec = useMemo(
+    () => formatKeySpec(selection, resolver, selectionGroup),
+    [selection, resolver, selectionGroup],
+  );
+
+  const overridden = useMemo(() => {
+    const s = new Set<number>();
+    for (const k of Object.keys(byKey)) {
+      const m = /^([^:]+):(\d+)$/.exec(k);
+      if (m && (m[1] === "*" || Number(m[1]) === activeLayer)) s.add(Number(m[2]));
     }
-  }, [selectedKey, activeLayer, selectedAction?.action_id]);
+    resolvedKeycodes.forEach((kc, i) => {
+      const a = actionsByKc[kc];
+      if (a && byAction[a.action_id]) s.add(i);
+    });
+    return s;
+  }, [byKey, byAction, activeLayer, resolvedKeycodes, actionsByKc]);
+  const actionAccent = useMemo(() => {
+    const m = new Map<number, string>();
+    resolvedKeycodes.forEach((kc, i) => {
+      const a = actionsByKc[kc];
+      if (a) m.set(i, a.accent || "#fa6831");
+    });
+    return m;
+  }, [resolvedKeycodes, actionsByKc]);
 
-  const loadDraftForScope = (nextScope: "action" | "key_layer" | "key_all") => {
-    setScope(nextScope);
-    if (nextScope === "action" && selectedAction) {
-      setDraft({ ...(byActionOverrides[selectedAction.action_id] ?? {}) });
-    } else if (nextScope === "key_layer") {
-      setDraft({ ...(byKeyOverrides[`${activeLayer}:${selectedKey}`] ?? {}) });
-    } else {
-      setDraft({ ...(byKeyOverrides[`*:${selectedKey}`] ?? {}) });
-    }
+  // ----- Interactions -----
+  const onKeyClick = (i: number, additive: boolean) => {
+    setFocusKey(i);
+    setSelectionGroup(null);
+    if (additive) setSelection((s) => (s.includes(i) ? s.filter((x) => x !== i) : [...s, i]));
+    else setSelection([i]);
+  };
+  const pickGroup = (g: string) => {
+    setSelection(resolver.group(g));
+    setSelectionGroup(g);
+  };
+  const addRule = (look: RuleRow) => {
+    const row = newRule(selectionSpec, { ...look, layer: onlyThisLayer ? String(activeLayer) : "any" });
+    commitRows([...rows, row]);
+    setOpenIndex(rows.length);
+  };
+  const changeRow = (i: number, next: RuleRow, batch?: boolean) => {
+    const copy = [...rows];
+    copy[i] = next;
+    commitRows(copy, batch);
+  };
+  const openRule = (i: number | null) => {
+    setOpenIndex(i);
+    if (i === null) return;
+    const r = rows[i] as RuleRow | undefined;
+    const ks = r ? parseKeySpec(r.keys, resolver).indices : [];
+    if (ks.length > 0 && !ks.includes(focusKey)) setFocusKey(ks[0]);
   };
 
-  const persistOverrides = async (
+  const pickImage = pickFile
+    ? async (): Promise<string | null> => {
+        const local = await pickFile("Choose a PNG for these keys");
+        if (!local) return null;
+        try {
+          return (await v2Client.importMediaFile(local)).name;
+        } catch (err) {
+          setStatus(err instanceof Error ? err.message : String(err));
+          return null;
+        }
+      }
+    : undefined;
+
+  const saveOverrides = async (
     nextByKey: Record<string, CustomOverride>,
     nextByAction: Record<string, CustomOverride>,
-    msg: string,
+    message: string,
   ) => {
-    setSaving(true);
-    setStatusMsg(null);
+    setSavingOverride(true);
     try {
       await v2Client.updateModuleState("keys-custom", {
-        enabled: true,
-        config: {
-          by_key: nextByKey,
-          by_action: nextByAction,
-        },
+        ...(moduleEnabled === false ? { enabled: true } : {}),
+        config: { by_key: nextByKey, by_action: nextByAction },
       });
-      await v2Client.syncToKeyboard().catch(() => {});
-      setByKeyOverrides(nextByKey);
-      setByActionOverrides(nextByAction);
-      setStatusMsg(msg);
-      await loadLiveState();
+      setByKey(nextByKey);
+      setByAction(nextByAction);
+      setStatus(message);
+      setSavedTick((t) => t + 1);
+      scheduleSync();
     } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
+      setStatus(err instanceof Error ? err.message : String(err));
     } finally {
-      setSaving(false);
+      setSavingOverride(false);
     }
   };
 
-  const handleSave = async () => {
-    const cleaned: CustomOverride = {};
-    if (draft.label?.trim()) cleaned.label = draft.label.trim();
-    if (draft.color?.trim()) cleaned.color = draft.color.trim();
-    if (draft.bg?.trim()) cleaned.bg = draft.bg.trim();
-    if (draft.border?.trim()) cleaned.border = draft.border.trim();
-    if (draft.icon?.trim()) cleaned.icon = draft.icon.trim();
-    if (draft.image?.trim()) cleaned.image = draft.image.trim();
-    if (draft.hide) cleaned.hide = true;
-
-    const nextByKey = { ...byKeyOverrides };
-    const nextByAction = { ...byActionOverrides };
-
-    if (scope === "action" && selectedAction) {
-      if (Object.keys(cleaned).length === 0) {
-        delete nextByAction[selectedAction.action_id];
-      } else {
-        nextByAction[selectedAction.action_id] = cleaned;
-      }
-      await persistOverrides(nextByKey, nextByAction, `Saved visual override for action "${selectedAction.label ?? selectedAction.action_id}" and synced to keyboard.`);
-    } else {
-      const k = scope === "key_all" ? `*:${selectedKey}` : `${activeLayer}:${selectedKey}`;
-      if (Object.keys(cleaned).length === 0) {
-        delete nextByKey[k];
-      } else {
-        nextByKey[k] = cleaned;
-      }
-      await persistOverrides(nextByKey, nextByAction, `Saved visual override for Key ${selectedKey} and synced to keyboard.`);
-    }
-  };
-
-  const handleReset = async () => {
-    const nextByKey = { ...byKeyOverrides };
-    const nextByAction = { ...byActionOverrides };
-    if (scope === "action" && selectedAction) {
-      delete nextByAction[selectedAction.action_id];
-    } else {
-      const k = scope === "key_all" ? `*:${selectedKey}` : `${activeLayer}:${selectedKey}`;
-      delete nextByKey[k];
-    }
-    setDraft({});
-    await persistOverrides(nextByKey, nextByAction, "Reset keycap override to module/keymap default.");
-  };
-
-  const handlePickImage = async () => {
-    if (!pickFile) return;
-    const localPath = await pickFile("Choose Custom Keycap PNG Icon");
-    if (!localPath) return;
-    try {
-      const res = await v2Client.importMediaFile(localPath);
-      setDraft((prev) => ({ ...prev, image: res.name, icon: "" }));
-      setStatusMsg(`Imported "${res.name}" — click Apply Override to paint it onto the keyboard.`);
-    } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const keyBounds = useMemo(() => {
-    if (keys.length === 0) return { minX: 0, minY: 260, w: 1920, h: 820 };
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = 0;
-    let maxY = 0;
-    for (const k of keys) {
-      minX = Math.min(minX, k.rect.x);
-      minY = Math.min(minY, k.rect.y);
-      maxX = Math.max(maxX, k.rect.x + k.rect.w);
-      maxY = Math.max(maxY, k.rect.y + k.rect.h);
-    }
-    return { minX, minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY) };
-  }, [keys]);
+  const focusAction = actionsByKc[resolvedKeycodes[focusKey]];
+  const focusName = keyName(focusKey);
+  const explainCtx = useMemo(
+    () => ({
+      providers: Object.fromEntries(providers.map((p) => [p.topic, p.payload])),
+      rows: rows.filter((r): r is RuleRow => typeof r === "object" && r !== null),
+      activeLayer,
+    }),
+    [providers, rows, activeLayer],
+  );
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.55fr) minmax(300px, 1fr)", gap: 14, alignItems: "start" }}>
-      {/* Interactive 85-Key Flux Keyboard Map */}
-      <div className="card" style={{ padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+    <div className="kr-page">
+      <section className="card kr-board" aria-label="Keyboard">
+        <div className="kr-board-head">
           <div>
-            <h3 style={{ margin: 0 }}>Keycap Visuals &amp; Provider Map</h3>
+            <h3>Pick keys</h3>
             <small className="muted">
-              Active Layer {activeLayer} · Click any key to inspect its QMK binding, active module owner, or set a custom icon/label override
+              Click a key to pick it, Shift- or Cmd-click to add more, or pick a group. Layer {activeLayer} is active.
             </small>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span className="pill" style={{ fontSize: 11 }}>
-              Orange dot = Module Action · Cyan dot = Custom Override
-            </span>
-            <button type="button" className="btn-secondary" onClick={() => void loadLiveState()}>
-              Refresh
-            </button>
-          </div>
+          <button type="button" className="btn-secondary btn-compact" onClick={() => void load()}>
+            Refresh
+          </button>
         </div>
-
-        <div
-          style={{
-            position: "relative",
-            width: "100%",
-            aspectRatio: `${keyBounds.w} / ${keyBounds.h}`,
-            background: "rgba(8, 12, 20, 0.9)",
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.1)",
-            overflow: "hidden",
-          }}
-        >
-          {keys.map((k) => {
-            const claims = providersByKey[k.index] ?? [];
-            const win = claims[0];
-            const rk = resolved[k.index];
-            const act = rk ? actionsByKc[rk.keycode] : undefined;
-            const hasOverride =
-              Boolean(byKeyOverrides[`${activeLayer}:${k.index}`]) ||
-              Boolean(byKeyOverrides[`*:${k.index}`]) ||
-              Boolean(act && byActionOverrides[act.action_id]);
-            const isSel = selectedKey === k.index;
-            const leftPct = ((k.rect.x - keyBounds.minX) / keyBounds.w) * 100;
-            const topPct = ((k.rect.y - keyBounds.minY) / keyBounds.h) * 100;
-            const wPct = (k.rect.w / keyBounds.w) * 100;
-            const hPct = (k.rect.h / keyBounds.h) * 100;
-
-            const dispLabel = win?.rule.label || (win?.rule.image ? "IMG" : win?.rule.icon ? `★` : "");
-            const txtColor = win?.rule.color || "#eef4ff";
-            const bgColor = win?.rule.bg || (isSel ? "rgba(77, 225, 255, 0.22)" : "rgba(255,255,255,0.055)");
-
-            return (
-              <button
-                key={k.index}
-                type="button"
-                onClick={() => setSelectedKey(k.index)}
-                title={`Key ${k.index}${act ? ` · ${act.label ?? act.action_id}` : ""}${win ? ` · Painted by ${win.topic} (prio ${win.priority})` : ""}`}
-                style={{
-                  position: "absolute",
-                  left: `calc(${leftPct}% + 2px)`,
-                  top: `calc(${topPct}% + 2px)`,
-                  width: `calc(${wPct}% - 4px)`,
-                  height: `calc(${hPct}% - 4px)`,
-                  padding: 2,
-                  borderRadius: 6,
-                  border: isSel
-                    ? "2px solid #4de1ff"
-                    : win?.rule.border
-                      ? `1px solid ${win.rule.border}`
-                      : "1px solid rgba(255,255,255,0.14)",
-                  background: bgColor,
-                  color: txtColor,
-                  fontSize: dispLabel.length > 4 ? 9 : 11,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  overflow: "hidden",
-                  lineHeight: 1.1,
-                }}
-              >
-                <span style={{ opacity: 0.45, fontSize: 8, position: "absolute", top: 2, left: 4 }}>
-                  {k.index}
-                </span>
-                {act && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: 3,
-                      right: hasOverride ? 11 : 4,
-                      width: 6,
-                      height: 6,
-                      borderRadius: 99,
-                      background: act.accent || "#fa6831",
-                    }}
-                  />
-                )}
-                {hasOverride && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: 3,
-                      right: 4,
-                      width: 6,
-                      height: 6,
-                      borderRadius: 99,
-                      background: "#4de1ff",
-                    }}
-                  />
-                )}
-                <span style={{ maxWidth: "95%", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-                  {dispLabel || "—"}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Selected Key Inspector & Custom Override Editor */}
-      <div className="card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ margin: 0 }}>Key {selectedKey} Inspector</h3>
-          <span className="pill" style={{ fontSize: 11 }}>
-            Layer {selectedResolved?.source_layer ?? activeLayer}
-          </span>
-        </div>
-
-        {/* Binding & Owner Info */}
-        <div style={{ padding: 10, borderRadius: 8, background: "rgba(255,255,255,0.04)", fontSize: 12 }}>
-          <div style={{ marginBottom: 6 }}>
-            <strong>QMK Binding: </strong>
-            {selectedAction ? (
-              <span style={{ color: selectedAction.accent || "#fa6831" }}>
-                {selectedAction.label || selectedAction.action_id} ({selectedAction.module_id ?? "built-in"} ·{" "}
-                {selectedAction.mode ?? "tap"} · {formatHexKeycode(selectedResolved?.keycode ?? 0)})
-              </span>
-            ) : selectedResolved ? (
-              <span>{formatHexKeycode(selectedResolved.keycode)}</span>
-            ) : (
-              <span className="muted">Waiting for keyboard…</span>
-            )}
-          </div>
-          <div>
-            <strong>Active Visual Stack:</strong>
-            {selectedClaims.length === 0 ? (
-              <div className="muted" style={{ marginTop: 4 }}>No active provider paints this key (transparent background).</div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
-                {selectedClaims.map((c, idx) => (
-                  <div
-                    key={`${c.topic}-${c.priority}-${idx}`}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "3px 6px",
-                      borderRadius: 5,
-                      background: idx === 0 ? "rgba(77, 225, 255, 0.14)" : "rgba(255,255,255,0.03)",
-                      fontSize: 11,
-                    }}
-                  >
-                    <span>
-                      {idx === 0 ? "★ " : ""}
-                      <strong>{c.topic}</strong> (prio {c.priority})
-                    </span>
-                    <span className="muted">
-                      {c.rule.image
-                        ? `PNG: ${c.rule.image.split("/").pop()}`
-                        : c.rule.icon
-                          ? `Icon: ${c.rule.icon}${c.rule.label ? ` · ${c.rule.label}` : ""}`
-                          : c.rule.label || "(blank)"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Override Scope */}
-        <label className="field">
-          <span>Override Scope</span>
-          <select value={scope} onChange={(e) => loadDraftForScope(e.target.value as "action" | "key_layer" | "key_all")}>
-            {selectedAction && (
-              <option value="action">
-                Action: {selectedAction.label || selectedAction.action_id} (follows action onto any key/layer)
-              </option>
-            )}
-            <option value="key_layer">Physical Key {selectedKey} on Layer {activeLayer}</option>
-            <option value="key_all">Physical Key {selectedKey} on All Layers</option>
-          </select>
-        </label>
-
-        {/* Override Fields */}
-        <label className="field">
-          <span>Custom Label (leave blank to keep default or show icon-only)</span>
-          <input
-            type="text"
-            placeholder={selectedWinner?.rule.label ?? "e.g. Cam"}
-            value={draft.label ?? ""}
-            onChange={(e) => setDraft((p) => ({ ...p, label: e.target.value }))}
-          />
-        </label>
-
-        <div className="row-2">
-          <label className="field">
-            <span>Built-in Vector Icon</span>
-            <select
-              value={draft.icon ?? ""}
-              onChange={(e) => setDraft((p) => ({ ...p, icon: e.target.value, image: e.target.value ? "" : p.image }))}
+        <fieldset className="kr-groups" aria-label="Key groups">
+          {KEY_GROUPS.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              className={`kr-chip${selectionGroup === g.id ? " is-active" : ""}`}
+              onClick={() => pickGroup(g.id)}
             >
-              {BUILTIN_ICONS.map((ic) => (
-                <option key={ic || "none"} value={ic}>
-                  {ic ? ic : "None / Default"}
-                </option>
-              ))}
-            </select>
+              {g.label}
+            </button>
+          ))}
+          {selection.length > 0 && (
+            <button
+              type="button"
+              className="kr-chip is-quiet"
+              onClick={() => {
+                setSelection([]);
+                setSelectionGroup(null);
+              }}
+            >
+              Clear selection
+            </button>
+          )}
+        </fieldset>
+        <KeyFaceMap
+          keys={keys}
+          faces={faces}
+          selection={selectionSet}
+          focusKey={focusKey}
+          highlight={highlight}
+          overridden={overridden}
+          actionAccent={actionAccent}
+          keyName={keyName}
+          onKeyClick={onKeyClick}
+        />
+        <div className="kr-map-legend muted">
+          <span>
+            <span className="kr-swatch is-selected" /> picked
+          </span>
+          {openRow && (
+            <span>
+              <span className="kr-swatch is-highlight" /> keys of rule {(openIndex ?? 0) + 1} (previewed as if its
+              conditions hold)
+            </span>
+          )}
+          <span>
+            <span className="kr-swatch is-override" /> quick override
+          </span>
+          <span>
+            <span className="kr-swatch is-action" /> module action
+          </span>
+          <span>The map is a rough preview; the side panel asks the keyboard for the exact answer.</span>
+        </div>
+        <fieldset className="kr-composer" aria-label="New rule">
+          <span className="kr-composer-tag">New rule</span>
+          <span className="kr-composer-lead">
+            {selection.length === 0 ? (
+              <span className="muted">Pick keys to start a rule.</span>
+            ) : (
+              <>
+                On <strong>{describeKeys(selectionSpec, describe)}</strong>
+              </>
+            )}
+          </span>
+          <label className="checkbox-inline">
+            <input type="checkbox" checked={onlyThisLayer} onChange={(e) => setOnlyThisLayer(e.target.checked)} />
+            only on layer {activeLayer}
           </label>
-          <div className="field">
-            <span>Custom PNG Image</span>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button type="button" className="btn-secondary" style={{ flex: 1 }} onClick={() => void handlePickImage()}>
-                {draft.image ? draft.image : "Choose PNG…"}
+          <span className="kr-composer-looks">
+            {QUICK_LOOKS.map((q) => (
+              <button
+                key={q.id}
+                type="button"
+                className="btn-secondary btn-compact"
+                disabled={selection.length === 0}
+                onClick={() => addRule(q.look)}
+              >
+                {q.label}
               </button>
-              {draft.image && (
-                <button type="button" className="btn-secondary" onClick={() => setDraft((p) => ({ ...p, image: "" }))}>
-                  ✕
-                </button>
-              )}
+            ))}
+          </span>
+        </fieldset>
+      </section>
+
+      <div className="kr-columns">
+        <section className="card kr-rules-card" aria-label="Key Rules list">
+          <div className="kr-board-head">
+            <div>
+              <h3>Key Rules</h3>
+              <small className="muted">
+                Later rules win over earlier ones. All rules win over modules and the keymap.
+              </small>
             </div>
           </div>
-        </div>
+          {moduleEnabled === false && (
+            <div className="notice notice-warn">Key Rules is turned off. Saving a rule turns it back on.</div>
+          )}
+          {loaded && (
+            <RuleList
+              rows={rows}
+              openIndex={openIndex}
+              describe={describe}
+              onOpen={openRule}
+              onChangeRows={commitRows}
+              renderEditor={(row, i) => (
+                <RuleEditor
+                  key={i}
+                  row={row}
+                  onChange={(next, batch) => changeRow(i, next, batch)}
+                  describe={describe}
+                  selectionSpec={selectionSpec}
+                  selectionCount={selection.length}
+                  activeLayer={activeLayer}
+                  pickImage={pickImage}
+                />
+              )}
+            />
+          )}
+          {status && (
+            <div className="status-msg" role="status">
+              {status}
+            </div>
+          )}
+          <small className="muted kr-cli-note">
+            The same list as <code>fluxctl keys rules list</code> and <code>fluxctl modules config keys-custom</code>.
+          </small>
+        </section>
 
-        <div className="row-3">
-          <label className="field">
-            <span>Text / Icon Color</span>
-            <input
-              type="text"
-              placeholder="#ffffff"
-              value={draft.color ?? ""}
-              onChange={(e) => setDraft((p) => ({ ...p, color: e.target.value }))}
-            />
-          </label>
-          <label className="field">
-            <span>Keycap Tint</span>
-            <input
-              type="text"
-              placeholder="#1a2436"
-              value={draft.bg ?? ""}
-              onChange={(e) => setDraft((p) => ({ ...p, bg: e.target.value }))}
-            />
-          </label>
-          <label className="field">
-            <span>Border Color</span>
-            <input
-              type="text"
-              placeholder="#4de1ff"
-              value={draft.border ?? ""}
-              onChange={(e) => setDraft((p) => ({ ...p, border: e.target.value }))}
-            />
-          </label>
-        </div>
-
-        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}>
-          <input
-            type="checkbox"
-            checked={Boolean(draft.hide)}
-            onChange={(e) => setDraft((p) => ({ ...p, hide: e.target.checked }))}
+        <div className="kr-side">
+          <div className="kr-binding muted">
+            <strong>{focusName}</strong> · key {focusKey} ·{" "}
+            {focusAction ? (
+              <span style={{ color: focusAction.accent || "#fa6831" }}>
+                {focusAction.label || focusAction.action_id} ({focusAction.module_id ?? "built-in"} ·{" "}
+                {focusAction.mode ?? "tap"})
+              </span>
+            ) : resolvedKeycodes[focusKey] !== undefined ? (
+              <>bound to {formatHexKeycode(resolvedKeycodes[focusKey])}</>
+            ) : (
+              "binding unknown"
+            )}
+          </div>
+          <WhyPanel
+            keyIndex={focusKey}
+            keyName={focusName}
+            context={explainCtx}
+            refreshToken={savedTick}
+            pulseKeys={selection.includes(focusKey) ? selection : [focusKey]}
+            onOpenRule={(i) => openRule(i)}
           />
-          Hide legend/icon completely on this key
-        </label>
-
-        <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" className="btn-primary" style={{ flex: 1 }} disabled={saving} onClick={() => void handleSave()}>
-            {saving ? "Saving…" : "Apply Override"}
-          </button>
-          <button type="button" className="btn-secondary" disabled={saving} onClick={() => void handleReset()}>
-            Reset
-          </button>
+          <OverrideEditor
+            keyIndex={focusKey}
+            keyName={focusName}
+            activeLayer={activeLayer}
+            action={focusAction}
+            byKey={byKey}
+            byAction={byAction}
+            onSave={saveOverrides}
+            saving={savingOverride}
+            pickFile={pickFile}
+          />
         </div>
-        {statusMsg && <div style={{ fontSize: 12, color: "#7ae7ff" }}>{statusMsg}</div>}
       </div>
     </div>
   );

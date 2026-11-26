@@ -172,7 +172,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <div className="kg-calm-divider" />
             <div className="kg-calm-row">
               <div>
-                <div className="kg-row-title">Keycap Visuals</div>
+                <div className="kg-row-title">What it shows</div>
                 <div className="kg-muted">
                   {selWin
                     ? selWin.image
@@ -180,7 +180,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       : selWin.icon
                         ? `Symbol: ${selWin.icon}${selWin.label ? ` · ${selWin.label}` : ""} (from ${selWin.topic})`
                         : `Label: ${selWin.label || "Blank"} (from ${selWin.topic})`
-                    : "Default keycap appearance — click Override to set a custom label, icon, or PNG"}
+                    : "The keymap's legend. Open Key Rules to hide, relabel or light it up."}
                 </div>
               </div>
               <button
@@ -188,7 +188,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 className="kg-btn-ghost"
                 onClick={() => onOpenModule("keys-custom", selectedKey)}
               >
-                Override
+                Key Rules
               </button>
             </div>
           </div>
