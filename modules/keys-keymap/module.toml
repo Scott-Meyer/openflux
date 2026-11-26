@@ -6,7 +6,7 @@ author = "Keyglass"
 category = "effect"
 tags = ["keys", "core", "keymap", "shift", "fn"]
 depends = [{ role = "keys_renderer" }]
-stages = ["under_key"]
+stages = ["under_key", "world_overlay"]
 host_requirement = "none"
 slot_capable = false
 stackable = true
@@ -24,7 +24,7 @@ maturity = "stable"
 script = "script.lua"
 
 [channels]
-subscribes = ["keyboard/state", "keyboard/keymap", "keyboard/resolved_keys", "system/actions", "host/connection", "profiles/active"]
+subscribes = ["keyboard/state", "keyboard/keymap", "keyboard/resolved_keys", "keyboard/layer_names", "system/actions", "host/connection", "profiles/active"]
 publishes = ["keys/providers/keymap", "keys/providers/keymap-caps"]
 
 [[settings]]
@@ -46,3 +46,37 @@ label = "Base Keycap Legends"
 kind = "select"
 default = "all"
 options = ["all", "hide_letters", "layers_only", "hidden"]
+
+[[settings]]
+key = "layer_badge_enabled"
+label = "Show Active Layer Badge on Keyboard"
+kind = "boolean"
+default = false
+
+[[settings]]
+key = "layer_badge_hide_base"
+label = "Hide Layer Badge on Base Layer"
+kind = "boolean"
+default = false
+
+[[settings]]
+key = "layer_badge_x"
+label = "Layer Badge Horizontal Position (0–1)"
+kind = "number"
+default = 0.90
+min = 0.04
+max = 0.96
+
+[[settings]]
+key = "layer_badge_y"
+label = "Layer Badge Vertical Position (0–1)"
+kind = "number"
+default = 0.06
+min = 0.03
+max = 0.96
+
+[[settings]]
+key = "layer_badge_color"
+label = "Layer Badge Accent Color"
+kind = "color"
+default = "#5ce1ff"

@@ -44,6 +44,8 @@ interface KeyboardSurfaceProps {
   topBarSummary?: string;
   /** Optional physical hardware attachments in the 4 top-bar bays; auto-loaded if omitted. */
   attachments?: HardwareAttachmentBay[];
+  /** Optional free-positioned interactive overlay elements rendered inside the 1920x1080 surface. */
+  overlayChildren?: React.ReactNode;
 }
 
 const DISPLAY_W = 1920;
@@ -128,6 +130,7 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
   renderKey,
   topBarSummary,
   attachments: propAttachments,
+  overlayChildren,
 }) => {
   const [hoveredKey, setHoveredKey] = useState<number | null>(null);
   const [dragOverKey, setDragOverKey] = useState<number | null>(null);
@@ -276,6 +279,7 @@ export const KeyboardSurface: React.FC<KeyboardSurfaceProps> = ({
             </button>
           );
         })}
+        {overlayChildren}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import type React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type ActiveProfileState, type ProfileEntry, v2Client } from "../api/v2Client";
 import {
   ANALOG_GAMEPAD_KEYS,
@@ -30,7 +30,7 @@ interface QmkKeymapViewProps {
 
 type EditorMode = "key" | "combo" | "hold_tap" | "layer" | "action" | "gamepad";
 
-const LAYER_NAMES = ["Base", "Layer 1", "Layer 2", "Layer 3", "Layer 4", "Layer 5", "Layer 6", "Layer 7"];
+const LAYER_NAMES = Array.from({ length: 16 }, (_, i) => (i === 0 ? "Base" : `Layer ${i}`));
 
 /** Standard ANSI A..Z letter positions (row, col, HID keycode) for 1-click "Fill Plain QWERTY". */
 const PLAIN_QWERTY_LETTERS: Array<[number, number, number]> = [
@@ -65,7 +65,15 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
   const [editorMode, setEditorMode] = useState<EditorMode>("key");
   const [actionsBySlot, setActionsBySlot] = useState<Record<number, ActionSlotInfo>>({});
   const [profiles, setProfiles] = useState<ProfileEntry[]>([]);
+  const [manualProfileId, setManualProfileId] = useState<string | null>(null);
   const [activeProfile, setActiveProfile] = useState<ActiveProfileState | null>(null);
+  const [layerNames, setLayerNames] = useState<Record<string, string>>({});
+  const [layerNameDraft, setLayerNameDraft] = useState<string>("");
+  const [badgeEnabled, setBadgeEnabled] = useState<boolean>(false);
+  const [badgeHideBase, setBadgeHideBase] = useState<boolean>(false);
+  const [badgePos, setBadgePos] = useState<{ x: number; y: number }>({ x: 0.9, y: 0.06 });
+  const [draggingBadge, setDraggingBadge] = useState<boolean>(false);
+  const surfaceBoxRef = useRef<HTMLDivElement | null>(null);
   const [search, setSearch] = useState("");
   const [capturing, setCapturing] = useState(false);
   const [fillingQwerty, setFillingQwerty] = useState(false);
@@ -97,19 +105,100 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
 
   const loadProfiles = useCallback(async () => {
     try {
-      const res = await v2Client.getProfiles();
+      const [res, lnRes, modsRes] = await Promise.all([
+        v2Client.getProfiles(),
+        v2Client.getLayerNames().catch(() => ({ layer_names: {} })),
+        v2Client.listModules().catch(() => ({ modules: [] })),
+      ]);
+      const kmMod = modsRes.modules.find((m) => m.id === "keys-keymap") ?? null;
       setProfiles(res.profiles ?? []);
+      setManualProfileId(res.manual_profile_id ?? null);
       setActiveProfile(res.active ?? null);
+      setLayerNames(lnRes.layer_names ?? {});
+      if (kmMod?.state?.config && !draggingBadge) {
+        const cfg = kmMod.state.config;
+        setBadgeEnabled(Boolean(cfg.layer_badge_enabled));
+        setBadgeHideBase(Boolean(cfg.layer_badge_hide_base));
+        const bx = typeof cfg.layer_badge_x === "number" ? cfg.layer_badge_x : 0.9;
+        const by = typeof cfg.layer_badge_y === "number" ? cfg.layer_badge_y : 0.06;
+        setBadgePos({ x: bx, y: by });
+      }
     } catch {
       // ignore
     }
-  }, []);
+  }, [draggingBadge]);
 
   useEffect(() => {
     void loadProfiles();
     const id = window.setInterval(() => void loadProfiles(), 3000);
     return () => window.clearInterval(id);
   }, [loadProfiles]);
+
+  useEffect(() => {
+    setLayerNameDraft(layerNames[String(activeLayer)] ?? "");
+  }, [activeLayer, layerNames]);
+
+  const layerDisplayName = useCallback(
+    (idx: number) => {
+      const custom = layerNames[String(idx)];
+      if (custom && custom.trim().length > 0) return custom.trim();
+      const linked = profiles.filter((p) => p.enabled && p.qmk_layer === idx);
+      if (linked.length > 0) return linked.map((p) => p.name).join(" / ");
+      return LAYER_NAMES[idx] ?? `Layer ${idx}`;
+    },
+    [layerNames, profiles],
+  );
+
+  const handleSaveLayerName = async (idx: number, rawName: string) => {
+    const trimmed = rawName.trim();
+    const next = { ...layerNames };
+    if (trimmed) {
+      next[String(idx)] = trimmed;
+    } else {
+      delete next[String(idx)];
+    }
+    setLayerNames(next);
+    try {
+      await v2Client.putLayerNames(next);
+      setStatusNote(trimmed ? `Renamed Layer ${idx} to "${trimmed}".` : `Cleared custom name for Layer ${idx}.`);
+      onSynced?.();
+    } catch (err) {
+      setStatusNote(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleToggleProfileLayerLink = async (profileId: string, assignToActiveLayer: boolean) => {
+    const nextProfiles = profiles.map((p) =>
+      p.id === profileId ? { ...p, qmk_layer: assignToActiveLayer ? activeLayer : null } : p,
+    );
+    setProfiles(nextProfiles);
+    try {
+      await v2Client.putProfiles(manualProfileId, nextProfiles);
+      await loadProfiles();
+      const pName = profiles.find((p) => p.id === profileId)?.name ?? profileId;
+      setStatusNote(
+        assignToActiveLayer
+          ? `Set Layer ${activeLayer} as the default layer for "${pName}".`
+          : `Cleared default layer override on "${pName}".`,
+      );
+      onSynced?.();
+    } catch (err) {
+      setStatusNote(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const persistLayerBadgeConfig = async (patch: Record<string, unknown>) => {
+    try {
+      const list = await v2Client.listModules();
+      const mod = list.modules.find((m) => m.id === "keys-keymap");
+      if (!mod) return;
+      const nextCfg = { ...(mod.state.config ?? {}), ...patch };
+      await v2Client.updateModuleState("keys-keymap", { enabled: mod.state.enabled, config: nextCfg });
+      onSynced?.();
+    } catch (err) {
+      setStatusNote(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   const profilesByLayer = useMemo(() => {
     const map: Record<number, ProfileEntry[]> = {};
@@ -350,9 +439,9 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
     })).filter((g) => g.keys.length > 0);
 
     // Oryx-style unified search: typing "prusa", "layer", "stick", "pomo", etc. surfaces ALL categories!
-    const layerHits = Array.from({ length: Math.min(layerCount, 8) }, (_, i) => ({
+    const layerHits = Array.from({ length: Math.min(layerCount, 16) }, (_, i) => ({
       code: encodeLayerOp(0x5220, i),
-      label: `Hold L${i} (${LAYER_NAMES[i] ?? `L${i}`})`,
+      label: `Hold L${i} (${layerDisplayName(i)})`,
     })).filter((k) => k.label.toLowerCase().includes(q));
     if (layerHits.length > 0) base.push({ group: "Layers (Hold MO)", keys: layerHits });
 
@@ -410,15 +499,12 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
         </div>
       </div>
 
-      {/* Layer Switcher Pills (with live Profile links!) */}
+      {/* Layer Switcher Pills (up to 16 layers with custom names & live Profile links!) */}
       <div className="kg-layer-pills" role="tablist" aria-label="QMK Layers">
-        {Array.from({ length: Math.min(layerCount, 8) }, (_, idx) => {
+        {Array.from({ length: Math.min(layerCount, 16) }, (_, idx) => {
           const linkedProfs = profilesByLayer[idx] ?? [];
           const isLiveDefault = activeProfile?.qmk_layer === idx || (activeProfile?.qmk_layer == null && idx === 0);
-          const pillLabel =
-            linkedProfs.length > 0
-              ? `L${idx} · ${linkedProfs.map((p) => p.name).join(" / ")}`
-              : `L${idx} · ${LAYER_NAMES[idx] ?? `Layer ${idx}`}`;
+          const lbl = layerDisplayName(idx);
           return (
             <button
               key={idx}
@@ -429,8 +515,8 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
               onClick={() => setActiveLayer(idx)}
               title={
                 linkedProfs.length > 0
-                  ? `Layer ${idx} — Activated by profile: ${linkedProfs.map((p) => p.name).join(", ")}`
-                  : `Layer ${idx}`
+                  ? `Layer ${idx} (${lbl}) — Activated by profile: ${linkedProfs.map((p) => p.name).join(", ")}`
+                  : `Layer ${idx} (${lbl})`
               }
             >
               {isLiveDefault && (
@@ -440,7 +526,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
                   title="Active default layer on this computer"
                 />
               )}
-              {pillLabel}
+              L{idx} · {lbl}
             </button>
           );
         })}
@@ -458,59 +544,137 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
         )}
       </div>
 
-      {/* Active Layer Profile Banner / Double-Click Quick-Capture Banner */}
-      {(() => {
-        const linkedProfs = profilesByLayer[activeLayer] ?? [];
-        if (capturing) {
-          return (
-            <div
-              className="kg-calm-card kg-calm-row"
-              style={{ borderColor: "rgba(92, 225, 255, 0.55)", background: "rgba(92, 225, 255, 0.08)" }}
+      {/* Layer Controls Strip: Rename Layer + Assign Profile Default Layer + Draggable On-Keyboard Layer Badge */}
+      <div
+        className="kg-calm-card kg-calm-row"
+        style={{ padding: "8px 14px", flexWrap: "wrap", gap: 10 }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span className="kg-muted" style={{ fontSize: 11 }}>
+            Layer {activeLayer} name:
+          </span>
+          <input
+            type="text"
+            value={layerNameDraft}
+            onChange={(e) => setLayerNameDraft(e.target.value)}
+            onBlur={() => {
+              if ((layerNames[String(activeLayer)] ?? "") !== layerNameDraft.trim()) {
+                void handleSaveLayerName(activeLayer, layerNameDraft);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                void handleSaveLayerName(activeLayer, layerNameDraft);
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            placeholder={LAYER_NAMES[activeLayer] ?? `Layer ${activeLayer}`}
+            style={{ width: 132, padding: "4px 8px", fontSize: 12 }}
+          />
+          <span className="kg-muted" style={{ fontSize: 11, marginLeft: 4 }}>
+            Default for profile:
+          </span>
+          <select
+            value=""
+            onChange={(e) => {
+              const pid = e.target.value;
+              if (!pid) return;
+              const existing = profiles.find((p) => p.id === pid);
+              void handleToggleProfileLayerLink(pid, existing?.qmk_layer !== activeLayer);
+            }}
+            style={{ padding: "4px 8px", fontSize: 12 }}
+            title="Toggle which Profile automatically selects this layer as its default layer"
+          >
+            <option value="">
+              {(profilesByLayer[activeLayer] ?? []).length > 0
+                ? (profilesByLayer[activeLayer] ?? []).map((p) => p.name).join(", ")
+                : "None (click to assign…)"}
+            </option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.qmk_layer === activeLayer ? `✓ ${p.name} (click to clear)` : `Assign to ${p.name}`}
+              </option>
+            ))}
+          </select>
+          {(profilesByLayer[activeLayer] ?? []).length > 0 && onOpenProfile && (
+            <button
+              type="button"
+              className="kg-btn-ghost"
+              style={{ padding: "2px 8px", fontSize: 11 }}
+              onClick={() => onOpenProfile(profilesByLayer[activeLayer][0].id)}
             >
-              <div style={{ fontSize: 12 }}>
-                <strong style={{ color: "#7dd3fc" }}>Listening for key press on Key {selectedKey} (L{activeLayer})…</strong>{" "}
-                <span className="kg-muted">Press any physical key on your keyboard to bind it immediately.</span>
-              </div>
-              <button type="button" className="kg-btn-ghost" onClick={() => setCapturing(false)}>
-                Cancel
-              </button>
-            </div>
-          );
-        }
-        if (linkedProfs.length > 0) {
-          return (
-            <div className="kg-calm-card kg-calm-row" style={{ padding: "8px 14px" }}>
-              <div style={{ fontSize: 12 }}>
-                <strong>Layer {activeLayer}</strong> is automatically selected by{" "}
-                {linkedProfs.map((p, i) => (
-                  <span key={p.id}>
-                    {i > 0 ? ", " : ""}
-                    <strong>{p.name}</strong>
-                    {p.match_os.length > 0 ? ` (${p.match_os.join("/")})` : ""}
-                  </span>
-                ))}
-                {activeProfile?.qmk_layer === activeLayer ? (
-                  <span style={{ color: "#58f29c", marginLeft: 8 }}>● Active now</span>
-                ) : null}
-              </div>
-              {onOpenProfile && (
-                <button
-                  type="button"
-                  className="kg-btn-ghost"
-                  style={{ padding: "2px 8px", fontSize: 11 }}
-                  onClick={() => onOpenProfile(linkedProfs[0].id)}
-                >
-                  Open {linkedProfs[0].name} Profile →
-                </button>
-              )}
-            </div>
-          );
-        }
-        return null;
-      })()}
+              Open Profile →
+            </button>
+          )}
+        </div>
 
-      {/* Shared Interactive 85-Key Keyboard */}
-      <div className="kg-surface-wrap">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
+          <label
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}
+            title="Show a draggable active layer indicator pill directly on your keyboard display"
+          >
+            <input
+              type="checkbox"
+              checked={badgeEnabled}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setBadgeEnabled(on);
+                void persistLayerBadgeConfig({ layer_badge_enabled: on });
+              }}
+            />
+            <span>Layer Badge on Keyboard</span>
+          </label>
+          {badgeEnabled && (
+            <>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={badgeHideBase}
+                  onChange={(e) => {
+                    const hide = e.target.checked;
+                    setBadgeHideBase(hide);
+                    void persistLayerBadgeConfig({ layer_badge_hide_base: hide });
+                  }}
+                />
+                <span className="kg-muted">Hide on base</span>
+              </label>
+              <button
+                type="button"
+                className="kg-btn-ghost"
+                style={{ padding: "2px 7px", fontSize: 11 }}
+                onClick={() => {
+                  const def = { x: 0.9, y: 0.06 };
+                  setBadgePos(def);
+                  void persistLayerBadgeConfig({ layer_badge_x: def.x, layer_badge_y: def.y });
+                }}
+              >
+                Reset Pos
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Double-Click Quick-Capture Banner */}
+      {capturing && (
+        <div
+          className="kg-calm-card kg-calm-row"
+          style={{ borderColor: "rgba(92, 225, 255, 0.55)", background: "rgba(92, 225, 255, 0.08)" }}
+        >
+          <div style={{ fontSize: 12 }}>
+            <strong style={{ color: "#7dd3fc" }}>
+              Listening for key press on Key {selectedKey} (L{activeLayer})…
+            </strong>{" "}
+            <span className="kg-muted">Press any physical key on your keyboard to bind it immediately.</span>
+          </div>
+          <button type="button" className="kg-btn-ghost" onClick={() => setCapturing(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Shared Interactive 85-Key Keyboard (with Draggable On-Keyboard Layer Badge!) */}
+      <div className="kg-surface-wrap" ref={surfaceBoxRef}>
         <KeyboardSurface
           keys={keys}
           selectedKey={selectedKey}
@@ -524,7 +688,83 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
             setStatusNote(`Listening on Key ${k} (L${activeLayer}) — press any key to bind it.`);
           }}
           onDropOnKey={handleDropOnKey}
-          topBarSummary={`Editing Layer ${activeLayer} — Click a key, double-click a key & type to quick-bind, or drag any binding below`}
+          topBarSummary={
+            badgeEnabled
+              ? `Editing L${activeLayer} (${layerDisplayName(activeLayer)}) — Drag the glowing Layer Badge pill anywhere on the keyboard`
+              : `Editing L${activeLayer} (${layerDisplayName(activeLayer)}) — Click a key, double-click & type to quick-bind, or drag any binding below`
+          }
+          overlayChildren={
+            badgeEnabled ? (
+              <div
+                role="slider"
+                aria-label="Draggable Layer Badge Position"
+                aria-valuetext={`${Math.round(badgePos.x * 100)}%, ${Math.round(badgePos.y * 100)}%`}
+                tabIndex={0}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  setDraggingBadge(true);
+                }}
+                onPointerMove={(e) => {
+                  if (!draggingBadge) return;
+                  const surface = e.currentTarget.parentElement;
+                  if (!surface) return;
+                  const rect = surface.getBoundingClientRect();
+                  const nx = Math.max(0.04, Math.min(0.96, (e.clientX - rect.left) / rect.width));
+                  const ny = Math.max(0.03, Math.min(0.96, (e.clientY - rect.top) / rect.height));
+                  setBadgePos({ x: Number(nx.toFixed(3)), y: Number(ny.toFixed(3)) });
+                }}
+                onPointerUp={(e) => {
+                  if (!draggingBadge) return;
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                  setDraggingBadge(false);
+                  const surface = e.currentTarget.parentElement;
+                  if (!surface) return;
+                  const rect = surface.getBoundingClientRect();
+                  const nx = Number(Math.max(0.04, Math.min(0.96, (e.clientX - rect.left) / rect.width)).toFixed(3));
+                  const ny = Number(Math.max(0.03, Math.min(0.96, (e.clientY - rect.top) / rect.height)).toFixed(3));
+                  setBadgePos({ x: nx, y: ny });
+                  void persistLayerBadgeConfig({ layer_badge_x: nx, layer_badge_y: ny });
+                }}
+                style={{
+                  position: "absolute",
+                  left: `${badgePos.x * 100}%`,
+                  top: `${badgePos.y * 100}%`,
+                  transform: "translate(-50%, -50%)",
+                  zIndex: 25,
+                  cursor: draggingBadge ? "grabbing" : "grab",
+                  userSelect: "none",
+                  padding: "4px 12px",
+                  borderRadius: 999,
+                  background: "rgba(10, 14, 24, 0.88)",
+                  border: "1.5px solid rgba(92, 225, 255, 0.8)",
+                  boxShadow: draggingBadge
+                    ? "0 0 20px rgba(92, 225, 255, 0.55)"
+                    : "0 4px 14px rgba(0, 0, 0, 0.55)",
+                  color: "#eef6ff",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  whiteSpace: "nowrap",
+                }}
+                title="Drag anywhere on the keyboard to position the live Layer Badge"
+              >
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: "50%",
+                    background: "#5ce1ff",
+                    display: "inline-block",
+                  }}
+                />
+                L{activeLayer} · {layerDisplayName(activeLayer)}
+              </div>
+            ) : null
+          }
           renderKey={(k) => {
             const isCap = capturing && selectedKey === k.index;
             if (isCap) {
@@ -742,9 +982,9 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
                   <label className="kg-field-inline">
                     <span>Held Layer</span>
                     <select value={htHoldLayer} onChange={(e) => setHtHoldLayer(Number(e.target.value))}>
-                      {Array.from({ length: Math.min(layerCount, 8) }, (_, i) => (
+                      {Array.from({ length: Math.min(layerCount, 16) }, (_, i) => (
                         <option key={i} value={i}>
-                          L{i} · {LAYER_NAMES[i] ?? `Layer ${i}`}
+                          L{i} · {layerDisplayName(i)}
                         </option>
                       ))}
                     </select>
@@ -810,7 +1050,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span className="kg-muted">Click a target layer (or drag it onto any key above):</span>
-                {Array.from({ length: Math.min(layerCount, 8) }, (_, i) => {
+                {Array.from({ length: Math.min(layerCount, 16) }, (_, i) => {
                   const kc = encodeLayerOp(layerOpBase, i);
                   return (
                     <button
@@ -823,7 +1063,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
                         void assignKeycode(kc);
                       }}
                     >
-                      L{i} · {LAYER_NAMES[i] ?? `Layer ${i}`}
+                      L{i} · {layerDisplayName(i)}
                     </button>
                   );
                 })}

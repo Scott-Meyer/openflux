@@ -626,4 +626,10 @@ export const v2Client = {
     }>("GET", "/v2/keyboard/software-status"),
   returnKeyboardToStock: () =>
     v2Call<{ ok: boolean; message: string }>("POST", "/v2/keyboard/return-to-stock", {}),
+  getLayerNames: () =>
+    v2Call<{ layer_names: Record<string, string> }>("GET", "/v2/keymap/layer-names"),
+  putLayerNames: (layer_names: Record<string, string>) =>
+    v2Call<{ ok: boolean; layer_names: Record<string, string> }>("PUT", "/v2/keymap/layer-names", {
+      layer_names,
+    }),
 };

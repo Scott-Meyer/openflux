@@ -7,6 +7,9 @@ local hw_keymap = nil
 local resolved_keys = nil
 local host_platform = "macos"
 local active_profile = nil
+local layer_names = {}
+local active_layer_bits = 1
+local default_layer_bits = 1
 local action_slots = {} -- numeric slot (0..95) -> system/actions entry
 
 local function normalize_os(val)
@@ -506,6 +509,13 @@ function on_init()
   end
   local ap = bus.get("profiles/active")
   if type(ap) == "table" then active_profile = ap end
+  local ln = bus.get("keyboard/layer_names")
+  if type(ln) == "table" then layer_names = ln end
+  local ks = bus.get("keyboard/state")
+  if type(ks) == "table" then
+    if type(ks.active_layer_bitfield) == "number" then active_layer_bits = math.floor(ks.active_layer_bitfield) end
+    if type(ks.default_layer_bitfield) == "number" then default_layer_bits = math.floor(ks.default_layer_bitfield) end
+  end
   local sa = bus.get("system/actions")
   if type(sa) == "table" then index_system_actions(sa) end
   local rk = bus.get("keyboard/resolved_keys")
@@ -524,6 +534,8 @@ function on_event(topic, payload)
   elseif topic == "profiles/active" and type(payload) == "table" then
     active_profile = payload
     publish_keymap()
+  elseif topic == "keyboard/layer_names" and type(payload) == "table" then
+    layer_names = payload
   elseif topic == "system/actions" and type(payload) == "table" then
     index_system_actions(payload)
     publish_keymap()
@@ -534,6 +546,12 @@ function on_event(topic, payload)
     hw_keymap = payload
     if not resolved_keys then publish_keymap() end
   elseif topic == "keyboard/state" and type(payload) == "table" then
+    if type(payload.active_layer_bitfield) == "number" then
+      active_layer_bits = math.floor(payload.active_layer_bitfield)
+    end
+    if type(payload.default_layer_bitfield) == "number" then
+      default_layer_bits = math.floor(payload.default_layer_bitfield)
+    end
     local caps = (payload.caps_lock == true) or (payload.caps_word_active == true)
     if caps ~= last_caps then
       last_caps = caps
@@ -548,4 +566,67 @@ function on_event(topic, payload)
       end
     end
   end
+end
+
+local function highest_bit_layer(bits)
+  local highest = 0
+  local b = math.floor(tonumber(bits) or 1)
+  for l = 15, 0, -1 do
+    if (b & (1 << l)) ~= 0 then
+      highest = l
+      break
+    end
+  end
+  return highest
+end
+
+function on_render(ctx, stage)
+  if stage ~= "world_overlay" then return end
+  local cfg = module.config()
+  if cfg.layer_badge_enabled ~= true then return end
+
+  local top_layer = highest_bit_layer(active_layer_bits)
+  local base_layer = highest_bit_layer(default_layer_bits)
+  local is_overlay = (top_layer ~= base_layer)
+  if cfg.layer_badge_hide_base == true and not is_overlay then
+    return
+  end
+
+  local custom_name = layer_names[tostring(top_layer)]
+  local label = "L" .. tostring(top_layer)
+  if type(custom_name) == "string" and #custom_name > 0 then
+    label = label .. " · " .. custom_name
+  elseif top_layer == base_layer and type(active_profile) == "table" and type(active_profile.profile_name) == "string" and #active_profile.profile_name > 0 and active_profile.profile_id ~= "default" then
+    label = label .. " · " .. active_profile.profile_name
+  end
+
+  local nx = tonumber(cfg.layer_badge_x) or 0.90
+  local ny = tonumber(cfg.layer_badge_y) or 0.06
+  if nx < 0.04 then nx = 0.04 elseif nx > 0.96 then nx = 0.96 end
+  if ny < 0.03 then ny = 0.03 elseif ny > 0.96 then ny = 0.96 end
+
+  local accent = parse_color and parse_color(cfg.layer_badge_color or "#5ce1ff") or nil
+  local r, g, b = 0.36, 0.88, 1.0
+  local hex = tostring(cfg.layer_badge_color or "#5ce1ff"):gsub("^#", "")
+  if #hex == 6 then
+    r = (tonumber(hex:sub(1, 2), 16) or 92) / 255.0
+    g = (tonumber(hex:sub(3, 4), 16) or 225) / 255.0
+    b = (tonumber(hex:sub(5, 6), 16) or 255) / 255.0
+  end
+  if is_overlay then
+    -- Subtle warm highlight when on a toggled/momentary layer above base
+    r, g, b = 0.35, 0.95, 0.62
+  end
+
+  local pill_h = 44
+  local pill_w = math.max(96, math.min(340, 34 + (#label * 12.5)))
+  local cx = nx * 1920.0
+  local cy = ny * 1080.0
+  local x = math.max(14, math.min(1920.0 - pill_w - 14, cx - pill_w * 0.5))
+  local y = math.max(10, math.min(1080.0 - pill_h - 10, cy - pill_h * 0.5))
+
+  -- Ultra-calm frosted dark glass pill with crisp accent border & active dot
+  ctx:round_rect(x, y, pill_w, pill_h, pill_h * 0.5, { 0.05, 0.07, 0.11, 0.84 }, 2.0, { r, g, b, is_overlay and 0.88 or 0.55 })
+  ctx:circle(x + 20, y + pill_h * 0.5, 5.5, { r, g, b, 1.0 })
+  ctx:text(x + 34, y + pill_h * 0.5, label, 20, { 0.95, 0.98, 1.0, 0.98 }, "left", "middle")
 end

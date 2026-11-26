@@ -38,7 +38,7 @@
 /* EEPROM budget: 8 KiB flat buffer backed by per-layout LittleFS files. */
 #define EEPROM_CUSTOM
 #define EEPROM_SIZE                   8192
-#define DYNAMIC_KEYMAP_LAYER_COUNT    8
+#define DYNAMIC_KEYMAP_LAYER_COUNT    16
 #define DYNAMIC_KEYMAP_MACRO_COUNT    32
 #define VIAL_TAP_DANCE_ENTRIES        32
 #define VIAL_COMBO_ENTRIES            32

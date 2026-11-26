@@ -459,6 +459,15 @@ impl V2State {
         if let Some(pw) = prefs_doc.get("power") {
             let _ = broker.publish("display/power", pw.clone(), PublishOptions::retained());
         }
+        let layer_names_init = prefs_doc
+            .get("layer_names")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        let _ = broker.publish(
+            "keyboard/layer_names",
+            layer_names_init,
+            PublishOptions::retained(),
+        );
         let att_payload = build_attachments_bus_payload(prefs_doc.get("attachments"));
         let _ = broker.publish("keyboard/attachments", att_payload, PublishOptions::retained());
 
@@ -4626,6 +4635,54 @@ async fn put_host_identity_api(
     }
 }
 
+async fn get_layer_names_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let prefs = state.v2.load_display_prefs();
+    let names = prefs
+        .get("layer_names")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    (StatusCode::OK, Json(json!({ "layer_names": names })))
+}
+
+async fn put_layer_names_api(
+    State(state): State<Arc<ApiState>>,
+    Json(body): Json<Value>,
+) -> impl IntoResponse {
+    let incoming = body
+        .get("layer_names")
+        .and_then(|v| v.as_object())
+        .or_else(|| body.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let mut clean = serde_json::Map::new();
+    for (k, v) in incoming {
+        if let Ok(idx) = k.parse::<u8>() {
+            if idx < 16 {
+                if let Some(s) = v.as_str() {
+                    let trimmed = s.trim();
+                    if !trimmed.is_empty() {
+                        clean.insert(
+                            idx.to_string(),
+                            json!(trimmed.chars().take(32).collect::<String>()),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    let val = Value::Object(clean);
+    let mut prefs = state.v2.load_display_prefs();
+    if let Some(obj) = prefs.as_object_mut() {
+        obj.insert("layer_names".into(), val.clone());
+    }
+    state.v2.save_display_prefs(&prefs);
+    let _ = state
+        .v2
+        .broker
+        .publish("keyboard/layer_names", val.clone(), PublishOptions::retained());
+    (StatusCode::OK, Json(json!({ "ok": true, "layer_names": val })))
+}
+
 async fn get_profiles_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     let doc = state.v2.load_profiles();
     let eff = state.v2.effective_profiles(&doc);
@@ -5100,6 +5157,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/vial/xfer", post(vial_xfer_api))
         .route("/v2/vial/actions", get(vial_actions_api))
         .route("/v2/vial/sync", post(vial_sync_api))
+        .route("/v2/keymap/layer-names", get(get_layer_names_api).put(put_layer_names_api))
         .route("/v2/bus/pub", post(bus_pub))
         .route("/v2/bus/retained", get(bus_retained))
         .route("/v2/bus/events", get(bus_events_poll))

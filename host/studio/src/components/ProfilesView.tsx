@@ -54,17 +54,7 @@ function isStudioToken(tok: string): boolean {
   );
 }
 
-const LAYER_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "", label: "Fall through (inherit from parent / Base)" },
-  { value: "0", label: "Layer 0 (Base)" },
-  { value: "1", label: "Layer 1 (Fn)" },
-  { value: "2", label: "Layer 2 (Gaming)" },
-  { value: "3", label: "Layer 3" },
-  { value: "4", label: "Layer 4" },
-  { value: "5", label: "Layer 5" },
-  { value: "6", label: "Layer 6" },
-  { value: "7", label: "Layer 7" },
-];
+const DEFAULT_LAYER_COUNT = 16;
 
 export const ProfilesView: React.FC<ProfilesViewProps> = ({
   modules,
@@ -72,6 +62,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({
   onActiveChanged,
 }) => {
   const [profiles, setProfiles] = useState<ProfileEntry[]>([]);
+  const [layerNames, setLayerNames] = useState<Record<string, string>>({});
   const [manualId, setManualId] = useState<string | null>(null);
   const [active, setActive] = useState<ActiveProfileState | null>(null);
   const [host, setHost] = useState<HostIdentity | null>(null);
@@ -91,11 +82,17 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({
 
   const loadAll = useCallback(async () => {
     try {
-      const res = (await v2Client.getProfiles()) as Awaited<ReturnType<typeof v2Client.getProfiles>> & {
-        recent_apps?: RecentAppEntry[];
-        active_match?: ProfileMatchDiagnostics | null;
-      };
+      const [res, lnRes] = await Promise.all([
+        v2Client.getProfiles() as Promise<
+          Awaited<ReturnType<typeof v2Client.getProfiles>> & {
+            recent_apps?: RecentAppEntry[];
+            active_match?: ProfileMatchDiagnostics | null;
+          }
+        >,
+        v2Client.getLayerNames().catch(() => ({ layer_names: {} })),
+      ]);
       setProfiles(res.profiles ?? []);
+      setLayerNames(lnRes.layer_names ?? {});
       setManualId(res.manual_profile_id ?? null);
       setActive(res.active ?? null);
       setRecentApps(res.recent_apps ?? []);
@@ -726,11 +723,16 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({
                     })
                   }
                 >
-                  {LAYER_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
+                  <option value="">Fall through (inherit from Shared / OS)</option>
+                  {Array.from({ length: DEFAULT_LAYER_COUNT }, (_, i) => {
+                    const custom = layerNames[String(i)];
+                    const lbl = custom ? `Layer ${i} — ${custom}` : i === 0 ? "Layer 0 (Base)" : `Layer ${i}`;
+                    return (
+                      <option key={i} value={String(i)}>
+                        {lbl}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>

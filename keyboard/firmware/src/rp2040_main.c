@@ -516,7 +516,7 @@ static int on_layer_override(uint8_t layer, void *ctx) {
         g_force_resolved_dirty = true;
         return 0;
     }
-    if (layer >= 8U)
+    if (layer >= 16U)
         return -1;
     g_layer_override = layer;
     fw_qmk_set_default_layer(layer);
@@ -725,7 +725,7 @@ int main(void) {
             fw_qmk_set_layout(g_rt.keyframe_layout, scan_ms);
             (void)fw_qmk_seed_from_legacy_keymap(&g_rt, g_rt.keyframe_layout);
             /* Preserve active App-Linking layer override or profile default layer across hot-swaps. */
-            if (g_layer_override < 8U) {
+            if (g_layer_override < 16U) {
                 fw_qmk_set_default_layer(g_layer_override);
             } else {
                 (void)fw_runtime_set_active_profile(&g_rt, g_rt.active_profile);

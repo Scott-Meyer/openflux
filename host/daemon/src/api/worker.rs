@@ -1647,7 +1647,7 @@ pub fn reconcile_tick_with_state(
                     .payload
                     .get("layer")
                     .and_then(|v| v.as_u64())
-                    .map(|v| (v.min(7)) as u8);
+                    .map(|v| (v.min(15)) as u8);
                 if device.set_layer_override(layer).is_ok() {
                     wstate.last_layer_override_sig = Some(sig);
                 }
