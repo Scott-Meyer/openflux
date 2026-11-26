@@ -180,7 +180,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       : selWin.icon
                         ? `Symbol: ${selWin.icon}${selWin.label ? ` · ${selWin.label}` : ""} (from ${selWin.topic})`
                         : `Label: ${selWin.label || "Blank"} (from ${selWin.topic})`
-                    : "The keymap's legend. Open Key Rules to hide, relabel or light it up."}
+                    : "The keymap's legend. Open Custom Legends to hide, relabel or light it up."}
                 </div>
               </div>
               <button
@@ -188,7 +188,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 className="kg-btn-ghost"
                 onClick={() => onOpenModule("keys-custom", selectedKey)}
               >
-                Key Rules
+                Custom Legends
               </button>
             </div>
           </div>

@@ -43,6 +43,9 @@ function stubDaemon(config: Record<string, unknown>) {
   const published: Published[] = [];
   const events: Array<{ seq: number; topic: string; payload: unknown }> = [];
   let seq = 100;
+  // When set, the next GET /v2/modules reads the state *now* and answers only when released,
+  // like a poll that was already in flight when the user clicked.
+  let holdNextModules: { snapshot?: unknown; release?: () => void; armed: boolean } = { armed: false };
   let inspectAnswer: (req: Record<string, unknown>) => Record<string, unknown> = (req) => ({
     key: req.key,
     layer: 0,
@@ -74,6 +77,17 @@ function stubDaemon(config: Record<string, unknown>) {
         return Response.json({ messages: [] });
       }
       if (u.pathname === "/v2/modules") {
+        if (holdNextModules.armed) {
+          holdNextModules.armed = false;
+          const snapshot = structuredClone(state);
+          await new Promise<void>((resolve) => {
+            holdNextModules.release = resolve;
+          });
+          return Response.json({
+            modules: [{ id: "keys-custom", manifest: { id: "keys-custom", name: "Custom Legends", settings: [] }, state: snapshot }],
+            modules_rev: 1,
+          });
+        }
         return Response.json({
           modules: [
             {
@@ -119,6 +133,10 @@ function stubDaemon(config: Record<string, unknown>) {
     answerInspect: (fn: typeof inspectAnswer) => {
       inspectAnswer = fn;
     },
+    holdNextModulesPoll: () => {
+      holdNextModules = { armed: true };
+    },
+    releaseModulesPoll: () => holdNextModules.release?.(),
     /** A change made outside Studio, like `fluxctl keys rules add`. */
     setFromCli: (rules: unknown[]) => {
       state.config = { ...state.config, rules };
@@ -142,7 +160,8 @@ it("builds a rule from keys picked on the keyboard", async () => {
 
   fireEvent.click(keyButton(board, "Caps"));
   fireEvent.click(keyButton(board, "A"), { shiftKey: true });
-  fireEvent.click(screen.getByLabelText(/only on layer 0/));
+  // New rules start on the layer the map shows.
+  expect((screen.getByLabelText(/only on layer 0/) as HTMLInputElement).checked).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Hide legend" }));
 
   await waitFor(() => expect(daemon.rules()).toHaveLength(1));
@@ -198,7 +217,7 @@ it("adds a bus condition in plain words", async () => {
       condition_value: "Dim",
     }),
   );
-  expect(screen.getAllByText(/^On F2, when home\/bedroom → scene is "Dim": glow in #ffd166\.$/).length).toBeGreaterThan(
+  expect(screen.getAllByText(/^On F2, on layer 0, when home\/bedroom → scene is "Dim": glow in #ffd166\.$/).length).toBeGreaterThan(
     0,
   );
 });
@@ -291,4 +310,38 @@ it("keeps the quick per-key override, as a patch that hides only the legend", as
   await waitFor(() => expect(daemon.config().by_key).toEqual({ "0:46": { bg: "#123456", hide: true } }));
   expect(daemon.rules()).toEqual([{ keys: "Esc", glow: "soft" }]); // rules untouched
   await waitFor(() => expect(keyButton(board, "Caps").textContent).toBe("L2"));
+});
+
+it("keeps a rule added while a refresh was already on its way", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const daemon = stubDaemon({ rules: [] });
+    const board = await openTab();
+    await waitFor(() => expect(keyButton(board, "Caps")).toBeTruthy());
+
+    // A background refresh starts and reads the rules before the click below...
+    daemon.holdNextModulesPoll();
+    await act(async () => {
+      vi.advanceTimersByTime(2600);
+    });
+    fireEvent.click(keyButton(board, "Caps"));
+    fireEvent.click(within(screen.getByRole("group", { name: "New rule" })).getByRole("button", { name: "Blank key" }));
+    await waitFor(() => expect(daemon.rules()).toHaveLength(1));
+
+    // ...and answers after the save with the old, empty list.
+    await act(async () => {
+      daemon.releaseModulesPoll();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+
+    // The new rule is still there, and the next one adds to it rather than replacing it.
+    fireEvent.click(keyButton(board, "A"));
+    fireEvent.click(within(screen.getByRole("group", { name: "New rule" })).getByRole("button", { name: "Hide legend" }));
+    await waitFor(() => expect(daemon.rules()).toHaveLength(2));
+    expect(daemon.rules().map((r) => r.hide)).toEqual(["all", "legend"]);
+  } finally {
+    vi.useRealTimers();
+  }
 });

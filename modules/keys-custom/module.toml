@@ -1,5 +1,5 @@
 id = "keys-custom"
-name = "Key Rules"
+name = "Custom Legends"
 version = "3.0.0"
 description = "Your own rules for what keys show: hide legends (keeping layer and modifier markers), relabel, recolor, add glows, outlines, backdrops and corner text, on chosen keys, layers, apps, held keys or live bus values"
 author = "Keyglass"
@@ -16,7 +16,7 @@ homepage = "https://github.com/keyglass-dev/keyglass/tree/main/modules/keys-cust
 repository = "https://github.com/keyglass-dev/keyglass"
 support_url = "https://github.com/keyglass-dev/keyglass/issues"
 discord_url = "https://discord.gg/keyglass"
-changelog = "v3.0.0: Key Rules. A rules list (keys, conditions, look) on top of the per-key and per-action overrides. Overrides now edit the face instead of replacing it, so binding markers like L2 stay; background and border now draw (as an inset backdrop and outline)."
+changelog = "v3.0.0: Custom Legends rules. A rules list (keys, conditions, look) on top of the per-key and per-action overrides. Overrides now edit the face instead of replacing it, so binding markers like L2 stay; background and border now draw (as an inset backdrop and outline)."
 
 maturity = "stable"
 

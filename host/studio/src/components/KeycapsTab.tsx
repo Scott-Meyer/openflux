@@ -93,13 +93,16 @@ export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile, initialKey }) 
   const [selection, setSelection] = useState<number[]>([initialKey ?? 0]);
   const [selectionGroup, setSelectionGroup] = useState<string | null>(null);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const [onlyThisLayer, setOnlyThisLayer] = useState(false);
+  // The map shows one layer, so a new rule starts on that layer; unticking makes it every layer.
+  const [onlyThisLayer, setOnlyThisLayer] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const [savingOverride, setSavingOverride] = useState(false);
   const [savedTick, setSavedTick] = useState(0);
 
   // ----- Saving rows: batched while typing, never overwritten by a poll while unsent -----
   const serverRows = useRef<string>("");
+  // Bumped on every local edit: a poll that started before an edit must not apply its (older) rows.
+  const editGen = useRef(0);
   const pending = useRef<{ rows: unknown[] | null; timer: number | null; inflight: boolean }>({
     rows: null,
     timer: null,
@@ -138,7 +141,7 @@ export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile, initialKey }) 
       setSavedTick((t) => t + 1);
       scheduleSync();
     } catch (err) {
-      setStatus(`Couldn't save Key Rules: ${err instanceof Error ? err.message : String(err)}`);
+      setStatus(`Couldn't save Custom Legends: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       p.inflight = false;
       if (p.rows) void flush();
@@ -147,6 +150,7 @@ export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile, initialKey }) 
 
   const commitRows = useCallback(
     (next: unknown[], batch = false) => {
+      editGen.current += 1;
       setRows(next);
       const p = pending.current;
       p.rows = next;
@@ -166,6 +170,7 @@ export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile, initialKey }) 
 
   // ----- Live state -----
   const load = useCallback(async () => {
+    const genAtStart = editGen.current;
     try {
       const [geomRes, rkRes, actRes, provRes, kmRes, modsRes] = await Promise.all([
         v2Client.getBusRetained("keyboard/geometry"),
@@ -212,7 +217,8 @@ export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile, initialKey }) 
       const stored = storedRules(cfg.rules);
       const json = JSON.stringify(stored);
       const p = pending.current;
-      if (json !== serverRows.current && !p.rows && !p.inflight && p.timer === null) {
+      const editedSince = genAtStart !== editGen.current;
+      if (json !== serverRows.current && !editedSince && !p.rows && !p.inflight && p.timer === null) {
         serverRows.current = json;
         setRows(stored);
       }
@@ -482,17 +488,17 @@ export const KeycapsTab: React.FC<KeycapsTabProps> = ({ pickFile, initialKey }) 
       </section>
 
       <div className="kr-columns">
-        <section className="card kr-rules-card" aria-label="Key Rules list">
+        <section className="card kr-rules-card" aria-label="Custom Legends rules">
           <div className="kr-board-head">
             <div>
-              <h3>Key Rules</h3>
+              <h3>Your rules</h3>
               <small className="muted">
                 Later rules win over earlier ones. All rules win over modules and the keymap.
               </small>
             </div>
           </div>
           {moduleEnabled === false && (
-            <div className="notice notice-warn">Key Rules is turned off. Saving a rule turns it back on.</div>
+            <div className="notice notice-warn">Custom Legends is turned off. Saving a rule turns it back on.</div>
           )}
           {loaded && (
             <RuleList

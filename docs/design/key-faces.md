@@ -1,12 +1,12 @@
 # Key Faces: rules, parts, conditions and signals
 
-Every key has a small screen under it. `keys-renderer` decides what each screen shows. It does that from declarative **rules** that modules (and the user, through Key Rules) publish on `keys/providers/<id>`. This document describes the vocabulary those rules speak.
+Every key has a small screen under it. `keys-renderer` decides what each screen shows. It does that from declarative **rules** that modules (and the user, through Custom Legends) publish on `keys/providers/<id>`. This document describes the vocabulary those rules speak.
 
 ## Principles
 
 - **Centered or inset by default.** Anything drawn at a keycap's edge makes parallax and viewing-angle offsets obvious. Every part is drawn around the key's visual center, or inset from the edge. Edge styles exist only as explicit opt-ins (`tile_bg`, `cd_style = "curtain"`, `progress_style = "edge"`, `shape = "edge"`).
 - **Rules describe what you want, not how to draw it.** A module never draws on keys directly. It says "F2 glows gold while the bedroom is Dim", and the renderer owns layout, layering, transitions and performance.
-- **One vocabulary for modules and people.** Key Rules (the user's own rules, edited in Studio or with `fluxctl`) uses the same rule shape as modules. Anything a module can show, a person can show.
+- **One vocabulary for modules and people.** Custom Legends (the user's own rules, edited in Studio or with `fluxctl`) uses the same rule shape as modules. Anything a module can show, a person can show.
 - **Transitions are free.** Glow, outline and backdrop fade between states. Nothing pops unless it asks to.
 
 ## Rule shape
@@ -50,7 +50,7 @@ For each key, every matching rule is applied from lowest to highest precedence. 
 
 So a lower-priority patch never changes a higher-priority replacement, and a higher-priority patch always does.
 
-Priority bands: keymap legends 10, shortcuts 30, module faces around 40–80, **binding markers 90** (layer-tap `L2`, mod-tap modifier icons, published by `keys-keymap` as their own patch), and **Key Rules 100+** (the user's rules always win; later rows win ties).
+Priority bands: keymap legends 10, shortcuts 30, module faces around 40–80, **binding markers 90** (layer-tap `L2`, mod-tap modifier icons, published by `keys-keymap` as their own patch), and **Custom Legends 100+** (the user's rules always win; later rows win ties).
 
 ### Groups
 
@@ -92,9 +92,9 @@ Signals are effects only: `glow` and `outline`. The legend never changes, so the
 
 Publish `keys/inspect/request` `{ "key": "F2", "request_id": "x" }`. The renderer answers on `keys/inspect/result` with every rule that targets the key, in precedence order. Each step names the provider, rule, priority and mode, whether it matched, and why not if it didn't. The answer also includes the resolved face and any active signal. `fluxctl keys explain F2` prints it. Studio's Keycaps tab shows it in words.
 
-## Key Rules (the user's rules)
+## Custom Legends (the user's rules)
 
-The `keys-custom` module is now **Key Rules**. Its `rules` list holds the user's rules in friendly fields:
+The `keys-custom` module is now **Custom Legends**. Its `rules` list holds the user's rules in friendly fields:
 
 | Field | Meaning |
 |---|---|

@@ -82,7 +82,7 @@ const MODULE_NAMES: Record<string, string> = {
   keymap: "Keymap legends",
   "keymap-bindings": "Binding markers (layer-tap, mod-tap)",
   shortcuts: "Shortcut legends",
-  custom: "Key Rules",
+  custom: "Custom Legends",
 };
 
 function providerName(topic: string): string {

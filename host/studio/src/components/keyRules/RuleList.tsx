@@ -61,7 +61,7 @@ export const RuleList: React.FC<RuleListProps> = ({
   }
 
   return (
-    <ol className="kr-rules" aria-label="Key Rules">
+    <ol className="kr-rules" aria-label="Your rules">
       {rows.map((r, i) => {
         const row = isRow(r) ? r : null;
         const name = row ? str(row.name) : "";

@@ -183,7 +183,7 @@ function sidebarLabel(m: V2ModuleRecord): string {
   const clean: Record<string, string> = {
     "profiles": "Profiles",
     "keys-keymap": "QMK Keymap",
-    "keys-custom": "Key Rules",
+    "keys-custom": "Custom Legends",
     "dock-top-bar": "Top Bar & Attachments",
     "keys-shortcuts": "Modifier Legends",
     "streamdeck-bridge": "Stream Deck",
@@ -741,7 +741,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
           <div className="kg-module-page">
             <div className="kg-page-header">
               <div className="kg-page-title-row">
-                <h1>Key Rules</h1>
+                <h1>Custom Legends</h1>
                 <span className="kg-pill-subtle">What each key shows, and when</span>
               </div>
             </div>

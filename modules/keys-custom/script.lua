@@ -1,4 +1,4 @@
--- Key Rules (`keys-custom`): the user's own key-face rules.
+-- Custom Legends (`keys-custom`): the user's own key-face rules.
 --
 -- Turns the `rules` list setting (plus the older per-key / per-action overrides that Studio's
 -- Keycaps tab writes) into `patch` rules for `keys-renderer` on `keys/providers/custom`.

@@ -112,7 +112,7 @@ enum Commands {
         cmd: VialCmd,
     },
 
-    /// Key faces: explain why a key looks the way it does, flash a key, and edit your Key Rules.
+    /// Key faces: explain why a key looks the way it does, flash a key, and edit your Custom Legends rules.
     Keys {
         #[command(subcommand)]
         cmd: KeysCmd,
@@ -143,7 +143,7 @@ enum KeysCmd {
         #[arg(long)]
         clear: bool,
     },
-    /// Your Key Rules (the `keys-custom` module's `rules` list). Later rules win.
+    /// Your Custom Legends rules (the `keys-custom` module's `rules` list). Later rules win.
     Rules {
         #[command(subcommand)]
         cmd: KeyRulesCmd,
@@ -2520,7 +2520,7 @@ fn handle_keys(cli: &Cli, cmd: &KeysCmd) -> Result<(), String> {
                 save_key_rules(&base, rules.clone())?;
             }
             let human = if rules.is_empty() {
-                "No Key Rules.".to_string()
+                "No Custom Legends rules.".to_string()
             } else {
                 rules.iter().enumerate().map(|(i, r)| describe_rule(i, r)).collect::<Vec<_>>().join("\n")
             };
