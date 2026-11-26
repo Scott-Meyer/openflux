@@ -291,8 +291,11 @@ fn build_host_command(entry: &std::path::Path) -> Command {
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    match ext.as_str() {
+    let mut cmd = match ext.as_str() {
         "py" => {
+            #[cfg(target_os = "windows")]
+            let mut c = Command::new("python");
+            #[cfg(not(target_os = "windows"))]
             let mut c = Command::new("python3");
             c.arg(entry);
             c
@@ -308,7 +311,14 @@ fn build_host_command(entry: &std::path::Path) -> Command {
             c
         }
         _ => Command::new(entry),
+    };
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
     }
+    cmd
 }
 
 fn spawn_log_reader<R: std::io::Read + Send + 'static>(
