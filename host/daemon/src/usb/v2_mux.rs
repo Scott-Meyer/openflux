@@ -378,6 +378,7 @@ impl V2UsbMux {
             let extra = vec![
                 "modules/#".to_string(),
                 "display/perf".to_string(),
+                "keys/inspect/result".to_string(), // keys-renderer's answers (fluxctl keys explain, Studio)
                 "keyboard/geometry".to_string(),
                 "fx/surface/impulse".to_string(),
             ];
@@ -488,6 +489,7 @@ impl V2UsbMux {
                         let extra = vec![
                             "modules/#".to_string(),
                             "display/perf".to_string(),
+                "keys/inspect/result".to_string(), // keys-renderer's answers (fluxctl keys explain, Studio)
                             "keyboard/geometry".to_string(),
                             "fx/surface/impulse".to_string(),
                         ];
