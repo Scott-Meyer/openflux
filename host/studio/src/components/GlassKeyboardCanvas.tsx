@@ -110,7 +110,7 @@ void main() {
   ) + vec2(1e-4, 0.0));
   float corner_fac = smoothstep(0.68, 0.96, abs_ku.x) * smoothstep(0.68, 0.96, abs_ku.y);
 
-  // Wall geometry in exact 1080p pixels (calibrated from 1:1 macro photo of Scott's middle keys!)
+  // Wall geometry in exact 1080p pixels (calibrated from 1:1 macro photo of physical keycaps)
   // Side walls are slightly thicker (~9.5px) to house the maglev guide posts; top/bottom rims are
   // sleek (~6.2px) so dual-shift symbols (! @ # $ %) & icons stay 100% crisp and unclipped!
   float wall_w = mix(6.2, 9.5, abs(wall_n.x));

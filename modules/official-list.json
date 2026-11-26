@@ -266,40 +266,42 @@
       "replaced_by": null,
       "preview": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/bg-stream",
-      "sha256": "f8ca3a77d4d55a9c25e3920930f23b9eb85920fee98fc51138a2349dcd09a045"
+      "sha256": "946e2a125cc69ecc4ed9f24b05cc87b9efb28614924822f8355693915023d10e"
     },
     {
-      "id": "host-volume-osd",
-      "name": "macOS Volume HUD",
-      "version": "2.0.0",
-      "description": "Watches macOS system volume and mute in real time via CoreAudio (zero subprocess overhead) and shows a live meter pill via `ui/toast`",
+      "id": "mqtt-bridge",
+      "name": "MQTT Buttons & Status",
+      "version": "0.2.0",
+      "description": "Bind MQTT buttons to any key on any layer, show live MQTT state on the keycaps and a top-bar tile, and appear in Home Assistant as a device with one event entity per button",
       "author": "Keyglass",
       "license": "MIT OR Apache-2.0",
       "category": "host_service",
       "tags": [
-        "host-service",
-        "audio",
-        "volume",
-        "osd",
-        "toast"
+        "mqtt",
+        "home-assistant",
+        "keys",
+        "macros",
+        "status",
+        "top-bar",
+        "smart-home"
       ],
       "host_requirement": "required",
       "runs_host_process": true,
-      "slot_capable": false,
-      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/host-volume-osd",
+      "slot_capable": true,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/mqtt-bridge",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
       "discord_url": "https://discord.gg/keyglass",
-      "changelog": "Initial standalone Keyglass v2 release.",
+      "changelog": "v0.2.0: Uses the keycap renderer's built-in glow (needs keys-renderer with rule.glow). v0.1.3: The glow is small and centered on the icon instead of filling the key. v0.1.2: Active keys get a soft back glow that fades in and out (and breathes while a press awaits confirmation) instead of an LED dot and border. v0.1.1: Home Assistant entity ids follow the button id (event.<node>_<id>) via default_entity_id. v0.1.0: First release.",
       "changelog_url": null,
-      "maturity": "stable",
+      "maturity": "alpha",
       "deprecated": false,
       "deprecation_message": null,
       "moved_to": null,
       "replaced_by": null,
       "preview": null,
-      "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/host-volume-osd",
-      "sha256": "5c262e8a6d839f8951fbbbecce1a2452062d63ecc47198ba78fbbf9ff9c22ee2"
+      "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/mqtt-bridge",
+      "sha256": "21d0d3c5511b50879fa92dd638324522629cbb2d881126c90d7523096ca8dd4e"
     },
     {
       "id": "widget-media",
@@ -398,12 +400,12 @@
       "replaced_by": null,
       "preview": "preview.png",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-prusa-connect",
-      "sha256": "4f3e08d5f3bf92c037c8660c3735e0c1550b657e1d66e82f070b40b9046829bb"
+      "sha256": "cd835b829779aebe751adbd67763310dc28f5d6414afbd03ac21e11dc41e6322"
     },
     {
       "id": "streamdeck-bridge",
       "name": "Stream Deck",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "description": "Import Elgato .streamDeckPlugin / .sdPlugin packages or create live programmable Stream Deck buttons and bind them to ANY key on ANY QMK layer (Base, Fn, Gaming, Layer 3+) with live dynamic icons, titles, and multi-state toggles",
       "author": "KeyGlass",
       "license": "MIT",
@@ -423,7 +425,7 @@
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
       "discord_url": "https://discord.gg/keyglass",
-      "changelog": "Initial standalone Keyglass v2 release.",
+      "changelog": "v2.1.0: Declares its buttons as bindable key actions itself (dynamic_actions), instead of Keyglass special-casing Stream Deck. Needs a Keyglass build with dynamic_actions support.",
       "changelog_url": null,
       "maturity": "beta",
       "deprecated": false,
@@ -432,7 +434,7 @@
       "replaced_by": null,
       "preview": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/streamdeck-bridge",
-      "sha256": "a056b3ec0d3b1dac918715aa2dc111744d98b77ce24865077dc424ab7f41ee5f"
+      "sha256": "a0ba256b50937c88aeaabceed19445bca685881201612a80a0da7d40f02d01bd"
     },
     {
       "id": "widget-system-load",
@@ -470,6 +472,40 @@
       "sha256": "de55f7fcc5e615d686d3a7847363f8c5033fac5be23af911c460cdeeb2a5fa99"
     },
     {
+      "id": "host-volume-osd",
+      "name": "System Volume HUD",
+      "version": "3.0.0",
+      "description": "Shows a live volume & mute meter pill on the keyboard whenever macOS or Windows system volume changes (pure Lua, zero Python required)",
+      "author": "Keyglass",
+      "license": "MIT OR Apache-2.0",
+      "category": "effect",
+      "tags": [
+        "audio",
+        "volume",
+        "osd",
+        "toast",
+        "macos",
+        "windows"
+      ],
+      "host_requirement": "optional",
+      "runs_host_process": false,
+      "slot_capable": false,
+      "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/host-volume-osd",
+      "repository": "https://github.com/keyglass-dev/keyglass-modules",
+      "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
+      "discord_url": "https://discord.gg/keyglass",
+      "changelog": "3.0.0: Converted to a pure sandboxed Lua module subscribing to native host/audio/volume (zero Python dependency on macOS and Windows).",
+      "changelog_url": null,
+      "maturity": "stable",
+      "deprecated": false,
+      "deprecation_message": null,
+      "moved_to": null,
+      "replaced_by": null,
+      "preview": null,
+      "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/host-volume-osd",
+      "sha256": "2f42313bfd751f41d411e8c47da008b4edcc96fc0f04ce03648d7c255d301b1f"
+    },
+    {
       "id": "widget-weather",
       "name": "Weather Widget",
       "version": "2.0.0",
@@ -499,7 +535,7 @@
       "replaced_by": null,
       "preview": "preview.png",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-weather",
-      "sha256": "14542a035d131ea3564fc4769e8de5a2a8a9478f9afb2e76867d4446dab424f1"
+      "sha256": "28862eaf8d0292e67d9ad9a343365bd484285aa2a80e6747b82db71a223981e1"
     },
     {
       "id": "wow-key-faces",

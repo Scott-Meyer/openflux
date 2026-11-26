@@ -719,7 +719,7 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
                 let saved = state.v2.registry.load_state();
                 let disc = state.v2.registry.discover();
                 let mut wants_weather = false;
-                let mut city = "Denver".to_string();
+                let mut city = String::new();
                 let mut celsius = false;
                 for (id, dm) in &disc {
                     if let Some(inst) = saved.modules.get(id) {
@@ -748,7 +748,7 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
                         }
                     }
                 }
-                if wants_weather {
+                if wants_weather && !city.is_empty() {
                     let w = state.weather_bridge.poll_nonblocking(&city, celsius);
                     let hourly = w
                         .hourly

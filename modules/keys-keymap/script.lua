@@ -274,7 +274,19 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default, os_name)
   -- MO(layer): 0x5220..0x523F
   if kc >= 0x5220 and kc <= 0x523F then
     local lyr = kc & 0x1F
-    return { key = ki, label = (lyr == 1 or lyr == 5 or lyr == 6) and "Fn" or ("L" .. tostring(lyr)), icon = "kbd_layer" }
+    local custom = layer_names[tostring(lyr)]
+    local lbl = "L" .. tostring(lyr)
+    if type(custom) == "string" and #custom > 0 then
+      local low = string.lower(custom)
+      if string.sub(low, 1, 2) == "fn" then
+        lbl = "Fn"
+      elseif #custom <= 6 then
+        lbl = custom
+      end
+    elseif lyr == 1 then
+      lbl = "Fn"
+    end
+    return { key = ki, label = lbl, icon = "kbd_layer" }
   end
   -- DF / TG / OSL / TT layer keys
   if kc >= 0x5240 and kc <= 0x52FF then
@@ -289,10 +301,9 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default, os_name)
   -- TD(idx): 0x5700..0x57FF (Tap Dance)
   if kc >= 0x5700 and kc <= 0x57FF then
     local idx = kc - 0x5700
-    local td_labels = { [0] = "‘/’", [1] = "“/”", [2] = "!/?" }
     return {
       key = ki,
-      label = td_labels[idx] or ("TD" .. tostring(idx)),
+      label = "TD" .. tostring(idx),
       color = (src_layer and src_layer > 0) and "#7ae7ff" or nil,
     }
   end
@@ -496,8 +507,8 @@ local function publish_keymap()
       { 68, ",", nil, "<" }, { 69, ".", nil, ">" }, { 70, "/", nil, "?" },
       { 71, "Shift", "kbd_shift" }, { 72, "", "kbd_up" }, { 73, "PgDn", "kbd_pgdn" },
       mod_row[1], mod_row[2], mod_row[3], mod_row[4],
-      { 78, "", "kbd_space" }, { 79, "Fn", "kbd_layer" },
-      { 80, "Reset", "refresh" }, { 81, "Pomo", "play" },
+      { 78, "", "kbd_space" }, { 79, alt_m[1], alt_m[3] },
+      { 80, "Fn", "kbd_layer" }, { 81, "Ctrl", "kbd_ctrl" },
       { 82, "", "kbd_left" }, { 83, "", "kbd_down" }, { 84, "", "kbd_right" },
     }
     for _, f in ipairs(fallback) do
@@ -548,6 +559,7 @@ function on_event(topic, payload)
     publish_keymap()
   elseif topic == "keyboard/layer_names" and type(payload) == "table" then
     layer_names = payload
+    publish_keymap()
   elseif topic == "system/actions" and type(payload) == "table" then
     index_system_actions(payload)
     publish_keymap()

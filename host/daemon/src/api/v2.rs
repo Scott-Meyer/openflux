@@ -5865,8 +5865,8 @@ publishes = []
         let _ = std::fs::remove_dir_all(&tmp);
         let v2 = V2State::new(Some(tmp.clone()), None);
         v2.save_host_identity(&HostIdentity {
-            host_id: "windows-penguin".into(),
-            host_name: "Penguin".into(),
+            host_id: "windows-gaming-pc".into(),
+            host_name: "Gaming PC".into(),
             os: "windows".into(),
         })
         .unwrap();
@@ -5879,7 +5879,7 @@ publishes = []
         assert_eq!(fresh["stack"][1]["id"], "windows");
         assert_eq!(fresh["stack"][1]["implicit"], true);
 
-        // 2. Customize Windows (Layer 1) + Penguin (computer override) + cross-OS WoW (no qmk_layer)
+        // 2. Customize Windows (Layer 1) + Gaming PC (computer override) + cross-OS WoW (no qmk_layer)
         let mut win_ov = BTreeMap::new();
         win_ov.insert(
             "keys-keymap".into(),
@@ -5927,13 +5927,13 @@ publishes = []
                     module_overrides: win_ov,
                 },
                 ProfileEntry {
-                    id: "penguin".into(),
-                    name: "Penguin".into(),
+                    id: "gaming-pc".into(),
+                    name: "Gaming PC".into(),
                     parent: Some("default".into()),
                     enabled: true,
                     implicit: false,
                     match_apps: vec![],
-                    match_hosts: vec!["Penguin".into()],
+                    match_hosts: vec!["Gaming PC".into()],
                     match_os: vec![],
                     tags: vec![],
                     qmk_layer: None,
@@ -5958,7 +5958,7 @@ publishes = []
         };
         v2.save_profiles(&doc).unwrap();
 
-        // Focus WoW on Penguin -> stack MUST be Default -> Windows -> Penguin -> WoW!
+        // Focus WoW on Gaming PC -> stack MUST be Default -> Windows -> Gaming PC -> WoW!
         let _ = v2.broker.publish(
             "host/app/active",
             json!({ "app_id": "Wow.exe", "process_name": "Wow.exe", "window_title": "World of Warcraft" }),
@@ -5972,15 +5972,15 @@ publishes = []
             .iter()
             .map(|s| s["id"].as_str().unwrap())
             .collect();
-        assert_eq!(stack_ids, vec!["default", "windows", "penguin", "wow"]);
+        assert_eq!(stack_ids, vec!["default", "windows", "gaming-pc", "wow"]);
         assert_eq!(active["qmk_layer"], 1);
         assert_eq!(active["field_sources"]["qmk_layer"]["profile_id"], "windows");
-        assert_eq!(active["field_sources"]["bg-media.bg_dimming"]["profile_id"], "penguin");
+        assert_eq!(active["field_sources"]["bg-media.bg_dimming"]["profile_id"], "gaming-pc");
         assert_eq!(active["field_sources"]["wow-key-faces.visibility"]["profile_id"], "wow");
         assert_eq!(active["module_overrides"]["bg-media"]["bg_dimming"], 25);
         assert_eq!(active["module_overrides"]["wow-key-faces"]["visibility"], "Always show");
 
-        // 3. Pinning WoW manually STILL preserves Windows (Layer 1) & Penguin underneath!
+        // 3. Pinning WoW manually STILL preserves Windows (Layer 1) & Gaming PC underneath!
         let _ = v2.broker.publish(
             "host/app/active",
             json!({ "app_id": "explorer.exe", "process_name": "explorer.exe", "window_title": "" }),
@@ -5996,7 +5996,7 @@ publishes = []
             .iter()
             .map(|s| s["id"].as_str().unwrap())
             .collect();
-        assert_eq!(pin_stack, vec!["default", "windows", "penguin", "wow"]);
+        assert_eq!(pin_stack, vec!["default", "windows", "gaming-pc", "wow"]);
         assert_eq!(pinned["qmk_layer"], 1);
         assert_eq!(pinned["active_match"]["pinned"], true);
 
