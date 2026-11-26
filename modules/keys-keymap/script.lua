@@ -260,7 +260,7 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default, os_name)
   -- MO(layer): 0x5220..0x523F
   if kc >= 0x5220 and kc <= 0x523F then
     local lyr = kc & 0x1F
-    return { key = ki, label = (lyr == 1 or lyr == 5) and "Fn" or ("L" .. tostring(lyr)), icon = "kbd_layer" }
+    return { key = ki, label = (lyr == 1 or lyr == 5 or lyr == 6) and "Fn" or ("L" .. tostring(lyr)), icon = "kbd_layer" }
   end
   -- DF / TG / OSL / TT layer keys
   if kc >= 0x5240 and kc <= 0x52FF then
