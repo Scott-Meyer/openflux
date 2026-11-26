@@ -14,9 +14,10 @@ Every key has a small screen under it. `keys-renderer` decides what each screen 
 ```lua
 {
   -- Which keys (any one of these):
-  key = "KC_F2" | 3,                  -- a physical key
+  key = "KC_F2" | 3,                  -- a physical key (ANSI position name or index)
   keys = { "KC_F1", "KC_F2", 5 },     -- several
   group = "fkeys",                    -- named group (see below)
+  action = "mqtt-bridge.scene_on",    -- wherever that action is bound on the active layer
 
   mode = "replace" | "patch" | "badge" | "hide",   -- default from the provider
   priority = 80,                      -- default from the provider
@@ -28,7 +29,7 @@ Every key has a small screen under it. `keys-renderer` decides what each screen 
   hide = "legend" | "all",            -- patch shorthand: drop the main legend (label, shifted, icon, image) or everything
   glow = true | 0.6 | { strength, color, pulse },
   outline = true | { color, shape = "ring" | "window" | "edge", width, pulse },
-  backdrop = "#1a2b3c" | { color, alpha, shape = "disc" | "window" | "edge" },
+  backdrop = "#1a2b3c" | { color, alpha, shape = "window" | "edge", pulse },
   corners = { tl = "2x", tr = { dot = true }, bl = { icon = "star" }, br = { text = "9", color = "#f00" } },
   sub = "21°", toggled = true,        -- shorthands for the top-right corner
   cd = 3.2, max_cd = 8, cd_style = "clock" | "curtain",
@@ -38,12 +39,18 @@ Every key has a small screen under it. `keys-renderer` decides what each screen 
 }
 ```
 
-### Modes
+### Precedence: one fold
 
-- `replace`: the highest-priority `replace` rule is the key's face.
-- `patch`: edits whatever face won, in priority order. It sets only the fields it names, and `false` removes a field (`label = false`). `hide = "legend"` removes the main legend and keeps corners, glow, cooldowns and badges. Patches are how you change one thing without taking over the key.
-- `badge`: a dot in a corner slot (`corner = "tl" | "tr" | "bl" | "br"`, default `tr`).
-- `hide`: an empty key.
+For each key, every matching rule is applied from lowest to highest precedence. Precedence is priority, then provider topic, then position in the provider.
+
+- `replace` resets the face to exactly what it says.
+- `patch` edits the face so far. Omitted fields inherit, `false` clears one, and a supplied field replaces that field. `corners` merge slot by slot. Setting `icon` clears an inherited `image` and vice versa. `hide = "legend"` drops label, shifted symbol, icon and image, and keeps corners, effects and cooldowns. `hide = "all"` blanks the key.
+- `badge` puts a dot in one corner slot (`corner = "tl" | "tr" | "bl" | "br"`, default `tr`).
+- `hide` blanks the key. A blank key also suppresses signals while it wins.
+
+So a lower-priority patch never changes a higher-priority replacement, and a higher-priority patch always does.
+
+Priority bands: keymap legends 10, shortcuts 30, module faces around 40–80, **binding markers 90** (layer-tap `L2`, mod-tap modifier icons, published by `keys-keymap` as their own patch), and **Key Rules 100+** (the user's rules always win; later rows win ties).
 
 ### Groups
 
@@ -67,7 +74,9 @@ All listed conditions must hold.
 | `time = "22:00-06:00"` | local wall-clock range |
 | `bus = { topic, path, eq / ne / gt / lt / gte / lte / ["in"] / exists / contains }` | a retained bus value; `path` is a dot path into the JSON payload |
 
-`bus` may also be a list (all must hold). The renderer subscribes to the topics conditions mention, so values from the computer arrive on the keyboard automatically.
+`bus` may also be a list (all must hold). The renderer subscribes to exactly the topics conditions mention, and unsubscribes when no rule mentions them any more (at most 32, and no wildcards), so values from the computer arrive on the keyboard automatically. A topic with no value is *unavailable*. Every operator then fails except `exists = false`.
+
+`time` and `idle_ms` are not built yet.
 
 ## Signals: momentary looks
 
@@ -77,18 +86,38 @@ Some things are events, not states: a notification, a build failing, a timer end
 { "keys": ["KC_F5"], "set": { "glow": { "color": "#ff5c7c", "pulse": true } }, "duration_ms": 3000 }
 ```
 
-The renderer applies `set` as a top-priority patch for `duration_ms`, then fades it out. `id` replaces an earlier signal with the same id, and `{ "id": ..., "clear": true }` ends it early. Selectors are the same as for rules (`key`, `keys`, `group`).
+Signals are effects only: `glow` and `outline`. The legend never changes, so the cached legend layer isn't redrawn. The newest signal on a key wins. Re-sending an `id` refreshes its deadline, and `{ "id": ..., "clear": true }` ends it. Durations are capped at 60 s and active signals at 48. When a signal ends, the key shows whatever its rules say *now*, fading back. Selectors are the same as for rules (`key`, `keys`, `group`, `action`). For something that is a state, like MQTT "pending" or "offline", use a rule condition, not a signal.
+
+`fluxctl keys signal F5 --outline --pulse --color '#ff5c7c'` sends one.
+
+## Explain
+
+Publish `keys/inspect/request` `{ "key": "F2", "request_id": "x" }`. The renderer answers on `keys/inspect/result` with every rule that targets the key, in precedence order. Each step names the provider, rule, priority and mode, whether it matched, and why not if it didn't. The answer also includes the resolved face and any active signal. `fluxctl keys explain F2` prints it. Studio's Keycaps tab shows it in words.
 
 ## Key Rules (the user's rules)
 
-The `keys-custom` module ("Custom Keycap Visuals") becomes **Key Rules**. It is a list of rules in its config. Each row is the same rule shape, with keys, conditions and looks entered as friendly fields:
+The `keys-custom` module is now **Key Rules**. Its `rules` list holds the user's rules in friendly fields:
 
-- Studio edits the list (pick keys on a keyboard map, conditions, look, live preview).
-- `fluxctl modules config keys-custom --set rules='[...]'` edits the same data.
+| Field | Meaning |
+|---|---|
+| `keys` | `F1-F4`, `Esc, a`, a group name, `row:N`, or `action:<id>`; comma-separated |
+| `layer` / `app` / `held` / `caps` | conditions |
+| `condition_topic`, `condition_path`, `condition_op`, `condition_value` | a `bus` condition |
+| `hide` | `legend` or `all` |
+| `label`, `icon`, `color` | the legend |
+| `glow` (`soft`, `subtle`, `pulse`) + `glow_color` | effects |
+| `outline` (`ring`, `window`, `edge`) + `outline_color` | effects |
+| `backdrop` | effect color |
+| `corner_tl` … `corner_br` | text, `dot`, `icon:<name>`, or `none` to clear |
 
-Existing per-key and per-action overrides keep working; they're expressed as patch rules.
+You can edit them three ways, all on the same data:
+- **Studio:** the Keycaps tab.
+- **CLI:** `fluxctl keys rules list|add|remove|enable|disable|move`.
+- **Raw config:** `fluxctl modules config keys-custom --set rules='[...]'`.
+
+Per-key and per-action overrides from the Keycaps tab keep working, as patches at the bottom of the user band. That's a behavior change from replacing the face: binding markers now stay, and `bg`/`border` now draw as an inset backdrop and outline.
 
 ## Performance
 
 - Legends and corners are a cached 2D layer. The renderer redraws it only when providers, held keys, modifiers, layer, app, conditions or signals change. Glow, outline pulses and fades are GPU passes every frame and don't invalidate the cache.
-- Conditions are re-evaluated on the events that can change them. Time and idle conditions are re-checked once a second.
+- Conditions are re-evaluated on the events that can change them: provider changes, bus values they watch, layer, modifiers, app, and held keys (only when some rule uses `held`).

@@ -111,6 +111,116 @@ enum Commands {
         #[command(subcommand)]
         cmd: VialCmd,
     },
+
+    /// Key faces: explain why a key looks the way it does, flash a key, and edit your Key Rules.
+    Keys {
+        #[command(subcommand)]
+        cmd: KeysCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum KeysCmd {
+    /// Explain a key's face step by step: every rule that applies, in precedence order, and why
+    /// skipped rules didn't match. KEY is a key index or name (e.g. 3, F2, KC_A, ESC).
+    Explain { key: String },
+    /// Flash keys with a momentary glow or outline (published on `keys/signal`).
+    Signal {
+        /// Keys: names/indices, a group (fkeys, home_row, all, ...), or action:<id>; comma-separated.
+        keys: String,
+        /// Outline instead of glow.
+        #[arg(long)]
+        outline: bool,
+        #[arg(long)]
+        color: Option<String>,
+        #[arg(long)]
+        pulse: bool,
+        #[arg(long, default_value_t = 3000)]
+        duration_ms: u64,
+        /// Signal id; re-sending it refreshes the signal, and --clear ends it.
+        #[arg(long)]
+        id: Option<String>,
+        #[arg(long)]
+        clear: bool,
+    },
+    /// Your Key Rules (the `keys-custom` module's `rules` list). Later rules win.
+    Rules {
+        #[command(subcommand)]
+        cmd: KeyRulesCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum KeyRulesCmd {
+    /// List rules in order.
+    List,
+    /// Append a rule (or insert it with --at). Fields match the Key Rules list in Studio.
+    Add {
+        /// e.g. "all", "F1-F4", "home_row", "Esc, a", "action:mqtt-bridge.scene_on"
+        #[arg(long)]
+        keys: String,
+        #[arg(long)]
+        name: Option<String>,
+        /// Only on this layer (0-15).
+        #[arg(long)]
+        layer: Option<u8>,
+        /// Only in these apps (comma-separated).
+        #[arg(long)]
+        app: Option<String>,
+        /// held | not_held
+        #[arg(long)]
+        held: Option<String>,
+        /// on | off
+        #[arg(long)]
+        caps: Option<String>,
+        /// Only when this retained bus topic...
+        #[arg(long)]
+        when_topic: Option<String>,
+        /// ...at this dot path...
+        #[arg(long)]
+        when_path: Option<String>,
+        /// ...is (eq, ne, in, gt, lt, contains, exists, missing)...
+        #[arg(long, default_value = "eq")]
+        when_op: String,
+        /// ...this value.
+        #[arg(long)]
+        when_value: Option<String>,
+        /// legend | all
+        #[arg(long)]
+        hide: Option<String>,
+        #[arg(long)]
+        label: Option<String>,
+        #[arg(long)]
+        icon: Option<String>,
+        #[arg(long)]
+        color: Option<String>,
+        /// soft | subtle | pulse
+        #[arg(long)]
+        glow: Option<String>,
+        #[arg(long)]
+        glow_color: Option<String>,
+        /// ring | window | edge
+        #[arg(long)]
+        outline: Option<String>,
+        #[arg(long)]
+        outline_color: Option<String>,
+        #[arg(long)]
+        backdrop: Option<String>,
+        /// Corner content as SLOT=VALUE (tl/tr/bl/br; text, dot, icon:<name>, none); repeatable.
+        #[arg(long = "corner")]
+        corners: Vec<String>,
+        /// Insert at this position (1-based) instead of appending.
+        #[arg(long)]
+        at: Option<usize>,
+    },
+    /// Remove a rule by position (1-based) or name.
+    Remove { rule: String },
+    /// Enable a rule by position or name.
+    Enable { rule: String },
+    /// Disable a rule by position or name (kept in the list).
+    Disable { rule: String },
+    /// Move a rule to a new position (1-based); later positions win.
+    Move { rule: String, to: usize },
 }
 
 #[derive(Subcommand)]
@@ -703,6 +813,7 @@ fn run(cli: Cli) -> Result<(), String> {
         Commands::Preview { cmd } => handle_preview(&cli, &reg, cmd),
         Commands::Keyboard { cmd } => handle_keyboard(&cli, cmd),
         Commands::Vial { cmd } => handle_vial(&cli, cmd),
+        Commands::Keys { cmd } => handle_keys(&cli, cmd),
     }
 }
 
@@ -2167,6 +2278,243 @@ fn handle_bus(cli: &Cli, cmd: &BusCmd) -> Result<(), String> {
                     }
                 }
             }
+            Ok(())
+        }
+    }
+}
+
+/// Splits a Key Rules `keys` spec into a `keys/signal` selector (`group`, `action` or `keys`).
+fn signal_selector(spec: &str) -> Value {
+    let groups = ["all", "fkeys", "numbers", "letters", "home_row", "mods", "arrows", "nav"];
+    let t = spec.trim();
+    let low = t.to_ascii_lowercase();
+    if groups.contains(&low.as_str()) || low.starts_with("row:") {
+        return json!({ "group": low });
+    }
+    if let Some(a) = t.strip_prefix("action:") {
+        return json!({ "action": a.trim() });
+    }
+    let keys: Vec<Value> = t
+        .split(',')
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .map(|k| k.parse::<u64>().map(Value::from).unwrap_or_else(|_| Value::from(k)))
+        .collect();
+    json!({ "keys": keys })
+}
+
+fn key_rules_state(base: &str) -> Result<(serde_json::Map<String, Value>, Vec<Value>), String> {
+    let val = daemon_json(reqwest::Method::GET, &format!("{base}/v2/modules/keys-custom"), None, 5000)?;
+    let cfg = val["state"]["config"].as_object().cloned().unwrap_or_default();
+    let rules = cfg.get("rules").and_then(|r| r.as_array()).cloned().unwrap_or_default();
+    Ok((cfg, rules))
+}
+
+fn save_key_rules(base: &str, rules: Vec<Value>) -> Result<Value, String> {
+    daemon_json(
+        reqwest::Method::PUT,
+        &format!("{base}/v2/modules/keys-custom/state"),
+        Some(&json!({ "config": { "rules": rules } })),
+        5000,
+    )
+}
+
+fn find_rule(rules: &[Value], which: &str) -> Result<usize, String> {
+    if let Ok(n) = which.parse::<usize>() {
+        if n >= 1 && n <= rules.len() {
+            return Ok(n - 1);
+        }
+        return Err(format!("no rule #{n} (there are {})", rules.len()));
+    }
+    rules
+        .iter()
+        .position(|r| r["name"].as_str() == Some(which))
+        .ok_or_else(|| format!("no rule named {which:?}"))
+}
+
+fn describe_rule(i: usize, r: &Value) -> String {
+    let mut look = Vec::new();
+    for (k, word) in [("hide", "hide"), ("label", "label"), ("icon", "icon"), ("glow", "glow"), ("outline", "outline"), ("backdrop", "backdrop")] {
+        if let Some(v) = r[k].as_str().filter(|v| !v.is_empty() && *v != "none" && *v != "nothing") {
+            look.push(format!("{word} {v}"));
+        }
+    }
+    let mut when = Vec::new();
+    if let Some(l) = r["layer"].as_str().filter(|l| *l != "any" && !l.is_empty()) {
+        when.push(format!("layer {l}"));
+    }
+    if let Some(a) = r["app"].as_str().filter(|a| !a.is_empty()) {
+        when.push(format!("in {a}"));
+    }
+    if let Some(t) = r["condition_topic"].as_str().filter(|t| !t.is_empty()) {
+        when.push(format!(
+            "{}{} {} {}",
+            t,
+            r["condition_path"].as_str().filter(|p| !p.is_empty()).map(|p| format!(":{p}")).unwrap_or_default(),
+            r["condition_op"].as_str().unwrap_or("eq"),
+            r["condition_value"].as_str().unwrap_or("")
+        ));
+    }
+    format!(
+        "{:>2}. {}{} on {}{}: {}",
+        i + 1,
+        if r["enabled"] == Value::Bool(false) { "(off) " } else { "" },
+        r["name"].as_str().filter(|n| !n.is_empty()).unwrap_or("rule"),
+        r["keys"].as_str().unwrap_or("?"),
+        if when.is_empty() { String::new() } else { format!(" when {}", when.join(", ")) },
+        if look.is_empty() { "no change".into() } else { look.join(", ") }
+    )
+}
+
+fn handle_keys(cli: &Cli, cmd: &KeysCmd) -> Result<(), String> {
+    let base = require_live_daemon(cli)?;
+    match cmd {
+        KeysCmd::Explain { key } => {
+            let key_val = key.parse::<u64>().map(Value::from).unwrap_or_else(|_| Value::from(key.as_str()));
+            let status = daemon_json(reqwest::Method::GET, &format!("{base}/v2/status"), None, 3000)?;
+            let since = status["latest_bus_seq"].as_u64().unwrap_or(0);
+            let request_id = format!("fluxctl-{}", std::process::id());
+            daemon_json(
+                reqwest::Method::POST,
+                &format!("{base}/v2/bus/pub"),
+                Some(&json!({ "topic": "keys/inspect/request", "payload": { "key": key_val, "request_id": request_id } })),
+                5000,
+            )?;
+            let client = daemon_client(6000)?;
+            let started = Instant::now();
+            let mut since_seq = since;
+            while started.elapsed() < Duration::from_millis(4000) {
+                let resp = client
+                    .get(format!("{base}/v2/bus/events"))
+                    .query(&[("pattern", "keys/inspect/result"), ("since_seq", &since_seq.to_string()), ("wait_ms", "1500")])
+                    .send()
+                    .map_err(|e| format!("bus poll failed: {e}"))?;
+                let body: Value = resp.json().map_err(|e| e.to_string())?;
+                since_seq = body["latest_seq"].as_u64().unwrap_or(since_seq);
+                for ev in body["events"].as_array().cloned().unwrap_or_default() {
+                    let p = &ev["payload"];
+                    if p["request_id"].as_str() != Some(request_id.as_str()) {
+                        continue;
+                    }
+                    let mut lines = vec![format!(
+                        "Key {} (layer {}, mods {}): rules from lowest to highest precedence",
+                        p["key"], p["layer"], p["mods"]
+                    )];
+                    for st in p["steps"].as_array().cloned().unwrap_or_default() {
+                        lines.push(format!(
+                            "  {} {} #{} prio {} {}{}",
+                            if st["matched"] == Value::Bool(true) { "✓" } else { "·" },
+                            st["provider"].as_str().unwrap_or("?"),
+                            st["rule"],
+                            st["priority"],
+                            st["mode"].as_str().unwrap_or(""),
+                            st["skipped"].as_str().map(|w| format!("  (skipped: {w})")).unwrap_or_default()
+                        ));
+                    }
+                    lines.push(format!("  face: {}", p["face"]));
+                    if !p["signal"].is_null() {
+                        lines.push(format!("  signal active: {}", p["signal"]));
+                    }
+                    print_out(cli.json, p, &lines.join("\n"));
+                    return Ok(());
+                }
+            }
+            Err("no answer from keys-renderer (is it enabled?)".into())
+        }
+        KeysCmd::Signal { keys, outline, color, pulse, duration_ms, id, clear } => {
+            let mut payload = signal_selector(keys);
+            let part = if *outline { "outline" } else { "glow" };
+            let mut look = serde_json::Map::new();
+            look.insert("pulse".into(), Value::Bool(*pulse));
+            if let Some(c) = color {
+                look.insert("color".into(), Value::from(c.as_str()));
+            }
+            payload["set"] = json!({ part: Value::Object(look) });
+            payload["duration_ms"] = Value::from(*duration_ms);
+            payload["id"] = Value::from(id.clone().unwrap_or_else(|| "fluxctl".into()));
+            if *clear {
+                payload["clear"] = Value::Bool(true);
+            }
+            daemon_json(
+                reqwest::Method::POST,
+                &format!("{base}/v2/bus/pub"),
+                Some(&json!({ "topic": "keys/signal", "payload": payload })),
+                5000,
+            )?;
+            print_out(cli.json, &payload, &format!("Signal sent to {keys}"));
+            Ok(())
+        }
+        KeysCmd::Rules { cmd } => {
+            let (_cfg, mut rules) = key_rules_state(&base)?;
+            match cmd {
+                KeyRulesCmd::List => {}
+                KeyRulesCmd::Add {
+                    keys, name, layer, app, held, caps, when_topic, when_path, when_op, when_value, hide, label, icon,
+                    color, glow, glow_color, outline, outline_color, backdrop, corners, at,
+                } => {
+                    let mut row = serde_json::Map::new();
+                    row.insert("keys".into(), Value::from(keys.as_str()));
+                    row.insert("enabled".into(), Value::Bool(true));
+                    let mut put = |k: &str, v: &Option<String>| {
+                        if let Some(v) = v {
+                            row.insert(k.into(), Value::from(v.as_str()));
+                        }
+                    };
+                    put("name", name);
+                    put("app", app);
+                    put("held", held);
+                    put("caps", caps);
+                    put("condition_topic", when_topic);
+                    put("condition_path", when_path);
+                    put("condition_value", when_value);
+                    put("hide", hide);
+                    put("label", label);
+                    put("icon", icon);
+                    put("color", color);
+                    put("glow", glow);
+                    put("glow_color", glow_color);
+                    put("outline", outline);
+                    put("outline_color", outline_color);
+                    put("backdrop", backdrop);
+                    if when_topic.is_some() {
+                        row.insert("condition_op".into(), Value::from(when_op.as_str()));
+                    }
+                    if let Some(l) = layer {
+                        row.insert("layer".into(), Value::from(l.to_string()));
+                    }
+                    for c in corners {
+                        let (slot, v) = c.split_once('=').ok_or_else(|| format!("--corner expects SLOT=VALUE, got {c:?}"))?;
+                        if !["tl", "tr", "bl", "br"].contains(&slot) {
+                            return Err(format!("corner slot must be tl, tr, bl or br, got {slot:?}"));
+                        }
+                        row.insert(format!("corner_{slot}"), Value::from(v));
+                    }
+                    let pos = at.map(|a| a.saturating_sub(1).min(rules.len())).unwrap_or(rules.len());
+                    rules.insert(pos, Value::Object(row));
+                }
+                KeyRulesCmd::Remove { rule } => {
+                    let i = find_rule(&rules, rule)?;
+                    rules.remove(i);
+                }
+                KeyRulesCmd::Enable { rule } | KeyRulesCmd::Disable { rule } => {
+                    let i = find_rule(&rules, rule)?;
+                    rules[i]["enabled"] = Value::Bool(matches!(cmd, KeyRulesCmd::Enable { .. }));
+                }
+                KeyRulesCmd::Move { rule, to } => {
+                    let i = find_rule(&rules, rule)?;
+                    let r = rules.remove(i);
+                    rules.insert(to.saturating_sub(1).min(rules.len()), r);
+                }
+            }
+            if !matches!(cmd, KeyRulesCmd::List) {
+                save_key_rules(&base, rules.clone())?;
+            }
+            let human = if rules.is_empty() {
+                "No Key Rules.".to_string()
+            } else {
+                rules.iter().enumerate().map(|(i, r)| describe_rule(i, r)).collect::<Vec<_>>().join("\n")
+            };
+            print_out(cli.json, &json!({ "rules": rules }), &human);
             Ok(())
         }
     }
