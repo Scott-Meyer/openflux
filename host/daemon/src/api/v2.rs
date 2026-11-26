@@ -281,6 +281,9 @@ pub struct V2State {
     /// Wakes action reconciliation when a module (re)declares its runtime actions.
     declared_actions_rx: Mutex<openflux_bus::Subscription>,
     recent_apps: Mutex<std::collections::VecDeque<RecentAppEntry>>,
+    /// Scoped token accepted ONLY for `GET /v2/streamdeck/plugin-asset/*` so imported `.sdPlugin`
+    /// HTML pages never receive the first-party desktop administrative bearer token.
+    pub streamdeck_asset_token: String,
 }
 
 /// `"host"` for module actions whose module requires the computer; `None` (both sides
@@ -597,6 +600,21 @@ impl V2State {
         let declared_actions_rx = broker
             .subscribe(&openflux_modules::declared_actions_topic("+"), SubscribeOptions::default())
             .expect("valid declared actions sub");
+        let streamdeck_asset_token = {
+            let mut rnd = [0u8; 32];
+            let _ = getrandom::getrandom(&mut rnd);
+            let tok: String = rnd.iter().map(|b| format!("{b:02x}")).collect();
+            let cfg_dir = base.join("config");
+            let _ = std::fs::create_dir_all(&cfg_dir);
+            let p = cfg_dir.join("streamdeck_asset_token.txt");
+            let _ = std::fs::write(&p, format!("{tok}\n"));
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600));
+            }
+            tok
+        };
         let state = Arc::new(Self {
             broker,
             preview_broker,
@@ -616,6 +634,7 @@ impl V2State {
             profile_cmd_rx: Mutex::new(profile_cmd_rx),
             declared_actions_rx: Mutex::new(declared_actions_rx),
             recent_apps: Mutex::new(std::collections::VecDeque::with_capacity(12)),
+            streamdeck_asset_token,
         });
 
         // Background watcher: detects direct edits to script.lua / module.toml / new local
@@ -3378,14 +3397,211 @@ async fn keyboard_flash_uf2(
 /// then reads back `/home/root/openflux/v2/modules_state.json` to verify on-device persistence.
 /// Keeps file persistence (`persisted_verified`) strictly distinct from renderer acknowledgment
 /// (`runtime_applied`) and publishes the same structured status to retained `keyboard/sync/status`.
-async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+#[derive(Deserialize, Default)]
+struct KeyboardSyncBody {
+    #[serde(default)]
+    force: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DeviceSyncMeta {
+    host_id: String,
+    #[serde(default)]
+    synced_at_ms: u64,
+    #[serde(default)]
+    state_sha256: String,
+    #[serde(default)]
+    enabled_modules: Vec<String>,
+    #[serde(default)]
+    bg_media: Option<String>,
+}
+
+fn read_device_sync_meta(device: &dyn crate::api::state::DeviceSink) -> Option<DeviceSyncMeta> {
+    let raw = device.get_file("/home/root/openflux/v2/sync_meta.json").ok()?;
+    serde_json::from_slice(&raw).ok()
+}
+
+fn local_last_synced_path(kb_state_path: &std::path::Path) -> PathBuf {
+    kb_state_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("last_synced_device.json")
+}
+
+async fn keyboard_sync_check_v2(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let host = state.v2.load_host_identity();
+    let local_marker_path = local_last_synced_path(&state.v2.registry.state_path);
+    let device = state.device.clone();
+    let res = tokio::task::spawn_blocking(move || {
+        let remote = read_device_sync_meta(&*device);
+        let local_last: Option<DeviceSyncMeta> = std::fs::read(&local_marker_path)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok());
+        (remote, local_last)
+    })
+    .await;
+    match res {
+        Ok((remote, local_last)) => {
+            let conflict = match (&remote, &local_last) {
+                (Some(r), Some(l)) => {
+                    r.host_id != host.host_id && r.state_sha256 != l.state_sha256
+                }
+                (Some(r), None) => r.host_id != host.host_id && !r.enabled_modules.is_empty(),
+                _ => false,
+            };
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "conflict": conflict,
+                    "local_host_id": host.host_id,
+                    "remote": remote,
+                })),
+            )
+        }
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+/// Adopts the connected keyboard's existing v2 configuration (`modules_state.json`,
+/// `display_prefs.json`, `module_actions.json`, and active background media) onto this computer
+/// so plugging a configured keyboard into a second PC never wipes its setup!
+async fn keyboard_adopt_v2(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
+    let kb_state_path = state.v2.registry.state_path.clone();
+    let v2_dir = kb_state_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf();
+    let media_dir = default_data_dir().join("media");
+    let local_marker_path = local_last_synced_path(&kb_state_path);
+    let device = state.device.clone();
+
+    let res = tokio::task::spawn_blocking(move || -> Result<Value, String> {
+        let remote_state_bytes = device
+            .get_file("/home/root/openflux/v2/modules_state.json")
+            .map_err(|e| format!("failed to read modules_state.json from keyboard: {e}"))?;
+        let mut adopted: openflux_modules::ModulesStateFile =
+            serde_json::from_slice(&remote_state_bytes)
+                .map_err(|e| format!("invalid remote modules_state.json: {e}"))?;
+
+        let _ = std::fs::create_dir_all(&media_dir);
+        let mut adopted_media: Vec<String> = Vec::new();
+        // Rewrite `/home/root/openflux/media/<file>` paths cleanly to this computer's local media dir
+        // and pull missing media files from the keyboard!
+        for inst in adopted.modules.values_mut() {
+            for val in inst.config.values_mut() {
+                if let Some(s) = val.as_str() {
+                    if let Some(fname) = s.strip_prefix("/home/root/openflux/media/") {
+                        let clean = std::path::Path::new(fname)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or(fname);
+                        if !clean.is_empty() && !clean.contains("..") {
+                            let local_media = media_dir.join(clean);
+                            if !local_media.is_file() {
+                                if let Ok(bytes) = device.get_file(&format!("/home/root/openflux/media/{clean}")) {
+                                    let _ = std::fs::write(&local_media, bytes);
+                                    adopted_media.push(clean.to_string());
+                                }
+                            }
+                            *val = Value::String(local_media.to_string_lossy().into_owned());
+                        }
+                    }
+                }
+            }
+        }
+
+        let _ = std::fs::create_dir_all(&v2_dir);
+        let txt = serde_json::to_string_pretty(&adopted).map_err(|e| e.to_string())?;
+        std::fs::write(&kb_state_path, txt).map_err(|e| e.to_string())?;
+
+        // Adopt display prefs (parallax, power, layer names) and module actions if present on keyboard
+        for fname in ["display_prefs.json", "module_actions.json", "top_bar_attachments.json"] {
+            if let Ok(bytes) = device.get_file(&format!("/home/root/openflux/v2/{fname}")) {
+                if serde_json::from_slice::<Value>(&bytes).is_ok() {
+                    let _ = std::fs::write(v2_dir.join(fname), bytes);
+                }
+            }
+        }
+        if let Some(meta) = read_device_sync_meta(&*device) {
+            if let Ok(mtxt) = serde_json::to_string_pretty(&meta) {
+                let _ = std::fs::write(&local_marker_path, mtxt);
+            }
+        }
+        let enabled_count = adopted.modules.values().filter(|m| m.enabled).count();
+        Ok(json!({
+            "ok": true,
+            "enabled_modules": enabled_count,
+            "downloaded_media": adopted_media,
+        }))
+    })
+    .await;
+
+    match res {
+        Ok(Ok(summary)) => {
+            state.v2.sync_all_with_reason("adopt", None);
+            let prefs = state.v2.load_display_prefs();
+            if let Some(p) = prefs.get("parallax") {
+                let _ = state.v2.broker.publish("display/parallax", p.clone(), PublishOptions::retained());
+            }
+            if let Some(pw) = prefs.get("power") {
+                let _ = state.v2.broker.publish("display/power", pw.clone(), PublishOptions::retained());
+            }
+            if let Some(ln) = prefs.get("layer_names") {
+                let _ = state.v2.broker.publish("keyboard/layer_names", ln.clone(), PublishOptions::retained());
+            }
+            (StatusCode::OK, Json(summary))
+        }
+        Ok(Err(e)) => err_resp(StatusCode::BAD_GATEWAY, e),
+        Err(e) => err_resp(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+async fn keyboard_sync_v2(
+    State(state): State<Arc<ApiState>>,
+    body_opt: Option<Json<KeyboardSyncBody>>,
+) -> impl IntoResponse {
+    let force = body_opt.map(|Json(b)| b.force).unwrap_or(false);
     let discovered = state.v2.registry.discover();
     let mut kb_state = state.v2.registry.load_state();
     let kb_state_path = state.v2.registry.state_path.clone();
+    let local_marker_path = local_last_synced_path(&kb_state_path);
     let host_id_for_sync = state.v2.load_host_identity().host_id;
     let device = state.device.clone();
     let broker = state.v2.broker.clone();
 
+    if !force {
+        let dev_chk = device.clone();
+        let hid_chk = host_id_for_sync.clone();
+        let marker_chk = local_marker_path.clone();
+        if let Ok((Some(remote), local_last)) = tokio::task::spawn_blocking(move || {
+            let remote = read_device_sync_meta(&*dev_chk);
+            let local_last: Option<DeviceSyncMeta> = std::fs::read(&marker_chk)
+                .ok()
+                .and_then(|b| serde_json::from_slice(&b).ok());
+            (remote, local_last)
+        })
+        .await
+        {
+            let is_conflict = match local_last {
+                Some(l) => remote.host_id != hid_chk && remote.state_sha256 != l.state_sha256,
+                None => remote.host_id != hid_chk && !remote.enabled_modules.is_empty(),
+            };
+            if is_conflict {
+                return (
+                    StatusCode::CONFLICT,
+                    Json(json!({
+                        "ok": false,
+                        "conflict": true,
+                        "error": format!("This keyboard was last synced from another computer ({}). Adopt its setup or pass force=true to replace it.", remote.host_id),
+                        "local_host_id": host_id_for_sync,
+                        "remote": remote,
+                    })),
+                );
+            }
+        }
+    }
+
+    let host_id_meta = host_id_for_sync.clone();
     let res = tokio::task::spawn_blocking(move || {
         sync_v2_to_device(
             &*device,
@@ -3399,6 +3615,18 @@ async fn keyboard_sync_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespon
 
     match res {
         Ok(Ok(report)) => {
+            if report.persisted_verified {
+                let marker = DeviceSyncMeta {
+                    host_id: host_id_meta,
+                    synced_at_ms: openflux_bus::now_unix_ms(),
+                    state_sha256: report.expected_state_sha256.clone(),
+                    enabled_modules: Vec::new(),
+                    bg_media: None,
+                };
+                if let Ok(mtxt) = serde_json::to_string_pretty(&marker) {
+                    let _ = std::fs::write(&local_marker_path, mtxt);
+                }
+            }
             // Check whether the running keyboard display has explicitly acknowledged this exact
             // state hash on `display/runtime_state`; stay honest (`null`) if unsupported/pending.
             let runtime_applied = broker
@@ -3725,6 +3953,32 @@ fn sync_v2_to_device(
     let expected_state_sha256 = sha256_hex_bytes(&state_bytes);
     let remote_state = "/home/root/openflux/v2/modules_state.json";
     acc.put_if_changed(remote_state, &state_bytes)?;
+
+    // Write lightweight multi-computer `sync_meta.json` so plugging this keyboard into a second PC
+    // lets Studio detect another host's setup and offer "Adopt from Keyboard" instead of overwriting!
+    let bg_media = kb_state
+        .modules
+        .get("bg-media")
+        .and_then(|m| m.config.get("media_path"))
+        .and_then(|v| v.as_str())
+        .and_then(|s| std::path::Path::new(s).file_name().and_then(|n| n.to_str()))
+        .map(str::to_string);
+    let enabled_modules: Vec<String> = kb_state
+        .modules
+        .iter()
+        .filter(|(_, m)| m.enabled)
+        .map(|(k, _)| k.clone())
+        .collect();
+    let meta = DeviceSyncMeta {
+        host_id: host_id_for_sync.to_string(),
+        synced_at_ms: openflux_bus::now_unix_ms(),
+        state_sha256: expected_state_sha256.clone(),
+        enabled_modules,
+        bg_media,
+    };
+    if let Ok(meta_bytes) = serde_json::to_vec_pretty(&meta) {
+        let _ = acc.put_if_changed("/home/root/openflux/v2/sync_meta.json", &meta_bytes);
+    }
 
     // Honest device readback check: confirms bytes actually persisted on the keyboard filesystem.
     let (readback_state_sha256, persisted_verified, persisted_error) = match device.get_file(remote_state) {
@@ -5141,6 +5395,16 @@ async fn v2_auth_middleware(
             }
         });
 
+    // Scoped Stream Deck plugin-asset token is valid ONLY for `/v2/streamdeck/plugin-asset/*`!
+    if req.uri().path().starts_with("/v2/streamdeck/plugin-asset/") {
+        if let Some(raw_auth) = auth_owned.as_deref() {
+            let cand = raw_auth.strip_prefix("Bearer ").unwrap_or(raw_auth).trim();
+            if !cand.is_empty() && cand == state.v2.streamdeck_asset_token {
+                return next.run(req).await;
+            }
+        }
+    }
+
     match state.verify_bearer(auth_owned.as_deref()) {
         Ok(crate::api::state::TokenKind::FirstParty) => {}
         Ok(crate::api::state::TokenKind::ThirdParty { .. }) => {
@@ -5263,6 +5527,8 @@ pub fn router(state: Arc<ApiState>) -> Router {
         .route("/v2/simulate/burst", post(simulate_physics_burst))
         .route("/v2/preview/frame", post(render_preview_frame))
         .route("/v2/keyboard/sync", post(keyboard_sync_v2))
+        .route("/v2/keyboard/sync-check", get(keyboard_sync_check_v2))
+        .route("/v2/keyboard/adopt", post(keyboard_adopt_v2))
         .route("/v2/keyboard/soc-stats", get(keyboard_soc_stats_v2))
         .route("/v2/keyboard/read", get(keyboard_read_file))
         .route("/v2/keyboard/upload-media", post(keyboard_upload_media))

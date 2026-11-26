@@ -408,7 +408,36 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
     setSyncing(true);
     setToastMsg(null);
     try {
-      const res = await v2Client.syncToKeyboard();
+      let force = false;
+      const chk = await v2Client.checkKeyboardSync().catch(() => null);
+      if (chk?.conflict && chk.remote) {
+        const bgNote = chk.remote.bg_media ? ` (background: ${chk.remote.bg_media})` : "";
+        const adopt = window.confirm(
+          `This keyboard already has a setup synced from "${chk.remote.host_id}" (${chk.remote.enabled_modules.length} modules${bgNote}).\n\n` +
+            `Click OK to ADOPT the keyboard's setup onto this computer (keeps your video & modules).\n` +
+            `Click Cancel to choose whether to overwrite the keyboard instead.`,
+        );
+        if (adopt) {
+          const adopted = await v2Client.adoptFromKeyboard();
+          await refreshModules();
+          setToastMsg(
+            `Adopted ${adopted.enabled_modules} modules from keyboard${
+              adopted.downloaded_media.length > 0 ? ` (+ ${adopted.downloaded_media.length} media)` : ""
+            }.`,
+          );
+          return;
+        }
+        const overwrite = window.confirm(
+          `Replace the keyboard's setup from "${chk.remote.host_id}" with this computer's setup?`,
+        );
+        if (!overwrite) {
+          setToastMsg("Sync canceled — keyboard setup untouched.");
+          return;
+        }
+        force = true;
+      }
+
+      const res = await v2Client.syncToKeyboard(force);
       if (!res.ok || res.persisted_verified === false) {
         setToastMsg(res.persisted_error ?? "Couldn't verify the settings on the keyboard.");
         return;

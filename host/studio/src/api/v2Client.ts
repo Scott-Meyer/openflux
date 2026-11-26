@@ -511,16 +511,35 @@ export const v2Client = {
   simulateImpulse: (x: number, y: number, radius = 64, force = 1.15) =>
     v2Call("POST", "/v2/simulate/impulse", { x, y, radius, force, kind: "ripple", source: "studio" }),
   simulateBurst: () => v2Call("POST", "/v2/simulate/burst", {}),
-  syncToKeyboard: () =>
+  syncToKeyboard: (force = false) =>
     v2Call<{
       ok: boolean;
+      conflict?: boolean;
       uploaded_files: string[];
       uploaded_bytes: number;
       skipped_unchanged?: number;
       persisted_verified?: boolean;
       persisted_error?: string | null;
       runtime_applied?: boolean | null;
-    }>("POST", "/v2/keyboard/sync", {}),
+    }>("POST", "/v2/keyboard/sync", { force }),
+  checkKeyboardSync: () =>
+    v2Call<{
+      conflict: boolean;
+      local_host_id: string;
+      remote?: {
+        host_id: string;
+        synced_at_ms: number;
+        state_sha256: string;
+        enabled_modules: string[];
+        bg_media?: string | null;
+      } | null;
+    }>("GET", "/v2/keyboard/sync-check"),
+  adoptFromKeyboard: () =>
+    v2Call<{
+      ok: boolean;
+      enabled_modules: number;
+      downloaded_media: string[];
+    }>("POST", "/v2/keyboard/adopt", {}),
   renderPreviewFrame: (steps = 2, step_ms = 16.667, width = 960, height = 540, overlay_only = false) =>
     v2Call<PreviewFrameResponse>("POST", "/v2/preview/frame", { steps, step_ms, width, height, overlay_only }),
   getMediaUrl: (name: string) => invoke<string>("v2_media_url", { name }),

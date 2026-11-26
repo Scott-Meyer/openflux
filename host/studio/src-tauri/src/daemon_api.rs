@@ -525,9 +525,9 @@ pub async fn v2_streamdeck_pi_url(
     if plugin_id.contains("..") || rel_path.contains("..") || plugin_id.contains('/') {
         return Err(CommandError::local("invalid plugin path"));
     }
-    let tok_path = st.data_dir.join("config/desktop_token.txt");
+    let tok_path = st.data_dir.join("config/streamdeck_asset_token.txt");
     let tok = std::fs::read_to_string(&tok_path)
-        .map_err(|e| CommandError::local(format!("failed to read daemon token: {e}")))?;
+        .map_err(|e| CommandError::local(format!("failed to read scoped streamdeck token: {e}")))?;
     let base = format!(
         "http://127.0.0.1:52324/v2/streamdeck/plugin-asset/{}/{}",
         plugin_id.trim(),
@@ -559,9 +559,9 @@ pub async fn v2_streamdeck_plugin_url(
     if plugin_id.contains("..") || rel_path.contains("..") || plugin_id.contains('/') {
         return Err(CommandError::local("invalid plugin path"));
     }
-    let tok_path = st.data_dir.join("config/desktop_token.txt");
+    let tok_path = st.data_dir.join("config/streamdeck_asset_token.txt");
     let tok = std::fs::read_to_string(&tok_path)
-        .map_err(|e| CommandError::local(format!("failed to read daemon token: {e}")))?;
+        .map_err(|e| CommandError::local(format!("failed to read scoped streamdeck token: {e}")))?;
     let base = format!(
         "http://127.0.0.1:52324/v2/streamdeck/plugin-asset/{}/{}",
         plugin_id.trim(),

@@ -436,9 +436,199 @@ fn is_host_display_asleep(bridge: &mut dyn crate::bridges::OsSensorBridge) -> bo
     bridge.display_asleep()
 }
 
+#[cfg(target_os = "macos")]
+fn read_host_audio_volume() -> Option<(f32, bool)> {
+    #[repr(C)]
+    struct AudioObjectPropertyAddress {
+        m_selector: u32,
+        m_scope: u32,
+        m_element: u32,
+    }
+    #[link(name = "CoreAudio", kind = "framework")]
+    extern "C" {
+        fn AudioObjectHasProperty(
+            object_id: u32,
+            address: *const AudioObjectPropertyAddress,
+        ) -> u8;
+        fn AudioObjectGetPropertyData(
+            object_id: u32,
+            address: *const AudioObjectPropertyAddress,
+            qualifier_data_size: u32,
+            qualifier_data: *const std::ffi::c_void,
+            io_data_size: *mut u32,
+            out_data: *mut std::ffi::c_void,
+        ) -> i32;
+    }
+    const fn fourcc(s: &[u8; 4]) -> u32 {
+        u32::from_be_bytes(*s)
+    }
+    const K_SYSTEM: u32 = 1;
+    const K_DEFAULT_OUT: u32 = fourcc(b"dOut");
+    const K_SCOPE_GLOBAL: u32 = fourcc(b"glob");
+    const K_SCOPE_OUT: u32 = fourcc(b"outp");
+    const K_VOL_SCALAR: u32 = fourcc(b"volm");
+    const K_VIRTUAL_MAIN_VOL: u32 = fourcc(b"vmvc");
+    const K_MUTE: u32 = fourcc(b"mute");
+
+    unsafe {
+        let addr_out = AudioObjectPropertyAddress {
+            m_selector: K_DEFAULT_OUT,
+            m_scope: K_SCOPE_GLOBAL,
+            m_element: 0,
+        };
+        let mut dev: u32 = 0;
+        let mut dev_sz = std::mem::size_of::<u32>() as u32;
+        if AudioObjectGetPropertyData(
+            K_SYSTEM,
+            &addr_out,
+            0,
+            std::ptr::null(),
+            &mut dev_sz,
+            (&mut dev as *mut u32).cast(),
+        ) != 0
+            || dev == 0
+        {
+            return None;
+        }
+        let mut vol: f32 = 0.0;
+        let mut got_vol = false;
+        for (sel, elem) in [(K_VIRTUAL_MAIN_VOL, 0), (K_VOL_SCALAR, 0), (K_VOL_SCALAR, 1)] {
+            let a = AudioObjectPropertyAddress {
+                m_selector: sel,
+                m_scope: K_SCOPE_OUT,
+                m_element: elem,
+            };
+            if AudioObjectHasProperty(dev, &a) != 0 {
+                let mut sz = std::mem::size_of::<f32>() as u32;
+                if AudioObjectGetPropertyData(
+                    dev,
+                    &a,
+                    0,
+                    std::ptr::null(),
+                    &mut sz,
+                    (&mut vol as *mut f32).cast(),
+                ) == 0
+                {
+                    got_vol = true;
+                    break;
+                }
+            }
+        }
+        if !got_vol {
+            return None;
+        }
+        let mut muted = false;
+        for elem in [0u32, 1u32] {
+            let a = AudioObjectPropertyAddress {
+                m_selector: K_MUTE,
+                m_scope: K_SCOPE_OUT,
+                m_element: elem,
+            };
+            if AudioObjectHasProperty(dev, &a) != 0 {
+                let mut m: u32 = 0;
+                let mut sz = std::mem::size_of::<u32>() as u32;
+                if AudioObjectGetPropertyData(
+                    dev,
+                    &a,
+                    0,
+                    std::ptr::null(),
+                    &mut sz,
+                    (&mut m as *mut u32).cast(),
+                ) == 0
+                {
+                    muted = m != 0;
+                    break;
+                }
+            }
+        }
+        Some((vol.clamp(0.0, 1.0), muted))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn read_host_audio_volume_com(
+    enumerator: &windows::Win32::Media::Audio::IMMDeviceEnumerator,
+) -> Option<(f32, bool)> {
+    use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
+    use windows::Win32::Media::Audio::{eMultimedia, eRender};
+    use windows::Win32::System::Com::CLSCTX_ALL;
+    unsafe {
+        let dev = enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia).ok()?;
+        let ep: IAudioEndpointVolume = dev.Activate(CLSCTX_ALL, None).ok()?;
+        let vol = ep.GetMasterVolumeLevelScalar().ok()?;
+        let muted = ep.GetMute().ok().map(|b| b.as_bool()).unwrap_or(false);
+        Some((vol.clamp(0.0, 1.0), muted))
+    }
+}
+
+/// Native zero-dependency host volume watcher (macOS CoreAudio + Windows CoreAudio COM) that
+/// publishes `host/audio/volume` on the v2 bus so `host-volume-osd` (and any top-bar volume
+/// widget) runs as 100% pure sandboxed Lua with zero Python dependency!
+fn spawn_host_audio_volume_watcher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
+    let _ = thread::Builder::new()
+        .name("openflux-audio-vol".into())
+        .spawn(move || {
+            #[cfg(target_os = "windows")]
+            let win_enum = unsafe {
+                use windows::Win32::Media::Audio::{IMMDeviceEnumerator, MMDeviceEnumerator};
+                use windows::Win32::System::Com::{
+                    CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
+                };
+                let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+                CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL).ok()
+            };
+
+            let read_now = || -> Option<(f32, bool)> {
+                #[cfg(target_os = "macos")]
+                {
+                    read_host_audio_volume()
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    win_enum.as_ref().and_then(read_host_audio_volume_com)
+                }
+                #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+                {
+                    None
+                }
+            };
+
+            let mut last: Option<(f32, bool)> = read_now();
+            if let Some((vol, muted)) = last {
+                let rounded = (vol * 1000.0).round() / 1000.0;
+                let _ = state.v2.broker.publish(
+                    "host/audio/volume",
+                    serde_json::json!({ "level": rounded, "muted": muted, "initial": true }),
+                    openflux_bus::PublishOptions::retained().with_origin("host-audio"),
+                );
+            }
+            while running.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(65));
+                let Some((vol, muted)) = read_now() else {
+                    thread::sleep(Duration::from_millis(500));
+                    continue;
+                };
+                let changed = match last {
+                    None => true,
+                    Some((pv, pm)) => (vol - pv).abs() >= 0.005 || muted != pm,
+                };
+                if changed {
+                    last = Some((vol, muted));
+                    let rounded = (vol * 1000.0).round() / 1000.0;
+                    let _ = state.v2.broker.publish(
+                        "host/audio/volume",
+                        serde_json::json!({ "level": rounded, "muted": muted, "initial": false }),
+                        openflux_bus::PublishOptions::retained().with_origin("host-audio"),
+                    );
+                }
+            }
+        });
+}
+
 fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
     #[cfg(not(target_os = "macos"))]
     spawn_platform_focus_watcher(state.clone(), running.clone());
+    spawn_host_audio_volume_watcher(state.clone(), running.clone());
     let _ = thread::Builder::new()
         .name("openflux-host-telemetry".into())
         .spawn(move || {

@@ -443,7 +443,7 @@ impl V2BridgeMux {
                 }
             }
             BulkRpcRequest::PutFileStart { path, total_len } => {
-                if total_len > V2_MAX_FILE_BYTES {
+                if (total_len as u64) > V2_MAX_FILE_BYTES {
                     return BulkRpcResponse::Err {
                         message: format!(
                             "upload exceeds maximum size ({total_len} > {V2_MAX_FILE_BYTES} bytes)"

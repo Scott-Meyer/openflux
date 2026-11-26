@@ -165,7 +165,16 @@ impl HostProcessManager {
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                let err = format!("failed to spawn {}: {e}", entry_path.display());
+                let err = if e.kind() == std::io::ErrorKind::NotFound
+                    && entry_path
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .is_some_and(|s| s.eq_ignore_ascii_case("py"))
+                {
+                    "This optional module requires Python 3 (install from python.org or Microsoft Store) to run its host service.".to_string()
+                } else {
+                    format!("failed to spawn {}: {e}", entry_path.display())
+                };
                 self.failures.insert(id.clone(), err.clone());
                 return Err(err);
             }
