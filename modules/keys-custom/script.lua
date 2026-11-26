@@ -26,7 +26,8 @@ local function str(v) local s = trim(v); return #s > 0 and s or nil end
 
 local GROUPS = { all = true, fkeys = true, numbers = true, letters = true, home_row = true, mods = true, arrows = true, nav = true }
 
--- "F1-F4, Esc, a, home_row, row:2, action:mqtt-bridge.scene_on, 47" -> list of selectors.
+-- "F1-F4, Esc, a, 1, comma, home_row, row:2, action:mqtt-bridge.scene_on, #47" -> selectors.
+-- A bare digit is that digit's key; `#N` is physical key index N.
 local function parse_keys(spec)
   local keys, sels = {}, {}
   for tok in string.gmatch(tostring(spec or ""), "[^,]+") do
@@ -39,8 +40,12 @@ local function parse_keys(spec)
       table.insert(sels, { group = low })
     elseif string.sub(low, 1, 7) == "action:" then
       table.insert(sels, { action = trim(string.sub(tok, 8)) })
-    elseif tonumber(tok) then
-      table.insert(keys, math.floor(tonumber(tok)))
+    elseif string.match(tok, "^#%d+$") then
+      table.insert(keys, math.floor(tonumber(string.sub(tok, 2)))) -- a physical index: #47
+    elseif string.match(tok, "^%d$") then
+      table.insert(keys, "KC_" .. tok) -- the digit key, not index
+    elseif low == "comma" then
+      table.insert(keys, "KC_COMM")
     elseif #tok > 0 then
       table.insert(keys, (string.sub(string.upper(tok), 1, 3) == "KC_") and string.upper(tok) or tok)
     end

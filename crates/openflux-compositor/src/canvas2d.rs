@@ -699,11 +699,11 @@ pub const DEFAULT_ANSI_LABELS: &[&str] = &[
     // Row 1 (15)
     "`", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", "BKSP", "HOME",
     // Row 2 (15)
-    "TAB", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "[", "]", "\\", "PGUP",
+    "TAB", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "[", "]", "\\", "END",
     // Row 3 (14)
-    "CAPS", "A", "S", "D", "F", "G", "H", "J", "K", "L", ";", "'", "ENTER", "PGDN",
+    "CAPS", "A", "S", "D", "F", "G", "H", "J", "K", "L", ";", "'", "ENTER", "PGUP",
     // Row 4 (14)
-    "SHIFT", "Z", "X", "C", "V", "B", "N", "M", ",", ".", "/", "SHIFT", "UP", "END",
+    "SHIFT", "Z", "X", "C", "V", "B", "N", "M", ",", ".", "/", "SHIFT", "UP", "PGDN",
     // Row 5 (11)
     "CTRL", "OPT", "CMD", "FN", "SPACE", "CMD", "ALT", "CTRL", "LEFT", "DOWN", "RIGHT",
 ];

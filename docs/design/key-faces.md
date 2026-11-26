@@ -98,7 +98,7 @@ The `keys-custom` module is now **Key Rules**. Its `rules` list holds the user's
 
 | Field | Meaning |
 |---|---|
-| `keys` | `F1-F4`, `Esc, a`, a group name, `row:N`, or `action:<id>`; comma-separated |
+| `keys` | `F1-F4`, `Esc, a, 1, comma`, a group name, `row:N`, `#N` (physical index), or `action:<id>`; comma-separated |
 | `layer` / `app` / `held` / `caps` / `time` / `idle_seconds` | conditions |
 | `condition_topic`, `condition_path`, `condition_op`, `condition_value` | a `bus` condition |
 | `hide` | `legend` or `all` |
