@@ -187,7 +187,7 @@ max = 5.0
 
 # A list setting is a JSON array of rows; `fields` describes one row (scalar kinds only).
 # Studio edits rows (add, remove, reorder); the CLI sets the whole array:
-#   fluxctl modules config my-module buttons='[{"label":"Movie"}]'
+#   fluxctl modules config my-module --set buttons='[{"label":"Movie"}]'
 [[settings]]
 key = "buttons"
 label = "Buttons"
