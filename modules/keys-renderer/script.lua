@@ -1095,7 +1095,7 @@ local function resolve_faces(mod_mask)
   local count = 0
   for t, _ in pairs(bus_watched) do
     if not wanted[t] then
-      bus.unsubscribe(t)
+      if bus.unsubscribe then bus.unsubscribe(t) end -- older runtimes keep it (harmless)
       bus_watched[t] = nil
       bus_values[t] = nil
     else
