@@ -127,7 +127,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq nasm xz-utils
       - name: Tools (Windows)
         if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
-        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        uses: msys2/setup-msys2@3c51bf698df1e37b2261f53cb67797b97761185c # v2.34.0
         with:
           msystem: UCRT64
           update: false
@@ -391,7 +391,7 @@ jobs:
           if-no-files-found: error
       - name: Sign executables
         if: steps.signing.outputs.sign == 'true'
-        uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -432,7 +432,7 @@ jobs:
           if-no-files-found: error
       - name: Sign the setup program
         if: steps.signing.outputs.sign == 'true'
-        uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
