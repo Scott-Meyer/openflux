@@ -1,13 +1,13 @@
 //! Update discovery, keyboard updates, conversion and reset to factory, driven through the local
 //! API against a signed test index and a simulated keyboard.
 
-use openflux_update::compat::Compat;
-use openflux_update::manifest::{Artifact, Channel, Index, Release};
-use openflux_update::signing::{generate, GeneratedKey};
-use openflux_update::{Component, TrustAnchors};
-use openfluxd::api::build_router;
-use openfluxd::api::state::{ApiState, DeviceSink};
-use openfluxd::updates::{Timings, UpdateConfig, UpdateService};
+use keyglass_update::compat::Compat;
+use keyglass_update::manifest::{Artifact, Channel, Index, Release};
+use keyglass_update::signing::{generate, GeneratedKey};
+use keyglass_update::{Component, TrustAnchors};
+use keyglassd::api::build_router;
+use keyglassd::api::state::{ApiState, DeviceSink};
+use keyglassd::updates::{Timings, UpdateConfig, UpdateService};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -19,7 +19,7 @@ const TOKEN: &str = "updates_test_token";
 
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "openfluxd_updates_{tag}_{}_{}",
+        "keyglassd_updates_{tag}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -31,7 +31,7 @@ fn temp_dir(tag: &str) -> PathBuf {
 }
 
 fn sha256(data: &[u8]) -> String {
-    openflux_update::trust::sha256_hex(data).unwrap().0
+    keyglass_update::trust::sha256_hex(data).unwrap().0
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -58,15 +58,15 @@ fn anchors(k: &Keys) -> TrustAnchors {
 }
 
 fn compat() -> Compat {
-    Compat::parse(openfluxd::updates::COMPAT_TOML).unwrap()
+    Compat::parse(keyglassd::updates::COMPAT_TOML).unwrap()
 }
 
 fn artifact_name(c: Component, v: &str) -> String {
     match c {
-        Component::Firmware => format!("openflux-firmware-{v}.uf2"),
-        Component::Bridge => format!("openflux-bridge_{v}_aarch64.ipk"),
-        Component::Display => format!("openflux-display_{v}_aarch64.ipk"),
-        Component::Host => format!("openflux-host-{v}.tar.gz"),
+        Component::Firmware => format!("keyglass-firmware-{v}.uf2"),
+        Component::Bridge => format!("keyglass-bridge_{v}_aarch64.ipk"),
+        Component::Display => format!("keyglass-display_{v}_aarch64.ipk"),
+        Component::Host => format!("keyglass-host-{v}.tar.gz"),
     }
 }
 
@@ -90,10 +90,10 @@ fn bridge_package(v: &str) -> Vec<u8> {
         let mut tar = tar::Builder::new(gz);
         let bin = format!("bridge binary {v}");
         for (path, data) in [
-            ("./usr/lib/openflux/bridge/openflux-bridge", bin.as_bytes()),
+            ("./usr/lib/keyglass/bridge/keyglass-bridge", bin.as_bytes()),
             (
-                "./usr/lib/openflux/bridge/openflux-autolaunch.sh",
-                b"#!/bin/sh\nexec openflux-bridge\n".as_slice(),
+                "./usr/lib/keyglass/bridge/keyglass-autolaunch.sh",
+                b"#!/bin/sh\nexec keyglass-bridge\n".as_slice(),
             ),
         ] {
             let mut h = tar::Header::new_gnu();
@@ -134,7 +134,7 @@ fn release(
     dir: &Path,
     c: Component,
     v: &str,
-    interfaces: Option<openflux_update::InterfaceSet>,
+    interfaces: Option<keyglass_update::InterfaceSet>,
 ) -> Release {
     let version: semver::Version = v.parse().unwrap();
     let content = if c == Component::Bridge {
@@ -147,7 +147,7 @@ fn release(
         artifacts.push(artifact(
             k,
             dir,
-            &format!("openflux-factory-restore_{v}_aarch64.ipk"),
+            &format!("keyglass-factory-restore_{v}_aarch64.ipk"),
             b"restore trigger",
         ));
     }
@@ -232,7 +232,7 @@ struct Kb {
     flash_error: Option<String>,
     saved_plans: Vec<serde_json::Value>,
     /// The firmware's press-refinement storage, kept across firmware flashes.
-    press: openfluxd::usb::press_refinement::FirmwareStore,
+    press: keyglassd::usb::press_refinement::FirmwareStore,
 }
 
 struct MockKeyboard {
@@ -281,17 +281,17 @@ impl MockKeyboard {
         let kb = kb.clone();
         let name = name.to_string();
         let mut g = kb.lock().unwrap();
-        if let Some(rest) = name.strip_prefix("openflux-bridge_") {
+        if let Some(rest) = name.strip_prefix("keyglass-bridge_") {
             let v = rest.split('_').next().unwrap().to_string();
             g.attempts += 1;
             let id = format!("{:04x}", 0xa000 + g.attempts);
-            let target = format!("openflux-bridge {v}");
+            let target = format!("keyglass-bridge {v}");
             g.files.insert(
-                "/home/root/.openflux/rollback/bridge/attempt".into(),
+                "/home/root/.keyglass/rollback/bridge/attempt".into(),
                 format!("attempt_id={id}\nversion={target}\n").into_bytes(),
             );
             g.files.insert(
-                "/home/root/.openflux/rollback/bridge/armed".into(),
+                "/home/root/.keyglass/rollback/bridge/armed".into(),
                 Vec::new(),
             );
             let live = g.bridge_reports.clone().unwrap_or(target.clone());
@@ -301,11 +301,11 @@ impl MockKeyboard {
                 let mut g = kb.lock().unwrap();
                 g.versions.insert("bridge".into(), Some(live.clone()));
                 g.files.insert(
-                    format!("/home/root/.openflux/rollback/bridge/trial-{id}"),
+                    format!("/home/root/.keyglass/rollback/bridge/trial-{id}"),
                     format!("version={live}\npid=7\n").into_bytes(),
                 );
             });
-        } else if let Some(rest) = name.strip_prefix("openflux-display_") {
+        } else if let Some(rest) = name.strip_prefix("keyglass-display_") {
             let v = rest.split('_').next().unwrap().to_string();
             drop(g);
             std::thread::spawn(move || {
@@ -313,12 +313,12 @@ impl MockKeyboard {
                 kb.lock()
                     .unwrap()
                     .versions
-                    .insert("display".into(), Some(format!("openflux-display {v}")));
+                    .insert("display".into(), Some(format!("keyglass-display {v}")));
             });
-        } else if name.starts_with("openflux-factory-restore_") {
+        } else if name.starts_with("keyglass-factory-restore_") {
             let staged = g
                 .files
-                .contains_key("/home/root/.openflux/factory-restore/manifest.sha256");
+                .contains_key("/home/root/.keyglass/factory-restore/manifest.sha256");
             let versions = g.factory_versions.clone();
             drop(g);
             if let (true, Some((b, d))) = (staged, versions) {
@@ -369,7 +369,7 @@ impl DeviceSink for MockKeyboard {
         if let Some(hex) = plan.get("keymapBlobHex").and_then(|v| v.as_str()) {
             g.fw_keymap = Some(unhex(hex));
         }
-        for (path, key) in openfluxd::device_paths::CONFIG_DOCUMENTS {
+        for (path, key) in keyglassd::device_paths::CONFIG_DOCUMENTS {
             if let Some(doc) = plan.get(key) {
                 g.files
                     .insert(path.into(), serde_json::to_vec_pretty(doc).unwrap());
@@ -394,7 +394,7 @@ impl DeviceSink for MockKeyboard {
     fn pull_config_dir(&self) -> Result<serde_json::Value, String> {
         let g = self.kb.lock().unwrap();
         let mut out = serde_json::json!({"appearance": {"selectedId": "default"}});
-        for (path, key) in openfluxd::device_paths::CONFIG_DOCUMENTS {
+        for (path, key) in keyglassd::device_paths::CONFIG_DOCUMENTS {
             if let Some(doc) = g
                 .files
                 .get(path)
@@ -490,9 +490,9 @@ impl DeviceSink for MockKeyboard {
             return Err(e);
         }
         let v = g.firmware_for.get(&name).cloned().or_else(|| {
-            name.strip_prefix("openflux-firmware-")
+            name.strip_prefix("keyglass-firmware-")
                 .and_then(|r| r.strip_suffix(".uf2"))
-                .map(|v| format!("openflux-firmware {v}"))
+                .map(|v| format!("keyglass-firmware {v}"))
         });
         g.versions.insert("firmware".into(), v);
         Ok("flashed with the calibration region unchanged".into())
@@ -503,15 +503,15 @@ impl DeviceSink for MockKeyboard {
             .lock()
             .unwrap()
             .files
-            .contains_key("/home/root/.openflux/rollback/bridge/armed"))
+            .contains_key("/home/root/.keyglass/rollback/bridge/armed"))
     }
     fn confirm_bridge_install(&self) -> Result<(), String> {
         let mut g = self.kb.lock().unwrap();
         g.writes.push("confirm bridge".into());
-        g.files.remove("/home/root/.openflux/rollback/bridge/armed");
+        g.files.remove("/home/root/.keyglass/rollback/bridge/armed");
         Ok(())
     }
-    fn press_refinement_status(&self) -> Result<openfluxd::usb::press_refinement::Status, String> {
+    fn press_refinement_status(&self) -> Result<keyglassd::usb::press_refinement::Status, String> {
         let g = self.kb.lock().unwrap();
         if !g.connected.1 {
             return Err("Device not found".into());
@@ -535,17 +535,17 @@ fn unhex(hex: &str) -> Vec<u8> {
         .collect()
 }
 
-/// OpenFlux's default keymap blob.
+/// Keyglass's default keymap blob.
 fn default_keymap_blob() -> Vec<u8> {
-    openfluxd::codecs::keymap::encode_keymap_json_to_firmware_blob(
-        &openfluxd::defaults::default_keymap(),
+    keyglassd::codecs::keymap::encode_keymap_json_to_firmware_blob(
+        &keyglassd::defaults::default_keymap(),
         None,
         None,
     )
     .unwrap()
 }
 
-/// Consumer-control bit indexes of the factory encoding and the HID usages OpenFlux stores.
+/// Consumer-control bit indexes of the factory encoding and the HID usages Keyglass stores.
 const CONSUMER: [(u32, u32); 11] = [
     (0x01, 0x6F),
     (0x02, 0x70),
@@ -562,7 +562,7 @@ const CONSUMER: [(u32, u32); 11] = [
 
 /// Every consumer word of a blob's layers rewritten with `map` (usage -> usage).
 fn map_consumer(blob: &[u8], map: impl Fn(u32) -> Option<u32>) -> Vec<u8> {
-    let mut km = openfluxd::codecs::keymap::decode_keymap_blob(blob).unwrap();
+    let mut km = keyglassd::codecs::keymap::decode_keymap_blob(blob).unwrap();
     for s in &mut km.keymaps {
         for l in &mut s.layers {
             for w in l.iter_mut() {
@@ -578,7 +578,7 @@ fn map_consumer(blob: &[u8], map: impl Fn(u32) -> Option<u32>) -> Vec<u8> {
 }
 
 fn consumer_words(blob: &[u8]) -> Vec<u32> {
-    let km = openfluxd::codecs::keymap::decode_keymap_blob(blob).unwrap();
+    let km = keyglassd::codecs::keymap::decode_keymap_blob(blob).unwrap();
     km.keymaps
         .iter()
         .flat_map(|s| s.layers.iter().flatten().copied())
@@ -587,7 +587,7 @@ fn consumer_words(blob: &[u8]) -> Vec<u32> {
 }
 
 fn keymap_blob(words: Vec<u32>) -> Vec<u8> {
-    use openfluxd::codecs::keymap::{FirmwareKeymapBlob, KeymapSection};
+    use keyglassd::codecs::keymap::{FirmwareKeymapBlob, KeymapSection};
     let n = words.len() as u32;
     FirmwareKeymapBlob {
         num_keymaps: 1,
@@ -611,10 +611,10 @@ fn keymap_blob(words: Vec<u32>) -> Vec<u8> {
     .unwrap()
 }
 
-const OPENFLUX_1_0_0: [(&str, &str); 3] = [
-    ("firmware", "openflux-firmware 1.0.0"),
-    ("bridge", "openflux-bridge 1.0.0"),
-    ("display", "openflux-display 1.0.0"),
+const KEYGLASS_1_0_0: [(&str, &str); 3] = [
+    ("firmware", "keyglass-firmware 1.0.0"),
+    ("bridge", "keyglass-bridge 1.0.0"),
+    ("display", "keyglass-display 1.0.0"),
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -739,7 +739,7 @@ async fn an_up_to_date_keyboard_offers_nothing() {
     let site = tmp.join("site");
     std::fs::create_dir_all(&site).unwrap();
     publish(&k, &site, baseline(&k, &site), None);
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     let d = daemon(kb, config(&tmp.join("data"), file_url(&site), None, &k)).await;
 
     let (code, s) = http(d.addr, "GET", "/v1/updates", None).await;
@@ -749,10 +749,10 @@ async fn an_up_to_date_keyboard_offers_nothing() {
     assert!(s["checkedAt"].is_string());
     assert_eq!(s["channel"], "stable");
     assert_eq!(s["host"]["installed"], env!("CARGO_PKG_VERSION"));
-    assert_eq!(s["keyboard"]["mode"], "openflux");
+    assert_eq!(s["keyboard"]["mode"], "keyglass");
     for c in ["firmware", "bridge", "display"] {
         assert_eq!(component(&s, c)["state"], "upToDate", "{s}");
-        assert_eq!(component(&s, c)["kind"], "openflux");
+        assert_eq!(component(&s, c)["kind"], "keyglass");
         assert_eq!(component(&s, c)["installed"], "1.0.0");
     }
     assert_eq!(s["keyboard"]["plan"], serde_json::Value::Null);
@@ -793,7 +793,7 @@ async fn an_available_update_is_planned_and_installed() {
     releases.push(release(&k, &site, Component::Bridge, "1.0.1", None));
     releases.push(release(&k, &site, Component::Display, "1.0.1", None));
     publish(&k, &site, releases, None);
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     let d = daemon(
         kb.clone(),
         config(&tmp.join("data"), file_url(&site), None, &k),
@@ -818,11 +818,11 @@ async fn an_available_update_is_planned_and_installed() {
     assert_eq!(job["progress"], 1.0);
     assert_eq!(
         kb.version("bridge").as_deref(),
-        Some("openflux-bridge 1.0.1")
+        Some("keyglass-bridge 1.0.1")
     );
     assert_eq!(
         kb.version("display").as_deref(),
-        Some("openflux-display 1.0.1")
+        Some("keyglass-display 1.0.1")
     );
     let writes = kb.writes();
     assert!(writes.contains(&"confirm bridge".to_string()), "{writes:?}");
@@ -853,7 +853,7 @@ async fn a_tampered_artifact_is_refused_before_anything_reaches_the_keyboard() {
         b"display 1.0.1 contentX",
     )
     .unwrap();
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     let d = daemon(
         kb.clone(),
         config(&tmp.join("data"), file_url(&site), None, &k),
@@ -875,7 +875,7 @@ async fn a_tampered_artifact_is_refused_before_anything_reaches_the_keyboard() {
     );
     assert_eq!(
         kb.version("bridge").as_deref(),
-        Some("openflux-bridge 1.0.0")
+        Some("keyglass-bridge 1.0.0")
     );
     let _ = std::fs::remove_dir_all(&tmp);
 }
@@ -890,8 +890,8 @@ async fn a_component_that_comes_back_with_the_wrong_version_fails_the_job_with_a
     releases.push(release(&k, &site, Component::Bridge, "1.0.1", None));
     releases.push(release(&k, &site, Component::Display, "1.0.1", None));
     publish(&k, &site, releases, None);
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
-    kb.kb.lock().unwrap().bridge_reports = Some("openflux-bridge 1.0.0".into());
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
+    kb.kb.lock().unwrap().bridge_reports = Some("keyglass-bridge 1.0.0".into());
     let d = daemon(
         kb.clone(),
         config(&tmp.join("data"), file_url(&site), None, &k),
@@ -915,7 +915,7 @@ async fn a_component_that_comes_back_with_the_wrong_version_fails_the_job_with_a
         "a bridge that isn't the new one is never confirmed: {writes:?}"
     );
     assert!(
-        !writes.iter().any(|w| w.contains("openflux-display")),
+        !writes.iter().any(|w| w.contains("keyglass-display")),
         "later steps don't run: {writes:?}"
     );
     let _ = std::fs::remove_dir_all(&tmp);
@@ -927,7 +927,7 @@ async fn only_a_changed_calibration_region_is_reported_as_a_calibration_problem(
     for (flash_error, code) in [
         (refused_image, "installFailed"),
         (
-            openfluxd::usb::picoboot::CALIBRATION_CHANGED,
+            keyglassd::usb::picoboot::CALIBRATION_CHANGED,
             "calibrationChanged",
         ),
     ] {
@@ -938,7 +938,7 @@ async fn only_a_changed_calibration_region_is_reported_as_a_calibration_problem(
         let mut releases = baseline(&k, &site);
         releases.push(release(&k, &site, Component::Firmware, "1.0.1", None));
         publish(&k, &site, releases, None);
-        let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+        let kb = MockKeyboard::new(KEYGLASS_1_0_0);
         kb.kb.lock().unwrap().flash_error = Some(flash_error.into());
         let d = daemon(
             kb.clone(),
@@ -965,8 +965,8 @@ async fn a_keyboard_that_needs_conversion_is_offered_only_conversion() {
     publish(&k, &site, releases, None);
     let kb = MockKeyboard::new([
         ("firmware", "1.4.12"),
-        ("bridge", "openflux-bridge 1.0.0"),
-        ("display", "openflux-display 1.0.0"),
+        ("bridge", "keyglass-bridge 1.0.0"),
+        ("display", "keyglass-display 1.0.0"),
     ]);
     let d = daemon(
         kb.clone(),
@@ -1013,7 +1013,7 @@ async fn a_keyboard_that_needs_conversion_is_offered_only_conversion() {
 }
 
 #[tokio::test]
-async fn conversion_installs_openflux_and_imports_the_existing_settings() {
+async fn conversion_installs_keyglass_and_imports_the_existing_settings() {
     let tmp = temp_dir("convert");
     let k = keys();
     let site = tmp.join("site");
@@ -1064,31 +1064,31 @@ async fn conversion_installs_openflux_and_imports_the_existing_settings() {
     let job = wait_job(&d, &id).await;
     assert_eq!(job["state"], "succeeded", "{job}");
     assert_eq!(job["kind"], "convert");
-    for (c, v) in OPENFLUX_1_0_0 {
+    for (c, v) in KEYGLASS_1_0_0 {
         assert_eq!(kb.version(c).as_deref(), Some(v));
     }
     let g = kb.kb.lock().unwrap();
     assert_eq!(
-        g.files["/home/root/.openflux/rescue/openflux-bridge"],
+        g.files["/home/root/.keyglass/rescue/keyglass-bridge"],
         b"bridge binary 1.0.0"
     );
     let manifest =
-        String::from_utf8(g.files["/home/root/.openflux/rescue/manifest.sha256"].clone()).unwrap();
+        String::from_utf8(g.files["/home/root/.keyglass/rescue/manifest.sha256"].clone()).unwrap();
     assert!(
         manifest.contains(&format!(
-            "{}  openflux-bridge\n",
+            "{}  keyglass-bridge\n",
             sha256(b"bridge binary 1.0.0")
         )),
         "{manifest}"
     );
     assert!(
-        manifest.contains("  openflux-autolaunch.sh\n"),
+        manifest.contains("  keyglass-autolaunch.sh\n"),
         "{manifest}"
     );
     let rescue_staged = g
         .writes
         .iter()
-        .position(|w| w == "put /home/root/.openflux/rescue/manifest.sha256")
+        .position(|w| w == "put /home/root/.keyglass/rescue/manifest.sha256")
         .unwrap();
     let first_install = g
         .writes
@@ -1101,39 +1101,39 @@ async fn conversion_installs_openflux_and_imports_the_existing_settings() {
         g.writes
     );
     assert_eq!(
-        g.files["/home/root/openflux/config/appearance.json"],
+        g.files["/home/root/keyglass/config/appearance.json"],
         br#"{"selectedId":"mine"}"#
     );
     assert_eq!(
-        g.files["/home/root/openflux/config/settings.json"],
+        g.files["/home/root/keyglass/config/settings.json"],
         br#"{"brightness":3}"#
     );
-    assert_eq!(g.files["/home/root/openflux/media/bg.mp4"], b"VIDEO");
+    assert_eq!(g.files["/home/root/keyglass/media/bg.mp4"], b"VIDEO");
     assert_eq!(
-        g.files["/home/root/openflux/media/key_icons/a.png"],
+        g.files["/home/root/keyglass/media/key_icons/a.png"],
         b"ICON"
     );
     let order: Vec<&String> = g
         .writes
         .iter()
         .filter(|w| {
-            w.starts_with("flash") || w.starts_with("sideload") || w.contains("openflux/config")
+            w.starts_with("flash") || w.starts_with("sideload") || w.contains("keyglass/config")
         })
         .collect();
     assert!(
-        order[0].starts_with("flash openflux-firmware-1.0.0"),
+        order[0].starts_with("flash keyglass-firmware-1.0.0"),
         "{order:?}"
     );
     assert!(
-        order[1].starts_with("sideload openflux-bridge_1.0.0"),
+        order[1].starts_with("sideload keyglass-bridge_1.0.0"),
         "{order:?}"
     );
     assert!(
-        order[2].starts_with("sideload openflux-display_1.0.0"),
+        order[2].starts_with("sideload keyglass-display_1.0.0"),
         "{order:?}"
     );
     assert!(
-        order[3].contains("openflux/config"),
+        order[3].contains("keyglass/config"),
         "settings are imported last: {order:?}"
     );
     assert!(g.writes.contains(&"confirm bridge".to_string()));
@@ -1143,7 +1143,7 @@ async fn conversion_installs_openflux_and_imports_the_existing_settings() {
         .expect("the keymap is saved with the firmware keymap");
     assert_eq!(plan["keymap"], serde_json::json!({"keymaps": {}}));
     let blob = unhex(plan["keymapBlobHex"].as_str().unwrap());
-    let layer = openfluxd::codecs::keymap::decode_keymap_blob(&blob)
+    let layer = keyglassd::codecs::keymap::decode_keymap_blob(&blob)
         .unwrap()
         .keymaps[0]
         .layers[0]
@@ -1169,7 +1169,7 @@ async fn a_rescue_pair_that_doesnt_read_back_stops_the_conversion_before_anythin
         ("bridge", "1.4.11"),
         ("display", "1.4.28"),
     ]);
-    kb.kb.lock().unwrap().corrupt_prefix = Some("/home/root/.openflux/rescue/".into());
+    kb.kb.lock().unwrap().corrupt_prefix = Some("/home/root/.keyglass/rescue/".into());
     let d = daemon(
         kb.clone(),
         config(&tmp.join("data"), file_url(&site), None, &k),
@@ -1203,7 +1203,7 @@ async fn offline_the_bundled_index_still_describes_and_installs_updates() {
         .unwrap()
         .local_addr()
         .unwrap();
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     let d = daemon(
         kb.clone(),
         config(
@@ -1224,7 +1224,7 @@ async fn offline_the_bundled_index_still_describes_and_installs_updates() {
     assert_eq!(job["state"], "succeeded", "{job}");
     assert_eq!(
         kb.version("bridge").as_deref(),
-        Some("openflux-bridge 1.0.1")
+        Some("keyglass-bridge 1.0.1")
     );
     let _ = std::fs::remove_dir_all(&tmp);
 }
@@ -1242,7 +1242,7 @@ async fn an_index_signed_by_an_unknown_key_is_refused_and_the_bundled_one_is_use
     releases.push(release(&stranger, &site, Component::Bridge, "9.0.0", None));
     publish(&stranger, &site, releases, None);
     publish(&k, &bundle, baseline(&k, &bundle), None);
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     let d = daemon(
         kb,
         config(&tmp.join("data"), file_url(&site), Some(bundle), &k),
@@ -1273,7 +1273,7 @@ async fn a_stop_during_a_job_waits_for_every_step_and_refuses_other_work() {
     releases.push(release(&k, &site, Component::Bridge, "1.0.1", None));
     releases.push(release(&k, &site, Component::Display, "1.0.1", None));
     publish(&k, &site, releases, None);
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     kb.hold(true);
     let d = daemon(
         kb.clone(),
@@ -1309,10 +1309,10 @@ async fn a_stop_during_a_job_waits_for_every_step_and_refuses_other_work() {
     assert_eq!((code, body["error"]["code"].clone()), (409, "busy".into()));
     // So are commands already queued for the USB worker, rather than interleaved with the job.
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let ran = openfluxd::api::worker::handle_usb_cmd(
+    let ran = keyglassd::api::worker::handle_usb_cmd(
         &d.state,
         &*kb,
-        openfluxd::api::worker::UsbCommand::SendLiveJson {
+        keyglassd::api::worker::UsbCommand::SendLiveJson {
             payload: serde_json::json!({}),
             reply: tx,
         },
@@ -1326,11 +1326,11 @@ async fn a_stop_during_a_job_waits_for_every_step_and_refuses_other_work() {
     assert_eq!(job["state"], "succeeded", "{job}");
     assert_eq!(
         kb.version("display").as_deref(),
-        Some("openflux-display 1.0.1")
+        Some("keyglass-display 1.0.1")
     );
     assert_eq!(
         d.state.lifecycle.wait_exit_due(Duration::from_secs(2)),
-        Some(openfluxd::lifecycle::ExitKind::Stop)
+        Some(keyglassd::lifecycle::ExitKind::Stop)
     );
     assert!(!kb.writes().contains(&"save".to_string()));
     let _ = std::fs::remove_dir_all(&tmp);
@@ -1339,9 +1339,9 @@ async fn a_stop_during_a_job_waits_for_every_step_and_refuses_other_work() {
 /// A host with nothing to report.
 struct QuietHost;
 
-impl openfluxd::bridges::OsSensorBridge for QuietHost {
-    fn sample_hardware(&mut self) -> openfluxd::bridges::HardwareMetrics {
-        openfluxd::bridges::HardwareMetrics {
+impl keyglassd::bridges::OsSensorBridge for QuietHost {
+    fn sample_hardware(&mut self) -> keyglassd::bridges::HardwareMetrics {
+        keyglassd::bridges::HardwareMetrics {
             cpu_pct: 0.0,
             mem_used_gb: 0.0,
             mem_total_gb: 0.0,
@@ -1353,14 +1353,14 @@ impl openfluxd::bridges::OsSensorBridge for QuietHost {
             net_up: String::new(),
         }
     }
-    fn active_window(&mut self) -> Option<openfluxd::bridges::ActiveWindowInfo> {
+    fn active_window(&mut self) -> Option<keyglassd::bridges::ActiveWindowInfo> {
         None
     }
     fn active_language_code(&mut self) -> Option<u32> {
         None
     }
-    fn media_snapshot(&mut self) -> openfluxd::bridges::MediaSnapshot {
-        openfluxd::bridges::MediaSnapshot::default()
+    fn media_snapshot(&mut self) -> keyglassd::bridges::MediaSnapshot {
+        keyglassd::bridges::MediaSnapshot::default()
     }
 }
 
@@ -1372,8 +1372,8 @@ async fn the_keyboard_clock_waits_for_a_running_job_and_for_conversion() {
             .filter(|w| w.starts_with("time "))
             .count()
     };
-    let tick = |d: &Daemon, kb: &MockKeyboard, w: &mut openfluxd::api::worker::WorkerLoopState| {
-        openfluxd::api::worker::reconcile_tick_with_state(&d.state, &mut QuietHost, kb, 2, w);
+    let tick = |d: &Daemon, kb: &MockKeyboard, w: &mut keyglassd::api::worker::WorkerLoopState| {
+        keyglassd::api::worker::reconcile_tick_with_state(&d.state, &mut QuietHost, kb, 2, w);
     };
 
     // While a job has the keyboard, its clock isn't touched; it is set once the job finishes.
@@ -1384,7 +1384,7 @@ async fn the_keyboard_clock_waits_for_a_running_job_and_for_conversion() {
     let mut releases = baseline(&k, &site);
     releases.push(release(&k, &site, Component::Display, "1.0.1", None));
     publish(&k, &site, releases, None);
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     kb.hold(true);
     let d = daemon(
         kb.clone(),
@@ -1392,7 +1392,7 @@ async fn the_keyboard_clock_waits_for_a_running_job_and_for_conversion() {
     )
     .await;
     let id = start_job(&d, "/v1/updates/apply", "{}").await;
-    let mut w = openfluxd::api::worker::WorkerLoopState::default();
+    let mut w = keyglassd::api::worker::WorkerLoopState::default();
     tick(&d, &kb, &mut w);
     assert_eq!(clock_writes(&kb), 0, "{:?}", kb.writes());
     kb.hold(false);
@@ -1413,7 +1413,7 @@ async fn the_keyboard_clock_waits_for_a_running_job_and_for_conversion() {
         config(&tmp.join("data"), file_url(&site), None, &k),
     )
     .await;
-    let mut w = openfluxd::api::worker::WorkerLoopState::default();
+    let mut w = keyglassd::api::worker::WorkerLoopState::default();
     tick(&d, &kb, &mut w);
     tick(&d, &kb, &mut w);
     assert_eq!(clock_writes(&kb), 0, "{:?}", kb.writes());
@@ -1432,7 +1432,7 @@ async fn a_signal_or_tray_quit_between_job_steps_lets_the_job_finish_before_exit
         releases.push(release(&k, &site, Component::Bridge, "1.0.1", None));
         releases.push(release(&k, &site, Component::Display, "1.0.1", None));
         publish(&k, &site, releases, None);
-        let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+        let kb = MockKeyboard::new(KEYGLASS_1_0_0);
         kb.hold(true);
         let d = daemon(
             kb.clone(),
@@ -1447,7 +1447,7 @@ async fn a_signal_or_tray_quit_between_job_steps_lets_the_job_finish_before_exit
                 signalled.clone(),
                 running.clone(),
             );
-            std::thread::spawn(move || openfluxd::lifecycle::watch_exit(&lc, &s, &r))
+            std::thread::spawn(move || keyglassd::lifecycle::watch_exit(&lc, &s, &r))
         };
         let id = start_job(&d, "/v1/updates/apply", "{}").await;
         if via_signal {
@@ -1456,7 +1456,7 @@ async fn a_signal_or_tray_quit_between_job_steps_lets_the_job_finish_before_exit
             // What the tray's Quit does.
             d.state
                 .lifecycle
-                .request_exit(openfluxd::lifecycle::ExitKind::Stop);
+                .request_exit(keyglassd::lifecycle::ExitKind::Stop);
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
         assert!(
@@ -1482,7 +1482,7 @@ async fn a_job_interrupted_by_a_daemon_restart_resumes_from_its_journal() {
     releases.push(release(&k, &site, Component::Bridge, "1.0.1", None));
     releases.push(release(&k, &site, Component::Display, "1.0.1", None));
     publish(&k, &site, releases, None);
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     *kb.hang_after_upload.lock().unwrap() = true;
     let data = tmp.join("data");
     let first = daemon(kb.clone(), config(&data, file_url(&site), None, &k)).await;
@@ -1492,7 +1492,7 @@ async fn a_job_interrupted_by_a_daemon_restart_resumes_from_its_journal() {
     while !kb
         .writes()
         .iter()
-        .any(|w| w.starts_with("sideload openflux-bridge"))
+        .any(|w| w.starts_with("sideload keyglass-bridge"))
     {
         assert!(Instant::now() < deadline);
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -1518,7 +1518,7 @@ async fn a_job_interrupted_by_a_daemon_restart_resumes_from_its_journal() {
     assert_eq!(
         writes
             .iter()
-            .filter(|w| w.starts_with("sideload openflux-bridge"))
+            .filter(|w| w.starts_with("sideload keyglass-bridge"))
             .count(),
         1,
         "the bridge isn't installed twice: {writes:?}"
@@ -1526,7 +1526,7 @@ async fn a_job_interrupted_by_a_daemon_restart_resumes_from_its_journal() {
     assert!(writes.contains(&"confirm bridge".to_string()), "{writes:?}");
     assert_eq!(
         kb.version("display").as_deref(),
-        Some("openflux-display 1.0.1")
+        Some("keyglass-display 1.0.1")
     );
     let _ = std::fs::remove_dir_all(&tmp);
 }
@@ -1555,9 +1555,9 @@ async fn a_keyboard_with_a_newer_data_format_is_read_only_for_that_area() {
     ));
     publish(&k, &site, releases, None);
     let kb = MockKeyboard::new([
-        ("firmware", "openflux-firmware 1.0.0"),
-        ("bridge", "openflux-bridge 1.0.0"),
-        ("display", "openflux-display 1.1.0"),
+        ("firmware", "keyglass-firmware 1.0.0"),
+        ("bridge", "keyglass-bridge 1.0.0"),
+        ("display", "keyglass-display 1.1.0"),
     ]);
     let d = daemon(
         kb.clone(),
@@ -1734,7 +1734,7 @@ async fn restore_with(ranges: bool) {
     let site = tmp.join("site");
     std::fs::create_dir_all(&site).unwrap();
     let (url, seen, bridge_pkg, display_pkg) = factory_site(&k, &site, ranges);
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     factory_keyboard_behaviour(&kb);
     kb.kb.lock().unwrap().fw_keymap = Some(default_keymap_blob());
     let mut cfg = config(&tmp.join("data"), file_url(&site), None, &k);
@@ -1756,15 +1756,15 @@ async fn restore_with(ranges: bool) {
     assert_eq!(kb.version("firmware").as_deref(), Some("1.4.12"));
     let g = kb.kb.lock().unwrap();
     assert_eq!(
-        g.files["/home/root/.openflux/factory-restore/fb_1.4.11_aarch64.ipk"],
+        g.files["/home/root/.keyglass/factory-restore/fb_1.4.11_aarch64.ipk"],
         bridge_pkg
     );
     assert_eq!(
-        g.files["/home/root/.openflux/factory-restore/fd_1.4.28_aarch64.ipk"],
+        g.files["/home/root/.keyglass/factory-restore/fd_1.4.28_aarch64.ipk"],
         display_pkg
     );
     let manifest =
-        String::from_utf8(g.files["/home/root/.openflux/factory-restore/manifest.sha256"].clone())
+        String::from_utf8(g.files["/home/root/.keyglass/factory-restore/manifest.sha256"].clone())
             .unwrap();
     assert!(
         manifest.contains(&format!("{}  fb_1.4.11_aarch64.ipk", sha256(&bridge_pkg))),
@@ -1777,7 +1777,7 @@ async fn restore_with(ranges: bool) {
         .collect();
     let trigger = order
         .iter()
-        .position(|w| w.contains("openflux-factory-restore"))
+        .position(|w| w.contains("keyglass-factory-restore"))
         .unwrap();
     let flash = order.iter().position(|w| w.starts_with("flash")).unwrap();
     assert!(
@@ -1791,7 +1791,7 @@ async fn restore_with(ranges: bool) {
     drop(g);
     let requests = seen.lock().unwrap().clone();
     assert!(
-        requests.iter().all(|r| r.contains("OpenFlux/")),
+        requests.iter().all(|r| r.contains("Keyglass/")),
         "{requests:?}"
     );
     if ranges {
@@ -1816,11 +1816,11 @@ async fn converting_and_resetting_to_factory_round_trips_the_persisted_keymap() 
     std::fs::create_dir_all(&site).unwrap();
     let (url, _, _, _) = factory_site(&k, &site, true);
     // The factory keyboard's keymap: the default layout in the factory encoding, with a consumer
-    // value OpenFlux has no name for (bit index 0x23, past the factory bitmap's 35 bits).
+    // value Keyglass has no name for (bit index 0x23, past the factory bitmap's 35 bits).
     let default_factory = map_consumer(&default_keymap_blob(), |u| {
         CONSUMER.iter().find(|(_, n)| *n == u).map(|(o, _)| *o)
     });
-    let mut km = openfluxd::codecs::keymap::decode_keymap_blob(&default_factory).unwrap();
+    let mut km = keyglassd::codecs::keymap::decode_keymap_blob(&default_factory).unwrap();
     km.keymaps[0].layers[0][2] = 0x4000_0023;
     km.keymaps[0].layers[0][3] = 0x4000_0000 | (0x8 << 16) | 0x0B; // Ctrl + volume up
     let factory_keymap = km.to_bytes().unwrap();
@@ -1838,23 +1838,23 @@ async fn converting_and_resetting_to_factory_round_trips_the_persisted_keymap() 
     cfg.factory_container_url = Some(url);
     let d = daemon(kb.clone(), cfg).await;
 
-    // Convert: the stored keymap is rewritten in OpenFlux's encoding.
+    // Convert: the stored keymap is rewritten in Keyglass's encoding.
     let id = start_job(&d, "/v1/conversion/convert", r#"{"confirm":true}"#).await;
     let job = wait_job(&d, &id).await;
     assert_eq!(job["state"], "succeeded", "{job}");
-    let openflux = kb.kb.lock().unwrap().fw_keymap.clone().unwrap();
-    let openflux_km = openfluxd::codecs::keymap::decode_keymap_blob(&openflux).unwrap();
+    let keyglass = kb.kb.lock().unwrap().fw_keymap.clone().unwrap();
+    let keyglass_km = keyglassd::codecs::keymap::decode_keymap_blob(&keyglass).unwrap();
     assert_eq!(
-        openflux_km.keymaps[0].layers[0][3],
+        keyglass_km.keymaps[0].layers[0][3],
         0x4000_0000 | (0x8 << 16) | 0xE9
     );
     assert_eq!(
-        openflux_km.keymaps[0].layers[0][2], 0x4000_0023,
+        keyglass_km.keymaps[0].layers[0][2], 0x4000_0023,
         "an unknown media key is kept as it is"
     );
     let standard: Vec<u32> = CONSUMER.iter().map(|(_, n)| *n).collect();
     assert!(
-        consumer_words(&openflux)
+        consumer_words(&keyglass)
             .iter()
             .all(|w| standard.contains(&(w & 0xFFFF)) || w & 0xFFFF == 0x23),
         "every named media key is a HID usage"
@@ -1867,8 +1867,8 @@ async fn converting_and_resetting_to_factory_round_trips_the_persisted_keymap() 
     let g = kb.kb.lock().unwrap();
     let back = g.fw_keymap.clone().unwrap();
     assert_eq!(
-        openfluxd::codecs::keymap::decode_keymap_blob(&back).unwrap(),
-        openfluxd::codecs::keymap::decode_keymap_blob(&factory_keymap).unwrap(),
+        keyglassd::codecs::keymap::decode_keymap_blob(&back).unwrap(),
+        keyglassd::codecs::keymap::decode_keymap_blob(&factory_keymap).unwrap(),
         "the persisted keymap is back in the factory encoding, key for key"
     );
     assert!(
@@ -1915,7 +1915,7 @@ async fn reset_to_factory_is_not_available_without_a_factory_reference() {
     std::fs::create_dir_all(&site).unwrap();
     publish(&k, &site, baseline(&k, &site), None);
     let d = daemon(
-        MockKeyboard::new(OPENFLUX_1_0_0),
+        MockKeyboard::new(KEYGLASS_1_0_0),
         config(&tmp.join("data"), file_url(&site), None, &k),
     )
     .await;
@@ -1937,10 +1937,10 @@ async fn reset_to_factory_is_not_available_without_a_factory_reference() {
 // The keyboard's keymap
 // ---------------------------------------------------------------------------------------------
 
-/// OpenFlux's default keymap document written with the factory software's key names.
+/// Keyglass's default keymap document written with the factory software's key names.
 fn factory_named_default_keymap() -> serde_json::Value {
-    let mut km = openfluxd::defaults::default_keymap();
-    assert!(openfluxd::codecs::keycode_names::to_factory(&mut km) > 0);
+    let mut km = keyglassd::defaults::default_keymap();
+    assert!(keyglassd::codecs::keycode_names::to_factory(&mut km) > 0);
     km
 }
 
@@ -1948,7 +1948,7 @@ fn has_factory_names(v: &serde_json::Value) -> bool {
     v.to_string().contains("KC_FF_")
 }
 
-const KEYMAP_JSON: &str = "/home/root/openflux/config/keymap.json";
+const KEYMAP_JSON: &str = "/home/root/keyglass/config/keymap.json";
 
 #[tokio::test]
 async fn converting_a_keyboard_with_factory_key_names_loads_its_keymap() {
@@ -2009,17 +2009,17 @@ async fn converting_a_keyboard_with_factory_key_names_loads_its_keymap() {
         assert!(!has_factory_names(&plan["keymap"]), "{}", plan["keymap"]);
         assert_eq!(
             plan["keymap"]["keymaps"]["ansi"]["layers"][1],
-            openfluxd::defaults::default_keymap()["keymaps"]["ansi"]["layers"][1],
-            "the FN layer reads the same as OpenFlux's own"
+            keyglassd::defaults::default_keymap()["keymaps"]["ansi"]["layers"][1],
+            "the FN layer reads the same as Keyglass's own"
         );
         let blob = unhex(plan["keymapBlobHex"].as_str().unwrap());
         assert!(
-            openfluxd::codecs::keymap::verify_keymap_matches_blob(&plan["keymap"], &blob).is_ok()
+            keyglassd::codecs::keymap::verify_keymap_matches_blob(&plan["keymap"], &blob).is_ok()
         );
         let written: serde_json::Value = serde_json::from_slice(&g.files[KEYMAP_JSON]).unwrap();
         assert!(!has_factory_names(&written), "{written}");
         let appearance: serde_json::Value =
-            serde_json::from_slice(&g.files["/home/root/openflux/config/appearance.json"]).unwrap();
+            serde_json::from_slice(&g.files["/home/root/keyglass/config/appearance.json"]).unwrap();
         assert_eq!(
             appearance["defaultTheme"]["stylemaps"]["1"]["styles"]["10"]["keyCode"],
             "KC_OF_START_PAUSE_POMODORO"
@@ -2027,8 +2027,8 @@ async fn converting_a_keyboard_with_factory_key_names_loads_its_keymap() {
     }
 
     // The daemon reads the converted keyboard, and the keymap loads.
-    let mut w = openfluxd::api::worker::WorkerLoopState::default();
-    openfluxd::api::worker::reconcile_tick_with_state(&d.state, &mut QuietHost, &*kb, 2, &mut w);
+    let mut w = keyglassd::api::worker::WorkerLoopState::default();
+    keyglassd::api::worker::reconcile_tick_with_state(&d.state, &mut QuietHost, &*kb, 2, &mut w);
     let (_, dev) = http(d.addr, "GET", "/v1/device/status", None).await;
     assert_eq!(
         dev["keymapSync"],
@@ -2048,7 +2048,7 @@ async fn a_keymap_that_disagrees_with_the_firmware_is_reported_and_the_firmware_
     let site = tmp.join("site");
     std::fs::create_dir_all(&site).unwrap();
     publish(&k, &site, baseline(&k, &site), None);
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     {
         let mut g = kb.kb.lock().unwrap();
         g.fw_keymap = Some(default_keymap_blob());
@@ -2062,9 +2062,9 @@ async fn a_keymap_that_disagrees_with_the_firmware_is_reported_and_the_firmware_
         config(&tmp.join("data"), file_url(&site), None, &k),
     )
     .await;
-    let mut w = openfluxd::api::worker::WorkerLoopState::default();
+    let mut w = keyglassd::api::worker::WorkerLoopState::default();
     let mut tick = |kb: &MockKeyboard| {
-        openfluxd::api::worker::reconcile_tick_with_state(&d.state, &mut QuietHost, kb, 2, &mut w)
+        keyglassd::api::worker::reconcile_tick_with_state(&d.state, &mut QuietHost, kb, 2, &mut w)
     };
 
     // Nothing has been read yet: the keymap is loading and there is no firmware keymap to adopt.
@@ -2092,11 +2092,11 @@ async fn a_keymap_that_disagrees_with_the_firmware_is_reported_and_the_firmware_
     assert_eq!(code, 200, "{cfg}");
     assert_eq!(cfg["hydrated"]["keymap"], true, "{}", cfg["hydrated"]);
     assert!(!has_factory_names(&cfg["keymap"]));
-    let default = openfluxd::defaults::default_keymap();
+    let default = keyglassd::defaults::default_keymap();
     for layout in ["ansi", "iso"] {
         assert_eq!(
             cfg["keymap"]["keymaps"][layout]["layers"], default["keymaps"][layout]["layers"],
-            "{layout}: OpenFlux names, with the layer names and ids kept"
+            "{layout}: Keyglass names, with the layer names and ids kept"
         );
     }
     {
@@ -2146,15 +2146,15 @@ async fn adopting_the_firmware_keymap_is_refused_while_a_job_runs_or_conversion_
     let mut releases = baseline(&k, &site);
     releases.push(release(&k, &site, Component::Display, "1.0.1", None));
     publish(&k, &site, releases, None);
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     kb.kb.lock().unwrap().fw_keymap = Some(default_keymap_blob());
     let d = daemon(
         kb.clone(),
         config(&tmp.join("data"), file_url(&site), None, &k),
     )
     .await;
-    let mut w = openfluxd::api::worker::WorkerLoopState::default();
-    openfluxd::api::worker::reconcile_tick_with_state(&d.state, &mut QuietHost, &*kb, 2, &mut w);
+    let mut w = keyglassd::api::worker::WorkerLoopState::default();
+    keyglassd::api::worker::reconcile_tick_with_state(&d.state, &mut QuietHost, &*kb, 2, &mut w);
     assert!(d.state.inner.lock().unwrap().device_keymap_blob.is_some());
 
     kb.hold(true);
@@ -2186,8 +2186,8 @@ async fn adopting_the_firmware_keymap_is_refused_while_a_job_runs_or_conversion_
         config(&tmp.join("data"), file_url(&site), None, &k),
     )
     .await;
-    let mut w = openfluxd::api::worker::WorkerLoopState::default();
-    openfluxd::api::worker::reconcile_tick_with_state(&d.state, &mut QuietHost, &*kb, 2, &mut w);
+    let mut w = keyglassd::api::worker::WorkerLoopState::default();
+    keyglassd::api::worker::reconcile_tick_with_state(&d.state, &mut QuietHost, &*kb, 2, &mut w);
     let (code, body) = http(d.addr, "POST", "/v1/keymap/adopt-firmware", None).await;
     assert_eq!(
         (code, body["error"]["code"].clone()),
@@ -2244,8 +2244,8 @@ async fn converting_rebuilds_a_keymap_json_that_disagrees_with_the_firmware_keym
     assert_eq!(layer["name"], "My base", "the document's names are kept");
     assert!(!has_factory_names(&plan["keymap"]));
 
-    let mut w = openfluxd::api::worker::WorkerLoopState::default();
-    openfluxd::api::worker::reconcile_tick_with_state(&d.state, &mut QuietHost, &*kb, 2, &mut w);
+    let mut w = keyglassd::api::worker::WorkerLoopState::default();
+    keyglassd::api::worker::reconcile_tick_with_state(&d.state, &mut QuietHost, &*kb, 2, &mut w);
     let (_, dev) = http(d.addr, "GET", "/v1/device/status", None).await;
     assert_eq!(dev["keymapSync"]["state"], "ok", "{dev}");
     let _ = std::fs::remove_dir_all(&tmp);
@@ -2255,8 +2255,8 @@ async fn converting_rebuilds_a_keymap_json_that_disagrees_with_the_firmware_keym
 // Press-refinement data
 // ---------------------------------------------------------------------------------------------
 
-use openfluxd::conversion::press_refinement::{PressRefinementSource, SourceLocation, SourceRange};
-use openfluxd::usb::press_refinement::{crc32, FirmwareStore, State as PressState};
+use keyglassd::conversion::press_refinement::{PressRefinementSource, SourceLocation, SourceRange};
+use keyglassd::usb::press_refinement::{crc32, FirmwareStore, State as PressState};
 
 /// One UF2 block for the RP2040 at `addr`.
 fn uf2_block(addr: u32, data: &[u8]) -> Vec<u8> {
@@ -2460,7 +2460,7 @@ async fn a_container_downloaded_whole_must_match_its_pinned_hash() {
         }
         publish_with_refinement_source(&k, &site, Some(&s.refinement));
         let (url, seen) = serve_container(s.container.clone(), false);
-        let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+        let kb = MockKeyboard::new(KEYGLASS_1_0_0);
         let mut cfg = config(&tmp.join("data"), file_url(&site), None, &k);
         cfg.press_refinement_container_url = Some(url);
         let d = daemon(kb.clone(), cfg).await;
@@ -2488,7 +2488,7 @@ async fn a_file_the_user_already_has_is_verified_and_installed() {
     std::fs::create_dir_all(&site).unwrap();
     let s = synthetic_refinement_source();
     publish_with_refinement_source(&k, &site, Some(&s.refinement));
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     let d = daemon(
         kb.clone(),
         config(&tmp.join("data"), file_url(&site), None, &k),
@@ -2583,7 +2583,7 @@ async fn a_conversion_succeeds_when_press_refinement_data_cant_be_installed() {
             other => other,
         };
         assert_eq!(job["pressRefinement"]["code"], want, "{case}: {job}");
-        for (c, v) in OPENFLUX_1_0_0 {
+        for (c, v) in KEYGLASS_1_0_0 {
             assert_eq!(kb.version(c).as_deref(), Some(v), "{case}");
         }
         assert!(kb.kb.lock().unwrap().press.stored.is_none(), "{case}");
@@ -2627,7 +2627,7 @@ async fn press_refinement_routes_wait_for_conversion_and_running_jobs() {
         )),
     );
 
-    // A keyboard that doesn't run OpenFlux is converted first.
+    // A keyboard that doesn't run Keyglass is converted first.
     let kb = factory_keyboard();
     let d = daemon(
         kb.clone(),
@@ -2645,7 +2645,7 @@ async fn press_refinement_routes_wait_for_conversion_and_running_jobs() {
     assert!(kb.writes().is_empty());
 
     // While press-refinement data is being installed, jobs wait.
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     let mut cfg = config(&tmp.join("data2"), file_url(&site), None, &k);
     cfg.press_refinement_container_url = Some(serve_container(s.container.clone(), true).0);
     let d = daemon(kb.clone(), cfg).await;
@@ -2696,7 +2696,7 @@ async fn malformed_apply_is_rejected_and_plan_pinning_and_startup_reservation_ho
     releases.push(release(&k, &site, Component::Display, "1.0.1", None));
     publish(&k, &site, releases, None);
 
-    let kb = MockKeyboard::new(OPENFLUX_1_0_0);
+    let kb = MockKeyboard::new(KEYGLASS_1_0_0);
     let data_dir = tmp.join("data");
     let d = daemon(kb.clone(), config(&data_dir, file_url(&site), None, &k)).await;
 
@@ -2756,7 +2756,7 @@ async fn malformed_apply_is_rejected_and_plan_pinning_and_startup_reservation_ho
     let fresh = UpdateService::new(
         config(&data_dir, file_url(&site), None, &k),
         kb.clone(),
-        openfluxd::lifecycle::Lifecycle::new(),
+        keyglassd::lifecycle::Lifecycle::new(),
     );
     assert!(
         fresh.keyboard_reserved(),
@@ -2767,18 +2767,18 @@ async fn malformed_apply_is_rejected_and_plan_pinning_and_startup_reservation_ho
 }
 
 #[tokio::test]
-async fn custom_openflux_build_stays_writable_and_local_folder_installs_unsigned_builds() {
+async fn custom_keyglass_build_stays_writable_and_local_folder_installs_unsigned_builds() {
     let tmp = temp_dir("custom_and_local");
     let k = keys();
     let site = tmp.join("site");
     std::fs::create_dir_all(&site).unwrap();
     publish(&k, &site, baseline(&k, &site), None);
 
-    // Keyboard runs a custom/dev OpenFlux bridge not listed in the signed release index.
+    // Keyboard runs a custom/dev Keyglass bridge not listed in the signed release index.
     let kb = MockKeyboard::new([
-        ("firmware", "openflux-firmware 1.0.0"),
-        ("bridge", "openflux-bridge 1.0.2-dev2"),
-        ("display", "openflux-display 1.0.0"),
+        ("firmware", "keyglass-firmware 1.0.0"),
+        ("bridge", "keyglass-bridge 1.0.2-dev2"),
+        ("display", "keyglass-display 1.0.0"),
     ]);
     let d = daemon(
         kb.clone(),
@@ -2786,7 +2786,7 @@ async fn custom_openflux_build_stays_writable_and_local_folder_installs_unsigned
     )
     .await;
 
-    // 1. Same-major custom OpenFlux builds must not lock out bridgeUsb / live telemetry writes.
+    // 1. Same-major custom Keyglass builds must not lock out bridgeUsb / live telemetry writes.
     let (code, dev_status) = http(d.addr, "GET", "/v1/device/status", None).await;
     assert_eq!(code, 200, "{dev_status}");
     assert_eq!(
@@ -2806,7 +2806,7 @@ async fn custom_openflux_build_stays_writable_and_local_folder_installs_unsigned
     let local_dir = tmp.join("local-builds");
     std::fs::create_dir_all(local_dir.join("build/bridge")).unwrap();
     std::fs::write(
-        local_dir.join("build/bridge/openflux-bridge_1.0.3-local_aarch64.ipk"),
+        local_dir.join("build/bridge/keyglass-bridge_1.0.3-local_aarch64.ipk"),
         b"!<arch>\nfake-ipk-payload",
     )
     .unwrap();
@@ -2822,7 +2822,7 @@ async fn custom_openflux_build_stays_writable_and_local_folder_installs_unsigned
     assert_eq!(upd["localBuilds"]["exists"], true);
     assert_eq!(
         upd["localBuilds"]["bridge"]["name"],
-        "openflux-bridge_1.0.3-local_aarch64.ipk"
+        "keyglass-bridge_1.0.3-local_aarch64.ipk"
     );
 
     // Must refuse without confirm: true.
@@ -2847,7 +2847,7 @@ async fn custom_openflux_build_stays_writable_and_local_folder_installs_unsigned
     assert_eq!(job["state"], "succeeded", "{job}");
     assert_eq!(
         kb.version("bridge").as_deref(),
-        Some("openflux-bridge 1.0.3-local")
+        Some("keyglass-bridge 1.0.3-local")
     );
     let _ = std::fs::remove_dir_all(&tmp);
 }

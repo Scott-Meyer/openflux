@@ -1,15 +1,15 @@
 # Compatibility and updates
 
-OpenFlux has four parts that are released separately:
+Keyglass has four parts that are released separately:
 
 | Component | Runs on | Updated by |
 |---|---|---|
-| host | your computer: the daemon and OpenFlux Studio | Studio's updater, or the system package manager for the `.deb` |
+| host | your computer: the daemon and Keyglass Studio | Studio's updater, or the system package manager for the `.deb` |
 | firmware | the key scanner in the keyboard | the host, over the firmware's USB boot interface |
 | bridge | the keyboard's computer, linking USB, the key scanner and the display | the host, over the bridge's USB connection |
 | display | the keyboard's computer, drawing the screen | the host, through the bridge |
 
-Because each part has its own version, OpenFlux needs a clear rule for which
+Because each part has its own version, Keyglass needs a clear rule for which
 versions work together. That rule is the interface registry, `compat.toml`,
 at the root of the repository.
 
@@ -44,7 +44,7 @@ working with a provider at `1.4`; it just does not use the additions.
 **Data** interfaces are stored formats. A host that knows `keymap 1.2` can
 read a keymap stored as `1.4`, but writing it back could drop what `1.3` and
 `1.4` added. So when the keyboard's data is newer than the host understands,
-the host shows that area read-only and suggests updating OpenFlux.
+the host shows that area read-only and suggests updating Keyglass.
 
 Every release records what its component provides and requires, and which
 version of each required interface it was built against. Those declarations
@@ -52,36 +52,36 @@ come from `compat.toml` at the commit the release was built from.
 
 ## What you see
 
-For each component, OpenFlux shows one of these states:
+For each component, Keyglass shows one of these states:
 
 | State | Meaning |
 |---|---|
 | Up to date | Nothing newer is available for your channel. |
 | Update available | A newer version can be installed safely. If it is marked as required, the installed version does not fully work with the rest of your setup. |
-| Needs a newer OpenFlux first | A newer version exists, but your OpenFlux app must be updated before it can be installed. |
-| Keyboard newer than this OpenFlux | The keyboard uses interfaces this app does not fully understand. Affected areas are read-only or unavailable until you update OpenFlux. |
+| Needs a newer Keyglass first | A newer version exists, but your Keyglass app must be updated before it can be installed. |
+| Keyboard newer than this Keyglass | The keyboard uses interfaces this app does not fully understand. Affected areas are read-only or unavailable until you update Keyglass. |
 | Update blocked | A newer version exists but no safe way to install it was found. The reason is shown. |
 | Incompatible | The installed version does not work with the rest of your setup and no release fixes that. |
-| Conversion required | The keyboard is not fully running OpenFlux. The only keyboard action is converting it. |
+| Conversion required | The keyboard is not fully running Keyglass. The only keyboard action is converting it. |
 
 Keyboard updates are never installed automatically. You choose when to
 install, and the app shows every step before it starts.
 
-## Fully OpenFlux keyboards and conversion
+## Fully Keyglass keyboards and conversion
 
-OpenFlux updates a keyboard component by component only when every keyboard
-component runs OpenFlux 1.0 or later and identifies itself. Such a keyboard
-is in the **OpenFlux** mode described in the rest of this page.
+Keyglass updates a keyboard component by component only when every keyboard
+component runs Keyglass 1.0 or later and identifies itself. Such a keyboard
+is in the **Keyglass** mode described in the rest of this page.
 
 If any component runs something else (the keyboard's factory software, an
-OpenFlux development build, or software that cannot be identified),
-the keyboard is in the **conversion** mode. OpenFlux does not mix its
+Keyglass development build, or software that cannot be identified),
+the keyboard is in the **conversion** mode. Keyglass does not mix its
 components with other software, so in this mode:
 
 - the only keyboard action offered is converting the whole keyboard to
-  OpenFlux, which installs firmware, bridge and display together;
+  Keyglass, which installs firmware, bridge and display together;
 - no individual keyboard update, companion update or downgrade is planned;
-- updates of the OpenFlux app itself remain available.
+- updates of the Keyglass app itself remain available.
 
 The conversion carries the keyboard's settings over and leaves its
 calibration untouched. It does not keep a copy of the software it replaces:
@@ -167,7 +167,7 @@ When you change a boundary between components:
 3. If a consumer starts relying on the addition, raise its requirement, for
    example from `>=1.0, <2.0` to `>=1.1, <2.0`.
 4. If the change breaks existing consumers, read the next section first.
-5. Run `openflux-release compat` to check the registry. It reports any
+5. Run `keyglass-release compat` to check the registry. It reports any
    requirement that the provider does not satisfy.
 
 Interfaces are never renamed or reused; a different meaning gets a different

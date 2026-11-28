@@ -450,7 +450,7 @@ static void wr32_le(uint8_t *p, uint32_t v) {
 }
 
 static void test_one_time_legacy_keymap_upgrade_migration(test_qmk_ctx_t *t) {
-    /* Fresh flash with NO vial_ee_1.bin, simulating an upgrade from legacy OpenFlux firmware. */
+    /* Fresh flash with NO vial_ee_1.bin, simulating an upgrade from legacy Keyglass firmware. */
     fw_lfs_host_reset_flash();
     assert(fw_lfs_host_format_and_mount() == 0);
 

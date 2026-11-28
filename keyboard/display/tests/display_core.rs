@@ -1,6 +1,6 @@
-use openflux_display::layout::{build_physical_layout, compute_key_parallax, FrameLayoutType};
-use openflux_display::media_bg::{VideoAdapter, VideoStream};
-use openflux_display::{DisplayConfig, DisplayPreview};
+use keyglass_display::layout::{build_physical_layout, compute_key_parallax, FrameLayoutType};
+use keyglass_display::media_bg::{VideoAdapter, VideoStream};
+use keyglass_display::{DisplayConfig, DisplayPreview};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
@@ -277,7 +277,7 @@ fn unicode_media_paths_extensionless_and_bundled_weather_svgs_render() {
     let wi_dir =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/weather_icons");
     let wi_root = wi_dir.parent().unwrap().to_string_lossy().to_string();
-    let mut cache = openflux_display::assets::AssetCache::new();
+    let mut cache = keyglass_display::assets::AssetCache::new();
     let mut pix = vec![0xFF00_0000u32; 64 * 64];
     for cond in ["Sunny", "Cloudy", "Light Rain"] {
         pix.fill(0xFF00_0000u32);
@@ -377,7 +377,7 @@ fn fast_paced_ffmpeg_like_decoder_advances_without_future_freeze() {
 
 #[test]
 fn ipc_line_buffer_handles_split_utf8_and_video_stream_recovers_after_eof() {
-    use openflux_display::ipc::LineStreamBuffer;
+    use keyglass_display::ipc::LineStreamBuffer;
 
     // 1. Split UTF-8 codepoint across nonblocking reads
     let mut lb = LineStreamBuffer::new();
@@ -391,7 +391,7 @@ fn ipc_line_buffer_handles_split_utf8_and_video_stream_recovers_after_eof() {
     // 2. Real FfmpegVideoAdapter with fake raw-frame decoder script -> wait until EOF/2 frames, then poll_ready() is false
     #[cfg(unix)]
     {
-        use openflux_display::FfmpegVideoAdapter;
+        use keyglass_display::FfmpegVideoAdapter;
         use std::os::unix::fs::PermissionsExt;
         let tmp = std::env::temp_dir().join(format!("flux_real_ad_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
@@ -484,7 +484,7 @@ fn ipc_line_buffer_handles_split_utf8_and_video_stream_recovers_after_eof() {
             assert_eq!(
                 FfmpegVideoAdapter::default().resolve_ffmpeg_bin(),
                 Some(std::path::PathBuf::from(
-                    openflux_display::device_paths::DISPLAY_FFMPEG_PATH
+                    keyglass_display::device_paths::DISPLAY_FFMPEG_PATH
                 ))
             );
         }
@@ -572,7 +572,7 @@ fn ipc_line_buffer_handles_split_utf8_and_video_stream_recovers_after_eof() {
 
 #[test]
 fn config_reloader_honors_transaction_markers_and_sparse_mosaic_slots_keep_fixed_columns() {
-    use openflux_display::config::ConfigReloader;
+    use keyglass_display::config::ConfigReloader;
 
     // 1. Config transaction markers
     let tmp = std::env::temp_dir().join(format!("flux_cfg_tx_{}", std::process::id()));
@@ -685,10 +685,10 @@ fn config_reloader_honors_transaction_markers_and_sparse_mosaic_slots_keep_fixed
     let wc_other_day = d.render_rgba(1763414400 + 86400 * 3, 0, false);
     assert_ne!(wc_london, wc_other_day);
 
-    let disp_bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_openflux-display"));
+    let disp_bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_keyglass-display"));
     assert!(
         disp_bin.is_file(),
-        "CARGO_BIN_EXE_openflux-display missing: {}",
+        "CARGO_BIN_EXE_keyglass-display missing: {}",
         disp_bin.display()
     );
     // Black PPM background with zero dimming isolates Mosaic rendering from gradient background
@@ -708,7 +708,7 @@ fn config_reloader_honors_transaction_markers_and_sparse_mosaic_slots_keep_fixed
             p_la.to_str().unwrap()
         ])
         .env("TZ", "America/Los_Angeles")
-        .env("OPENFLUX_FIXED_TIME_SEC", "1763414400")
+        .env("KEYGLASS_FIXED_TIME_SEC", "1763414400")
         .status()
         .unwrap()
         .success());
@@ -722,7 +722,7 @@ fn config_reloader_honors_transaction_markers_and_sparse_mosaic_slots_keep_fixed
             p_tyo.to_str().unwrap()
         ])
         .env("TZ", "Asia/Tokyo")
-        .env("OPENFLUX_FIXED_TIME_SEC", "1763414400")
+        .env("KEYGLASS_FIXED_TIME_SEC", "1763414400")
         .status()
         .unwrap()
         .success());
@@ -739,7 +739,7 @@ fn config_reloader_honors_transaction_markers_and_sparse_mosaic_slots_keep_fixed
     assert_eq!(
         lib_ppm,
         std::fs::read(&p_la).unwrap(),
-        "DisplayPreview and openflux-display CLI PPMs differ"
+        "DisplayPreview and keyglass-display CLI PPMs differ"
     );
     let hdr_end = lib_ppm
         .iter()
@@ -975,10 +975,10 @@ fn config_reloader_honors_transaction_markers_and_sparse_mosaic_slots_keep_fixed
                         "--render-ppm",
                         p_f3.to_str().unwrap()
                     ])
-                    .env("OPENFLUX_VIDEO_DECODER", &step_dec)
-                    .env("OPENFLUX_VIDEO_FPS", fps_s)
-                    .env("OPENFLUX_VIDEO_TARGET_FRAME", "3")
-                    .env("OPENFLUX_FIXED_TIME_SEC", "1763414400")
+                    .env("KEYGLASS_VIDEO_DECODER", &step_dec)
+                    .env("KEYGLASS_VIDEO_FPS", fps_s)
+                    .env("KEYGLASS_VIDEO_TARGET_FRAME", "3")
+                    .env("KEYGLASS_FIXED_TIME_SEC", "1763414400")
                     .status()
                     .unwrap()
                     .success(),
@@ -1011,10 +1011,10 @@ fn config_reloader_honors_transaction_markers_and_sparse_mosaic_slots_keep_fixed
                 "--render-ppm",
                 p_f7.to_str().unwrap(),
             ])
-            .env("OPENFLUX_VIDEO_DECODER", &step_dec)
-            .env("OPENFLUX_VIDEO_FPS", "24")
-            .env("OPENFLUX_VIDEO_TARGET_FRAME", "7")
-            .env("OPENFLUX_FIXED_TIME_SEC", "1763414400")
+            .env("KEYGLASS_VIDEO_DECODER", &step_dec)
+            .env("KEYGLASS_VIDEO_FPS", "24")
+            .env("KEYGLASS_VIDEO_TARGET_FRAME", "7")
+            .env("KEYGLASS_FIXED_TIME_SEC", "1763414400")
             .status()
             .unwrap();
         assert!(
@@ -1034,7 +1034,7 @@ fn config_reloader_honors_transaction_markers_and_sparse_mosaic_slots_keep_fixed
 fn autofocus_lock_reticle_and_zero_effective_alpha_blend_noop() {
     // 1. Preserve no-op when effective alpha rounds to zero on non-opaque destination
     let mut non_opaque = 0x1020_3040_u32;
-    openflux_display::assets::blend_argb_cov(&mut non_opaque, 0x01FF_0000, 1);
+    keyglass_display::assets::blend_argb_cov(&mut non_opaque, 0x01FF_0000, 1);
     assert_eq!(
         non_opaque, 0x1020_3040,
         "effective alpha=0 must not alter destination alpha or RGB"
@@ -1226,8 +1226,8 @@ fn pomodoro_keys_cmd_shortcut_overlay_and_ripple_phase_work_end_to_end() {
 
     // 2. With key effects disabled, holding Left Cmd or Right Cmd changes key 1 ("KC_C" -> "Copy") and restores on release
     let idle_px = d.render_rgba(1763414400, 8000, false).to_vec();
-    let k1 = openflux_display::layout::build_physical_layout(
-        openflux_display::layout::FrameLayoutType::Ansi,
+    let k1 = keyglass_display::layout::build_physical_layout(
+        keyglass_display::layout::FrameLayoutType::Ansi,
     )
     .keys
     .into_iter()
@@ -1675,7 +1675,7 @@ fn vram_clears_when_omitted_weather_renders_forecast_and_shortcuts_have_no_force
 
 #[test]
 fn ipc_line_buffer_enforces_per_record_limit_and_skips_oversized_remainder() {
-    let mut lb = openflux_display::ipc::LineStreamBuffer::new();
+    let mut lb = keyglass_display::ipc::LineStreamBuffer::new();
 
     // Valid line + oversized 65_537-byte record in one chunk: keeps "ok", drops oversized, keeps "after"
     let mut mixed = Vec::new();
@@ -1704,7 +1704,7 @@ fn ipc_line_buffer_enforces_per_record_limit_and_skips_oversized_remainder() {
 
 #[test]
 fn svg_tint_honors_alpha_fallback_width_matches_and_hex_shorthand_and_cache_limit() {
-    use openflux_display::assets::AssetCache;
+    use keyglass_display::assets::AssetCache;
     let mut assets = AssetCache::new();
 
     // 1. Transparent tint (0x00FF0000) must leave black background unchanged
@@ -1806,18 +1806,18 @@ fn svg_tint_honors_alpha_fallback_width_matches_and_hex_shorthand_and_cache_limi
     let f_cut = d.render_rgba(1763414400, 20, false);
     assert_ne!(f_shortcut, f_cut);
 
-    // 5. Display preinst script scopes process kill with OPENFLUX_SYSROOT and skips factory match under sysroot
+    // 5. Display preinst script scopes process kill with KEYGLASS_SYSROOT and skips factory match under sysroot
     let preinst = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("packaging/preinst");
     let pre_txt = std::fs::read_to_string(&preinst).unwrap();
-    assert!(pre_txt.contains(r#"${ROOT}/usr/lib/openflux/display/openflux-display"#));
+    assert!(pre_txt.contains(r#"${ROOT}/usr/lib/keyglass/display/keyglass-display"#));
     assert!(pre_txt.contains(r#"if [ -z "$ROOT" ]"#));
 }
 
 #[test]
 fn function_keys_handle_theme_cycle_brightness_three_layer_fallthrough_and_profile_switch_guard() {
-    use openflux_display::config::{DisplayConfig, LiveState};
+    use keyglass_display::config::{DisplayConfig, LiveState};
 
-    let tmp = std::env::temp_dir().join(format!("openflux_disp_funcs_{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("keyglass_disp_funcs_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
 
@@ -1975,7 +1975,7 @@ fn function_keys_handle_theme_cycle_brightness_three_layer_fallthrough_and_profi
     // 1b. Concurrent host edits to appearance.json and settings.json without a marker are never lost
     //     or overwritten by cycle_theme, and even if the host removes the previously cached theme ("ocean"),
     //     the next poll_reload drops the stale generation override and loads the new host appearance & settings.
-    let mut reloader = openflux_display::config::ConfigReloader::new(&tmp);
+    let mut reloader = keyglass_display::config::ConfigReloader::new(&tmp);
     std::thread::sleep(std::time::Duration::from_millis(5));
     let updated_app = serde_json::json!({
         "selectedId": "default",

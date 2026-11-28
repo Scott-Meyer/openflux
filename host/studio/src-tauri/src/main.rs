@@ -23,9 +23,9 @@ struct DaemonConn {
 }
 
 /// The daemon's data directory, where it publishes `config/keys.json` for discovery.
-/// `OPENFLUX_DATA_DIR` overrides the platform default.
+/// `KEYGLASS_DATA_DIR` overrides the platform default.
 fn default_data_dir() -> PathBuf {
-    if let Ok(d) = std::env::var("OPENFLUX_DATA_DIR") {
+    if let Ok(d) = std::env::var("KEYGLASS_DATA_DIR") {
         if !d.is_empty() {
             return PathBuf::from(d);
         }
@@ -34,7 +34,7 @@ fn default_data_dir() -> PathBuf {
     {
         if let Ok(d) = std::env::var("LOCALAPPDATA").or_else(|_| std::env::var("APPDATA")) {
             if !d.is_empty() {
-                return PathBuf::from(d).join("openflux");
+                return PathBuf::from(d).join("keyglass");
             }
         }
         if let Ok(d) = std::env::var("USERPROFILE") {
@@ -42,12 +42,12 @@ fn default_data_dir() -> PathBuf {
                 return PathBuf::from(d)
                     .join("AppData")
                     .join("Local")
-                    .join("openflux");
+                    .join("keyglass");
             }
         }
     }
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    PathBuf::from(home).join(".local/share/openflux")
+    PathBuf::from(home).join(".local/share/keyglass")
 }
 
 /// Connects to the daemon whose data directory is `data_dir`, enrolling if needed.
@@ -83,7 +83,7 @@ async fn try_connect(data_dir: &std::path::Path) -> Result<DaemonConn, ConnectEr
     let keys_path = cfg_dir.join("keys.json");
     let keys_raw = std::fs::read_to_string(&keys_path).map_err(|e| {
         ConnectError::NotRunning(format!(
-            "OpenFlux daemon discovery file {} unavailable: {e}",
+            "Keyglass daemon discovery file {} unavailable: {e}",
             keys_path.display()
         ))
     })?;
@@ -155,7 +155,7 @@ async fn try_connect(data_dir: &std::path::Path) -> Result<DaemonConn, ConnectEr
         .to_string();
     let reg_res = http
         .post(format!("{base_url}/v1/authentication/register"))
-        .json(&serde_json::json!({ "clientName": "openflux-studio", "enrollmentSecret": secret }))
+        .json(&serde_json::json!({ "clientName": "keyglass-studio", "enrollmentSecret": secret }))
         .send()
         .await
         .map_err(|e| {
@@ -515,7 +515,7 @@ async fn preview_rects(_layout: Option<String>) -> Result<Value, String> {
 
 #[tauri::command]
 async fn preview_render_rgba(_opts: Value) -> Result<tauri::ipc::Response, String> {
-    Err("v1 preview removed; use OpenFlux v2 /v2/preview/frame.png".into())
+    Err("v1 preview removed; use Keyglass v2 /v2/preview/frame.png".into())
 }
 
 #[tauri::command]
@@ -879,7 +879,7 @@ fn main() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running OpenFlux Studio");
+        .expect("error while running Keyglass Studio");
 }
 
 #[cfg(test)]
@@ -931,7 +931,7 @@ mod tests {
     fn the_token_file_is_readable_only_by_its_owner() {
         use std::os::unix::fs::PermissionsExt;
         let dir =
-            std::env::temp_dir().join(format!("openflux_studio_token_{}", std::process::id()));
+            std::env::temp_dir().join(format!("keyglass_studio_token_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("desktop_token.txt");
         let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
@@ -968,7 +968,7 @@ mod tests {
             }
         });
         let dir =
-            std::env::temp_dir().join(format!("openflux_studio_plain_{}", std::process::id()));
+            std::env::temp_dir().join(format!("keyglass_studio_plain_{}", std::process::id()));
         let cfg = dir.join("config");
         std::fs::create_dir_all(&cfg).unwrap();
         std::fs::write(
@@ -987,7 +987,7 @@ mod tests {
     #[tokio::test]
     async fn shutdown_drain_sets_closing_flag() {
         let st = Arc::new(DesktopState {
-            data_dir: std::env::temp_dir().join("openflux_studio_unused"),
+            data_dir: std::env::temp_dir().join("keyglass_studio_unused"),
             conn: tokio::sync::Mutex::new(None),
             closing: AtomicBool::new(false),
             config_gen: AtomicU64::new(0),
@@ -1039,17 +1039,17 @@ mod tests {
     /// The daemon runs from an unrelated working directory; Studio reaches it through the data
     /// directory alone.
     #[tokio::test]
-    #[ignore = "needs a release build of the daemon: cargo build --release -p openfluxd"]
+    #[ignore = "needs a release build of the daemon: cargo build --release -p keyglassd"]
     async fn connects_from_any_working_directory_and_reaches_maintenance_endpoints() {
         let daemon_bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../../target/release")
-            .join(format!("openfluxd{}", std::env::consts::EXE_SUFFIX));
+            .join(format!("keyglassd{}", std::env::consts::EXE_SUFFIX));
         assert!(
             daemon_bin.is_file(),
-            "{} is missing; build it with cargo build --release -p openfluxd",
+            "{} is missing; build it with cargo build --release -p keyglassd",
             daemon_bin.display()
         );
-        let tmp = std::env::temp_dir().join(format!("openflux_studio_cwd_{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("keyglass_studio_cwd_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         let data = tmp.join("data");
         let home = tmp.join("home");
@@ -1065,15 +1065,15 @@ mod tests {
         let child = std::process::Command::new(&daemon_bin)
             .args(["--no-tray", "--no-usb"])
             .current_dir(std::env::temp_dir())
-            .env("OPENFLUX_DATA_DIR", &data)
-            .env("OPENFLUX_HOME_OVERRIDE", &home)
+            .env("KEYGLASS_DATA_DIR", &data)
+            .env("KEYGLASS_HOME_OVERRIDE", &home)
             .env("HOME", &home)
             .env("USERPROFILE", &home)
             .env("APPDATA", home.join("AppData/Roaming"))
             .env("LOCALAPPDATA", home.join("AppData/Local"))
             .env_remove("XDG_DATA_HOME")
-            .env_remove("OPENFLUX_ENROLLMENT_SECRET")
-            .env("OPENFLUX_API_ADDR", "127.0.0.1:0")
+            .env_remove("KEYGLASS_ENROLLMENT_SECRET")
+            .env("KEYGLASS_API_ADDR", "127.0.0.1:0")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()

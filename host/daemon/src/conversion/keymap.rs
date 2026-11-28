@@ -1,9 +1,9 @@
-//! Keymaps written by keyboard software other than OpenFlux.
+//! Keymaps written by keyboard software other than Keyglass.
 //!
-//! Such keymaps store a consumer control as the index of a bit in a consumer bitmap. OpenFlux
+//! Such keymaps store a consumer control as the index of a bit in a consumer bitmap. Keyglass
 //! stores the HID Consumer Page usage itself. A keyboard's firmware keymap survives the firmware
 //! flash in both directions, so conversion translates its consumer controls to usages before
-//! OpenFlux uses it, and a reset to factory translates them back before the factory firmware does.
+//! Keyglass uses it, and a reset to factory translates them back before the factory firmware does.
 
 use crate::codecs::keymap::{
     decode_keymap_blob, encode_keymap_json_to_firmware_blob, CodecError, CONSUMER_CONTROLS,
@@ -11,7 +11,7 @@ use crate::codecs::keymap::{
 };
 
 /// Consumer-control bit index used by other keyboard software, and the HID Consumer Page usage
-/// OpenFlux stores for it. The factory firmware's consumer bitmap has these 35 bits, in this order.
+/// Keyglass stores for it. The factory firmware's consumer bitmap has these 35 bits, in this order.
 pub const CONSUMER_TRANSLATION: [(u32, u32); 35] = [
     (0x0000, 0x0032), // sleep
     (0x0001, 0x006F), // brightness up
@@ -54,12 +54,12 @@ pub const CONSUMER_TRANSLATION: [(u32, u32); 35] = [
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Translation {
     pub translated: usize,
-    /// Consumer controls with no OpenFlux equivalent; they are left as they are.
+    /// Consumer controls with no Keyglass equivalent; they are left as they are.
     pub unknown: Vec<u32>,
 }
 
 /// Rewrites every consumer control in a firmware keymap blob to its HID usage. Modifier bits are
-/// kept. A blob that is already in OpenFlux's encoding comes back unchanged.
+/// kept. A blob that is already in Keyglass's encoding comes back unchanged.
 pub fn translate_consumer_controls(blob: &[u8]) -> Result<(Vec<u8>, Translation), CodecError> {
     let mut km = decode_keymap_blob(blob)?;
     let mut t = Translation::default();
@@ -107,8 +107,8 @@ pub struct FactoryTranslation {
 
 /// A consumer word in the factory encoding, if it has one.
 ///
-/// A usage OpenFlux names is translated, and one with no factory equivalent has none. Any other
-/// consumer value can't have come from OpenFlux's encoder: it is either a value the conversion left
+/// A usage Keyglass names is translated, and one with no factory equivalent has none. Any other
+/// consumer value can't have come from Keyglass's encoder: it is either a value the conversion left
 /// unchanged or a word already translated back, so it is kept, and translating twice changes
 /// nothing.
 fn factory_word(word: u32, named: &[u32]) -> Option<u32> {
@@ -214,7 +214,7 @@ mod tests {
     }
 
     #[test]
-    fn every_consumer_control_is_translated_to_the_usage_openflux_encodes() {
+    fn every_consumer_control_is_translated_to_the_usage_keyglass_encodes() {
         let old: Vec<u32> = CONSUMER_TRANSLATION
             .iter()
             .map(|(o, _)| 0x4000_0000 | o)
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn a_named_consumer_control_without_a_factory_encoding_takes_the_keys_default() {
-        // As if OpenFlux named usage 0x0030 (power), which the factory encoding lacks.
+        // As if Keyglass named usage 0x0030 (power), which the factory encoding lacks.
         let named: Vec<u32> = CONSUMER_CONTROLS
             .iter()
             .map(|(_, u)| *u)
@@ -335,8 +335,8 @@ mod tests {
             .map(|(o, _)| 0x4000_0000 | o)
             .chain([0x04, 0x2100_0001])
             .collect();
-        let (openflux, _) = translate_consumer_controls(&blob(factory.clone())).unwrap();
-        let (back, t) = to_factory_encoding(&openflux).unwrap();
+        let (keyglass, _) = translate_consumer_controls(&blob(factory.clone())).unwrap();
+        let (back, t) = to_factory_encoding(&keyglass).unwrap();
         assert_eq!(layer(&back), factory);
         assert_eq!(t.translated, CONSUMER_TRANSLATION.len());
         let (again, t2) = to_factory_encoding(&back).unwrap();
@@ -347,17 +347,17 @@ mod tests {
     #[test]
     fn a_factory_keymap_with_every_named_key_converts_to_a_document_with_their_names() {
         use crate::codecs::keycodes::KEYBOARD_KEYS;
-        use crate::codecs::keymap::{keymap_json_from_blob, OPENFLUX_KEYS};
-        // Every keyboard key, every factory consumer bit and every OpenFlux function, with Ctrl
+        use crate::codecs::keymap::{keymap_json_from_blob, KEYGLASS_KEYS};
+        // Every keyboard key, every factory consumer bit and every Keyglass function, with Ctrl
         // on one key and one consumer control, laid out over as many 85-key layers as it takes.
         let mut factory: Vec<u32> = KEYBOARD_KEYS.iter().map(|(_, u)| *u).collect();
         factory.extend(CONSUMER_TRANSLATION.iter().map(|(o, _)| 0x4000_0000 | o));
-        factory.extend(OPENFLUX_KEYS.iter().map(|(_, w)| *w));
+        factory.extend(KEYGLASS_KEYS.iter().map(|(_, w)| *w));
         factory.extend([0x0001_0049, 0x4001_0005]);
         let mut expected: Vec<(&str, Option<u32>)> =
             KEYBOARD_KEYS.iter().map(|(n, _)| (*n, None)).collect();
         expected.extend(CONSUMER_CONTROLS.iter().map(|(n, _)| (*n, None)));
-        expected.extend(OPENFLUX_KEYS.iter().map(|(n, _)| (*n, None)));
+        expected.extend(KEYGLASS_KEYS.iter().map(|(n, _)| (*n, None)));
         expected.extend([("KC_INSERT", Some(1)), ("KC_MEDIA_STOP", Some(1))]);
         let layers: Vec<Vec<u32>> = factory
             .chunks(85)
@@ -388,10 +388,10 @@ mod tests {
         .to_bytes()
         .unwrap();
 
-        let (openflux, t) = translate_consumer_controls(&factory_blob).unwrap();
+        let (keyglass, t) = translate_consumer_controls(&factory_blob).unwrap();
         assert_eq!(t.translated, CONSUMER_TRANSLATION.len() + 1);
         assert!(t.unknown.is_empty(), "{:?}", t.unknown);
-        let doc = keymap_json_from_blob(&openflux, &serde_json::json!({})).unwrap();
+        let doc = keymap_json_from_blob(&keyglass, &serde_json::json!({})).unwrap();
         let actions: Vec<(String, Option<u32>)> = doc["keymaps"]["ansi"]["layers"]
             .as_array()
             .unwrap()
@@ -407,7 +407,7 @@ mod tests {
         }
         assert!(actions[expected.len()..].iter().all(|(n, _)| n == "KC_NO"));
 
-        let (back, _) = to_factory_encoding(&openflux).unwrap();
+        let (back, _) = to_factory_encoding(&keyglass).unwrap();
         assert_eq!(back, factory_blob, "reset gives back the factory keymap");
     }
 }

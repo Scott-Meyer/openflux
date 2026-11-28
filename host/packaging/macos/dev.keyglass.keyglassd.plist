@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent for keyglassd, shipped inside the app bundle at
+  Contents/Library/LaunchAgents/dev.keyglass.keyglassd.plist and registered
+  with SMAppService.agent(plistName:) (macOS 13 and later).
+
+  BundleProgram is relative to the app bundle, so the agent follows the app
+  when it is moved or replaced by an update. The agent appears under the app's
+  name in System Settings > General > Login Items.
+
+  KeepAlive/SuccessfulExit=false: exit status 0 keeps the daemon stopped (Quit
+  from the tray, the request-stop command, or the lifecycle stop Studio sends
+  before it installs an update). Exit status 75 (the request-restart command)
+  and any other non-zero status make launchd start it again from the bundle
+  on disk.
+
+  ExitTimeOut=900: when launchd stops the agent, the daemon first finishes the
+  keyboard operation in progress (a firmware flash or package install), so
+  launchd waits up to 15 minutes before it kills it.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.keyglass.keyglassd</string>
+	<key>BundleProgram</key>
+	<string>Contents/MacOS/keyglassd</string>
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>dev.keyglass.studio</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>ExitTimeOut</key>
+	<integer>900</integer>
+	<key>ThrottleInterval</key>
+	<integer>5</integer>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+	<key>LimitLoadToSessionType</key>
+	<string>Aqua</string>
+</dict>
+</plist>

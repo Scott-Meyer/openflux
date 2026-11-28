@@ -369,7 +369,7 @@ static int rp2040_send_of_func(uint32_t func_mask, void *ctx) {
         (uint8_t)((func_mask >> 16) & 0xFFU),
         (uint8_t)((func_mask >> 24) & 0xFFU),
     };
-    /* Report ID 3 on IF 4 (legacy 4-byte OpenFlux mask, compatible with existing openfluxd). */
+    /* Report ID 3 on IF 4 (legacy 4-byte Keyglass mask, compatible with existing keyglassd). */
     return tud_hid_n_report(1, 3, le, sizeof(le)) ? 0 : -1;
 }
 

@@ -1096,7 +1096,7 @@ export const QmkKeymapView: React.FC<QmkKeymapViewProps> = ({
                 {actionList.map((a) => {
                   const lbl = a.label || a.short_label || a.action_id;
                   const modName =
-                    a.module_id === "openflux"
+                    a.module_id === "keyglass"
                       ? "Built-in"
                       : a.module_id === "streamdeck-bridge"
                       ? "Stream Deck"

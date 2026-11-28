@@ -6,12 +6,12 @@
 #   - in a "static" package every executable is fully static (no program
 #     interpreter, no shared libraries)
 #   - in a "glibc" package every executable is either fully static (such as
-#     the bundled openflux-ffmpeg) or dynamic against glibc with no symbol
+#     the bundled keyglass-ffmpeg) or dynamic against glibc with no symbol
 #     version newer than KEYBOARD_GLIBC_MAX and no library outside the
 #     keyboard OS's base set
 #   - every path given with --require is a non-empty file in the package
 #     (paths as installed, for example
-#     /usr/lib/openflux/display/licenses/FFMPEG-LGPL-2.1.txt)
+#     /usr/lib/keyglass/display/licenses/FFMPEG-LGPL-2.1.txt)
 #   - the package has executables, or with --no-executables has none (a
 #     package that only runs maintainer scripts)
 #

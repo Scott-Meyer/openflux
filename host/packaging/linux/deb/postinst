@@ -1,9 +1,9 @@
 #!/bin/sh
-# Debian maintainer script for the OpenFlux Studio .deb (postinst).
+# Debian maintainer script for the Keyglass Studio .deb (postinst).
 #
 # After the files are in place, the daemon of every logged-in user who has
 # the service enabled moves to the installed binary. The daemon is never
-# killed; `openfluxd --request-restart` answers:
+# killed; `keyglassd --request-restart` answers:
 #   0  it was idle and exited (status 75); systemd starts the installed binary
 #   4  no daemon is running; the service is started
 #   3  it is working on the keyboard and restarts by itself once that work is
@@ -20,7 +20,7 @@ ask_daemon() {
     # ask_daemon <uid> <user> <restart|stop>: prints the daemon's answer, returns its status.
     home="$(getent passwd "$2" | cut -d: -f6)"
     runuser -u "$2" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$1" \
-        /usr/bin/openfluxd "--request-$3" 2>&1
+        /usr/bin/keyglassd "--request-$3" 2>&1
 }
 
 restart_daemon() {
@@ -33,24 +33,24 @@ restart_daemon() {
                 return 0
                 ;;
             4)
-                systemctl --user -M "${uid}@" start openfluxd.service >/dev/null 2>&1 ||
-                    echo "OpenFlux: could not start openfluxd for ${user}; OpenFlux Studio starts it when it opens." >&2
+                systemctl --user -M "${uid}@" start keyglassd.service >/dev/null 2>&1 ||
+                    echo "Keyglass: could not start keyglassd for ${user}; Keyglass Studio starts it when it opens." >&2
                 return 0
                 ;;
             3)
                 if [ "$waited" -eq 0 ]; then
-                    echo "OpenFlux is finishing work on the keyboard for ${user}; waiting for it to complete." >&2
+                    echo "Keyglass is finishing work on the keyboard for ${user}; waiting for it to complete." >&2
                 fi
                 if [ "$waited" -ge "$wait_seconds" ]; then
-                    echo "OpenFlux is still working on the keyboard for ${user}. The new version starts by itself when that work is done." >&2
+                    echo "Keyglass is still working on the keyboard for ${user}. The new version starts by itself when that work is done." >&2
                     return 0
                 fi
                 sleep "$poll_seconds"
                 waited=$((waited + poll_seconds))
                 ;;
             *)
-                echo "OpenFlux: openfluxd --request-restart for ${user} failed (status ${status}): ${answer}" >&2
-                echo "OpenFlux: the running daemon was left alone. Stop it with \"systemctl --user stop openfluxd\" as ${user}, then run: sudo dpkg --configure -a" >&2
+                echo "Keyglass: keyglassd --request-restart for ${user} failed (status ${status}): ${answer}" >&2
+                echo "Keyglass: the running daemon was left alone. Stop it with \"systemctl --user stop keyglassd\" as ${user}, then run: sudo dpkg --configure -a" >&2
                 return 1
                 ;;
         esac
@@ -66,14 +66,14 @@ case "$1" in
             udevadm trigger --subsystem-match=hidraw || true
         fi
         command -v systemctl >/dev/null 2>&1 || exit 0
-        systemctl --global enable openfluxd.service >/dev/null 2>&1 || true
+        systemctl --global enable keyglassd.service >/dev/null 2>&1 || true
         command -v loginctl >/dev/null 2>&1 || exit 0
         users="$(loginctl list-users --no-legend 2>/dev/null | awk '$1 ~ /^[0-9]+$/ {print $1 ":" $2}')"
         for entry in $users; do
             uid="${entry%%:*}" user="${entry#*:}"
             systemctl --user -M "${uid}@" daemon-reload >/dev/null 2>&1 || continue
             # Users who masked the service are left alone.
-            systemctl --user -M "${uid}@" is-enabled --quiet openfluxd.service 2>/dev/null || continue
+            systemctl --user -M "${uid}@" is-enabled --quiet keyglassd.service 2>/dev/null || continue
             restart_daemon "$uid" "$user" || exit 1
         done
         ;;

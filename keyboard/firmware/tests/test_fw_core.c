@@ -410,7 +410,7 @@ int main(void) {
     fw_usb_rx_feed(&usb_rx, hdr, sizeof(hdr), fake_usb_send, NULL);
     assert(g_tx_buf[0] == FW_RESP_ACK && g_tx_zlp_count == 1);
     assert(strcmp((const char *)(g_tx_buf + 64), FW_VERSION_STR) == 0);
-    assert(strncmp((const char *)(g_tx_buf + 64), "openflux-firmware ", 18) == 0);
+    assert(strncmp((const char *)(g_tx_buf + 64), "keyglass-firmware ", 18) == 0);
 
     /* USB CMD 0x64 SEND_KEYMAP rejects truncated & UINT32_MAX-wrapping offset attacks */
     assert(fw_runtime_load_keymap(&rt, km, sizeof(km) - 4U) == -1);
@@ -911,7 +911,7 @@ int main(void) {
     fw_usb_rx_feed(&usb_rx, hdr, sizeof(hdr), fake_usb_send, NULL);
     assert(g_soc_boot == 1 && g_tx_buf[0] == FW_RESP_ACK);
 
-    /* 8. OpenFlux function keys (0x5000_00xx): profile cycle, actuation mode cycle, and platform select */
+    /* 8. Keyglass function keys (0x5000_00xx): profile cycle, actuation mode cycle, and platform select */
     {
         /* 2-key layout, 3 actuation modes, 2 layers:
          * L0: key0 = PROFILE_CYCLE_NEXT (0x04), key1 = PROFILE_CYCLE_PREV (0x05)

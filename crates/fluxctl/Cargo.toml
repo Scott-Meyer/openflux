@@ -2,7 +2,7 @@
 name = "fluxctl"
 version = "2.0.0-alpha.1"
 edition.workspace = true
-description = "OpenFlux v2 CLI with 100% parity for modules, pub/sub bus, disclosure inspection, simulation, and GPU preview capture"
+description = "Keyglass v2 CLI with 100% parity for modules, pub/sub bus, disclosure inspection, simulation, and GPU preview capture"
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
@@ -14,9 +14,9 @@ path = "src/main.rs"
 [dependencies]
 base64 = "0.22"
 clap = { version = "4", features = ["derive", "env"] }
-openflux-bus = { path = "../openflux-bus" }
-openflux-compositor = { path = "../openflux-compositor" }
-openflux-modules = { path = "../openflux-modules" }
+keyglass-bus = { path = "../keyglass-bus" }
+keyglass-compositor = { path = "../keyglass-compositor" }
+keyglass-modules = { path = "../keyglass-modules" }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

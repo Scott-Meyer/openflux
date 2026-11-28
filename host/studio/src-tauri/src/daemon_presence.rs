@@ -1,7 +1,7 @@
 //! Whether the daemon for a data directory has exited.
 //!
 //! A host update replaces the daemon's files, so "the daemon is gone" is decided only on positive
-//! evidence, by the same rule as `openfluxd --request-stop`: there is no discovery file, or the
+//! evidence, by the same rule as `keyglassd --request-stop`: there is no discovery file, or the
 //! port it records refuses connections, and in both cases no process holds the daemon's
 //! instance lock. A discovery file that can't be read, a port that accepts connections but fails
 //! TLS or authentication, a timeout, or a lock that can't be checked all mean "not known", which
@@ -12,7 +12,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Data-directory file the running daemon holds an exclusive lock on for its whole life.
-pub const INSTANCE_LOCK_FILE: &str = "config/openfluxd.lock";
+pub const INSTANCE_LOCK_FILE: &str = "config/keyglassd.lock";
 /// The daemon's own discovery file.
 pub const DISCOVERY_FILE: &str = "config/keys.json";
 
@@ -124,7 +124,7 @@ pub(crate) mod tests {
 
     pub(crate) fn data_dir(name: &str) -> PathBuf {
         let d =
-            std::env::temp_dir().join(format!("openflux_presence_{name}_{}", std::process::id()));
+            std::env::temp_dir().join(format!("keyglass_presence_{name}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(d.join("config")).unwrap();
         d

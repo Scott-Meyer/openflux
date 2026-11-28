@@ -4,7 +4,7 @@ import type { HostUpdateCheck, HostUpdater, HostUpdateSupport } from "./hostUpda
 import type { Job, LifecycleReply, UpdateChannel } from "./updates";
 
 /**
- * Installing an update of OpenFlux itself.
+ * Installing an update of Keyglass itself.
  *
  * The update bundle replaces the daemon too, so the daemon must not be in the middle of work on
  * the keyboard when the files change. The flow:

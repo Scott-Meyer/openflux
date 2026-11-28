@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Linux integration tests exercising the compiled openflux-bridge binary."""
+"""Linux integration tests exercising the compiled keyglass-bridge binary."""
 
 import fcntl
 import os
@@ -15,10 +15,10 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "tools/openflux-dev"))
+sys.path.insert(0, str(ROOT / "tools/keyglass-dev"))
 import simple_hdlc
 
-BRIDGE_BIN = Path(os.environ.get("OPENFLUX_TEST_BRIDGE_BIN") or (ROOT / "keyboard/bridge/build/openflux-bridge"))
+BRIDGE_BIN = Path(os.environ.get("KEYGLASS_TEST_BRIDGE_BIN") or (ROOT / "keyboard/bridge/build/keyglass-bridge"))
 
 
 def is_blocked_in_poll(pid: int) -> bool:
@@ -39,16 +39,16 @@ def is_blocked_in_poll(pid: int) -> bool:
 
 def test_blocked_poll_sigterm() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        ready_file = Path(tmp) / "openflux_bridge_ready"
+        ready_file = Path(tmp) / "keyglass_bridge_ready"
         in_r, in_w = os.pipe()
         out_r, out_w = os.pipe()
         os.set_inheritable(out_w, True)
         os.set_inheritable(in_r, True)
 
         env = os.environ.copy()
-        env["OPENFLUX_SYSROOT"] = str(tmp)
-        env["OPENFLUX_READY_FILE"] = str(ready_file)
-        env["OPENFLUX_TEST_EP_FDS"] = f"{out_w},{in_r}"
+        env["KEYGLASS_SYSROOT"] = str(tmp)
+        env["KEYGLASS_READY_FILE"] = str(ready_file)
+        env["KEYGLASS_TEST_EP_FDS"] = f"{out_w},{in_r}"
 
         proc = subprocess.Popen([str(BRIDGE_BIN)], env=env, pass_fds=(out_w, in_r))
         os.close(out_w)
@@ -71,16 +71,16 @@ def test_blocked_poll_sigterm() -> None:
             os.write(in_w, bytes(hdr))
             rtype, resp_data = read_response(out_r)
             assert rtype == 1, f"Bad response type {rtype}"
-            assert resp_data.startswith(b"openflux-bridge "), f"Unexpected version: {resp_data[:32]!r}"
+            assert resp_data.startswith(b"keyglass-bridge "), f"Unexpected version: {resp_data[:32]!r}"
 
-            put_payload = b"/home/root/openflux/test_split.txt\x00hello_split"
+            put_payload = b"/home/root/keyglass/test_split.txt\x00hello_split"
             put_pkt = put_payload.ljust(512, b"\x00")
             put_hdr = bytearray(512)
             struct.pack_into("<BII", put_hdr, 0, 102, 1, len(put_payload))
             os.write(in_w, bytes(put_hdr) + put_pkt)
             put_type, _ = read_response(out_r)
             assert put_type == 1, f"PUT transfer failed: type {put_type}"
-            assert (Path(tmp) / "home/root/openflux/test_split.txt").read_bytes() == b"hello_split"
+            assert (Path(tmp) / "home/root/keyglass/test_split.txt").read_bytes() == b"hello_split"
 
             bad_hdr = bytearray(512)
             struct.pack_into("<BII", bad_hdr, 0, 102, 2, 700)
@@ -114,15 +114,15 @@ def test_blocked_poll_sigterm() -> None:
 
 def test_sigterm_before_read_race_window() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        ready_file = Path(tmp) / "openflux_bridge_ready"
+        ready_file = Path(tmp) / "keyglass_bridge_ready"
         in_r, in_w = os.pipe()
         out_r, out_w = os.pipe()
         os.set_inheritable(out_w, True)
         os.set_inheritable(in_r, True)
 
         env = os.environ.copy()
-        env["OPENFLUX_READY_FILE"] = str(ready_file)
-        env["OPENFLUX_TEST_EP_FDS"] = f"{out_w},{in_r}"
+        env["KEYGLASS_READY_FILE"] = str(ready_file)
+        env["KEYGLASS_TEST_EP_FDS"] = f"{out_w},{in_r}"
 
         proc = subprocess.Popen([str(BRIDGE_BIN)], env=env, pass_fds=(out_w, in_r))
         os.close(out_w)
@@ -210,7 +210,7 @@ def connect_and_sync_ipc(sock_path: Path, expected_seq: int) -> tuple[socket.soc
 
 def test_uart_and_display_ipc_roundtrip() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        ready_file = Path(tmp) / "openflux_bridge_ready"
+        ready_file = Path(tmp) / "keyglass_bridge_ready"
         sock_path = Path(tmp) / "bridge.sock"
         in_r, in_w = os.pipe()
         out_r, out_w = os.pipe()
@@ -220,10 +220,10 @@ def test_uart_and_display_ipc_roundtrip() -> None:
             os.set_inheritable(fd, True)
 
         env = os.environ.copy()
-        env["OPENFLUX_READY_FILE"] = str(ready_file)
-        env["OPENFLUX_TEST_EP_FDS"] = f"{out_w},{in_r}"
-        env["OPENFLUX_TEST_UART_FDS"] = f"{uart_rx_r},{uart_tx_w}"
-        env["OPENFLUX_BRIDGE_SOCK"] = str(sock_path)
+        env["KEYGLASS_READY_FILE"] = str(ready_file)
+        env["KEYGLASS_TEST_EP_FDS"] = f"{out_w},{in_r}"
+        env["KEYGLASS_TEST_UART_FDS"] = f"{uart_rx_r},{uart_tx_w}"
+        env["KEYGLASS_BRIDGE_SOCK"] = str(sock_path)
 
         proc = subprocess.Popen([str(BRIDGE_BIN)], env=env, pass_fds=(out_w, in_r, uart_rx_r, uart_tx_w))
         os.close(out_w)
@@ -283,7 +283,7 @@ def test_uart_and_display_ipc_roundtrip() -> None:
 
 def test_max_ipc_clients_with_backpressured_split_uart() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        ready_file = Path(tmp) / "openflux_bridge_ready"
+        ready_file = Path(tmp) / "keyglass_bridge_ready"
         sock_path = Path(tmp) / "bridge.sock"
         in_r, in_w = os.pipe()
         out_r, out_w = os.pipe()
@@ -311,10 +311,10 @@ def test_max_ipc_clients_with_backpressured_split_uart() -> None:
                 break
 
         env = os.environ.copy()
-        env["OPENFLUX_READY_FILE"] = str(ready_file)
-        env["OPENFLUX_TEST_EP_FDS"] = f"{out_w},{in_r}"
-        env["OPENFLUX_TEST_UART_FDS"] = f"{uart_rx_r},{uart_tx_w}"
-        env["OPENFLUX_BRIDGE_SOCK"] = str(sock_path)
+        env["KEYGLASS_READY_FILE"] = str(ready_file)
+        env["KEYGLASS_TEST_EP_FDS"] = f"{out_w},{in_r}"
+        env["KEYGLASS_TEST_UART_FDS"] = f"{uart_rx_r},{uart_tx_w}"
+        env["KEYGLASS_BRIDGE_SOCK"] = str(sock_path)
 
         proc = subprocess.Popen([str(BRIDGE_BIN)], env=env, pass_fds=(out_w, in_r, uart_rx_r, uart_tx_w))
         os.close(out_w)
@@ -359,7 +359,7 @@ def test_max_ipc_clients_with_backpressured_split_uart() -> None:
             while drained_usb < filled_usb:
                 drained_usb += len(read_with_deadline(out_r, min(4096, filled_usb - drained_usb)))
             usb_resp = read_with_deadline(out_r, 1024)
-            assert usb_resp[0] == 1 and usb_resp[512:].startswith(b"openflux-bridge ")
+            assert usb_resp[0] == 1 and usb_resp[512:].startswith(b"keyglass-bridge ")
 
             drained = 0
             while drained < filled:
@@ -386,7 +386,7 @@ def test_max_ipc_clients_with_backpressured_split_uart() -> None:
 
 def test_usb_in_backpressure_does_not_stall_uart_or_ipc() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        ready_file = Path(tmp) / "openflux_bridge_ready"
+        ready_file = Path(tmp) / "keyglass_bridge_ready"
         sock_path = Path(tmp) / "bridge.sock"
         in_r, in_w = os.pipe()
         out_r, out_w = os.pipe()
@@ -405,10 +405,10 @@ def test_usb_in_backpressure_does_not_stall_uart_or_ipc() -> None:
                 break
 
         env = os.environ.copy()
-        env["OPENFLUX_READY_FILE"] = str(ready_file)
-        env["OPENFLUX_TEST_EP_FDS"] = f"{out_w},{in_r}"
-        env["OPENFLUX_TEST_UART_FDS"] = f"{uart_rx_r},{uart_tx_w}"
-        env["OPENFLUX_BRIDGE_SOCK"] = str(sock_path)
+        env["KEYGLASS_READY_FILE"] = str(ready_file)
+        env["KEYGLASS_TEST_EP_FDS"] = f"{out_w},{in_r}"
+        env["KEYGLASS_TEST_UART_FDS"] = f"{uart_rx_r},{uart_tx_w}"
+        env["KEYGLASS_BRIDGE_SOCK"] = str(sock_path)
 
         proc = subprocess.Popen([str(BRIDGE_BIN)], env=env, pass_fds=(out_w, in_r, uart_rx_r, uart_tx_w))
         os.close(out_w)
@@ -455,7 +455,7 @@ def test_usb_in_backpressure_does_not_stall_uart_or_ipc() -> None:
 
 def test_large_get_file_over_64kib_under_backpressure() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        ready_file = Path(tmp) / "openflux_bridge_ready"
+        ready_file = Path(tmp) / "keyglass_bridge_ready"
         in_r, in_w = os.pipe()
         out_r, out_w = os.pipe()
         os.set_inheritable(out_w, True)
@@ -463,14 +463,14 @@ def test_large_get_file_over_64kib_under_backpressure() -> None:
 
         root_dir = Path(tmp) / "home/root"
         root_dir.mkdir(parents=True, exist_ok=True)
-        large_file = root_dir / ".openflux_test_large_80k.bin"
+        large_file = root_dir / ".keyglass_test_large_80k.bin"
         payload_bytes = bytes((i * 13 + 7) & 0xFF for i in range(80 * 1024))
         large_file.write_bytes(payload_bytes)
 
         env = os.environ.copy()
-        env["OPENFLUX_READY_FILE"] = str(ready_file)
-        env["OPENFLUX_TEST_EP_FDS"] = f"{out_w},{in_r}"
-        env["OPENFLUX_SYSROOT"] = tmp
+        env["KEYGLASS_READY_FILE"] = str(ready_file)
+        env["KEYGLASS_TEST_EP_FDS"] = f"{out_w},{in_r}"
+        env["KEYGLASS_SYSROOT"] = tmp
 
         proc = subprocess.Popen([str(BRIDGE_BIN)], env=env, pass_fds=(out_w, in_r))
         os.close(out_w)
@@ -482,7 +482,7 @@ def test_large_get_file_over_64kib_under_backpressure() -> None:
                 time.sleep(0.01)
             assert ready_file.exists()
 
-            path_bytes = b"/home/root/.openflux_test_large_80k.bin\x00"
+            path_bytes = b"/home/root/.keyglass_test_large_80k.bin\x00"
             hdr = bytearray(512)
             struct.pack_into("<BII", hdr, 0, 101, 1, len(path_bytes))
             pkt = path_bytes.ljust(512, b"\x00")

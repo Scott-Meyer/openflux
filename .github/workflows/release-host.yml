@@ -1,5 +1,5 @@
-# Builds and uploads a host release (host-vX.Y.Z[-beta.N]): OpenFlux Studio
-# with openfluxd, its helpers and the FFmpeg tools, for macOS (universal),
+# Builds and uploads a host release (host-vX.Y.Z[-beta.N]): Keyglass Studio
+# with keyglassd, its helpers and the FFmpeg tools, for macOS (universal),
 # Windows x64 (NSIS setup program) and Linux x86_64 and aarch64 (AppImage and
 # .deb).
 #
@@ -10,13 +10,13 @@
 # stable release (none published yet, or only betas).
 #
 # Every installer carries licenses/ (build-sidecars.sh): the FFmpeg tools'
-# license and the license texts of the Rust crates in openfluxd and Studio
+# license and the license texts of the Rust crates in keyglassd and Studio
 # and of the npm packages in Studio's interface, written by cargo-about
 # (pinned in scripts/licenses/install-cargo-about.sh) and
 # scripts/licenses/npm-licenses.mjs. check-host-installer.sh fails an
 # installer whose license files are missing or empty.
 #
-# openflux-ffmpeg and openflux-ffprobe come from one pinned, checksummed
+# keyglass-ffmpeg and keyglass-ffprobe come from one pinned, checksummed
 # FFmpeg build per target (host/packaging/ffmpeg/build-ffmpeg.sh). That build
 # includes x264 and is therefore GPL-2.0-or-later; its complete source,
 # configure lines and license are published on GitHub Pages under source/ and
@@ -29,7 +29,7 @@
 #
 # Platform signing (Developer ID and notarization on macOS, SignPath on
 # Windows) happens here and uses the release-build environment. When its
-# secrets are absent the build continues unsigned and says so. The OpenFlux
+# secrets are absent the build continues unsigned and says so. The Keyglass
 # release key and the updater key are never available to these jobs; the
 # artifacts and the Tauri update feed are signed by publish-index.yml, after
 # the platform signing, so the updater signature covers the signed files.
@@ -84,7 +84,7 @@ jobs:
         run: .github/scripts/release-meta.sh "$TAG"
         env:
           TAG: ${{ inputs.tag }}
-          OPENFLUX_PAGES_URL: ${{ vars.OPENFLUX_PAGES_URL }}
+          KEYGLASS_PAGES_URL: ${{ vars.KEYGLASS_PAGES_URL }}
         shell: bash
       - name: Check component
         if: steps.meta.outputs.component != 'host'
@@ -118,7 +118,7 @@ jobs:
         id: cache
         with:
           path: build/ffmpeg-out/${{ matrix.target }}
-          key: openflux-ffmpeg-tools-${{ matrix.target }}-${{ matrix.os }}-${{ hashFiles('host/packaging/ffmpeg/build-ffmpeg.sh') }}
+          key: keyglass-ffmpeg-tools-${{ matrix.target }}-${{ matrix.os }}-${{ hashFiles('host/packaging/ffmpeg/build-ffmpeg.sh') }}
       - name: Tools (macOS)
         if: runner.os == 'macOS' && steps.cache.outputs.cache-hit != 'true'
         run: brew install nasm
@@ -147,7 +147,7 @@ jobs:
         if: matrix.source
         env:
           SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.source_date_epoch }}
-        run: host/packaging/ffmpeg/build-ffmpeg.sh --source-archive build/ffmpeg-out/source/openflux-ffmpeg-source.tar.xz --work build/ffmpeg
+        run: host/packaging/ffmpeg/build-ffmpeg.sh --source-archive build/ffmpeg-out/source/keyglass-ffmpeg-source.tar.xz --work build/ffmpeg
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ffmpeg-${{ matrix.target }}
@@ -174,14 +174,14 @@ jobs:
         env:
           PAGES_URL: ${{ needs.meta.outputs.pages_url }}
         run: |
-          cargo build --locked --release --manifest-path crates/openflux-update/Cargo.toml --bin openflux-release --features production-keys
-          tool="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/openflux-update/Cargo.toml | jq -r .target_directory)/release/openflux-release"
+          cargo build --locked --release --manifest-path crates/keyglass-update/Cargo.toml --bin keyglass-release --features production-keys
+          tool="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/keyglass-update/Cargo.toml | jq -r .target_directory)/release/keyglass-release"
           # Verified the way a host verifies it: the keys built into hosts,
           # and the active release key. Fails with an explanation when the
           # index has no stable release of a component (none published yet,
           # or only betas).
           "$tool" bundle --index "$PAGES_URL/index.json" \
-            --pubkey crates/openflux-update/keys/release.pub --pubkey host/packaging/keys/active-release.pub \
+            --pubkey crates/keyglass-update/keys/release.pub --pubkey host/packaging/keys/active-release.pub \
             --channel stable --component firmware --component bridge --component display -o build/keyboard-bundle
           ls -l build/keyboard-bundle
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -283,15 +283,15 @@ jobs:
         run: |
           bundle=target/universal-apple-darwin/release/bundle
           mkdir -p dist
-          cp "$(find "$bundle/dmg" -name '*.dmg' | head -n 1)" "dist/openflux-studio_${VERSION}_universal.dmg"
+          cp "$(find "$bundle/dmg" -name '*.dmg' | head -n 1)" "dist/keyglass-studio_${VERSION}_universal.dmg"
           app="$(find "$bundle/macos" -maxdepth 1 -name '*.app' | head -n 1)"
           # Update archive read by the Tauri updater: the .app at the top level.
-          COPYFILE_DISABLE=1 tar -czf "dist/openflux-studio_${VERSION}_universal.app.tar.gz" -C "$(dirname "$app")" "$(basename "$app")"
+          COPYFILE_DISABLE=1 tar -czf "dist/keyglass-studio_${VERSION}_universal.app.tar.gz" -C "$(dirname "$app")" "$(basename "$app")"
           ls -l dist
       - name: Check the installers
         run: |
-          .github/scripts/check-host-installer.sh "dist/openflux-studio_${VERSION}_universal.dmg"
-          .github/scripts/check-host-installer.sh "dist/openflux-studio_${VERSION}_universal.app.tar.gz"
+          .github/scripts/check-host-installer.sh "dist/keyglass-studio_${VERSION}_universal.dmg"
+          .github/scripts/check-host-installer.sh "dist/keyglass-studio_${VERSION}_universal.app.tar.gz"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: host-macos
@@ -367,7 +367,7 @@ jobs:
 
       # Signed path. SignPath does not sign the files inside an NSIS
       # installer, so the executables are signed before they are bundled:
-      # build without bundling, sign openflux-studio.exe and the sidecars,
+      # build without bundling, sign keyglass-studio.exe and the sidecars,
       # bundle the signed files, then sign the setup program. The updater
       # signature is made over that signed setup program when the index is
       # published (publish-index.yml).
@@ -379,7 +379,7 @@ jobs:
         if: steps.signing.outputs.sign == 'true'
         run: |
           mkdir -p build/to-sign
-          cp "target/$TARGET/release/openflux-studio.exe" build/to-sign/
+          cp "target/$TARGET/release/keyglass-studio.exe" build/to-sign/
           cp build/sidecars/*.exe build/to-sign/
           ls -l build/to-sign
       - id: upload-exes
@@ -407,10 +407,10 @@ jobs:
           for f in build/to-sign/*.exe; do
             [ -f "build/signed-exes/$(basename "$f")" ] || { echo "SignPath returned no $(basename "$f")" >&2; exit 1; }
           done
-          cp build/signed-exes/openflux-studio.exe "target/$TARGET/release/openflux-studio.exe"
+          cp build/signed-exes/keyglass-studio.exe "target/$TARGET/release/keyglass-studio.exe"
           for f in build/signed-exes/*.exe; do
             name="$(basename "$f")"
-            [ "$name" = openflux-studio.exe ] && continue
+            [ "$name" = keyglass-studio.exe ] && continue
             cp "$f" "build/sidecars/$name"
             # Tauri also keeps a copy without the target triple next to the app.
             cp "$f" "target/$TARGET/release/${name%-"$TARGET".exe}.exe"
@@ -450,10 +450,10 @@ jobs:
           if [ "$SIGNED" = true ]; then src=build/signed-installers; else src="target/$TARGET/release/bundle/nsis"; fi
           setups=("$src"/*-setup.exe)
           [ "${#setups[@]}" -eq 1 ] && [ -f "${setups[0]}" ] || { echo "expected one setup program in $src" >&2; exit 1; }
-          cp "${setups[0]}" "dist/openflux-studio_${VERSION}_x64-setup.exe"
+          cp "${setups[0]}" "dist/keyglass-studio_${VERSION}_x64-setup.exe"
           ls -l dist
       - name: Check the setup program
-        run: .github/scripts/check-host-installer.sh "dist/openflux-studio_${VERSION}_x64-setup.exe"
+        run: .github/scripts/check-host-installer.sh "dist/keyglass-studio_${VERSION}_x64-setup.exe"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: host-windows
@@ -518,13 +518,13 @@ jobs:
         run: |
           bundle="target/$TARGET/release/bundle"
           mkdir -p dist
-          cp "$(find "$bundle/appimage" -name '*.AppImage' | head -n 1)" "dist/openflux-studio_${VERSION}_${{ matrix.appimage }}.AppImage"
-          cp "$(find "$bundle/deb" -name '*.deb' | head -n 1)" "dist/openflux-studio_${VERSION}_${{ matrix.deb }}.deb"
+          cp "$(find "$bundle/appimage" -name '*.AppImage' | head -n 1)" "dist/keyglass-studio_${VERSION}_${{ matrix.appimage }}.AppImage"
+          cp "$(find "$bundle/deb" -name '*.deb' | head -n 1)" "dist/keyglass-studio_${VERSION}_${{ matrix.deb }}.deb"
           ls -l dist
       - name: Check the installers
         run: |
-          .github/scripts/check-host-installer.sh "dist/openflux-studio_${VERSION}_${{ matrix.appimage }}.AppImage"
-          .github/scripts/check-host-installer.sh "dist/openflux-studio_${VERSION}_${{ matrix.deb }}.deb"
+          .github/scripts/check-host-installer.sh "dist/keyglass-studio_${VERSION}_${{ matrix.appimage }}.AppImage"
+          .github/scripts/check-host-installer.sh "dist/keyglass-studio_${VERSION}_${{ matrix.deb }}.deb"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: host-linux-${{ matrix.appimage }}
@@ -570,9 +570,9 @@ jobs:
 
           ffmpeg_ver="$(sed -n 's/^FFMPEG_VERSION="\([^"]*\)".*/\1/p' host/packaging/ffmpeg/build-ffmpeg.sh)"
           [ -n "$ffmpeg_ver" ] || { echo "could not read FFMPEG_VERSION from build-ffmpeg.sh" >&2; exit 1; }
-          cp build/ffmpeg/ffmpeg-source/openflux-ffmpeg-source.tar.xz "staged/source/openflux-ffmpeg-source-${ffmpeg_ver}.tar.xz"
-          cp build/ffmpeg/ffmpeg-x86_64-unknown-linux-gnu/openflux-ffmpeg-COPYING.GPLv2.txt staged/source/
-          mapfile -t buildinfos < <(find build/ffmpeg -name 'openflux-ffmpeg-*.buildinfo.txt' | LC_ALL=C sort)
+          cp build/ffmpeg/ffmpeg-source/keyglass-ffmpeg-source.tar.xz "staged/source/keyglass-ffmpeg-source-${ffmpeg_ver}.tar.xz"
+          cp build/ffmpeg/ffmpeg-x86_64-unknown-linux-gnu/keyglass-ffmpeg-COPYING.GPLv2.txt staged/source/
+          mapfile -t buildinfos < <(find build/ffmpeg -name 'keyglass-ffmpeg-*.buildinfo.txt' | LC_ALL=C sort)
           [ "${#buildinfos[@]}" -eq 5 ] || { echo "expected build information for 5 targets, found ${#buildinfos[@]}" >&2; exit 1; }
           {
             for bi in "${buildinfos[@]}"; do
@@ -580,7 +580,7 @@ jobs:
               cat "$bi"
               echo
             done
-          } > staged/source/openflux-ffmpeg-buildinfo.txt
+          } > staged/source/keyglass-ffmpeg-buildinfo.txt
           echo "ffmpeg_ver=${ffmpeg_ver}" >> "$GITHUB_OUTPUT"
           ls -l staged/artifacts staged/updater staged/source
 
@@ -592,8 +592,8 @@ jobs:
           RELEASE_URL: ${{ needs.meta.outputs.release_url }}
           NOTES_URL: ${{ needs.meta.outputs.notes_url }}
         run: |
-          cargo build --locked --release --manifest-path crates/openflux-update/Cargo.toml --bin openflux-release
-          tool="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/openflux-update/Cargo.toml | jq -r .target_directory)/release/openflux-release"
+          cargo build --locked --release --manifest-path crates/keyglass-update/Cargo.toml --bin keyglass-release
+          tool="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/keyglass-update/Cargo.toml | jq -r .target_directory)/release/keyglass-release"
           args=()
           for f in staged/artifacts/*; do args+=(--artifact "$f"); done
           "$tool" manifest --component host --version "$VERSION" --channel "$CHANNEL" \
@@ -639,30 +639,30 @@ jobs:
         run: |
           gh release view "$TAG" --json body --jq .body > notes.md
           changed=0
-          dl_marker="<!-- openflux-studio-download-note -->"
+          dl_marker="<!-- keyglass-studio-download-note -->"
           if ! grep -qF "$dl_marker" notes.md; then
             {
               cat <<'EOF'
-          <!-- openflux-studio-download-note -->
-          **Download OpenFlux Studio for your computer below** (macOS `.dmg`, Windows `-setup.exe`, or Linux `.AppImage` / `.deb`). Keyboard firmware, bridge, and display software are bundled inside the installer and updated automatically inside Studio.
+          <!-- keyglass-studio-download-note -->
+          **Download Keyglass Studio for your computer below** (macOS `.dmg`, Windows `-setup.exe`, or Linux `.AppImage` / `.deb`). Keyboard firmware, bridge, and display software are bundled inside the installer and updated automatically inside Studio.
 
           EOF
               cat notes.md
             } > notes.tmp && mv notes.tmp notes.md
             changed=1
           fi
-          marker="<!-- openflux-ffmpeg-license -->"
+          marker="<!-- keyglass-ffmpeg-license -->"
           if ! grep -qF "$marker" notes.md; then
             cat >> notes.md <<EOF
 
           $marker
           ### Bundled FFmpeg (GPL)
 
-          The installers include \`openflux-ffmpeg\` and \`openflux-ffprobe\`, built from FFmpeg ${FFMPEG_VER} with libx264 under the [GPL-2.0-or-later](${PAGES_URL}/source/openflux-ffmpeg-COPYING.GPLv2.txt) license. Complete corresponding source: [\`openflux-ffmpeg-source-${FFMPEG_VER}.tar.xz\`](${PAGES_URL}/source/openflux-ffmpeg-source-${FFMPEG_VER}.tar.xz) ([build info](${PAGES_URL}/source/openflux-ffmpeg-buildinfo.txt)). OpenFlux itself is MIT OR Apache-2.0.
+          The installers include \`keyglass-ffmpeg\` and \`keyglass-ffprobe\`, built from FFmpeg ${FFMPEG_VER} with libx264 under the [GPL-2.0-or-later](${PAGES_URL}/source/keyglass-ffmpeg-COPYING.GPLv2.txt) license. Complete corresponding source: [\`keyglass-ffmpeg-source-${FFMPEG_VER}.tar.xz\`](${PAGES_URL}/source/keyglass-ffmpeg-source-${FFMPEG_VER}.tar.xz) ([build info](${PAGES_URL}/source/keyglass-ffmpeg-buildinfo.txt)). Keyglass itself is MIT OR Apache-2.0.
           EOF
             changed=1
           fi
-          edit_args=(--title "OpenFlux Studio v${VERSION}")
+          edit_args=(--title "Keyglass Studio v${VERSION}")
           if [ "$CHANNEL" = stable ]; then
             edit_args+=(--latest)
           else

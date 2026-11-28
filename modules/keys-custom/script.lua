@@ -12,11 +12,11 @@ local function resolve_media_path(raw)
   if string.sub(raw, 1, 1) == "/" or string.find(raw, "://", 1, true) then return raw end
   local mdir = module.dir()
   if string.sub(mdir, 1, 5) == "/usr/" or string.sub(mdir, 1, 6) == "/home/" then
-    return "/home/root/openflux/media/" .. raw
+    return "/home/root/keyglass/media/" .. raw
   end
   local home = os.getenv("HOME")
   if home and #home > 0 then
-    return home .. "/.local/share/openflux/media/" .. raw
+    return home .. "/.local/share/keyglass/media/" .. raw
   end
   return raw
 end

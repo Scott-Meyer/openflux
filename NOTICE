@@ -1,4 +1,4 @@
-Keyglass (formerly OpenFlux)
+Keyglass (formerly Keyglass)
 Copyright (c) 2026 The Keyglass Contributors
 
 Keyglass is an independent open-source project, not affiliated with or endorsed by Flux.
@@ -33,7 +33,7 @@ TinyUSB
   License: MIT
 
   The license texts for the libraries compiled into the firmware are published
-  with each firmware release as openflux-firmware-licenses.txt.
+  with each firmware release as keyglass-firmware-licenses.txt.
 
 Lua 5.4 (via mlua / lua-src)
   Used by: sandboxed on-device & host module runtime
@@ -53,7 +53,7 @@ Lucide icons
   (assets/LUCIDE_LICENSE)
 
 FFmpeg
-  Used by: keyboard display package (openflux-ffmpeg) and desktop installers
+  Used by: keyboard display package (keyglass-ffmpeg) and desktop installers
   (media import), shipped as separate executables invoked over pipes.
   License: the keyboard build is LGPL-2.1-or-later. The desktop builds include
   libx264 and are GPL-2.0-or-later. The exact source code, configure flags and
@@ -61,12 +61,12 @@ FFmpeg
   release that contains it.
 
 libusb
-  Used by: desktop installers (openfluxd, through the libusb1-sys crate)
+  Used by: desktop installers (keyglassd, through the libusb1-sys crate)
   License: LGPL-2.1-or-later. libusb (LGPL-2.1-or-later) is statically linked
-  into openfluxd. The complete corresponding source and build instructions
-  for openfluxd are in this repository at each host release tag, so it can be
+  into keyglassd. The complete corresponding source and build instructions
+  for keyglassd are in this repository at each host release tag, so it can be
   rebuilt with a modified libusb. The license text is installed with
-  openfluxd in licenses/openfluxd-rust-licenses.txt.
+  keyglassd in licenses/keyglassd-rust-licenses.txt.
 
 Rust crates and npm packages
   The CycloneDX software bills of materials published with each release list

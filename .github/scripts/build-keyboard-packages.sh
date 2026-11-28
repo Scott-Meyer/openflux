@@ -3,7 +3,7 @@
 # two builds are identical.
 #
 # Each round runs the component's Makefile in its build image
-# (openflux-<component>-build, from keyboard/<component>/Dockerfile.build)
+# (keyglass-<component>-build, from keyboard/<component>/Dockerfile.build)
 # with its own freshly created build, Cargo target and output directories.
 # They are mounted at the same path inside the container, so paths compiled
 # into the binaries match. Each round must compile the component; the
@@ -44,14 +44,14 @@ for n in 1 2; do
     mkdir -p "${round}/build" "${round}/target" "${round}/out"
     for t in "${targets[@]}"; do
         docker run --rm -e SOURCE_DATE_EPOCH \
-            -v "${PWD}:/work" -v "${round}:/round" -w /work "openflux-${component}-build" \
+            -v "${PWD}:/work" -v "${round}:/round" -w /work "keyglass-${component}-build" \
             make -C "keyboard/${component}" "$t" VERSION="$version" CARGO="cargo --locked" \
             BUILD_DIR=/round/build TARGET_DIR=/round/target OUT_DIR=/round/out 2>&1 | tee -a "${round}/build.log"
     done
-    grep -q "Compiling openflux-${component} v${version}" "${round}/build.log" ||
-        die "round ${n} did not compile openflux-${component} ${version}"
-    [ -f "${round}/out/openflux-${component}_${version}_aarch64.ipk" ] ||
-        die "round ${n} did not produce openflux-${component}_${version}_aarch64.ipk: $(ls "${round}/out")"
+    grep -q "Compiling keyglass-${component} v${version}" "${round}/build.log" ||
+        die "round ${n} did not compile keyglass-${component} ${version}"
+    [ -f "${round}/out/keyglass-${component}_${version}_aarch64.ipk" ] ||
+        die "round ${n} did not produce keyglass-${component}_${version}_aarch64.ipk: $(ls "${round}/out")"
     (cd "${round}/out" && find . -maxdepth 1 -type f | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum) > "${round}/SHA256SUMS"
     echo "round ${n}:"
     cat "${round}/SHA256SUMS"

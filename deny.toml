@@ -13,7 +13,7 @@ unmaintained = "workspace"
 ignore = []
 
 [licenses]
-# Licenses compatible with distributing OpenFlux under MIT OR Apache-2.0.
+# Licenses compatible with distributing Keyglass under MIT OR Apache-2.0.
 allow = [
     "MIT",
     "MIT-0",

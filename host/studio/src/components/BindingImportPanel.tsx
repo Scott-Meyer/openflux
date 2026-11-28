@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { toDaemonError } from "../api/daemonError";
 import { type BindingLayout, type V2ModuleRecord, v2Client } from "../api/v2Client";
-import { formatKeyActionLabel } from "../types/openflux";
+import { formatKeyActionLabel } from "../types/keyglass";
 
 const MAX_IMPORT_BYTES = 512 * 1024;
 const MODIFIERS = [

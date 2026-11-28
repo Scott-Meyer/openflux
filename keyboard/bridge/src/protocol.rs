@@ -1,6 +1,6 @@
-/// `openflux-bridge <version>`, where the version is `OPENFLUX_VERSION` at build time or the
+/// `keyglass-bridge <version>`, where the version is `KEYGLASS_VERSION` at build time or the
 /// crate version (see build.rs).
-pub const BRIDGE_VERSION: &str = env!("OPENFLUX_BRIDGE_VERSION_STR");
+pub const BRIDGE_VERSION: &str = env!("KEYGLASS_BRIDGE_VERSION_STR");
 pub const DISPLAY_VERSION_FALLBACK: &str = "unknown";
 pub const OS_VERSION_FALLBACK: &str = "unknown";
 
@@ -8,9 +8,9 @@ pub const USB_VENDOR_ID_STR: &str = "0x3761";
 pub const USB_PRODUCT_ID_STR: &str = "0x0104";
 /// The same on every keyboard; the host finds the bridge by vendor and product ID, not by serial.
 pub const USB_SERIAL_STR: &str = "fedcba0123456789";
-pub const USB_MFR_STR: &str = "OpenFlux";
-pub const USB_PROD_STR: &str = "OpenFlux Keyboard";
-pub const USB_CONFIG_STR: &str = "OpenFlux Bridge";
+pub const USB_MFR_STR: &str = "Keyglass";
+pub const USB_PROD_STR: &str = "Keyglass Keyboard";
+pub const USB_CONFIG_STR: &str = "Keyglass Bridge";
 pub const USB_UDC_NAME: &str = "fcc00000.usb";
 
 pub const BRIDGE_PACKET_SIZE: usize = 512;

@@ -235,7 +235,7 @@ fn lifecycle_failure(
             status: None,
             code: Some("daemonStateUnknown".into()),
             message: format!(
-                "OpenFlux couldn't confirm whether the background service is still running: {reason}"
+                "Keyglass couldn't confirm whether the background service is still running: {reason}"
             ),
             recovery: Some(
                 "Wait a moment and try again. If this keeps happening, restart the computer.".into(),
@@ -468,7 +468,7 @@ pub async fn put_third_party_settings(
     .await
 }
 
-/// Generic OpenFlux v2 daemon proxy for `/v2/*` routes (bus, modules, disclosure, lists, presets, GPU preview).
+/// Generic Keyglass v2 daemon proxy for `/v2/*` routes (bus, modules, disclosure, lists, presets, GPU preview).
 #[tauri::command]
 pub async fn v2_request(
     st: State<'_, DesktopState>,
@@ -754,7 +754,7 @@ sXJiKrPC+MOlUBLYQEqaFsvPIoxj3j1z
     async fn a_refused_port_with_a_free_lock_is_not_running() {
         let d = data_dir("api_refused");
         write_keys(&d, refused_port());
-        std::fs::write(d.join("config/openfluxd.lock"), "").unwrap();
+        std::fs::write(d.join("config/keyglassd.lock"), "").unwrap();
         let st = state_for(&d);
         let v = st.lifecycle("status").await.unwrap();
         assert_eq!(v["outcome"], "not-running");

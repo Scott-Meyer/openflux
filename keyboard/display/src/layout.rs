@@ -1,4 +1,4 @@
-//! Optical parallax math & display dimensions for OpenFlux v2.
+//! Optical parallax math & display dimensions for Keyglass v2.
 //!
 //! Computes Snell's-law optical refraction through the 9.0 mm acrylic keycaps over the
 //! 1920x1080 panel so legends appear optically centered on each key from the user's seated eye position.

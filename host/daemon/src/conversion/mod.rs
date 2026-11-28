@@ -1,7 +1,7 @@
-//! Converting a keyboard to OpenFlux, and resetting it to its factory software.
+//! Converting a keyboard to Keyglass, and resetting it to its factory software.
 //!
-//! This is the only place that recognizes keyboard software other than OpenFlux 1.0 or later.
-//! Everything else in the daemon assumes the components report OpenFlux versions; a keyboard
+//! This is the only place that recognizes keyboard software other than Keyglass 1.0 or later.
+//! Everything else in the daemon assumes the components report Keyglass versions; a keyboard
 //! classified as anything else is offered conversion instead of normal operation.
 //!
 //! - [`jobs`]: the conversion and reset job steps.
@@ -22,9 +22,9 @@ pub mod press_refinement;
 /// What a component runs, in the terms of the update engine.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Identity {
-    /// An OpenFlux release, `openflux-<component> <semver>`.
-    OpenFlux(semver::Version),
-    /// An OpenFlux development build.
+    /// An Keyglass release, `keyglass-<component> <semver>`.
+    Keyglass(semver::Version),
+    /// An Keyglass development build.
     DevelopmentBuild(String),
     /// The keyboard's factory software.
     Factory(String),
@@ -33,13 +33,13 @@ pub enum Identity {
 }
 
 /// Identifies a component from the version string it reports.
-pub fn identify(component: openflux_update::Component, reported: Option<&str>) -> Identity {
+pub fn identify(component: keyglass_update::Component, reported: Option<&str>) -> Identity {
     match classify_component(component.as_str(), reported) {
-        ComponentClass::OpenFlux { version } => match version.parse::<semver::Version>() {
-            Ok(v) => Identity::OpenFlux(v),
-            Err(_) => Identity::Unknown(format!("openflux-{component} {version}")),
+        ComponentClass::Keyglass { version } => match version.parse::<semver::Version>() {
+            Ok(v) => Identity::Keyglass(v),
+            Err(_) => Identity::Unknown(format!("keyglass-{component} {version}")),
         },
-        ComponentClass::PreReleaseOpenFlux { reported } => Identity::DevelopmentBuild(reported),
+        ComponentClass::PreReleaseKeyglass { reported } => Identity::DevelopmentBuild(reported),
         ComponentClass::Other { reported } => Identity::Factory(reported),
         ComponentClass::Unknown => Identity::Unknown(String::new()),
     }
@@ -49,39 +49,39 @@ pub fn identify(component: openflux_update::Component, reported: Option<&str>) -
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ComponentClass {
-    /// `openflux-<component> <version>`.
-    OpenFlux { version: String },
-    /// An OpenFlux development build: a bare version ending in `-open`, such as `1.4.11-open`.
-    PreReleaseOpenFlux { reported: String },
-    /// Software that isn't OpenFlux: offer conversion.
+    /// `keyglass-<component> <version>`.
+    Keyglass { version: String },
+    /// An Keyglass development build: a bare version ending in `-open`, such as `1.4.11-open`.
+    PreReleaseKeyglass { reported: String },
+    /// Software that isn't Keyglass: offer conversion.
     Other { reported: String },
     /// The component didn't report a version.
     Unknown,
 }
 
 impl ComponentClass {
-    pub fn is_openflux(&self) -> bool {
-        matches!(self, ComponentClass::OpenFlux { .. })
+    pub fn is_keyglass(&self) -> bool {
+        matches!(self, ComponentClass::Keyglass { .. })
     }
 }
 
-/// Classifies the version string a component reports. `component` is the OpenFlux component name
+/// Classifies the version string a component reports. `component` is the Keyglass component name
 /// (`firmware`, `bridge`, `display`).
 pub fn classify_component(component: &str, reported: Option<&str>) -> ComponentClass {
     let Some(raw) = reported.map(str::trim).filter(|s| !s.is_empty()) else {
         return ComponentClass::Unknown;
     };
-    let prefix = format!("openflux-{component} ");
+    let prefix = format!("keyglass-{component} ");
     if let Some(version) = raw.strip_prefix(&prefix) {
         let version = version.trim();
         if !version.is_empty() {
-            return ComponentClass::OpenFlux {
+            return ComponentClass::Keyglass {
                 version: version.to_string(),
             };
         }
     }
     if raw.ends_with("-open") {
-        return ComponentClass::PreReleaseOpenFlux {
+        return ComponentClass::PreReleaseKeyglass {
             reported: raw.to_string(),
         };
     }
@@ -93,16 +93,16 @@ pub fn classify_component(component: &str, reported: Option<&str>) -> ComponentC
 /// Classification of every component in a `versions` object (`firmware`, `bridge`, `display`).
 pub fn classify_versions(versions: &serde_json::Value) -> serde_json::Value {
     let mut out = serde_json::Map::new();
-    let mut all_openflux = true;
+    let mut all_keyglass = true;
     for component in ["firmware", "bridge", "display"] {
         let class = classify_component(component, versions.get(component).and_then(|v| v.as_str()));
-        all_openflux &= class.is_openflux();
+        all_keyglass &= class.is_keyglass();
         out.insert(
             component.into(),
             serde_json::to_value(class).unwrap_or(serde_json::Value::Null),
         );
     }
-    out.insert("conversionNeeded".into(), serde_json::json!(!all_openflux));
+    out.insert("conversionNeeded".into(), serde_json::json!(!all_keyglass));
     serde_json::Value::Object(out)
 }
 
@@ -111,23 +111,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn classifies_openflux_prerelease_other_and_missing_versions() {
+    fn classifies_keyglass_prerelease_other_and_missing_versions() {
         assert_eq!(
-            classify_component("bridge", Some("openflux-bridge 1.0.0")),
-            ComponentClass::OpenFlux {
+            classify_component("bridge", Some("keyglass-bridge 1.0.0")),
+            ComponentClass::Keyglass {
                 version: "1.0.0".into()
             }
         );
         assert_eq!(
             classify_component("display", Some("1.4.12.D-open")),
-            ComponentClass::PreReleaseOpenFlux {
+            ComponentClass::PreReleaseKeyglass {
                 reported: "1.4.12.D-open".into()
             }
         );
         assert_eq!(
-            classify_component("bridge", Some("openflux-display 1.0.0")),
+            classify_component("bridge", Some("keyglass-display 1.0.0")),
             ComponentClass::Other {
-                reported: "openflux-display 1.0.0".into()
+                reported: "keyglass-display 1.0.0".into()
             },
             "a version naming another component is not this component"
         );
@@ -148,18 +148,18 @@ mod tests {
     }
 
     #[test]
-    fn conversion_is_needed_unless_every_component_is_openflux() {
+    fn conversion_is_needed_unless_every_component_is_keyglass() {
         let all = serde_json::json!({
-            "firmware": "openflux-firmware 1.0.0",
-            "bridge": "openflux-bridge 1.0.0",
-            "display": "openflux-display 1.0.0",
+            "firmware": "keyglass-firmware 1.0.0",
+            "bridge": "keyglass-bridge 1.0.0",
+            "display": "keyglass-display 1.0.0",
             "os": "2.1",
         });
         assert_eq!(classify_versions(&all)["conversionNeeded"], false);
-        let mixed = serde_json::json!({"firmware": "openflux-firmware 1.0.0", "bridge": "1.4.11-open", "display": null});
+        let mixed = serde_json::json!({"firmware": "keyglass-firmware 1.0.0", "bridge": "1.4.11-open", "display": null});
         let c = classify_versions(&mixed);
         assert_eq!(c["conversionNeeded"], true);
-        assert_eq!(c["bridge"]["kind"], "preReleaseOpenFlux");
+        assert_eq!(c["bridge"]["kind"], "preReleaseKeyglass");
         assert_eq!(c["display"]["kind"], "unknown");
     }
 }

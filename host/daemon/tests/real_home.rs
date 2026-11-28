@@ -1,6 +1,6 @@
 //! A daemon given its own data directory leaves the user's real locations alone.
 
-use openfluxd::api::third_party;
+use keyglassd::api::third_party;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -84,8 +84,8 @@ fn user_locations() -> Vec<PathBuf> {
 
 #[test]
 fn a_daemon_with_its_own_data_directory_writes_nothing_in_the_users_home() {
-    let bin = env!("CARGO_BIN_EXE_openfluxd");
-    let tmp = std::env::temp_dir().join(format!("openfluxd_real_home_{}", std::process::id()));
+    let bin = env!("CARGO_BIN_EXE_keyglassd");
+    let tmp = std::env::temp_dir().join(format!("keyglassd_real_home_{}", std::process::id()));
     let data = tmp.join("data");
     let mut before = BTreeMap::new();
     for p in user_locations() {
@@ -95,12 +95,12 @@ fn a_daemon_with_its_own_data_directory_writes_nothing_in_the_users_home() {
     let command = |args: &[&str]| {
         let mut c = Command::new(bin);
         c.args(args)
-            .env("OPENFLUX_DATA_DIR", &data)
-            .env_remove("OPENFLUX_HOME_OVERRIDE")
-            .env_remove("OPENFLUX_ENROLLMENT_SECRET")
-            .env("OPENFLUX_API_ADDR", "127.0.0.1:0")
+            .env("KEYGLASS_DATA_DIR", &data)
+            .env_remove("KEYGLASS_HOME_OVERRIDE")
+            .env_remove("KEYGLASS_ENROLLMENT_SECRET")
+            .env("KEYGLASS_API_ADDR", "127.0.0.1:0")
             .env(
-                "OPENFLUX_UPDATE_INDEX_URL",
+                "KEYGLASS_UPDATE_INDEX_URL",
                 format!("file://{}/no-index.json", tmp.display()),
             );
         c
@@ -114,7 +114,7 @@ fn a_daemon_with_its_own_data_directory_writes_nothing_in_the_users_home() {
     );
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        if let Ok(Some(ep)) = openfluxd::api::lifecycle_client::DaemonEndpoint::discover(&data) {
+        if let Ok(Some(ep)) = keyglassd::api::lifecycle_client::DaemonEndpoint::discover(&data) {
             if std::net::TcpStream::connect(ep.addr).is_ok() {
                 break;
             }

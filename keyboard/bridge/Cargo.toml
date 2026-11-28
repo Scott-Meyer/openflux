@@ -1,8 +1,8 @@
 [package]
-name = "openflux-bridge"
+name = "keyglass-bridge"
 version = "2.0.0-beta.1"
 edition.workspace = true
-description = "OpenFlux keyboard bridge: USB gadget, key-scanner UART link, and display IPC"
+description = "Keyglass keyboard bridge: USB gadget, key-scanner UART link, and display IPC"
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
@@ -10,10 +10,10 @@ rust-version.workspace = true
 [dependencies]
 base64 = "0.22"
 libc = "0.2"
-openflux-bus = { path = "../../crates/openflux-bus" }
+keyglass-bus = { path = "../../crates/keyglass-bus" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [[bin]]
-name = "openflux-bridge"
-path = "src/bin/openflux_bridge.rs"
+name = "keyglass-bridge"
+path = "src/bin/keyglass_bridge.rs"

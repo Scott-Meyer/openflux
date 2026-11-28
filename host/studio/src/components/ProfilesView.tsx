@@ -46,10 +46,10 @@ interface ProfileMatchDiagnostics {
 function isStudioToken(tok: string): boolean {
   const low = tok.trim().toLowerCase();
   return (
-    low === "org.openflux.studio" ||
+    low === "dev.keyglass.studio" ||
     low.startsWith("org.keyglass.") ||
-    low === "openflux-studio" ||
-    low === "openflux studio" ||
+    low === "keyglass-studio" ||
+    low === "keyglass studio" ||
     low === "keyglass studio" ||
     low === "keyglass"
   );

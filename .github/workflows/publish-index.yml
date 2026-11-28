@@ -4,10 +4,10 @@
 # Runs in the release-signing environment (branch-protected to main) where
 # the release key and Tauri updater key live. Newly built releases arrive as
 # workflow artifacts (staged-*), avoiding GitHub Release scraping and keeping
-# public GitHub releases focused strictly on OpenFlux Studio installers.
+# public GitHub releases focused strictly on Keyglass Studio installers.
 #
 # Site layout:
-#   index.json, index.json.sig            update index for openfluxd
+#   index.json, index.json.sig            update index for keyglassd
 #   site-manifest.json                    sha256 inventory of static files
 #   packages/<component>/<version>/...    keyboard OTA packages (.uf2, .ipk)
 #   updates/stable/latest.json (+ .app.tar.gz)  Tauri updater feed, stable
@@ -80,7 +80,7 @@ jobs:
       pages_url: ${{ steps.tool.outputs.pages_url }}
     env:
       GH_TOKEN: ${{ github.token }}
-      OPENFLUX_PAGES_URL: ${{ vars.OPENFLUX_PAGES_URL }}
+      KEYGLASS_PAGES_URL: ${{ vars.KEYGLASS_PAGES_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -110,11 +110,11 @@ jobs:
       - name: Release tool
         id: tool
         run: |
-          cargo build --locked --release --manifest-path crates/openflux-update/Cargo.toml --bin openflux-release --features production-keys
-          dir="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/openflux-update/Cargo.toml | jq -r .target_directory)"
-          echo "TOOL=$dir/release/openflux-release" >> "$GITHUB_ENV"
+          cargo build --locked --release --manifest-path crates/keyglass-update/Cargo.toml --bin keyglass-release --features production-keys
+          dir="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/keyglass-update/Cargo.toml | jq -r .target_directory)"
+          echo "TOOL=$dir/release/keyglass-release" >> "$GITHUB_ENV"
           owner="${GITHUB_REPOSITORY%%/*}"
-          pages="${OPENFLUX_PAGES_URL:-https://${owner,,}.github.io/${GITHUB_REPOSITORY#*/}}"
+          pages="${KEYGLASS_PAGES_URL:-https://${owner,,}.github.io/${GITHUB_REPOSITORY#*/}}"
           echo "PAGES_URL=${pages%/}" >> "$GITHUB_ENV"
           echo "pages_url=${pages%/}" >> "$GITHUB_OUTPUT"
 
@@ -135,8 +135,8 @@ jobs:
 
       - name: Sign staged releases
         env:
-          OPENFLUX_RELEASE_KEY: ${{ secrets.OPENFLUX_RELEASE_KEY }}
-          OPENFLUX_RELEASE_KEY_PASSWORD: ${{ secrets.OPENFLUX_RELEASE_KEY_PASSWORD }}
+          KEYGLASS_RELEASE_KEY: ${{ secrets.KEYGLASS_RELEASE_KEY }}
+          KEYGLASS_RELEASE_KEY_PASSWORD: ${{ secrets.KEYGLASS_RELEASE_KEY_PASSWORD }}
         run: |
           mkdir -p build/staged build/releases build/site
           .github/scripts/stage-releases.sh \
@@ -150,8 +150,8 @@ jobs:
       - name: Index
         id: index
         env:
-          OPENFLUX_RELEASE_KEY: ${{ secrets.OPENFLUX_RELEASE_KEY }}
-          OPENFLUX_RELEASE_KEY_PASSWORD: ${{ secrets.OPENFLUX_RELEASE_KEY_PASSWORD }}
+          KEYGLASS_RELEASE_KEY: ${{ secrets.KEYGLASS_RELEASE_KEY }}
+          KEYGLASS_RELEASE_KEY_PASSWORD: ${{ secrets.KEYGLASS_RELEASE_KEY_PASSWORD }}
           WITHDRAW: ${{ inputs.withdraw }}
           EXPIRES_DAYS: ${{ inputs.expires-days || 365 }}
           RESIGN: ${{ inputs.resign && 'true' || 'false' }}

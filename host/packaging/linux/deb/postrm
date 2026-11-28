@@ -1,5 +1,5 @@
 #!/bin/sh
-# Debian maintainer script for the OpenFlux Studio .deb (postrm).
+# Debian maintainer script for the Keyglass Studio .deb (postrm).
 set -e
 
 case "$1" in
@@ -10,6 +10,6 @@ case "$1" in
         ;;
 esac
 
-# User data under ~/.local/share/openflux belongs to each user and is never
+# User data under ~/.local/share/keyglass belongs to each user and is never
 # removed by the package, including on purge.
 exit 0

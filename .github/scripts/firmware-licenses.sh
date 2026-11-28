@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Writes openflux-firmware-licenses.txt: the license texts of the littlefs,
+# Writes keyglass-firmware-licenses.txt: the license texts of the littlefs,
 # Raspberry Pi Pico SDK and TinyUSB code the firmware image links, read from
 # the exact sources in the firmware build image (keyboard/firmware/
 # Dockerfile.build). Fails if any of them is missing or empty.

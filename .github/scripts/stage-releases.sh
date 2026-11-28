@@ -14,11 +14,11 @@
 # Host installers live on the GitHub release (<server>/<repo>/releases/download/<tag>).
 #
 # Usage:
-#   stage-releases.sh --tool <openflux-release> --staged <dir>
+#   stage-releases.sh --tool <keyglass-release> --staged <dir>
 #       --pages-url <url> --active-pubkey <file>
 #       --releases-out <dir> --site-out <dir>
 #
-# Environment: OPENFLUX_RELEASE_KEY (and OPENFLUX_RELEASE_KEY_PASSWORD when set),
+# Environment: KEYGLASS_RELEASE_KEY (and KEYGLASS_RELEASE_KEY_PASSWORD when set),
 # GITHUB_REPOSITORY, and optional GITHUB_SERVER_URL.
 
 set -euo pipefail
@@ -45,8 +45,8 @@ mkdir -p "$releases_out" "$site_out"
 
 server="${GITHUB_SERVER_URL:-https://github.com}"
 repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
-sign_args=(--key-env OPENFLUX_RELEASE_KEY)
-[ -n "${OPENFLUX_RELEASE_KEY_PASSWORD:-}" ] && sign_args+=(--password-env OPENFLUX_RELEASE_KEY_PASSWORD)
+sign_args=(--key-env KEYGLASS_RELEASE_KEY)
+[ -n "${KEYGLASS_RELEASE_KEY_PASSWORD:-}" ] && sign_args+=(--password-env KEYGLASS_RELEASE_KEY_PASSWORD)
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT

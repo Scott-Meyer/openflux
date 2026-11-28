@@ -2,7 +2,7 @@
 //!
 //! The daemon fetches the signed release index on start, every day and on request, verifies it
 //! and falls back to the index bundled with the installer. From the verified releases and what
-//! the keyboard reports it works out, with the `openflux_update` engine, what can be installed.
+//! the keyboard reports it works out, with the `keyglass_update` engine, what can be installed.
 //! Installing happens in jobs ([`jobs`]): one at a time, under the daemon's busy lease, with a
 //! journal that survives a restart.
 //!
@@ -20,8 +20,8 @@ pub use status::Area;
 use crate::api::state::DeviceSink;
 use crate::lifecycle::{BusyLease, Lifecycle};
 use jobs::{JobError, JobKind, JobRecord, JobState, Journal, PlannedStep, StepKind};
-use openflux_update::compat::{Compat, HostProfile};
-use openflux_update::{Component, Engine, PlanRequest, Preferences, TrustAnchors, TrustStore};
+use keyglass_update::compat::{Compat, HostProfile};
+use keyglass_update::{Component, Engine, PlanRequest, Preferences, TrustAnchors, TrustStore};
 use serde::{Deserialize, Serialize};
 use source::{FileTrustStore, SourceError, Sources};
 use status::{AreaState, KeyboardView, ViewMode};
@@ -76,14 +76,14 @@ pub struct UpdateConfig {
 
 impl UpdateConfig {
     /// The configuration of an installed daemon: the published index (or
-    /// `OPENFLUX_UPDATE_INDEX_URL`), the installer's bundled keyboard software (or
-    /// `OPENFLUX_BUNDLED_KEYBOARD_DIR`), and the keys built into this host.
+    /// `KEYGLASS_UPDATE_INDEX_URL`), the installer's bundled keyboard software (or
+    /// `KEYGLASS_BUNDLED_KEYBOARD_DIR`), and the keys built into this host.
     pub fn installed(data_dir: PathBuf) -> Self {
-        let index_url = std::env::var("OPENFLUX_UPDATE_INDEX_URL")
+        let index_url = std::env::var("KEYGLASS_UPDATE_INDEX_URL")
             .ok()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| DEFAULT_INDEX_URL.into());
-        let bundled_dir = std::env::var_os("OPENFLUX_BUNDLED_KEYBOARD_DIR")
+        let bundled_dir = std::env::var_os("KEYGLASS_BUNDLED_KEYBOARD_DIR")
             .filter(|s| !s.is_empty())
             .map(PathBuf::from)
             .or_else(bundled_keyboard_dir);
@@ -91,14 +91,14 @@ impl UpdateConfig {
             data_dir,
             index_url,
             bundled_dir,
-            anchors: openflux_update::trust_anchors(),
+            anchors: keyglass_update::trust_anchors(),
             check_interval: Duration::from_secs(24 * 3600),
             timings: Timings::default(),
-            factory_container_url: std::env::var("OPENFLUX_FACTORY_CONTAINER_URL")
+            factory_container_url: std::env::var("KEYGLASS_FACTORY_CONTAINER_URL")
                 .ok()
                 .filter(|s| !s.is_empty()),
             press_refinement_container_url: std::env::var(
-                "OPENFLUX_PRESS_REFINEMENT_CONTAINER_URL",
+                "KEYGLASS_PRESS_REFINEMENT_CONTAINER_URL",
             )
             .ok()
             .filter(|s| !s.is_empty()),
@@ -114,8 +114,8 @@ pub fn bundled_keyboard_dir() -> Option<PathBuf> {
     let candidates = [
         dir.join("../Resources/keyboard"),
         dir.join("keyboard"),
-        dir.join("../lib/OpenFlux Studio/keyboard"),
-        dir.join("../lib/openflux-studio/keyboard"),
+        dir.join("../lib/Keyglass Studio/keyboard"),
+        dir.join("../lib/keyglass-studio/keyboard"),
     ];
     candidates
         .into_iter()
@@ -446,7 +446,7 @@ impl UpdateService {
     }
 
     /// Where press-refinement data is found, from the newest verified index that records it.
-    pub(crate) fn press_refinement_source(&self) -> Option<openflux_update::PressRefinementSource> {
+    pub(crate) fn press_refinement_source(&self) -> Option<keyglass_update::PressRefinementSource> {
         self.sources().catalog().press_refinement_source().cloned()
     }
 
@@ -478,7 +478,7 @@ impl UpdateService {
         if let Some(other) = g.held {
             return Err(Refused::conflict(
                 "busy",
-                format!("OpenFlux is {other}; try again when it finishes"),
+                format!("Keyglass is {other}; try again when it finishes"),
             ));
         }
         let lease = self
@@ -634,7 +634,7 @@ impl UpdateService {
         if let Some(other) = g.held {
             return Err(Refused::conflict(
                 "busy",
-                format!("OpenFlux is {other}; try again when it finishes"),
+                format!("Keyglass is {other}; try again when it finishes"),
             ));
         }
         let lease = self
@@ -664,7 +664,7 @@ impl UpdateService {
         };
         job.resumed += 1;
         job.log.push(format!(
-            "OpenFlux restarted during step {} ({}); resuming",
+            "Keyglass restarted during step {} ({}); resuming",
             job.step.index, job.step.label
         ));
         let lease = match self.lifecycle.hold(job.kind.activity()) {
@@ -674,7 +674,7 @@ impl UpdateService {
                 job.error = Some(JobError::new(
                     "interrupted",
                     e.to_string(),
-                    "Start the job again once OpenFlux is running.",
+                    "Start the job again once Keyglass is running.",
                 ));
                 job.finished_at = Some(jobs::now_rfc3339());
                 self.reserved.store(false, Ordering::SeqCst);
@@ -763,7 +763,7 @@ impl UpdateService {
                 for c in list {
                     let comp: Component =
                         c.parse()
-                            .map_err(|e: openflux_update::version::ParseError| Refused {
+                            .map_err(|e: keyglass_update::version::ParseError| Refused {
                                 status: 400,
                                 code: "badRequest",
                                 message: e.0,
@@ -772,7 +772,7 @@ impl UpdateService {
                         return Err(Refused {
                             status: 400,
                             code: "badRequest",
-                            message: "OpenFlux updates itself; apply covers keyboard components"
+                            message: "Keyglass updates itself; apply covers keyboard components"
                                 .into(),
                         });
                     }
@@ -787,7 +787,7 @@ impl UpdateService {
     pub fn plan_body(&self, components: Option<Vec<String>>) -> Result<serde_json::Value, Refused> {
         let request = Self::parse_plan_request(components)?;
         let view = self.view();
-        if view.mode() != ViewMode::OpenFlux || !view.undescribed().is_empty() {
+        if view.mode() != ViewMode::Keyglass || !view.undescribed().is_empty() {
             return Ok(serde_json::json!({ "plan": serde_json::Value::Null }));
         }
         let catalog = self.sources().catalog();
@@ -819,7 +819,7 @@ impl UpdateService {
                     "The keyboard isn't fully running Keyglass; convert it instead",
                 ))
             }
-            ViewMode::OpenFlux => {}
+            ViewMode::Keyglass => {}
         }
         if !view.undescribed().is_empty() {
             return Err(Refused::conflict(
@@ -872,8 +872,8 @@ impl UpdateService {
                     format!("{} {} has no installable file", s.component, s.to),
                 )
             })?;
-            let from = format!("openflux-{} {}", s.component, s.from);
-            let to = format!("openflux-{} {}", s.component, s.to);
+            let from = format!("keyglass-{} {}", s.component, s.from);
+            let to = format!("keyglass-{} {}", s.component, s.to);
             expected.insert(s.component.as_str().into(), serde_json::json!(to));
             steps.push(PlannedStep {
                 kind: if s.component == Component::Firmware {
@@ -968,7 +968,7 @@ impl UpdateService {
             let expect = art
                 .version
                 .as_ref()
-                .map(|v| format!("openflux-{} {v}", c.as_str()));
+                .map(|v| format!("keyglass-{} {v}", c.as_str()));
             let mut state = serde_json::Map::new();
             state.insert("localPath".into(), serde_json::json!(art.path));
             let (kind, label) = match c {

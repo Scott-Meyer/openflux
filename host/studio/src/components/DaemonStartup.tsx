@@ -8,7 +8,7 @@ import {
   STEP_LABELS,
   type StartReport,
 } from "../api/daemonService";
-import { OpenFluxLogo } from "./OpenFluxLogo";
+import { KeyglassLogo } from "./KeyglassLogo";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -191,7 +191,7 @@ export const DaemonStartup: React.FC<{
     <main className="startup-screen">
       <div className="card startup-card">
         <div className="brand">
-          <OpenFluxLogo size={28} />
+          <KeyglassLogo size={28} />
           <strong>Keyglass Studio</strong>
         </div>
         {p.phase === "probing" && <p aria-live="polite">Connecting to the Keyglass background service…</p>}

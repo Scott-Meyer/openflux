@@ -1,6 +1,6 @@
 # Releases are made only here. release-please keeps one release pull request
 # per component open on main. Merging a host PR tags and creates the public
-# OpenFlux Studio GitHub release. Merging a keyboard PR (firmware, bridge or
+# Keyglass Studio GitHub release. Merging a keyboard PR (firmware, bridge or
 # display) bumps its manifest version and tags it without creating a public
 # GitHub release; its packages are published directly to GitHub Pages.
 #
@@ -51,7 +51,7 @@ jobs:
           fetch-depth: 2
 
       # Keyboard components use skip-github-release: true so they never create
-      # public GitHub releases or steal the Latest badge from OpenFlux Studio.
+      # public GitHub releases or steal the Latest badge from Keyglass Studio.
       # Detect version bumps in .release-please-manifest.json and push their
       # git tags so the build workflows can check out and build them.
       - id: keyboard-tags
@@ -103,7 +103,7 @@ jobs:
       - name: Cargo.lock matches the versions
         run: cargo metadata --locked --format-version 1 > /dev/null
       - name: compat.toml is consistent
-        run: cargo run --locked --release --manifest-path crates/openflux-update/Cargo.toml --bin openflux-release -- compat --compat compat.toml
+        run: cargo run --locked --release --manifest-path crates/keyglass-update/Cargo.toml --bin keyglass-release -- compat --compat compat.toml
 
   firmware:
     needs: release-please

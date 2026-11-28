@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Generate default XZ-compressed Vial keyboard definition header for OpenFlux (ANSI / ISO / JIS)."""
+"""Generate default XZ-compressed Vial keyboard definition header for Keyglass (ANSI / ISO / JIS)."""
 import json
 import lzma
 import pathlib
 import sys
 
-# Default built-in OpenFlux actions mapped to QK_KB_0..13 (matching fw_protocol.h 0x02..0x0F).
+# Default built-in Keyglass actions mapped to QK_KB_0..13 (matching fw_protocol.h 0x02..0x0F).
 DEFAULT_CUSTOM_KEYCODES = [
     {"name": "Screen\nBri+", "title": "Increase keyboard display brightness", "shortName": "OF_BRI+"},
     {"name": "Screen\nBri-", "title": "Decrease keyboard display brightness", "shortName": "OF_BRI-"},
-    {"name": "Profile\nNext", "title": "Switch to next OpenFlux profile", "shortName": "OF_PRF+"},
-    {"name": "Profile\nPrev", "title": "Switch to previous OpenFlux profile", "shortName": "OF_PRF-"},
+    {"name": "Profile\nNext", "title": "Switch to next Keyglass profile", "shortName": "OF_PRF+"},
+    {"name": "Profile\nPrev", "title": "Switch to previous Keyglass profile", "shortName": "OF_PRF-"},
     {"name": "Act\nNext", "title": "Cycle to next actuation mode", "shortName": "OF_ACT+"},
     {"name": "Act\nPrev", "title": "Cycle to previous actuation mode", "shortName": "OF_ACT-"},
     {"name": "Linux", "title": "Switch platform mode to Linux", "shortName": "OF_LNX"},
@@ -23,7 +23,7 @@ DEFAULT_CUSTOM_KEYCODES = [
     {"name": "Theme\nPrev", "title": "Switch to previous display theme", "shortName": "OF_THM-"},
 ]
 
-# OpenFlux 6x16 KLE geometry with Vial Layout Option 0: ["Physical Layout", "ANSI", "ISO", "JIS"].
+# Keyglass 6x16 KLE geometry with Vial Layout Option 0: ["Physical Layout", "ANSI", "ISO", "JIS"].
 # Covers all 85 ANSI, 87 ISO, and 90 JIS physical keys cleanly.
 KEYMAP = [
     ["0,0", "0,1", "0,2", "0,3", "0,4", "0,5", "0,6", "0,7", "0,8", "0,9", "0,10", "0,11", "0,12", "0,13", "0,14", "0,15"],
@@ -62,7 +62,7 @@ KEYMAP = [
 ]
 
 VIAL_DEF = {
-    "name": "OpenFlux Keyboard",
+    "name": "Keyglass Keyboard",
     "vendorId": "0x3761",
     "productId": "0x4015",
     "matrix": {"rows": 6, "cols": 16},

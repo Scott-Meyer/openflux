@@ -79,7 +79,7 @@ static const uint8_t desc_hid_kbd_report[] = {
 
 /* Dedicated vendor HID interface (ITF_NUM_HID_VENDOR) so host software can open it without triggering
  * OS keyboard Input Monitoring permission prompts.
- * Report ID 3: 4-byte OpenFlux function mask (openfluxd parses both ID-3 and bare 4-byte shapes).
+ * Report ID 3: 4-byte Keyglass function mask (keyglassd parses both ID-3 and bare 4-byte shapes).
  * Report ID 4: generic Flux/module action event { slot_le16, pressed, mods, layer, reserved[3] }. */
 static const uint8_t desc_hid_of_report[] = {
     HID_USAGE_PAGE_N ( 0xFF00, 2                                ),
@@ -305,10 +305,10 @@ const uint8_t *tud_descriptor_configuration_cb(uint8_t index) {
     return fw_usb_gamepad_enabled() ? desc_configuration_gp : desc_configuration_base;
 }
 
-static char g_serial_str[2 * PICO_UNIQUE_BOARD_ID_SIZE_BYTES + 1] = "openflux-fw-0001";
+static char g_serial_str[2 * PICO_UNIQUE_BOARD_ID_SIZE_BYTES + 1] = "keyglass-fw-0001";
 
 static const char *string_desc_arr[] = {
-    (const char[]){0x09, 0x04}, "OpenFlux", "OpenFlux Firmware", g_serial_str, "OpenFlux Firmware CDC",
+    (const char[]){0x09, 0x04}, "Keyglass", "Keyglass Firmware", g_serial_str, "Keyglass Firmware CDC",
 };
 
 static uint16_t _desc_str[32];

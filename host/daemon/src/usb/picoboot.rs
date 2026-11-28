@@ -523,7 +523,7 @@ fn flash_uf2_via_windows_rp2_volume(
             let info_path = std::path::Path::new(&root).join("INFO_UF2.TXT");
             if let Ok(txt) = std::fs::read_to_string(&info_path) {
                 if txt.contains("RP2040") || txt.contains("RPI-RP2") {
-                    let dst = std::path::Path::new(&root).join("openflux-firmware.uf2");
+                    let dst = std::path::Path::new(&root).join("keyglass-firmware.uf2");
                     std::fs::write(&dst, uf2_bytes).map_err(|e| {
                         format!(
                             "PICOBOOT unavailable ({picoboot_err}); failed writing UF2 to {}: {e}",

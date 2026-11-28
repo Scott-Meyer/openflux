@@ -35,7 +35,7 @@ case "$component" in
     host) source_version="$(toml_get Cargo.toml workspace.package.version)" ;;
     bridge|display) source_version="$(toml_get "keyboard/${component}/Cargo.toml" package.version)" ;;
     firmware)
-        source_version="$(sed -n 's/^set(OPENFLUX_FIRMWARE_VERSION "\([^"]*\)").*/\1/p' keyboard/firmware/CMakeLists.txt)"
+        source_version="$(sed -n 's/^set(KEYGLASS_FIRMWARE_VERSION "\([^"]*\)").*/\1/p' keyboard/firmware/CMakeLists.txt)"
         ;;
 esac
 [ "$source_version" = "$version" ] || die "${tag}: sources declare ${component} ${source_version:-<none>}"
@@ -44,7 +44,7 @@ compat_version="$(toml_get compat.toml "components.${component}.version")"
 
 repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 owner="${repo%%/*}"
-pages_url="${OPENFLUX_PAGES_URL:-https://${owner,,}.github.io/${repo#*/}}"
+pages_url="${KEYGLASS_PAGES_URL:-https://${owner,,}.github.io/${repo#*/}}"
 server="${GITHUB_SERVER_URL:-https://github.com}"
 
 {

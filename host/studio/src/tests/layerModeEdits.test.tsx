@@ -11,7 +11,7 @@ import {
   renameActuationMode,
   renameLayer,
 } from "../components/layerModeEdits";
-import type { KeymapConfig, OpenFluxConfig } from "../types/openflux";
+import type { KeymapConfig, KeyglassConfig } from "../types/keyglass";
 import { TEST_CONFIG } from "./fixtures";
 
 afterEach(() => {
@@ -24,7 +24,7 @@ const accepted = (edit: ReturnType<typeof addLayer>) => {
 };
 
 /** TEST_CONFIG with a third layer L2 that the FN layer switches to with its first key. */
-function threeLayers(): OpenFluxConfig {
+function threeLayers(): KeyglassConfig {
   const config = structuredClone(TEST_CONFIG);
   const withL2 = accepted(addLayer(config, "Numpad")).patch.keymap as KeymapConfig;
   for (const ldata of Object.values(withL2.keymaps)) {
@@ -71,7 +71,7 @@ describe("layer edits", () => {
     config.appearance.defaultTheme.stylemaps = {
       "1": { styles: { "4": { label: "FN key" } } },
       "2": { styles: { "5": { label: "Num" } } },
-    } as OpenFluxConfig["appearance"]["defaultTheme"]["stylemaps"];
+    } as KeyglassConfig["appearance"]["defaultTheme"]["stylemaps"];
 
     // Deleting L1: L2 becomes L1, and keys that switch to L2 follow it.
     const edit = accepted(deleteLayer(config, 1));
@@ -140,7 +140,7 @@ describe("actuation mode edits", () => {
 });
 
 /** The actuation panel with mode management, applying every edit to its config. */
-function ManagedPanel({ initial, patches }: { initial: OpenFluxConfig; patches: Partial<OpenFluxConfig>[] }) {
+function ManagedPanel({ initial, patches }: { initial: KeyglassConfig; patches: Partial<KeyglassConfig>[] }) {
   const [config, setConfig] = useState(initial);
   return (
     <ActuationPanel
@@ -158,7 +158,7 @@ function ManagedPanel({ initial, patches }: { initial: OpenFluxConfig; patches: 
 
 describe("managing actuation modes in the panel", () => {
   it("asks before deleting a mode a profile uses, and applies modes and profiles together", () => {
-    const patches: Partial<OpenFluxConfig>[] = [];
+    const patches: Partial<KeyglassConfig>[] = [];
     render(<ManagedPanel initial={structuredClone(TEST_CONFIG)} patches={patches} />);
     fireEvent.click(screen.getByRole("button", { name: "Delete Typing/General" }));
     const dialog = screen.getByRole("dialog", { name: "Delete Typing/General" });
@@ -173,7 +173,7 @@ describe("managing actuation modes in the panel", () => {
   });
 
   it("adds and renames modes", () => {
-    const patches: Partial<OpenFluxConfig>[] = [];
+    const patches: Partial<KeyglassConfig>[] = [];
     render(<ManagedPanel initial={structuredClone(TEST_CONFIG)} patches={patches} />);
     fireEvent.change(screen.getByLabelText("New mode name"), { target: { value: "Writing" } });
     fireEvent.click(screen.getByRole("button", { name: "Add Mode" }));

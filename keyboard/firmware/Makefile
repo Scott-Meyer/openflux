@@ -2,8 +2,8 @@ HOST_CC ?= cc
 CFLAGS ?= -O2 -Wall -Wextra -Werror -std=c11 -fsanitize=address,undefined -fno-omit-frame-pointer
 QMK_CFLAGS ?= -O2 -std=gnu11 -Wall -Wno-unused-parameter -Wno-unused-function -Wno-sign-compare -Wno-int-to-void-pointer-cast -fsanitize=address,undefined -fno-omit-frame-pointer
 BUILD_DIR ?= build
-# The firmware version has one source: OPENFLUX_FIRMWARE_VERSION in CMakeLists.txt.
-VERSION ?= $(shell sed -n 's/^set(OPENFLUX_FIRMWARE_VERSION "\([^"]*\)").*/\1/p' CMakeLists.txt)
+# The firmware version has one source: KEYGLASS_FIRMWARE_VERSION in CMakeLists.txt.
+VERSION ?= $(shell sed -n 's/^set(KEYGLASS_FIRMWARE_VERSION "\([^"]*\)").*/\1/p' CMakeLists.txt)
 
 CORE_SRCS = src/fw_calibration.c src/fw_classic_row.c src/fw_classic_neighbors.c src/fw_classic_keys.c src/fw_depth.c src/fw_gamepad.c src/fw_hdlc.c src/fw_keyframe.c src/fw_lifecycle.c \
             src/fw_rapid.c src/fw_refine.c src/fw_refinement_record.c src/fw_rest.c src/fw_rest_runtime.c \
@@ -66,7 +66,7 @@ QMK_INCLUDES = \
 	-I$(QMK_DIR)/tmk_core/protocol -I$(QMK_DIR)/platforms
 
 QMK_DEFS = -DHOST_TEST -DFW_PROJECT_VERSION='"$(VERSION)"' \
-	-DQMK_KEYBOARD_H='"openflux_qmk.h"' -DKEYMAP_C='"fw_qmk_keymap.c"' \
+	-DQMK_KEYBOARD_H='"keyglass_qmk.h"' -DKEYMAP_C='"fw_qmk_keymap.c"' \
 	-include src/qmk/qmk_platform/config.h
 
 QMK_OBJS = $(patsubst %.c,$(BUILD_DIR)/qmk/%.o,$(notdir $(QMK_SRCS)))

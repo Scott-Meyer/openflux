@@ -1,4 +1,4 @@
-# Toolchain image for building openflux-bridge; the repository is mounted at /work at run time.
+# Toolchain image for building keyglass-bridge; the repository is mounted at /work at run time.
 # rust:1-slim-bookworm
 FROM rust:1-slim-bookworm@sha256:7c7d4eb4d05b7781187a327809466cfddf29753f6defdc3d19a0e291951b7a37
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \

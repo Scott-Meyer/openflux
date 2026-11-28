@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs the pinned cargo-about into <dir> (default ~/.cargo/bin), so
 # `cargo about` runs from PATH. It generates the license files of the Rust
-# crates compiled into each OpenFlux binary (rust-licenses.sh).
+# crates compiled into each Keyglass binary (rust-licenses.sh).
 #
 # Uses the project's prebuilt release for this machine, checked against the
 # SHA-256 recorded here; on a machine without one (an Intel Mac) it builds

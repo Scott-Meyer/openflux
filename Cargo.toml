@@ -1,18 +1,18 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/openflux-bus",
-    "crates/openflux-modules",
-    "crates/openflux-compositor",
+    "crates/keyglass-bus",
+    "crates/keyglass-modules",
+    "crates/keyglass-compositor",
     "crates/fluxctl",
-    "crates/openflux-update",
+    "crates/keyglass-update",
     "host/daemon",
     "host/studio/src-tauri",
     "keyboard/bridge",
     "keyboard/display",
 ]
 exclude = [
-    "tools/openflux-dev/lfs-tool",
+    "tools/keyglass-dev/lfs-tool",
 ]
 
 [workspace.package]
@@ -29,8 +29,8 @@ strip = true
 codegen-units = 1
 
 # The daemon and bridge run continuously on the host and keyboard; favor small binaries.
-[profile.release.package.openfluxd]
+[profile.release.package.keyglassd]
 opt-level = "z"
 
-[profile.release.package.openflux-bridge]
+[profile.release.package.keyglass-bridge]
 opt-level = "z"

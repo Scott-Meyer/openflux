@@ -1,5 +1,5 @@
 //! USB transport to the keyboard through libusb (`rusb`). On Unix each command takes a per-device
-//! file lock so the daemon and other OpenFlux tools never interleave commands on one interface; on
+//! file lock so the daemon and other Keyglass tools never interleave commands on one interface; on
 //! Windows no lock is taken.
 
 use crate::usb::protocol::{
@@ -57,7 +57,7 @@ struct UsbLockGuard {
 impl UsbLockGuard {
     fn acquire(pid: u16) -> Result<Self, UsbError> {
         use std::os::unix::io::AsRawFd;
-        let path = format!("/tmp/openflux_usb_{pid:04x}.lock");
+        let path = format!("/tmp/keyglass_usb_{pid:04x}.lock");
         use std::fs::OpenOptions;
         use std::os::unix::fs::OpenOptionsExt;
         // The lock is a fixed name shared with other tools; a link planted there isn't followed.

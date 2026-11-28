@@ -1,4 +1,4 @@
-//! OpenFlux v2 Keyboard Display Compositor (pure v2 — zero legacy v1 rendering/config).
+//! Keyglass v2 Keyboard Display Compositor (pure v2 — zero legacy v1 rendering/config).
 
 pub mod device_paths;
 #[cfg(target_os = "linux")]

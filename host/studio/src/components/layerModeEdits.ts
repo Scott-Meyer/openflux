@@ -4,9 +4,9 @@ import type {
   AppearanceTheme,
   KeyAction,
   KeymapConfig,
-  OpenFluxConfig,
+  KeyglassConfig,
   ShortcutProfile,
-} from "../types/openflux";
+} from "../types/keyglass";
 
 /** Used when the daemon doesn't report the keyboard's limits. */
 export const DEFAULT_MAX_LAYERS = 8;
@@ -18,13 +18,13 @@ export const DEFAULT_MAX_ACTUATION_MODES = 8;
  * applied (empty when there are none). A refused edit says why.
  */
 export type ConfigEdit =
-  | { ok: true; patch: Partial<OpenFluxConfig>; consequences: string[]; summary: string }
+  | { ok: true; patch: Partial<KeyglassConfig>; consequences: string[]; summary: string }
   | { ok: false; reason: string };
 
 const refuse = (reason: string): ConfigEdit => ({ ok: false, reason });
 
-export const maxLayers = (config: OpenFluxConfig) => config.keymapLimits?.maxLayers ?? DEFAULT_MAX_LAYERS;
-export const maxActuationModes = (config: OpenFluxConfig) =>
+export const maxLayers = (config: KeyglassConfig) => config.keymapLimits?.maxLayers ?? DEFAULT_MAX_LAYERS;
+export const maxActuationModes = (config: KeyglassConfig) =>
   config.keymapLimits?.maxActuationModes ?? DEFAULT_MAX_ACTUATION_MODES;
 
 /** The layer count; layouts are edited together, so they have the same count. */
@@ -47,7 +47,7 @@ const uniqueId = (prefix: string, taken: Iterable<string>) => {
 };
 
 /** Adds an empty layer (every key falls through) at the top of every layout. */
-export function addLayer(config: OpenFluxConfig, name: string): ConfigEdit {
+export function addLayer(config: KeyglassConfig, name: string): ConfigEdit {
   const km = config.keymap;
   const count = layerCount(km);
   const limit = maxLayers(config);
@@ -73,7 +73,7 @@ export function addLayer(config: OpenFluxConfig, name: string): ConfigEdit {
 }
 
 /** Renames the layer at `idx` in every layout. */
-export function renameLayer(config: OpenFluxConfig, idx: number, name: string): ConfigEdit {
+export function renameLayer(config: KeyglassConfig, idx: number, name: string): ConfigEdit {
   const trimmed = name.trim();
   if (!trimmed) return refuse("A layer needs a name.");
   const km = config.keymap;
@@ -116,7 +116,7 @@ const themeHasLayerStyles = (theme: AppearanceTheme, idx: number) =>
  * switch to the layer are cleared (to "no key" on the base layer, to fall-through elsewhere),
  * profiles and layouts that start on it start on the base layer, and its key styles go.
  */
-export function deleteLayer(config: OpenFluxConfig, idx: number): ConfigEdit {
+export function deleteLayer(config: KeyglassConfig, idx: number): ConfigEdit {
   const km = config.keymap;
   const count = layerCount(km);
   if (idx < 0 || idx >= count) return refuse(`There is no layer ${idx}.`);
@@ -188,7 +188,7 @@ export function deleteLayer(config: OpenFluxConfig, idx: number): ConfigEdit {
 }
 
 /** Adds a fixed-actuation mode with the given name, or a copy of `copyOf`'s settings. */
-export function addActuationMode(config: OpenFluxConfig, name: string, copyOf?: number): ConfigEdit {
+export function addActuationMode(config: KeyglassConfig, name: string, copyOf?: number): ConfigEdit {
   const modes = config.actuationModes ?? [];
   const limit = maxActuationModes(config);
   if (modes.length >= limit) return refuse(`The keyboard holds at most ${limit} actuation modes.`);
@@ -232,7 +232,7 @@ export function addActuationMode(config: OpenFluxConfig, name: string, copyOf?: 
   };
 }
 
-export function renameActuationMode(config: OpenFluxConfig, idx: number, name: string): ConfigEdit {
+export function renameActuationMode(config: KeyglassConfig, idx: number, name: string): ConfigEdit {
   const trimmed = name.trim();
   const modes = config.actuationModes ?? [];
   if (!trimmed) return refuse("An actuation mode needs a name.");
@@ -253,7 +253,7 @@ export function renameActuationMode(config: OpenFluxConfig, idx: number, name: s
  * Deletes the actuation mode at `idx`. The last mode can't be deleted. Profiles that use it
  * switch to the first remaining mode; profiles using later modes keep them.
  */
-export function deleteActuationMode(config: OpenFluxConfig, idx: number): ConfigEdit {
+export function deleteActuationMode(config: KeyglassConfig, idx: number): ConfigEdit {
   const modes = config.actuationModes ?? [];
   const mode = modes[idx];
   if (!mode) return refuse(`There is no actuation mode ${idx + 1}.`);

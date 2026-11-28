@@ -81,12 +81,12 @@ rust_licenses() {
         fail "license file of ${name}: $(cat "${work}/${name}.log")"
     fi
 }
-rust_licenses host/daemon/Cargo.toml openfluxd "${host_targets[@]}"
-rust_licenses host/studio/src-tauri/Cargo.toml openflux-studio "${host_targets[@]}"
-rust_licenses keyboard/bridge/Cargo.toml openflux-bridge aarch64-unknown-linux-musl
-rust_licenses keyboard/display/Cargo.toml openflux-display aarch64-unknown-linux-gnu
-grep -q 'GNU LESSER GENERAL PUBLIC LICENSE' "${work}/openfluxd.txt" ||
-    fail "openfluxd's license file lacks the LGPL-2.1 text of the libusb it links"
+rust_licenses host/daemon/Cargo.toml keyglassd "${host_targets[@]}"
+rust_licenses host/studio/src-tauri/Cargo.toml keyglass-studio "${host_targets[@]}"
+rust_licenses keyboard/bridge/Cargo.toml keyglass-bridge aarch64-unknown-linux-musl
+rust_licenses keyboard/display/Cargo.toml keyglass-display aarch64-unknown-linux-gnu
+grep -q 'GNU LESSER GENERAL PUBLIC LICENSE' "${work}/keyglassd.txt" ||
+    fail "keyglassd's license file lacks the LGPL-2.1 text of the libusb it links"
 
 # Studio's interface.
 if node "${licenses}/npm-licenses.mjs" --package-dir "${repo}/host/studio" --bundled vite \

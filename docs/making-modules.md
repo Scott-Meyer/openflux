@@ -1,8 +1,8 @@
-# Making OpenFlux Modules
+# Making Keyglass Modules
 
-An OpenFlux module is a plain folder on disk containing a manifest (`module.toml`), a Lua 5.4 script (`script.lua`), and optionally GLSL shaders (`shaders/*.glsl`) or a host companion script (`host/*.py`, `.js`, `.sh`, or any executable).
+An Keyglass module is a plain folder on disk containing a manifest (`module.toml`), a Lua 5.4 script (`script.lua`), and optionally GLSL shaders (`shaders/*.glsl`) or a host companion script (`host/*.py`, `.js`, `.sh`, or any executable).
 
-You do **not** need Rust, a compiler, or a checkout of the OpenFlux source code to build, run, or distribute modules. Drop a folder into your local modules directory, edit files in your favorite editor, and OpenFlux hot-reloads it live in Studio and syncs it straight to the keyboard.
+You do **not** need Rust, a compiler, or a checkout of the Keyglass source code to build, run, or distribute modules. Drop a folder into your local modules directory, edit files in your favorite editor, and Keyglass hot-reloads it live in Studio and syncs it straight to the keyboard.
 
 ---
 
@@ -10,7 +10,7 @@ You do **not** need Rust, a compiler, or a checkout of the OpenFlux source code 
 
 ### Where Local Modules Live
 
-- **macOS / Linux:** `~/.local/share/openflux/v2/modules/local/<your-module-id>/`
+- **macOS / Linux:** `~/.local/share/keyglass/v2/modules/local/<your-module-id>/`
 - **Tier priority:** `local` > `installed` > `bundled`. A local folder with the same ID as a bundled or installed module always wins, so upstream updates will never overwrite your edits.
 
 You can create a folder by hand or scaffold one from Studio (**Modules → Create Local Module**) or the CLI:
@@ -21,7 +21,7 @@ fluxctl modules create my-key-flash --template effect --enable
 
 ### Minimal Example (`my-key-flash`)
 
-Create two files inside `~/.local/share/openflux/v2/modules/local/my-key-flash/`:
+Create two files inside `~/.local/share/keyglass/v2/modules/local/my-key-flash/`:
 
 **`module.toml`**
 ```toml
@@ -95,18 +95,18 @@ function on_render(ctx, stage)
 end
 ```
 
-Save both files. OpenFlux Studio detects the new folder within ~350 ms; enable it in Studio (or run `fluxctl modules enable my-key-flash && fluxctl keyboard sync`) and tap keys on your keyboard.
+Save both files. Keyglass Studio detects the new folder within ~350 ms; enable it in Studio (or run `fluxctl modules enable my-key-flash && fluxctl keyboard sync`) and tap keys on your keyboard.
 
 ---
 
 ## 2. How the Runtime Works
 
-OpenFlux runs the **same** Lua 5.4 runtime and hierarchical pub/sub bus in two places:
+Keyglass runs the **same** Lua 5.4 runtime and hierarchical pub/sub bus in two places:
 
 1. **On the keyboard** (ARM64 RK3566 Linux): runs your `script.lua` and `.glsl` shaders directly at 60 FPS with zero PC needed (`host_requirement = "none"` or `"optional"`).
 2. **On your computer** (macOS / Linux / Windows): runs Studio’s live preview plus any optional `entrypoints.host` companion script (Python, Node, shell, or native binary).
 
-Both brokers mirror subscribed topics automatically over a full-duplex USB link (`OFV2`). When you save edits locally and sync, OpenFlux uploads every file in your module folder (including subfolders like `lib/` and `shaders/`) directly to `/home/root/openflux/v2/modules/<id>/` on the keyboard.
+Both brokers mirror subscribed topics automatically over a full-duplex USB link (`OFV2`). When you save edits locally and sync, Keyglass uploads every file in your module folder (including subfolders like `lib/` and `shaders/`) directly to `/home/root/keyglass/v2/modules/<id>/` on the keyboard.
 
 ### Display Coordinates
 
@@ -223,7 +223,7 @@ Each action has the same fields as `[[actions]]`. Republish the whole list whene
 
 There are 472 module action slots, shared by every module. The first 56 work on any 2.x firmware; the rest need firmware 2.1.6 or newer (`requires_firmware` on the slot). Actions that don't get a slot are listed with a reason under `unassigned` on retained `system/actions`. `module_slots` shows `{ total, used }`.
 
-> **Note on `kind = "file"` settings:** If a user picks a local video or image file on their computer for any `kind = "file"` setting, OpenFlux automatically uploads it to `/home/root/openflux/media/` when syncing to the keyboard and rewrites the keyboard’s copy to the remote filename.
+> **Note on `kind = "file"` settings:** If a user picks a local video or image file on their computer for any `kind = "file"` setting, Keyglass automatically uploads it to `/home/root/keyglass/media/` when syncing to the keyboard and rewrites the keyboard’s copy to the remote filename.
 
 ---
 
@@ -349,7 +349,7 @@ function on_init()
 end
 ```
 
-When your module is disabled or crashes, OpenFlux’s Last-Will cleanup (`purge_origin`) removes `keys/providers/my-macros` automatically so keys revert cleanly.
+When your module is disabled or crashes, Keyglass’s Last-Will cleanup (`purge_origin`) removes `keys/providers/my-macros` automatically so keys revert cleanly.
 
 Besides `label`, `icon`/`image` and `color`, a rule can carry extra detail. All of it is centered on the key or inset from its edge, because anything at a keycap's edge makes parallax and viewing-angle offsets obvious.
 
@@ -367,7 +367,7 @@ Badge rules (`mode = "badge"`) draw a dot in the top-right slot, or `corner = "t
 
 ### Recipe C — Custom Cross-Platform GLSL Shader (Works on Both Desktop & Keyboard!)
 
-Write **one** `.glsl` file implementing `vec4 effect_main(vec2 uv)`. OpenFlux wraps it automatically for both desktop `wgpu` (Metal/Vulkan/DX12) and the keyboard’s Mali-G52 GLES 2.0.
+Write **one** `.glsl` file implementing `vec4 effect_main(vec2 uv)`. Keyglass wraps it automatically for both desktop `wgpu` (Metal/Vulkan/DX12) and the keyboard’s Mali-G52 GLES 2.0.
 
 Built-in uniforms available automatically:
 - `vec2 u_resolution` (`1920.0, 1080.0`)
@@ -400,11 +400,11 @@ end
 
 ### Recipe D — Host Companion Script & Live Video Streaming
 
-Declare `host = "host/worker.py"` in `[entrypoints]`. OpenFlux starts your process automatically when the module is enabled and restarts it if its settings change, injecting:
+Declare `host = "host/worker.py"` in `[entrypoints]`. Keyglass starts your process automatically when the module is enabled and restarts it if its settings change, injecting:
 
-- `OPENFLUX_BUS_URL` — local daemon URL (e.g. `https://127.0.0.1:52323`)
-- `OPENFLUX_CONFIG_JSON` — JSON object of the module’s current settings
-- `OPENFLUX_MODULE_ID` / `OPENFLUX_MODULE_DIR`
+- `KEYGLASS_BUS_URL` — local daemon URL (e.g. `https://127.0.0.1:52323`)
+- `KEYGLASS_CONFIG_JSON` — JSON object of the module’s current settings
+- `KEYGLASS_MODULE_ID` / `KEYGLASS_MODULE_DIR`
 
 Your script can publish to the bus (`POST /v2/bus/pub`), subscribe to keyboard events (`GET /v2/bus/events?pattern=input/keys/event` or `WS /v2/bus/ws`), or stream live hardware-decoded video straight to the keyboard via `POST /v2/streams/<name>` (`Content-Type: video/h264` chunked Annex-B, or `Content-Type: image/jpeg`). Anything printed to stdout/stderr appears in Studio’s live module log viewer.
 
@@ -433,7 +433,7 @@ Your script can publish to the bus (`POST /v2/bus/pub`), subscribe to keyboard e
 
 - **Validate manifest & Lua syntax:**
   ```sh
-  fluxctl modules validate ~/.local/share/openflux/v2/modules/local/my-key-flash
+  fluxctl modules validate ~/.local/share/keyglass/v2/modules/local/my-key-flash
   ```
 - **Watch live logs & errors:**
   ```sh
@@ -453,7 +453,7 @@ Your script can publish to the bus (`POST /v2/bus/pub`), subscribe to keyboard e
   fluxctl modules inspect github:yourname/my-key-flash
   fluxctl modules install github:yourname/my-key-flash --accept-disclosure
   ```
-  OpenFlux always shows a full disclosure report (files, shaders, host scripts, bus channels, and any update diffs) before installing or updating.
+  Keyglass always shows a full disclosure report (files, shaders, host scripts, bus channels, and any update diffs) before installing or updating.
 
 ---
 
@@ -484,7 +484,7 @@ For the full submission checklist, custom catalog setup, and requesting a catalo
 
 Want to tweak a built-in or installed module?
 - Click **Fork to Local** inside the module’s detail view (or run `fluxctl modules fork <id> <new-id>`).
-- Keyglass copies the module into `~/.local/share/openflux/v2/modules/local/<new-id>/`.
+- Keyglass copies the module into `~/.local/share/keyglass/v2/modules/local/<new-id>/`.
 - Edit `script.lua` or `module.toml` with any editor; Keyglass hot-reloads on save, and `fluxctl keyboard sync` pushes your changes straight to the keyboard.
 
 ### Profiling Latency & Using the Built-In MCP Server

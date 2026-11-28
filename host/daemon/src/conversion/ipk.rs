@@ -34,7 +34,7 @@ fn ar_members(data: &[u8]) -> Result<BTreeMap<String, &[u8]>, String> {
 }
 
 /// Reads the files at `paths` (absolute install paths, such as
-/// `/usr/lib/openflux/bridge/openflux-bridge`) from the package's data archive.
+/// `/usr/lib/keyglass/bridge/keyglass-bridge`) from the package's data archive.
 pub fn read_files(ipk: &[u8], paths: &[&str]) -> Result<BTreeMap<String, Vec<u8>>, String> {
     let members = ar_members(ipk)?;
     let reader: Box<dyn Read + '_> = if let Some(gz) = members.get("data.tar.gz") {
@@ -116,21 +116,21 @@ pub(crate) mod tests {
     #[test]
     fn files_are_read_from_the_package_data() {
         let ipk = build(&[
-            ("/usr/lib/openflux/bridge/openflux-bridge", b"ELF"),
+            ("/usr/lib/keyglass/bridge/keyglass-bridge", b"ELF"),
             (
-                "/usr/lib/openflux/bridge/openflux-autolaunch.sh",
+                "/usr/lib/keyglass/bridge/keyglass-autolaunch.sh",
                 b"#!/bin/sh\n",
             ),
         ]);
         let files = read_files(
             &ipk,
             &[
-                "/usr/lib/openflux/bridge/openflux-bridge",
-                "/usr/lib/openflux/bridge/openflux-autolaunch.sh",
+                "/usr/lib/keyglass/bridge/keyglass-bridge",
+                "/usr/lib/keyglass/bridge/keyglass-autolaunch.sh",
             ],
         )
         .unwrap();
-        assert_eq!(files["/usr/lib/openflux/bridge/openflux-bridge"], b"ELF");
+        assert_eq!(files["/usr/lib/keyglass/bridge/keyglass-bridge"], b"ELF");
         assert!(read_files(&ipk, &["/usr/bin/missing"])
             .unwrap_err()
             .contains("doesn't contain"));

@@ -518,12 +518,12 @@ mod tests {
     #[test]
     fn bridge_payloads_are_nul_terminated() {
         assert_eq!(
-            build_named_payload("/home/root/openflux/config").unwrap(),
-            b"/home/root/openflux/config\0"
+            build_named_payload("/home/root/keyglass/config").unwrap(),
+            b"/home/root/keyglass/config\0"
         );
         assert_eq!(
-            build_put_file_payload("/home/root/openflux/config/a.json", b"{}").unwrap(),
-            b"/home/root/openflux/config/a.json\0{}"
+            build_put_file_payload("/home/root/keyglass/config/a.json", b"{}").unwrap(),
+            b"/home/root/keyglass/config/a.json\0{}"
         );
         assert_eq!(
             build_set_time_payload("2026-11-18 01:02:03", "UTC").unwrap(),

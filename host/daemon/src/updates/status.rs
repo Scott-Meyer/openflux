@@ -1,11 +1,11 @@
-//! What the keyboard runs, what can be updated, and which areas this OpenFlux may write.
+//! What the keyboard runs, what can be updated, and which areas this Keyglass may write.
 
 use crate::conversion::Identity;
-use openflux_update::compat::{Compat, HostProfile, InterfaceKind, InterfaceSet};
-use openflux_update::engine::{
+use keyglass_update::compat::{Compat, HostProfile, InterfaceKind, InterfaceSet};
+use keyglass_update::engine::{
     ComponentState, InstalledSoftware, Inventory, KeyboardMode, Refusal,
 };
-use openflux_update::{Catalog, Component, Engine, PlanRequest, Preferences};
+use keyglass_update::{Catalog, Component, Engine, PlanRequest, Preferences};
 use serde::Serialize;
 
 /// One keyboard component as the daemon identified it.
@@ -14,11 +14,11 @@ pub struct Identified {
     pub component: Component,
     pub reported: Option<String>,
     pub identity: Identity,
-    /// Interfaces of an OpenFlux version, from the verified indexes or, for the version this
-    /// host was built with (or a same-major custom/local OpenFlux build), from its own registry.
+    /// Interfaces of an Keyglass version, from the verified indexes or, for the version this
+    /// host was built with (or a same-major custom/local Keyglass build), from its own registry.
     /// `None` when neither knows the version or the major version differs.
     pub interfaces: Option<InterfaceSet>,
-    /// True when the component reports an OpenFlux version not listed in the release catalog
+    /// True when the component reports an Keyglass version not listed in the release catalog
     /// (e.g. a local developer build or community fork) and is using the host's compiled
     /// same-major interface compatibility table.
     pub custom_build: bool,
@@ -27,7 +27,7 @@ pub struct Identified {
 impl Identified {
     pub fn kind(&self) -> &'static str {
         match self.identity {
-            Identity::OpenFlux(_) => "openflux",
+            Identity::Keyglass(_) => "keyglass",
             Identity::DevelopmentBuild(_) => "preRelease",
             Identity::Factory(_) => "factory",
             Identity::Unknown(_) => "unknown",
@@ -36,12 +36,12 @@ impl Identified {
 
     fn installed_software(&self) -> InstalledSoftware {
         match (&self.identity, &self.interfaces) {
-            (Identity::OpenFlux(v), Some(i)) => InstalledSoftware::OpenFlux {
+            (Identity::Keyglass(v), Some(i)) => InstalledSoftware::Keyglass {
                 version: v.clone(),
                 interfaces: i.clone(),
             },
-            (Identity::OpenFlux(v), None) => InstalledSoftware::Unknown {
-                label: format!("openflux-{} {v}", self.component),
+            (Identity::Keyglass(v), None) => InstalledSoftware::Unknown {
+                label: format!("keyglass-{} {v}", self.component),
             },
             (Identity::DevelopmentBuild(l), _) => {
                 InstalledSoftware::DevelopmentBuild { label: l.clone() }
@@ -63,7 +63,7 @@ pub struct KeyboardView {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
     Disconnected,
-    OpenFlux,
+    Keyglass,
     NeedsConversion,
 }
 
@@ -83,7 +83,7 @@ impl KeyboardView {
                     .map(String::from);
                 let identity = crate::conversion::identify(c, reported.as_deref());
                 let (interfaces, custom_build) = match &identity {
-                    Identity::OpenFlux(v) => {
+                    Identity::Keyglass(v) => {
                         if let Some(r) = catalog.find(c, v) {
                             (Some(r.interfaces.clone()), false)
                         } else if let Some(d) = compat.components.get(&c) {
@@ -128,9 +128,9 @@ impl KeyboardView {
         if self
             .components
             .iter()
-            .all(|c| matches!(c.identity, Identity::OpenFlux(_)))
+            .all(|c| matches!(c.identity, Identity::Keyglass(_)))
         {
-            ViewMode::OpenFlux
+            ViewMode::Keyglass
         } else {
             ViewMode::NeedsConversion
         }
@@ -156,11 +156,11 @@ impl KeyboardView {
         }
     }
 
-    /// OpenFlux components whose version neither index lists.
+    /// Keyglass components whose version neither index lists.
     pub fn undescribed(&self) -> Vec<&Identified> {
         self.components
             .iter()
-            .filter(|c| matches!(c.identity, Identity::OpenFlux(_)) && c.interfaces.is_none())
+            .filter(|c| matches!(c.identity, Identity::Keyglass(_)) && c.interfaces.is_none())
             .collect()
     }
 }
@@ -225,9 +225,9 @@ impl Area {
 #[serde(rename_all = "camelCase")]
 pub enum AreaState {
     Ok,
-    /// The keyboard stores a newer minor version of this data than this OpenFlux understands.
+    /// The keyboard stores a newer minor version of this data than this Keyglass understands.
     ReadOnly,
-    /// The keyboard uses a major version this OpenFlux doesn't support, or doesn't run OpenFlux.
+    /// The keyboard uses a major version this Keyglass doesn't support, or doesn't run Keyglass.
     Unsupported,
     /// The keyboard's software isn't known well enough to tell.
     Unknown,
@@ -242,7 +242,7 @@ pub fn area_state(area: Area, view: &KeyboardView, profile: &HostProfile) -> Are
         return AreaState::Unknown;
     };
     match (&comp.identity, &comp.interfaces) {
-        (Identity::OpenFlux(_), Some(set)) => {
+        (Identity::Keyglass(_), Some(set)) => {
             let reqs = profile.interfaces.required(iface);
             if reqs.is_empty() {
                 return AreaState::Ok;
@@ -267,7 +267,7 @@ pub fn area_state(area: Area, view: &KeyboardView, profile: &HostProfile) -> Are
                 AreaState::Ok
             }
         }
-        (Identity::OpenFlux(_), None) => AreaState::Unknown,
+        (Identity::Keyglass(_), None) => AreaState::Unknown,
         (Identity::Unknown(_), _) if comp.reported.is_none() => AreaState::Unknown,
         _ => AreaState::Unsupported,
     }
@@ -303,13 +303,13 @@ fn state_reason(c: Component, s: &ComponentState) -> Option<String> {
             required: false, ..
         } => None,
         ComponentState::UpdateAvailable { required: true, .. } => Some(format!(
-            "The installed {c} doesn't fully work with the rest of OpenFlux; install this update"
+            "The installed {c} doesn't fully work with the rest of Keyglass; install this update"
         )),
         ComponentState::NeedsNewerHost { to, host } => Some(format!(
-            "{c} {to} needs OpenFlux {host} or later; update OpenFlux first"
+            "{c} {to} needs Keyglass {host} or later; update Keyglass first"
         )),
         ComponentState::NewerThanHost { gaps } => Some(format!(
-            "The keyboard's {} is newer than this OpenFlux understands; update OpenFlux",
+            "The keyboard's {} is newer than this Keyglass understands; update Keyglass",
             gaps.iter()
                 .map(|g| g.interface.as_str())
                 .collect::<Vec<_>>()
@@ -341,14 +341,14 @@ fn newest(
     catalog: &Catalog,
     c: Component,
     prefs: Preferences,
-) -> Option<&openflux_update::Release> {
+) -> Option<&keyglass_update::Release> {
     catalog
         .releases()
         .iter()
         .filter(|r| {
             r.component == c
                 && !r.withdrawn
-                && (prefs.beta || r.channel == openflux_update::Channel::Stable)
+                && (prefs.beta || r.channel == keyglass_update::Channel::Stable)
         })
         .max_by(|a, b| a.version.cmp(&b.version))
 }
@@ -405,7 +405,7 @@ pub fn status_blocks(
         .map(|c| {
             let latest = newest(catalog, c.component, prefs);
             let installed = match &c.identity {
-                Identity::OpenFlux(v) => Some(v.to_string()),
+                Identity::Keyglass(v) => Some(v.to_string()),
                 _ => None,
             };
             let (state, reason, required) = if mode == ViewMode::Disconnected {
@@ -414,7 +414,7 @@ pub fn status_blocks(
                     Some("The keyboard isn't connected".to_string()),
                     false,
                 )
-            } else if mode == ViewMode::OpenFlux && c.interfaces.is_none() {
+            } else if mode == ViewMode::Keyglass && c.interfaces.is_none() {
                 (
                     "unknown",
                     Some(format!(
@@ -424,7 +424,7 @@ pub fn status_blocks(
                     )),
                     false,
                 )
-            } else if mode == ViewMode::OpenFlux && !undescribed.is_empty() {
+            } else if mode == ViewMode::Keyglass && !undescribed.is_empty() {
                 (
                     "unknown",
                     Some(
@@ -441,7 +441,7 @@ pub fn status_blocks(
                     });
                 } else if c.custom_build && matches!(st.state, ComponentState::UpToDate) {
                     reason.get_or_insert_with(|| {
-                        "Custom or local OpenFlux build (not listed in the official release index)".into()
+                        "Custom or local Keyglass build (not listed in the official release index)".into()
                     });
                 }
                 let required = matches!(
@@ -465,13 +465,13 @@ pub fn status_blocks(
         })
         .collect();
 
-    let plan = if mode == ViewMode::OpenFlux && undescribed.is_empty() {
+    let plan = if mode == ViewMode::Keyglass && undescribed.is_empty() {
         plan_json(&engine, &PlanRequest::keyboard())
     } else {
         serde_json::Value::Null
     };
 
-    let conversion = if mode == ViewMode::NeedsConversion && engine.mode() != KeyboardMode::OpenFlux
+    let conversion = if mode == ViewMode::NeedsConversion && engine.mode() != KeyboardMode::Keyglass
     {
         let found: Vec<serde_json::Value> = components.clone();
         match engine.propose_conversion() {
@@ -492,7 +492,7 @@ pub fn status_blocks(
         "connected": view.connected(),
         "mode": match mode {
             ViewMode::Disconnected => "disconnected",
-            ViewMode::OpenFlux => "openflux",
+            ViewMode::Keyglass => "keyglass",
             ViewMode::NeedsConversion => "needsConversion",
         },
         "components": components,

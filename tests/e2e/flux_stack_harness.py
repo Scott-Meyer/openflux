@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Encapsulated full-stack E2E harness wiring OpenFlux firmware core, bridge, Weston display, and tools/openflux-dev."""
+"""Encapsulated full-stack E2E harness wiring Keyglass firmware core, bridge, Weston display, and tools/keyglass-dev."""
 
 from __future__ import annotations
 
@@ -17,17 +17,17 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "tools/openflux-dev"))
+sys.path.insert(0, str(ROOT / "tools/keyglass-dev"))
 
-import openflux_dev  # noqa: E402
+import keyglass_dev  # noqa: E402
 from keymap_codec import FirmwareKeymapBlob, decode_keymap_blob  # noqa: E402
 from profile_settings import ProfileSetting, ProfileSettingsFile  # noqa: E402
 from simple_hdlc import DataType, encode_live_data  # noqa: E402
 
-BRIDGE_BIN = Path(os.environ.get("OPENFLUX_TEST_BRIDGE_BIN") or (ROOT / "keyboard/bridge/build/openflux-bridge"))
-DISPLAY_BIN = Path(os.environ.get("OPENFLUX_TEST_DISPLAY_BIN") or (ROOT / "keyboard/display/build/openflux-display"))
+BRIDGE_BIN = Path(os.environ.get("KEYGLASS_TEST_BRIDGE_BIN") or (ROOT / "keyboard/bridge/build/keyglass-bridge"))
+DISPLAY_BIN = Path(os.environ.get("KEYGLASS_TEST_DISPLAY_BIN") or (ROOT / "keyboard/display/build/keyglass-display"))
 FW_SIM_BIN = ROOT / "tests/e2e/build/fw_sim"
-EXPECTED_VERSION = os.environ.get("OPENFLUX_TEST_VERSION", "1.0.0")
+EXPECTED_VERSION = os.environ.get("KEYGLASS_TEST_VERSION", "1.0.0")
 
 
 def compile_fw_sim() -> Path:
@@ -79,12 +79,12 @@ def compile_fw_sim() -> Path:
 
 
 class _BridgePipeAdapter:
-    """Connects host openflux-dev USB framing to openflux-bridge over record-preserving SOCK_SEQPACKET."""
+    """Connects host keyglass-dev USB framing to keyglass-bridge over record-preserving SOCK_SEQPACKET."""
 
     def __init__(self, ep2_sock: socket.socket, ep1_sock: socket.socket) -> None:
         self.ep2_sock = ep2_sock
         self.ep1_sock = ep1_sock
-        self.client = openflux_dev.OpenFluxUsbClient.__new__(openflux_dev.OpenFluxUsbClient)
+        self.client = keyglass_dev.KeyglassUsbClient.__new__(keyglass_dev.KeyglassUsbClient)
 
     def send_raw_record(self, data: bytes) -> None:
         self.ep2_sock.send(data)
@@ -113,7 +113,7 @@ class _BridgePipeAdapter:
             except (TimeoutError, socket.timeout):
                 raise RuntimeError("seqpacket read timeout (ZLP/idle)")
 
-        return self.client.transact_io(write_fn, read_fn, openflux_dev.BRIDGE_TARGET, cmd, payload, timeout_ms=2000)
+        return self.client.transact_io(write_fn, read_fn, keyglass_dev.BRIDGE_TARGET, cmd, payload, timeout_ms=2000)
 
 
 def _recv_exact(sock: socket.socket, n: int) -> bytes:
@@ -128,7 +128,7 @@ def _recv_exact(sock: socket.socket, n: int) -> bytes:
 
 
 class _FwUnixAdapter:
-    """Connects host openflux-dev USB framing to simulated RP2040 firmware over Unix socket."""
+    """Connects host keyglass-dev USB framing to simulated RP2040 firmware over Unix socket."""
 
     def __init__(self, usb_sock: str) -> None:
         self.usb_sock = usb_sock
@@ -155,43 +155,43 @@ class _FwUnixAdapter:
         if len(buf) < 9:
             raise RuntimeError("Short firmware response header")
         rtype, _rpkts, rbytes = struct.unpack_from("<BII", buf, 0)
-        if rtype != openflux_dev.RESP_ACK:
+        if rtype != keyglass_dev.RESP_ACK:
             raise RuntimeError(f"Firmware returned NAK ({rtype})")
         return bytes(buf[64 : 64 + rbytes])
 
 
 class _E2EHostBridgeTransport:
-    """Routes simulated host bridge events straight into simulated firmware + openflux-bridge."""
+    """Routes simulated host bridge events straight into simulated firmware + keyglass-bridge."""
 
     def __init__(self, fw_usb: _FwUnixAdapter, bridge_usb: _BridgePipeAdapter) -> None:
         self.fw = fw_usb
         self.bridge = bridge_usb
 
     def set_profile(self, profile_idx: int) -> None:
-        self.fw.transact(openflux_dev.FW_CMD_SET_ACTIVE_PROFILE, struct.pack("<I", profile_idx))
+        self.fw.transact(keyglass_dev.FW_CMD_SET_ACTIVE_PROFILE, struct.pack("<I", profile_idx))
 
     def set_language(self, lang_code: int) -> None:
-        self.fw.transact(openflux_dev.FW_CMD_SET_LANGUAGE, struct.pack("<I", lang_code))
+        self.fw.transact(keyglass_dev.FW_CMD_SET_LANGUAGE, struct.pack("<I", lang_code))
 
     def set_platform(self, platform_code: int) -> None:
-        self.fw.transact(openflux_dev.FW_CMD_SET_PLATFORM, struct.pack("<I", platform_code))
+        self.fw.transact(keyglass_dev.FW_CMD_SET_PLATFORM, struct.pack("<I", platform_code))
 
     def send_live_data(self, data_type: DataType, json_payload: dict[str, Any] | None = None) -> None:
         body = json.dumps(json_payload, separators=(",", ":")).encode("utf-8") if json_payload is not None else b""
         for frame in encode_live_data(data_type, body):
-            self.bridge.transact(openflux_dev.BRIDGE_CMD_SEND_LIVE_DATA, frame)
+            self.bridge.transact(keyglass_dev.BRIDGE_CMD_SEND_LIVE_DATA, frame)
 
 
-class OpenFluxKeyboardE2ECluster:
-    """Full end-to-end virtual OpenFlux Keyboard (firmware + UART + bridge + Weston + display + host)."""
+class KeyglassKeyboardE2ECluster:
+    """Full end-to-end virtual Keyglass Keyboard (firmware + UART + bridge + Weston + display + host)."""
 
     def __init__(self) -> None:
-        self._td = tempfile.TemporaryDirectory(prefix="openflux_e2e_")
+        self._td = tempfile.TemporaryDirectory(prefix="keyglass_e2e_")
         self.root = Path(self._td.name)
-        self.cfg_dir = self.root / "home/root/openflux/config"
-        self.media_dir = self.root / "home/root/openflux/media"
-        self.log_dir = self.root / "home/root/openflux/logs"
-        self.ver_dir = self.root / "home/root/.openflux/versions"
+        self.cfg_dir = self.root / "home/root/keyglass/config"
+        self.media_dir = self.root / "home/root/keyglass/media"
+        self.log_dir = self.root / "home/root/keyglass/logs"
+        self.ver_dir = self.root / "home/root/.keyglass/versions"
         self.cfg_dir.mkdir(parents=True)
         self.media_dir.mkdir(parents=True)
         self.log_dir.mkdir(parents=True)
@@ -274,14 +274,14 @@ class OpenFluxKeyboardE2ECluster:
         except Exception:
             return -1
 
-    def __enter__(self) -> "OpenFluxKeyboardE2ECluster":
+    def __enter__(self) -> "KeyglassKeyboardE2ECluster":
         if not shutil.which("weston") or not BRIDGE_BIN.exists() or not DISPLAY_BIN.exists():
-            raise RuntimeError("Full E2E cluster requires weston, compiled openflux-bridge, and compiled openflux-display")
+            raise RuntimeError("Full E2E cluster requires weston, compiled keyglass-bridge, and compiled keyglass-display")
         try:
             compile_fw_sim()
             self._seed_configs()
 
-            sock_name = "wayland-e2e-openflux"
+            sock_name = "wayland-e2e-keyglass"
             w_env = os.environ.copy()
             w_env["XDG_RUNTIME_DIR"] = str(self.xdg_dir)
             self.weston = subprocess.Popen(
@@ -309,24 +309,24 @@ class OpenFluxKeyboardE2ECluster:
             self.fw_usb_sock = str(self.root / "fw_usb.sock")
             self.fw_ctrl_sock = str(self.root / "fw_ctrl.sock")
             f_env = os.environ.copy()
-            f_env["OPENFLUX_SIM_UART_FDS"] = f"{b2f_r},{f2b_w}"
-            f_env["OPENFLUX_SIM_USB_SOCK"] = self.fw_usb_sock
-            f_env["OPENFLUX_SIM_CTRL_SOCK"] = self.fw_ctrl_sock
+            f_env["KEYGLASS_SIM_UART_FDS"] = f"{b2f_r},{f2b_w}"
+            f_env["KEYGLASS_SIM_USB_SOCK"] = self.fw_usb_sock
+            f_env["KEYGLASS_SIM_CTRL_SOCK"] = self.fw_ctrl_sock
             self.fw = subprocess.Popen([str(FW_SIM_BIN)], env=f_env, pass_fds=(b2f_r, f2b_w))
             self._close_fd(b2f_r)
             self._close_fd(f2b_w)
             self._wait_for(lambda: Path(self.fw_usb_sock).exists() and Path(self.fw_ctrl_sock).exists(), "fw_sim sockets")
 
-            self.bridge_sock = str(self.root / "openflux_bridge.sock")
-            self.display_marker = self.root / "openflux_display_active"
-            self.bridge_ready = self.root / "openflux_bridge_ready"
+            self.bridge_sock = str(self.root / "keyglass_bridge.sock")
+            self.display_marker = self.root / "keyglass_display_active"
+            self.bridge_ready = self.root / "keyglass_bridge_ready"
             b_env = os.environ.copy()
-            b_env["OPENFLUX_SYSROOT"] = str(self.root)
-            b_env["OPENFLUX_READY_FILE"] = str(self.bridge_ready)
-            b_env["OPENFLUX_TEST_EP_FDS"] = f"{ep1_w},{ep2_r}"
-            b_env["OPENFLUX_TEST_UART_FDS"] = f"{f2b_r},{b2f_w}"
-            b_env["OPENFLUX_BRIDGE_SOCK"] = self.bridge_sock
-            b_env["OPENFLUX_DISPLAY_MARKER"] = str(self.display_marker)
+            b_env["KEYGLASS_SYSROOT"] = str(self.root)
+            b_env["KEYGLASS_READY_FILE"] = str(self.bridge_ready)
+            b_env["KEYGLASS_TEST_EP_FDS"] = f"{ep1_w},{ep2_r}"
+            b_env["KEYGLASS_TEST_UART_FDS"] = f"{f2b_r},{b2f_w}"
+            b_env["KEYGLASS_BRIDGE_SOCK"] = self.bridge_sock
+            b_env["KEYGLASS_DISPLAY_MARKER"] = str(self.display_marker)
             self.bridge = subprocess.Popen([str(BRIDGE_BIN)], env=b_env, pass_fds=(ep2_r, ep1_w, f2b_r, b2f_w))
             for child_fd in (f2b_r, b2f_w):
                 self._close_fd(child_fd)
@@ -338,12 +338,12 @@ class OpenFluxKeyboardE2ECluster:
             d_env = os.environ.copy()
             d_env["XDG_RUNTIME_DIR"] = str(self.xdg_dir)
             d_env["WAYLAND_DISPLAY"] = sock_name
-            d_env["OPENFLUX_CONFIG_DIR"] = str(self.cfg_dir)
-            d_env["OPENFLUX_MEDIA_DIR"] = str(self.media_dir)
-            d_env["OPENFLUX_LOG_DIR"] = str(self.log_dir)
-            d_env["OPENFLUX_BRIDGE_SOCK"] = self.bridge_sock
-            d_env["OPENFLUX_DISPLAY_MARKER"] = str(self.display_marker)
-            d_env["OPENFLUX_LIVE_PPM_PATH"] = str(self.live_ppm_path)
+            d_env["KEYGLASS_CONFIG_DIR"] = str(self.cfg_dir)
+            d_env["KEYGLASS_MEDIA_DIR"] = str(self.media_dir)
+            d_env["KEYGLASS_LOG_DIR"] = str(self.log_dir)
+            d_env["KEYGLASS_BRIDGE_SOCK"] = self.bridge_sock
+            d_env["KEYGLASS_DISPLAY_MARKER"] = str(self.display_marker)
+            d_env["KEYGLASS_LIVE_PPM_PATH"] = str(self.live_ppm_path)
             self.display = subprocess.Popen([str(DISPLAY_BIN), "--width=1920", "--height=1080"], env=d_env)
             self._wait_for(
                 lambda: (self.log_dir / "display_heartbeat.log").exists()
@@ -400,38 +400,38 @@ class OpenFluxKeyboardE2ECluster:
 
     def user_queries_versions(self) -> dict[str, str]:
         return {
-            "firmware": self.fw_usb.transact(openflux_dev.FW_CMD_VERSION).rstrip(b"\x00").decode(),
-            "bridge": self.bridge_usb.transact(openflux_dev.BRIDGE_CMD_BRIDGE_VERSION).rstrip(b"\x00").decode(),
-            "display": self.bridge_usb.transact(openflux_dev.BRIDGE_CMD_DISPLAY_VERSION).rstrip(b"\x00").decode(),
-            "os": self.bridge_usb.transact(openflux_dev.BRIDGE_CMD_OS_VERSION).rstrip(b"\x00").decode(),
+            "firmware": self.fw_usb.transact(keyglass_dev.FW_CMD_VERSION).rstrip(b"\x00").decode(),
+            "bridge": self.bridge_usb.transact(keyglass_dev.BRIDGE_CMD_BRIDGE_VERSION).rstrip(b"\x00").decode(),
+            "display": self.bridge_usb.transact(keyglass_dev.BRIDGE_CMD_DISPLAY_VERSION).rstrip(b"\x00").decode(),
+            "os": self.bridge_usb.transact(keyglass_dev.BRIDGE_CMD_OS_VERSION).rstrip(b"\x00").decode(),
         }
 
     def user_pushes_file(self, remote_path: str, data: bytes) -> None:
-        self.bridge_usb.transact(openflux_dev.BRIDGE_CMD_PUT_FILE, openflux_dev.build_put_file_payload(remote_path, data))
+        self.bridge_usb.transact(keyglass_dev.BRIDGE_CMD_PUT_FILE, keyglass_dev.build_put_file_payload(remote_path, data))
 
     def user_pulls_file(self, remote_path: str) -> bytes:
-        return self.bridge_usb.transact(openflux_dev.BRIDGE_CMD_GET_FILE, remote_path.encode("utf-8") + b"\x00")
+        return self.bridge_usb.transact(keyglass_dev.BRIDGE_CMD_GET_FILE, remote_path.encode("utf-8") + b"\x00")
 
     def user_lists_dir(self, remote_dir: str) -> str:
-        return self.bridge_usb.transact(openflux_dev.BRIDGE_CMD_GET_FILE_LIST, remote_dir.encode("utf-8") + b"\x00").decode("utf-8", "replace")
+        return self.bridge_usb.transact(keyglass_dev.BRIDGE_CMD_GET_FILE_LIST, remote_dir.encode("utf-8") + b"\x00").decode("utf-8", "replace")
 
     def user_deletes_file(self, remote_path: str) -> None:
-        self.bridge_usb.transact(openflux_dev.BRIDGE_CMD_DELETE_FILE, remote_path.encode("utf-8") + b"\x00")
+        self.bridge_usb.transact(keyglass_dev.BRIDGE_CMD_DELETE_FILE, remote_path.encode("utf-8") + b"\x00")
 
     def user_flashes_keymap(self, blob: FirmwareKeymapBlob) -> None:
         raw = blob.to_bytes()
         decode_keymap_blob(raw)
-        self.fw_usb.transact(openflux_dev.FW_CMD_SEND_KEYMAP, raw)
+        self.fw_usb.transact(keyglass_dev.FW_CMD_SEND_KEYMAP, raw)
 
     def user_dumps_keymap(self) -> FirmwareKeymapBlob:
-        return decode_keymap_blob(self.fw_usb.transact(openflux_dev.FW_CMD_GET_KEYMAP))
+        return decode_keymap_blob(self.fw_usb.transact(keyglass_dev.FW_CMD_GET_KEYMAP))
 
     def user_uploads_profiles(self, settings: list[ProfileSetting]) -> None:
         xfer = ProfileSettingsFile(settings=settings).to_transfer_bytes()
-        self.fw_usb.transact(openflux_dev.FW_CMD_FILE_FROM_HOST, xfer)
+        self.fw_usb.transact(keyglass_dev.FW_CMD_FILE_FROM_HOST, xfer)
 
     def user_activates_profile(self, profile_idx: int) -> None:
-        self.fw_usb.transact(openflux_dev.FW_CMD_SET_ACTIVE_PROFILE, struct.pack("<I", profile_idx))
+        self.fw_usb.transact(keyglass_dev.FW_CMD_SET_ACTIVE_PROFILE, struct.pack("<I", profile_idx))
 
     def user_sets_adc(self, **sensor_vals: int) -> dict[str, Any]:
         if not sensor_vals:

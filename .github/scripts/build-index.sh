@@ -15,7 +15,7 @@
 #      mirrored file's sha256.
 #   4. With --resign, sign every artifact of every published release again
 #      with the release key in the environment, for a key rotation.
-#   5. `openflux-release index`: merge the published index with any newly
+#   5. `keyglass-release index`: merge the published index with any newly
 #      staged release manifests in --releases, record the active key, the
 #      factory reference and the key statements, apply withdrawals, and
 #      increment the sequence.
@@ -24,12 +24,12 @@
 #      Pages packages are verified before deploy).
 #
 # Usage:
-#   build-index.sh --tool <openflux-release> --pages-url <url> --releases <dir>
+#   build-index.sh --tool <keyglass-release> --pages-url <url> --releases <dir>
 #       --keys <dir> --factory <factory-reference.toml> --recorded-sequence <n>
 #       [--expires-days <n>] [--withdraw "<component>@<version> ..."] [--resign]
 #       [--root-pubkey <file>] [--initial-pubkey <file>] -o <site dir>
 #
-# Environment: OPENFLUX_RELEASE_KEY, and OPENFLUX_RELEASE_KEY_PASSWORD when
+# Environment: KEYGLASS_RELEASE_KEY, and KEYGLASS_RELEASE_KEY_PASSWORD when
 # the key has one. Requires curl, jq and sha256sum.
 
 set -euo pipefail
@@ -39,8 +39,8 @@ die() { echo "build-index: $*" >&2; exit 1; }
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 tool="" pages_url="" releases="" keys="" factory="" recorded="" out=""
 expires_days=365 withdraw="" resign=false
-root_pub="${repo}/crates/openflux-update/keys/root.pub"
-initial_pub="${repo}/crates/openflux-update/keys/release.pub"
+root_pub="${repo}/crates/keyglass-update/keys/root.pub"
+initial_pub="${repo}/crates/keyglass-update/keys/release.pub"
 while [ $# -gt 0 ]; do
     case "$1" in
         --tool) tool="$2"; shift 2 ;;
@@ -70,8 +70,8 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$out"
 
-sign_args=(--key-env OPENFLUX_RELEASE_KEY)
-[ -n "${OPENFLUX_RELEASE_KEY_PASSWORD:-}" ] && sign_args+=(--password-env OPENFLUX_RELEASE_KEY_PASSWORD)
+sign_args=(--key-env KEYGLASS_RELEASE_KEY)
+[ -n "${KEYGLASS_RELEASE_KEY_PASSWORD:-}" ] && sign_args+=(--password-env KEYGLASS_RELEASE_KEY_PASSWORD)
 
 # 1. The published index.
 known_keys=(--pubkey "$active_pub" --pubkey "$initial_pub")

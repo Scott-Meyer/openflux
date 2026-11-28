@@ -253,11 +253,11 @@ static void handle_ctrl_conn(int cfd) {
 }
 
 int main(void) {
-    const char *ufds = getenv("OPENFLUX_SIM_UART_FDS");
-    const char *usb_sock_path = getenv("OPENFLUX_SIM_USB_SOCK");
-    const char *ctrl_sock_path = getenv("OPENFLUX_SIM_CTRL_SOCK");
+    const char *ufds = getenv("KEYGLASS_SIM_UART_FDS");
+    const char *usb_sock_path = getenv("KEYGLASS_SIM_USB_SOCK");
+    const char *ctrl_sock_path = getenv("KEYGLASS_SIM_CTRL_SOCK");
     if (!ufds || !usb_sock_path || !ctrl_sock_path) {
-        fprintf(stderr, "Missing OPENFLUX_SIM_UART_FDS / OPENFLUX_SIM_USB_SOCK / OPENFLUX_SIM_CTRL_SOCK\n");
+        fprintf(stderr, "Missing KEYGLASS_SIM_UART_FDS / KEYGLASS_SIM_USB_SOCK / KEYGLASS_SIM_CTRL_SOCK\n");
         return 2;
     }
     if (sscanf(ufds, "%d,%d", &g_uart_rx_fd, &g_uart_tx_fd) != 2) {

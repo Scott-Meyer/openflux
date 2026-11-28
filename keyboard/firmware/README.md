@@ -1,4 +1,4 @@
-# OpenFlux firmware
+# Keyglass firmware
 
 Firmware for the keyboard's key scanner, an RP2040 that reads the 160
 Hall-effect sensors, acts as the USB keyboard and reports key state to the
@@ -31,9 +31,9 @@ The pin numbers are defined in `src/fw_protocol.h` and `src/fw_scanner.c`.
 
 The top 1 MiB of the 16 MiB flash holds the littlefs file system with the
 keyboard's factory calibration. A firmware image must never reach it.
-OpenFlux Studio refuses images that would and checks the region before and
+Keyglass Studio refuses images that would and checks the region before and
 after flashing. When flashing by other means, back up the flash first, for
-example with `python3 tools/openflux-dev/openflux_dev.py rp2040-backup <dir>`, which
+example with `python3 tools/keyglass-dev/keyglass_dev.py rp2040-backup <dir>`, which
 saves the whole flash and the calibration files.
 
 ## Documentation

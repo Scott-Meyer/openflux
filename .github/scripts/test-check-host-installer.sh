@@ -21,64 +21,64 @@ trap 'rm -rf "$work"' EXIT
 fails=0
 fail() { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
 
-licenses=(openflux-ffmpeg-COPYING.GPLv2.txt openfluxd-rust-licenses.txt openflux-studio-rust-licenses.txt
-    openflux-studio-ui-npm-licenses.txt)
+licenses=(keyglass-ffmpeg-COPYING.GPLv2.txt keyglassd-rust-licenses.txt keyglass-studio-rust-licenses.txt
+    keyglass-studio-ui-npm-licenses.txt)
 tool_script='#!/bin/sh
 echo "ffmpeg version test"'
 
 # licenses_into <dir> <variant>: complete, missing (no Rust licenses of
-# openfluxd) or empty (an empty npm license file).
+# keyglassd) or empty (an empty npm license file).
 licenses_into() {
     local dir="$1/licenses" f
     mkdir -p "$dir"
     for f in "${licenses[@]}"; do printf 'license text\n' > "${dir}/${f}"; done
     case "$2" in
-        missing) rm "${dir}/openfluxd-rust-licenses.txt" ;;
-        empty) : > "${dir}/openflux-studio-ui-npm-licenses.txt" ;;
+        missing) rm "${dir}/keyglassd-rust-licenses.txt" ;;
+        empty) : > "${dir}/keyglass-studio-ui-npm-licenses.txt" ;;
     esac
 }
 
 app_archive() {
     local variant="$1" root="${work}/app-${1}" c b
-    c="${root}/OpenFlux Studio.app/Contents"
+    c="${root}/Keyglass Studio.app/Contents"
     mkdir -p "${c}/MacOS" "${c}/Resources/keyboard" "${c}/Resources/modules/keys-renderer" "${c}/Library/LaunchAgents"
-    for b in openflux-studio openfluxd fluxctl openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe; do
+    for b in keyglass-studio keyglassd fluxctl keyglass-tray keyglass-sensors keyglass-ffmpeg keyglass-ffprobe; do
         printf '%s\n' "$tool_script" > "${c}/MacOS/${b}"
         chmod 0755 "${c}/MacOS/${b}"
     done
-    : > "${c}/Library/LaunchAgents/org.openflux.openfluxd.plist"
+    : > "${c}/Library/LaunchAgents/dev.keyglass.keyglassd.plist"
     printf 'id = "keys-renderer"\n' > "${c}/Resources/modules/keys-renderer/module.toml"
     printf '{}\n' > "${c}/Resources/keyboard/index.json"
     printf 'sig\n' > "${c}/Resources/keyboard/index.json.sig"
     licenses_into "${c}/Resources" "$variant"
-    tar -czf "${work}/${variant}.app.tar.gz" -C "$root" "OpenFlux Studio.app"
+    tar -czf "${work}/${variant}.app.tar.gz" -C "$root" "Keyglass Studio.app"
 }
 
 deb() {
     local variant="$1" root="${work}/deb-${1}" b
-    mkdir -p "${root}/DEBIAN" "${root}/usr/bin" "${root}/usr/lib/OpenFlux Studio/keyboard" \
-        "${root}/usr/lib/OpenFlux Studio/modules/keys-renderer" \
+    mkdir -p "${root}/DEBIAN" "${root}/usr/bin" "${root}/usr/lib/Keyglass Studio/keyboard" \
+        "${root}/usr/lib/Keyglass Studio/modules/keys-renderer" \
         "${root}/usr/lib/udev/rules.d" "${root}/usr/lib/systemd/user"
-    printf 'Package: openflux-studio\nVersion: 1.0.0\nArchitecture: amd64\nMaintainer: test\nDescription: test\n' \
+    printf 'Package: keyglass-studio\nVersion: 1.0.0\nArchitecture: amd64\nMaintainer: test\nDescription: test\n' \
         > "${root}/DEBIAN/control"
     for s in postinst prerm postrm; do printf '#!/bin/sh\n' > "${root}/DEBIAN/${s}"; chmod 0755 "${root}/DEBIAN/${s}"; done
-    for b in openflux-studio openfluxd fluxctl openflux-ffmpeg openflux-ffprobe; do
+    for b in keyglass-studio keyglassd fluxctl keyglass-ffmpeg keyglass-ffprobe; do
         printf '%s\n' "$tool_script" > "${root}/usr/bin/${b}"
         chmod 0755 "${root}/usr/bin/${b}"
     done
-    printf '{}\n' > "${root}/usr/lib/OpenFlux Studio/keyboard/index.json"
-    printf 'sig\n' > "${root}/usr/lib/OpenFlux Studio/keyboard/index.json.sig"
-    printf 'id = "keys-renderer"\n' > "${root}/usr/lib/OpenFlux Studio/modules/keys-renderer/module.toml"
-    : > "${root}/usr/lib/udev/rules.d/70-openflux.rules"
-    : > "${root}/usr/lib/systemd/user/openfluxd.service"
-    licenses_into "${root}/usr/lib/OpenFlux Studio" "$variant"
+    printf '{}\n' > "${root}/usr/lib/Keyglass Studio/keyboard/index.json"
+    printf 'sig\n' > "${root}/usr/lib/Keyglass Studio/keyboard/index.json.sig"
+    printf 'id = "keys-renderer"\n' > "${root}/usr/lib/Keyglass Studio/modules/keys-renderer/module.toml"
+    : > "${root}/usr/lib/udev/rules.d/70-keyglass.rules"
+    : > "${root}/usr/lib/systemd/user/keyglassd.service"
+    licenses_into "${root}/usr/lib/Keyglass Studio" "$variant"
     dpkg-deb --root-owner-group --build "$root" "${work}/${variant}.deb" > /dev/null
 }
 
 nsis() {
     local variant="$1" root="${work}/nsis-${1}" b
     mkdir -p "${root}/keyboard" "${root}/modules/keys-renderer"
-    for b in openflux-studio openfluxd fluxctl openflux-ffmpeg openflux-ffprobe; do printf 'MZ\n' > "${root}/${b}.exe"; done
+    for b in keyglass-studio keyglassd fluxctl keyglass-ffmpeg keyglass-ffprobe; do printf 'MZ\n' > "${root}/${b}.exe"; done
     printf '{}\n' > "${root}/keyboard/index.json"
     printf 'sig\n' > "${root}/keyboard/index.json.sig"
     printf 'id = "keys-renderer"\n' > "${root}/modules/keys-renderer/module.toml"
@@ -86,7 +86,7 @@ nsis() {
     cat > "${work}/${variant}.nsi" <<EOF
 Unicode true
 OutFile "${work}/${variant}-setup.exe"
-InstallDir "\$LOCALAPPDATA\\OpenFlux Studio"
+InstallDir "\$LOCALAPPDATA\\Keyglass Studio"
 RequestExecutionLevel user
 Section
   SetOutPath "\$INSTDIR"

@@ -10,7 +10,7 @@
 #define FW_REST_BYTES    236U
 
 /* Integer fields in the record are little endian. Decode also accepts the byte-wise checksum written by
- * OpenFlux development builds (h = h * 31 + byte over bytes 0..231, starting at zero); encode never writes it.
+ * Keyglass development builds (h = h * 31 + byte over bytes 0..231, starting at zero); encode never writes it.
  * Neither routine performs I/O or changes a stored record. */
 int fw_rest_encode(uint8_t layout, uint8_t feel, const int16_t reference[FW_REST_CHANNELS], uint8_t out[FW_REST_BYTES]);
 int fw_rest_decode(const uint8_t record[FW_REST_BYTES], uint8_t layout, uint8_t feel, int16_t out[FW_REST_CHANNELS]);

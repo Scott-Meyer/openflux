@@ -53,7 +53,7 @@ pub struct ShortcutProfileState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum TokenKind {
-    /// OpenFlux Studio, the tray and the daemon's own command line; may call every route.
+    /// Keyglass Studio, the tray and the daemon's own command line; may call every route.
     FirstParty,
     /// A third-party app approved by the user; may call only the third-party app API.
     ThirdParty { app: String },
@@ -142,18 +142,18 @@ pub trait DeviceSink: Send + Sync {
     fn send_media_frame(
         &self,
         _stream_name: &str,
-        _codec: openflux_bus::MediaCodec,
+        _codec: keyglass_bus::MediaCodec,
         _data: &[u8],
         _flags: u8,
     ) -> bool {
         false
     }
-    /// Sends one live `openflux_bus::WireFrame` directly to the keyboard over `LIVE_DATA_TYPE_BUS_FRAME`.
-    fn send_bus_frame(&self, _frame: &openflux_bus::WireFrame) -> Result<(), String> {
+    /// Sends one live `keyglass_bus::WireFrame` directly to the keyboard over `LIVE_DATA_TYPE_BUS_FRAME`.
+    fn send_bus_frame(&self, _frame: &keyglass_bus::WireFrame) -> Result<(), String> {
         Err("Bus bridge unsupported on this sink".into())
     }
     /// Drains queued keyboard-originated `WireFrame`s from the keyboard bridge over USB.
-    fn poll_bus_frames(&self) -> Result<Vec<openflux_bus::WireFrame>, String> {
+    fn poll_bus_frames(&self) -> Result<Vec<keyglass_bus::WireFrame>, String> {
         Ok(Vec::new())
     }
     fn set_active_profile(&self, profile_idx: u32) -> Result<(), String>;
@@ -562,7 +562,7 @@ impl InnerState {
         match &outcome {
             KeymapPull::Mismatch(reason) | KeymapPull::Error(reason) => {
                 if self.keymap_pull_logged.as_deref() != Some(reason.as_str()) {
-                    eprintln!("openfluxd: the keyboard's keymap isn't loaded: {reason}");
+                    eprintln!("keyglassd: the keyboard's keymap isn't loaded: {reason}");
                     self.keymap_pull_logged = Some(reason.clone());
                 }
             }
@@ -634,7 +634,7 @@ pub struct ApiState {
     pub registration_timeout_ms: std::sync::atomic::AtomicU64,
     /// Update discovery, keyboard updates and conversion, once configured.
     pub updates: Mutex<Option<Arc<crate::updates::UpdateService>>>,
-    /// OpenFlux v2 pub/sub bus, module system, and unified GPU compositor runtime.
+    /// Keyglass v2 pub/sub bus, module system, and unified GPU compositor runtime.
     pub v2: Arc<crate::api::v2::V2State>,
 }
 
@@ -648,7 +648,7 @@ impl ApiState {
         preseeded_token: Option<String>,
         override_ttl: Duration,
     ) -> Arc<Self> {
-        let icon_dir = std::env::var("OPENFLUX_ICON_DIR")
+        let icon_dir = std::env::var("KEYGLASS_ICON_DIR")
             .ok()
             .filter(|s| !s.is_empty())
             .map(PathBuf::from)
@@ -1214,7 +1214,7 @@ impl ApiState {
         };
         if changed {
             if let Err(e) = self.persist_profiles() {
-                eprintln!("openfluxd: the profile lock couldn't be stored: {e}");
+                eprintln!("keyglassd: the profile lock couldn't be stored: {e}");
             }
             self.emit("autoProfileLock", serde_json::json!({ "locked": locked }));
         }
@@ -1323,7 +1323,7 @@ impl ApiState {
 
     /// Whether ordinary work may write the given keyboard areas now. Refused while a job has the
     /// keyboard, while the keyboard needs conversion, and for areas the keyboard stores in a format
-    /// this OpenFlux doesn't fully understand.
+    /// this Keyglass doesn't fully understand.
     pub fn check_keyboard_write(
         &self,
         areas: &[crate::updates::Area],
@@ -1347,7 +1347,7 @@ impl ApiState {
         let mut bytes = [0u8; 32];
         getrandom::getrandom(&mut bytes).map_err(|e| format!("CSPRNG error: {e}"))?;
         let mut hex = String::with_capacity(73);
-        hex.push_str("openflux_");
+        hex.push_str("keyglass_");
         for b in bytes {
             hex.push_str(&format!("{b:02x}"));
         }
@@ -1471,30 +1471,30 @@ impl ApiState {
 
 const DENIED_APPS_FILE: &str = "third_party_denied.json";
 
-/// The daemon's data directory: `OPENFLUX_DATA_DIR`, else `%LOCALAPPDATA%\openflux` on Windows and
-/// `~/.local/share/openflux` elsewhere.
+/// The daemon's data directory: `KEYGLASS_DATA_DIR`, else `%LOCALAPPDATA%\keyglass` on Windows and
+/// `~/.local/share/keyglass` elsewhere.
 pub fn default_data_dir() -> PathBuf {
-    if let Some(d) = std::env::var_os("OPENFLUX_DATA_DIR").filter(|d| !d.is_empty()) {
+    if let Some(d) = std::env::var_os("KEYGLASS_DATA_DIR").filter(|d| !d.is_empty()) {
         return PathBuf::from(d);
     }
     #[cfg(windows)]
     {
         if let Some(d) = std::env::var_os("LOCALAPPDATA").filter(|d| !d.is_empty()) {
-            return PathBuf::from(d).join("openflux");
+            return PathBuf::from(d).join("keyglass");
         }
         if let Some(d) = std::env::var_os("USERPROFILE").filter(|d| !d.is_empty()) {
             return PathBuf::from(d)
                 .join("AppData")
                 .join("Local")
-                .join("openflux");
+                .join("keyglass");
         }
     }
     match std::env::var_os("HOME").filter(|h| !h.is_empty()) {
-        Some(home) => PathBuf::from(home).join(".local/share/openflux"),
+        Some(home) => PathBuf::from(home).join(".local/share/keyglass"),
         #[cfg(unix)]
-        None => std::env::temp_dir().join(format!("openflux_{}", unsafe { libc::geteuid() })),
+        None => std::env::temp_dir().join(format!("keyglass_{}", unsafe { libc::geteuid() })),
         #[cfg(not(unix))]
-        None => std::env::temp_dir().join("openflux"),
+        None => std::env::temp_dir().join("keyglass"),
     }
 }
 

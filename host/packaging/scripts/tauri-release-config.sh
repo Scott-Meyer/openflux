@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Writes the Tauri configuration overlay used for release builds of
-# OpenFlux Studio. Pass the result to `tauri build --config <file>`; Tauri
+# Keyglass Studio. Pass the result to `tauri build --config <file>`; Tauri
 # merges it over host/studio/src-tauri/tauri.conf.json (JSON merge patch:
 # objects merge, arrays and values replace).
 #
@@ -28,7 +28,7 @@
 # (build-sidecars.sh).
 # --updater-pubkey defaults to host/packaging/keys/tauri-updater.pub.
 # --keyboard-bundle holds the verified keyboard artifacts and the signed index
-# (openflux-release bundle); it is installed as $RESOURCE/keyboard/.
+# (keyglass-release bundle); it is installed as $RESOURCE/keyboard/.
 
 set -euo pipefail
 
@@ -82,9 +82,9 @@ keyboard="$(native "$(cd "$keyboard" && pwd)")"
 
 # Sidecars per OS. Tauri appends the target triple to each entry.
 case "$os" in
-    macos) bins=(openfluxd fluxctl openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe) triple='*-apple-darwin' ;;
-    windows) bins=(openfluxd fluxctl openflux-ffmpeg openflux-ffprobe) triple='*-pc-windows-msvc.exe' ;;
-    linux) bins=(openfluxd fluxctl openflux-ffmpeg openflux-ffprobe) triple='*-unknown-linux-gnu' ;;
+    macos) bins=(keyglassd fluxctl keyglass-tray keyglass-sensors keyglass-ffmpeg keyglass-ffprobe) triple='*-apple-darwin' ;;
+    windows) bins=(keyglassd fluxctl keyglass-ffmpeg keyglass-ffprobe) triple='*-pc-windows-msvc.exe' ;;
+    linux) bins=(keyglassd fluxctl keyglass-ffmpeg keyglass-ffprobe) triple='*-unknown-linux-gnu' ;;
     *) die "unsupported --os: ${os}" ;;
 esac
 for b in "${bins[@]}"; do
@@ -107,12 +107,12 @@ jq -n \
     --arg pubkey "$(tr -d '\r\n' < "$updater_pubkey")" \
     --arg endpoint "${pages_url}/updates/stable/latest.json" \
     --arg entitlements "$(abs "${packaging}/macos/entitlements.plist")" \
-    --arg launchAgent "$(abs "${packaging}/macos/org.openflux.openfluxd.plist")" \
+    --arg launchAgent "$(abs "${packaging}/macos/dev.keyglass.keyglassd.plist")" \
     --arg infoPlist "$(abs "${packaging}/macos/studio-display-name.plist")" \
     --arg desktopTemplate "$(abs "${packaging}/linux/studio.desktop")" \
     --arg nsisHooks "$(abs "${packaging}/windows/installer-hooks.nsh")" \
-    --arg udevRules "$(abs "${packaging}/linux/70-openflux.rules")" \
-    --arg userUnit "$(abs "${packaging}/linux/openfluxd.service")" \
+    --arg udevRules "$(abs "${packaging}/linux/70-keyglass.rules")" \
+    --arg userUnit "$(abs "${packaging}/linux/keyglassd.service")" \
     --arg postinst "$(abs "${packaging}/linux/deb/postinst")" \
     --arg prerm "$(abs "${packaging}/linux/deb/prerm")" \
     --arg postrm "$(abs "${packaging}/linux/deb/postrm")" \
@@ -142,7 +142,7 @@ jq -n \
       hardenedRuntime: true,
       entitlements: $entitlements,
       infoPlist: $infoPlist,
-      files: { "Library/LaunchAgents/org.openflux.openfluxd.plist": $launchAgent }
+      files: { "Library/LaunchAgents/dev.keyglass.keyglassd.plist": $launchAgent }
   } } }
 elif $os == "windows" then
   { bundle: { targets: ["nsis"], windows: {
@@ -153,15 +153,15 @@ else
       deb: {
         desktopTemplate: $desktopTemplate,
         files: {
-          "/usr/lib/udev/rules.d/70-openflux.rules": $udevRules,
-          "/usr/lib/systemd/user/openfluxd.service": $userUnit
+          "/usr/lib/udev/rules.d/70-keyglass.rules": $udevRules,
+          "/usr/lib/systemd/user/keyglassd.service": $userUnit
         },
         postInstallScript: $postinst,
         preRemoveScript: $prerm,
         postRemoveScript: $postrm
       },
       appimage: {
-        files: { "/usr/share/openflux/70-openflux.rules": $udevRules }
+        files: { "/usr/share/keyglass/70-keyglass.rules": $udevRules }
       }
   } } }
 end)' > "$out"

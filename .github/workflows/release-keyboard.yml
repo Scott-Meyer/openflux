@@ -33,7 +33,7 @@ permissions: {}
 
 env:
   # Newest glibc symbol version the keyboard OS provides (display only; the
-  # bridge and the display's openflux-ffmpeg are fully static).
+  # bridge and the display's keyglass-ffmpeg are fully static).
   KEYBOARD_GLIBC_MAX: "2.36"
 
 jobs:
@@ -55,7 +55,7 @@ jobs:
         run: .github/scripts/release-meta.sh "$TAG"
         env:
           TAG: ${{ inputs.tag }}
-          OPENFLUX_PAGES_URL: ${{ vars.OPENFLUX_PAGES_URL }}
+          KEYGLASS_PAGES_URL: ${{ vars.KEYGLASS_PAGES_URL }}
 
       - name: Check component
         env:
@@ -69,7 +69,7 @@ jobs:
       - name: Build environment
         env:
           COMPONENT: ${{ steps.meta.outputs.component }}
-        run: docker build -t "openflux-$COMPONENT-build" -f "keyboard/$COMPONENT/Dockerfile.build" "keyboard/$COMPONENT"
+        run: docker build -t "keyglass-$COMPONENT-build" -f "keyboard/$COMPONENT/Dockerfile.build" "keyboard/$COMPONENT"
 
       - name: Build (twice, from clean directories)
         env:
@@ -86,26 +86,26 @@ jobs:
           check=.github/scripts/check-keyboard-ipk.sh
           case "$COMPONENT" in
             bridge)
-              "$check" "dist/artifacts/openflux-bridge_${VERSION}_aarch64.ipk" openflux-bridge "$VERSION" static \
-                --require /usr/lib/openflux/bridge/openflux-bridge \
-                --require /usr/lib/openflux/bridge/restore-factory.sh \
-                --require /usr/lib/openflux/bridge/licenses/openflux-bridge-rust-licenses.txt
-              "$check" "dist/artifacts/openflux-factory-restore_${VERSION}_aarch64.ipk" openflux-factory-restore "$VERSION" static --no-executables
+              "$check" "dist/artifacts/keyglass-bridge_${VERSION}_aarch64.ipk" keyglass-bridge "$VERSION" static \
+                --require /usr/lib/keyglass/bridge/keyglass-bridge \
+                --require /usr/lib/keyglass/bridge/restore-factory.sh \
+                --require /usr/lib/keyglass/bridge/licenses/keyglass-bridge-rust-licenses.txt
+              "$check" "dist/artifacts/keyglass-factory-restore_${VERSION}_aarch64.ipk" keyglass-factory-restore "$VERSION" static --no-executables
               ;;
             display)
-              "$check" "dist/artifacts/openflux-display_${VERSION}_aarch64.ipk" openflux-display "$VERSION" glibc \
-                --require /usr/lib/openflux/display/openflux-display \
-                --require /usr/lib/openflux/display/openflux-ffmpeg \
-                --require /usr/lib/openflux/display/licenses/FFMPEG-LGPL-2.1.txt \
-                --require /usr/lib/openflux/display/licenses/FFMPEG-NOTICE.txt \
-                --require /usr/lib/openflux/display/licenses/openflux-display-rust-licenses.txt
-              compgen -G "dist/extra/openflux-ffmpeg-source-*.tar.xz" > /dev/null ||
+              "$check" "dist/artifacts/keyglass-display_${VERSION}_aarch64.ipk" keyglass-display "$VERSION" glibc \
+                --require /usr/lib/keyglass/display/keyglass-display \
+                --require /usr/lib/keyglass/display/keyglass-ffmpeg \
+                --require /usr/lib/keyglass/display/licenses/FFMPEG-LGPL-2.1.txt \
+                --require /usr/lib/keyglass/display/licenses/FFMPEG-NOTICE.txt \
+                --require /usr/lib/keyglass/display/licenses/keyglass-display-rust-licenses.txt
+              compgen -G "dist/extra/keyglass-ffmpeg-source-*.tar.xz" > /dev/null ||
                 { echo "the display build did not write the FFmpeg source archive" >&2; exit 1; }
-              [ -f dist/extra/openflux-ffmpeg-build.txt ] ||
-                { echo "the display build did not write openflux-ffmpeg-build.txt" >&2; exit 1; }
+              [ -f dist/extra/keyglass-ffmpeg-build.txt ] ||
+                { echo "the display build did not write keyglass-ffmpeg-build.txt" >&2; exit 1; }
               ;;
           esac
-          extra="$(find dist/artifacts -type f ! -name 'openflux-*_aarch64.ipk')"
+          extra="$(find dist/artifacts -type f ! -name 'keyglass-*_aarch64.ipk')"
           [ -z "$extra" ] || { echo "unexpected files among the artifacts: $extra" >&2; exit 1; }
 
       - name: Preflight and stage
@@ -122,15 +122,15 @@ jobs:
           cp dist/artifacts/* staged/artifacts/
           if [ "$COMPONENT" = display ]; then
             mkdir -p staged/source
-            for f in dist/extra/openflux-ffmpeg-source-*.tar.xz; do
+            for f in dist/extra/keyglass-ffmpeg-source-*.tar.xz; do
               base="$(basename "$f")"
-              cp "$f" "staged/source/${base/openflux-ffmpeg-/openflux-display-ffmpeg-}"
+              cp "$f" "staged/source/${base/keyglass-ffmpeg-/keyglass-display-ffmpeg-}"
             done
-            cp dist/extra/openflux-ffmpeg-build.txt staged/source/openflux-display-ffmpeg-build.txt
+            cp dist/extra/keyglass-ffmpeg-build.txt staged/source/keyglass-display-ffmpeg-build.txt
           fi
 
-          cargo build --locked --release --manifest-path crates/openflux-update/Cargo.toml --bin openflux-release
-          tool="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/openflux-update/Cargo.toml | jq -r .target_directory)/release/openflux-release"
+          cargo build --locked --release --manifest-path crates/keyglass-update/Cargo.toml --bin keyglass-release
+          tool="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/keyglass-update/Cargo.toml | jq -r .target_directory)/release/keyglass-release"
           args=()
           for f in staged/artifacts/*; do args+=(--artifact "$f"); done
           "$tool" manifest --component "$COMPONENT" --version "$VERSION" --channel "$CHANNEL" \

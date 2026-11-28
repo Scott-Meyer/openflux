@@ -1,24 +1,24 @@
 #!/bin/sh
-ROOT="${OPENFLUX_SYSROOT:-}"
+ROOT="${KEYGLASS_SYSROOT:-}"
 
 # Boot entry point invoked by the keyboard's base Linux OS.
 OS_BOOT_LAUNCHER="${ROOT}/usr/bin/flux-weston-autolaunch.sh"
 
-BRIDGE_DIR="${ROOT}/usr/lib/openflux/bridge"
-BRIDGE_BIN="${BRIDGE_DIR}/openflux-bridge"
-BRIDGE_LAUNCHER="${BRIDGE_DIR}/openflux-autolaunch.sh"
-BRIDGE_FFS="${ROOT}/dev/ffs-openflux"
-ROLLBACK_DIR="${ROOT}/home/root/.openflux/rollback/bridge"
+BRIDGE_DIR="${ROOT}/usr/lib/keyglass/bridge"
+BRIDGE_BIN="${BRIDGE_DIR}/keyglass-bridge"
+BRIDGE_LAUNCHER="${BRIDGE_DIR}/keyglass-autolaunch.sh"
+BRIDGE_FFS="${ROOT}/dev/ffs-keyglass"
+ROLLBACK_DIR="${ROOT}/home/root/.keyglass/rollback/bridge"
 ARMED_FILE="${ROLLBACK_DIR}/armed"
-VERSION_DIR="${ROOT}/home/root/.openflux/versions"
+VERSION_DIR="${ROOT}/home/root/.keyglass/versions"
 VERSION_FILE="${VERSION_DIR}/bridge"
-LOG_DIR="${ROOT}/home/root/openflux/logs"
-READY_FILE="${OPENFLUX_READY_FILE:-${ROOT}/tmp/openflux_bridge_ready}"
-UPDATE_SEM="${ROOT}/tmp/openflux_updating_bridge"
+LOG_DIR="${ROOT}/home/root/keyglass/logs"
+READY_FILE="${KEYGLASS_READY_FILE:-${ROOT}/tmp/keyglass_bridge_ready}"
+UPDATE_SEM="${ROOT}/tmp/keyglass_updating_bridge"
 FACTORY_SEM="${ROOT}/tmp/updating_garfield"
 
 flush_fs() {
-    [ "${OPENFLUX_SKIP_SYNC:-0}" = "1" ] && return 0
+    [ "${KEYGLASS_SKIP_SYNC:-0}" = "1" ] && return 0
     sync
 }
 
@@ -36,16 +36,16 @@ atomic_restore_file() {
 }
 
 restore_rollback() {
-    if [ -f "${ROLLBACK_DIR}/openflux-bridge" ]; then
-        atomic_restore_file "${ROLLBACK_DIR}/openflux-bridge" "$BRIDGE_BIN" 1 || return 1
+    if [ -f "${ROLLBACK_DIR}/keyglass-bridge" ]; then
+        atomic_restore_file "${ROLLBACK_DIR}/keyglass-bridge" "$BRIDGE_BIN" 1 || return 1
         if [ -f "${ROLLBACK_DIR}/bridge.version" ]; then
             atomic_restore_file "${ROLLBACK_DIR}/bridge.version" "$VERSION_FILE" 0 || return 1
         fi
-        if [ -f "${ROLLBACK_DIR}/openflux-autolaunch.sh" ]; then
-            atomic_restore_file "${ROLLBACK_DIR}/openflux-autolaunch.sh" "$BRIDGE_LAUNCHER" 1 || return 1
+        if [ -f "${ROLLBACK_DIR}/keyglass-autolaunch.sh" ]; then
+            atomic_restore_file "${ROLLBACK_DIR}/keyglass-autolaunch.sh" "$BRIDGE_LAUNCHER" 1 || return 1
         fi
         flush_fs || return 1
-        if [ -f "${ROLLBACK_DIR}/openflux-autolaunch.sh" ]; then
+        if [ -f "${ROLLBACK_DIR}/keyglass-autolaunch.sh" ]; then
             atomic_restore_file "$BRIDGE_LAUNCHER" "$OS_BOOT_LAUNCHER" 1 || return 1
             flush_fs || return 1
         fi
@@ -59,7 +59,7 @@ stop_services() {
         pkill -TERM -f "$pattern" 2>/dev/null || true
     done
     i=0
-    while [ "$i" -lt "${OPENFLUX_STOP_WAIT_ITERS:-5}" ]; do
+    while [ "$i" -lt "${KEYGLASS_STOP_WAIT_ITERS:-5}" ]; do
         alive=0
         for pattern in "$BRIDGE_BIN" "$OS_BOOT_LAUNCHER"; do
             if pgrep -f "$pattern" >/dev/null 2>&1; then
@@ -67,7 +67,7 @@ stop_services() {
             fi
         done
         [ "$alive" -eq 0 ] && break
-        sleep "${OPENFLUX_POSTINST_SLEEP:-1}"
+        sleep "${KEYGLASS_POSTINST_SLEEP:-1}"
         i=$((i + 1))
     done
     for pattern in "$BRIDGE_BIN" "$OS_BOOT_LAUNCHER"; do
@@ -94,15 +94,15 @@ launch_services() {
     fi
     if [ -x "$OS_BOOT_LAUNCHER" ]; then
         if [ "$trial_mode" = "trial" ]; then
-            OPENFLUX_TRIAL_LAUNCH=1 OPENFLUX_TRIAL_ATTEMPT_ID="$trial_attempt_id" launch_detached "$OS_BOOT_LAUNCHER" "" "${LOG_DIR}/autolaunch.log"
+            KEYGLASS_TRIAL_LAUNCH=1 KEYGLASS_TRIAL_ATTEMPT_ID="$trial_attempt_id" launch_detached "$OS_BOOT_LAUNCHER" "" "${LOG_DIR}/autolaunch.log"
         else
-            OPENFLUX_TRIAL_LAUNCH=0 OPENFLUX_TRIAL_ATTEMPT_ID="" launch_detached "$OS_BOOT_LAUNCHER" "" "${LOG_DIR}/autolaunch.log"
+            KEYGLASS_TRIAL_LAUNCH=0 KEYGLASS_TRIAL_ATTEMPT_ID="" launch_detached "$OS_BOOT_LAUNCHER" "" "${LOG_DIR}/autolaunch.log"
         fi
     elif [ -x "$BRIDGE_BIN" ]; then
         if [ "$trial_mode" = "trial" ]; then
-            OPENFLUX_TRIAL_ATTEMPT_ID="$trial_attempt_id" launch_detached "$BRIDGE_BIN" "$BRIDGE_FFS" "${LOG_DIR}/bridge.log"
+            KEYGLASS_TRIAL_ATTEMPT_ID="$trial_attempt_id" launch_detached "$BRIDGE_BIN" "$BRIDGE_FFS" "${LOG_DIR}/bridge.log"
         else
-            OPENFLUX_TRIAL_ATTEMPT_ID="" launch_detached "$BRIDGE_BIN" "$BRIDGE_FFS" "${LOG_DIR}/bridge.log"
+            KEYGLASS_TRIAL_ATTEMPT_ID="" launch_detached "$BRIDGE_BIN" "$BRIDGE_FFS" "${LOG_DIR}/bridge.log"
         fi
     fi
 }
@@ -144,7 +144,7 @@ touch "$UPDATE_SEM"
 stop_services
 rm -f "$READY_FILE"
 
-if [ "${OPENFLUX_REQUIRE_USB_CONFIRM:-1}" != "0" ] && [ -f "${ROLLBACK_DIR}/openflux-bridge" ]; then
+if [ "${KEYGLASS_REQUIRE_USB_CONFIRM:-1}" != "0" ] && [ -f "${ROLLBACK_DIR}/keyglass-bridge" ]; then
     echo "pending-host-usb-confirm" > "$ARMED_FILE"
     flush_fs || true
 fi
@@ -153,10 +153,10 @@ rm -f "$UPDATE_SEM" "$FACTORY_SEM"
 launcher_pid=$(launch_services)
 
 # Verify launcher and the actual bridge PID inside READY_FILE remain alive across a stabilization check.
-require_ready="${OPENFLUX_REQUIRE_READY_FILE:-1}"
+require_ready="${KEYGLASS_REQUIRE_READY_FILE:-1}"
 ready_ok=0
 j=0
-max_ready="${OPENFLUX_READY_WAIT_ITERS:-15}"
+max_ready="${KEYGLASS_READY_WAIT_ITERS:-15}"
 while [ "$j" -lt "$max_ready" ]; do
     if ! is_pid_running "$launcher_pid"; then
         ready_ok=0
@@ -172,7 +172,7 @@ while [ "$j" -lt "$max_ready" ]; do
             ""|*[!0-9]*) ;;
             *)
                 if is_pid_running "$daemon_pid"; then
-                    sleep "${OPENFLUX_STABILIZE_SLEEP:-${OPENFLUX_STARTUP_CHECK_SLEEP:-0.2}}"
+                    sleep "${KEYGLASS_STABILIZE_SLEEP:-${KEYGLASS_STARTUP_CHECK_SLEEP:-0.2}}"
                     if is_pid_running "$launcher_pid" && is_pid_running "$daemon_pid"; then
                         ready_ok=1
                         break
@@ -183,21 +183,21 @@ while [ "$j" -lt "$max_ready" ]; do
                 ;;
         esac
     fi
-    sleep "${OPENFLUX_STARTUP_CHECK_SLEEP:-0.2}"
+    sleep "${KEYGLASS_STARTUP_CHECK_SLEEP:-0.2}"
     j=$((j + 1))
 done
 
 if [ "$ready_ok" -ne 1 ]; then
-    echo "ERROR: openflux-bridge failed readiness check; rolling back" >&2
+    echo "ERROR: keyglass-bridge failed readiness check; rolling back" >&2
     rollback_and_relaunch || true
     exit 1
 fi
 
-echo "openflux-bridge @OPENFLUX_VERSION@" > "$VERSION_FILE"
+echo "keyglass-bridge @KEYGLASS_VERSION@" > "$VERSION_FILE"
 
-if [ "${OPENFLUX_REQUIRE_USB_CONFIRM:-1}" != "0" ] && [ -f "$ARMED_FILE" ]; then
-    confirm_iters="${OPENFLUX_USB_CONFIRM_ITERS:-60}"
-    confirm_sleep="${OPENFLUX_USB_CONFIRM_SLEEP:-1}"
+if [ "${KEYGLASS_REQUIRE_USB_CONFIRM:-1}" != "0" ] && [ -f "$ARMED_FILE" ]; then
+    confirm_iters="${KEYGLASS_USB_CONFIRM_ITERS:-60}"
+    confirm_sleep="${KEYGLASS_USB_CONFIRM_SLEEP:-1}"
     WATCHDOG_ATTEMPT_ID=""
     if [ -f "${ROLLBACK_DIR}/attempt" ]; then
         WATCHDOG_ATTEMPT_ID=$(awk -F= '$1=="attempt_id"{print $2; exit}' "${ROLLBACK_DIR}/attempt" 2>/dev/null || true)
@@ -215,7 +215,7 @@ attempt_matches() {
 }
 
 flush_fs() {
-    [ "\${OPENFLUX_SKIP_SYNC:-0}" = "1" ] && return 0
+    [ "\${KEYGLASS_SKIP_SYNC:-0}" = "1" ] && return 0
     sync
 }
 
@@ -249,23 +249,23 @@ if [ -f "$ARMED_FILE" ]; then
     for pat in "$BRIDGE_BIN" "$OS_BOOT_LAUNCHER"; do
         pkill -TERM -f "\$pat" 2>/dev/null || true
     done
-    sleep "${OPENFLUX_POSTINST_SLEEP:-1}"
+    sleep "${KEYGLASS_POSTINST_SLEEP:-1}"
     for pat in "$BRIDGE_BIN" "$OS_BOOT_LAUNCHER"; do
         pkill -KILL -f "\$pat" 2>/dev/null || true
     done
     ok=0
-    if [ -f "${ROLLBACK_DIR}/openflux-bridge" ]; then
+    if [ -f "${ROLLBACK_DIR}/keyglass-bridge" ]; then
         ok=1
-        atomic_restore_file "${ROLLBACK_DIR}/openflux-bridge" "$BRIDGE_BIN" 1 || ok=0
+        atomic_restore_file "${ROLLBACK_DIR}/keyglass-bridge" "$BRIDGE_BIN" 1 || ok=0
         if [ "\$ok" -eq 1 ] && [ -f "${ROLLBACK_DIR}/bridge.version" ]; then
             atomic_restore_file "${ROLLBACK_DIR}/bridge.version" "$VERSION_FILE" 0 || ok=0
         fi
-        if [ "\$ok" -eq 1 ] && [ -f "${ROLLBACK_DIR}/openflux-autolaunch.sh" ]; then
-            atomic_restore_file "${ROLLBACK_DIR}/openflux-autolaunch.sh" "$BRIDGE_LAUNCHER" 1 || ok=0
+        if [ "\$ok" -eq 1 ] && [ -f "${ROLLBACK_DIR}/keyglass-autolaunch.sh" ]; then
+            atomic_restore_file "${ROLLBACK_DIR}/keyglass-autolaunch.sh" "$BRIDGE_LAUNCHER" 1 || ok=0
         fi
         if [ "\$ok" -ne 1 ] || ! flush_fs; then
             ok=0
-        elif [ -f "${ROLLBACK_DIR}/openflux-autolaunch.sh" ]; then
+        elif [ -f "${ROLLBACK_DIR}/keyglass-autolaunch.sh" ]; then
             atomic_restore_file "$BRIDGE_LAUNCHER" "$OS_BOOT_LAUNCHER" 1 && flush_fs || ok=0
         fi
     fi

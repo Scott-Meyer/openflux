@@ -1,14 +1,14 @@
-//! Conversion jobs: converting a keyboard to OpenFlux, and resetting it to its factory software.
+//! Conversion jobs: converting a keyboard to Keyglass, and resetting it to its factory software.
 //!
-//! Converting reads the keyboard's existing settings, installs OpenFlux firmware, bridge and
-//! display along the engine's conversion proposal, and writes the settings into the OpenFlux
+//! Converting reads the keyboard's existing settings, installs Keyglass firmware, bridge and
+//! display along the engine's conversion proposal, and writes the settings into the Keyglass
 //! configuration. The firmware flash never writes the calibration region and checks its hash
 //! before and after. Last, it installs the keyboard maker's press-refinement data (see
 //! [`super::press_refinement`]); a keyboard without it still works, so that step never fails the
 //! conversion.
 //!
 //! Resetting to factory downloads the factory files the signed index pins, stages the factory
-//! packages on the keyboard, starts the keyboard's restore with the OpenFlux restore package,
+//! packages on the keyboard, starts the keyboard's restore with the Keyglass restore package,
 //! flashes the factory firmware, writes the keymap back in the factory firmware's encoding and
 //! checks every version. Calibration is never written in either direction.
 
@@ -19,9 +19,9 @@ use crate::updates::install::{self, wait_until};
 use crate::updates::jobs::{JobError, JobKind, JobRecord, PlannedStep, StepKind};
 use crate::updates::status::{KeyboardView, ViewMode};
 use crate::updates::{Refused, UpdateService};
-use openflux_update::{Component, Engine};
+use keyglass_update::{Component, Engine};
 
-/// Where keyboards that don't run OpenFlux keep their display configuration and media.
+/// Where keyboards that don't run Keyglass keep their display configuration and media.
 const EXISTING_CONFIG_DIR: &str = "/home/root/flux/config";
 const EXISTING_MEDIA_DIR: &str = "/home/root/flux/media";
 const EXISTING_KEY_ICONS_DIR: &str = "/home/root/flux/media/key_icons";
@@ -58,10 +58,10 @@ pub fn conversion_steps(
                 "The keyboard isn't connected",
             ))
         }
-        ViewMode::OpenFlux => {
+        ViewMode::Keyglass => {
             return Err(refused(
-                "alreadyOpenFlux",
-                "The keyboard already runs OpenFlux",
+                "alreadyKeyglass",
+                "The keyboard already runs Keyglass",
             ))
         }
         ViewMode::NeedsConversion => {}
@@ -72,7 +72,7 @@ pub fn conversion_steps(
         &svc.profile,
         &inventory,
         &catalog,
-        openflux_update::Preferences::default(),
+        keyglass_update::Preferences::default(),
     );
     let proposal = engine
         .propose_conversion()
@@ -80,28 +80,28 @@ pub fn conversion_steps(
     let release = |c: Component| proposal.install.iter().find(|r| r.component == c);
     let reported = |c: Component| view.get(c).and_then(|x| x.reported.clone());
     let mut steps = vec![
-        step(StepKind::Prepare, "Downloading and verifying OpenFlux"),
+        step(StepKind::Prepare, "Downloading and verifying Keyglass"),
         step(StepKind::ReadSettings, "Reading the keyboard's settings"),
     ];
     let bridge = release(Component::Bridge)
-        .ok_or_else(|| refused("noPlan", "No OpenFlux bridge release is available"))?;
+        .ok_or_else(|| refused("noPlan", "No Keyglass bridge release is available"))?;
     let mut rescue = step(
         StepKind::StageRescue,
-        "Preparing the keyboard's recovery copy of the OpenFlux bridge",
+        "Preparing the keyboard's recovery copy of the Keyglass bridge",
     );
     rescue.artifact = install::artifact_for(bridge);
     steps.push(rescue);
     let mut expect = serde_json::Map::new();
     for c in [Component::Firmware, Component::Bridge, Component::Display] {
         let r = release(c)
-            .ok_or_else(|| refused("noPlan", format!("No OpenFlux {c} release is available")))?;
+            .ok_or_else(|| refused("noPlan", format!("No Keyglass {c} release is available")))?;
         let artifact = install::artifact_for(r).ok_or_else(|| {
             refused(
                 "malformed",
                 format!("{c} {} has no installable file", r.version),
             )
         })?;
-        let to = format!("openflux-{c} {}", r.version);
+        let to = format!("keyglass-{c} {}", r.version);
         expect.insert(c.as_str().into(), serde_json::json!(to));
         steps.push(PlannedStep {
             kind: if c == Component::Firmware {
@@ -109,7 +109,7 @@ pub fn conversion_steps(
             } else {
                 StepKind::InstallPackage
             },
-            label: format!("Installing OpenFlux {c} {}", r.version),
+            label: format!("Installing Keyglass {c} {}", r.version),
             component: Some(c.as_str().into()),
             // The display is reported through the bridge, so what it reports changes when the
             // bridge is replaced; it has no precondition.
@@ -157,9 +157,9 @@ pub fn restore_steps(
     }
     if !matches!(
         view.get(Component::Bridge).map(|b| &b.identity),
-        Some(Identity::OpenFlux(_))
+        Some(Identity::Keyglass(_))
     ) {
-        return Err(refused("unsupported", "The factory software is restored by the OpenFlux bridge; this keyboard's bridge isn't OpenFlux"));
+        return Err(refused("unsupported", "The factory software is restored by the Keyglass bridge; this keyboard's bridge isn't Keyglass"));
     }
     let catalog = svc.sources().catalog();
     let trigger = catalog
@@ -321,7 +321,7 @@ pub fn read_settings(svc: &UpdateService, job: &mut JobRecord, _i: usize) -> Res
     Ok(())
 }
 
-/// Writes the settings read before the conversion into the OpenFlux configuration, and copies
+/// Writes the settings read before the conversion into the Keyglass configuration, and copies
 /// media the configuration refers to. A file that can't be copied is reported in the log.
 pub fn import_settings(
     svc: &UpdateService,
@@ -335,7 +335,7 @@ pub fn import_settings(
         return Err(JobError::new(
             "keyboardDisconnected",
             "The keyboard bridge isn't connected",
-            "OpenFlux is installed. Connect the keyboard; the settings are imported when the job resumes.",
+            "Keyglass is installed. Connect the keyboard; the settings are imported when the job resumes.",
         ));
     }
     let mut imported = 0;
@@ -350,7 +350,7 @@ pub fn import_settings(
         let Ok(raw) = std::fs::read(dir.join(file_name(remote))) else {
             continue;
         };
-        let raw = with_openflux_names(job, file_name(remote), raw);
+        let raw = with_keyglass_names(job, file_name(remote), raw);
         match svc.device.put_file(remote, &raw) {
             Ok(()) => imported += 1,
             Err(e) => job
@@ -392,21 +392,21 @@ pub fn import_settings(
     Ok(())
 }
 
-/// A settings document with every factory keycode name replaced by its OpenFlux name (see
+/// A settings document with every factory keycode name replaced by its Keyglass name (see
 /// [`crate::codecs::keycode_names`]). A document without any, or that isn't JSON, is returned as
 /// it is.
-fn with_openflux_names(job: &mut JobRecord, name: &str, raw: Vec<u8>) -> Vec<u8> {
+fn with_keyglass_names(job: &mut JobRecord, name: &str, raw: Vec<u8>) -> Vec<u8> {
     let Ok(mut doc) = serde_json::from_slice::<serde_json::Value>(&raw) else {
         return raw;
     };
-    let renamed = crate::codecs::keycode_names::to_openflux(&mut doc);
+    let renamed = crate::codecs::keycode_names::to_keyglass(&mut doc);
     if renamed == 0 {
         return raw;
     }
     match serde_json::to_vec_pretty(&doc) {
         Ok(out) => {
             job.log.push(format!(
-                "{name}: {renamed} key names translated to OpenFlux's"
+                "{name}: {renamed} key names translated to Keyglass's"
             ));
             out
         }
@@ -414,20 +414,20 @@ fn with_openflux_names(job: &mut JobRecord, name: &str, raw: Vec<u8>) -> Vec<u8>
     }
 }
 
-/// Translates the firmware's keymap to OpenFlux's encoding (see [`super::keymap`]). The firmware
+/// Translates the firmware's keymap to Keyglass's encoding (see [`super::keymap`]). The firmware
 /// keymap survives the firmware flash, so it is read from the keyboard. With an imported keymap
 /// document, both are saved together; otherwise the firmware keymap is written through the
 /// keymap command and read back. Returns whether the keymap document was saved; when it can't
 /// be, the log says why and the document is copied as it is.
 ///
-/// The document's factory keycode names are translated to OpenFlux's first. A document that still
+/// The document's factory keycode names are translated to Keyglass's first. A document that still
 /// disagrees with the firmware keymap is rebuilt from it, keeping its layout and layer names: the
 /// firmware keymap is what the keyboard does.
 fn import_keymap(svc: &UpdateService, job: &mut JobRecord, dir: &std::path::Path) -> bool {
     let name = file_name(device_paths::KEYMAP_JSON);
     let document = std::fs::read(dir.join(name))
         .ok()
-        .map(|raw| with_openflux_names(job, name, raw))
+        .map(|raw| with_keyglass_names(job, name, raw))
         .and_then(|raw| serde_json::from_slice::<serde_json::Value>(&raw).ok());
     let blob = match svc.device.read_firmware_keymap() {
         Ok(b) => b,
@@ -446,7 +446,7 @@ fn import_keymap(svc: &UpdateService, job: &mut JobRecord, dir: &std::path::Path
     };
     if !t.unknown.is_empty() {
         job.log.push(format!(
-            "{} media keys have no OpenFlux equivalent and are left as they are",
+            "{} media keys have no Keyglass equivalent and are left as they are",
             t.unknown.len()
         ));
     }
@@ -568,9 +568,9 @@ pub fn factory_keymap(svc: &UpdateService, job: &mut JobRecord, i: usize) -> Res
     Ok(())
 }
 
-/// Stages the OpenFlux bridge and its launcher, taken from the verified bridge package, as the
-/// keyboard's rescue pair with a manifest, and reads everything back. An OpenFlux bridge package
-/// installed over a bridge that isn't OpenFlux's refuses to install without this pair, so a
+/// Stages the Keyglass bridge and its launcher, taken from the verified bridge package, as the
+/// keyboard's rescue pair with a manifest, and reads everything back. An Keyglass bridge package
+/// installed over a bridge that isn't Keyglass's refuses to install without this pair, so a
 /// failure here stops the conversion before anything is installed.
 pub fn stage_rescue(svc: &UpdateService, job: &mut JobRecord, i: usize) -> Result<(), JobError> {
     let recovery = "Nothing was installed. Reconnect the keyboard and convert again.";
@@ -597,7 +597,7 @@ pub fn stage_rescue(svc: &UpdateService, job: &mut JobRecord, i: usize) -> Resul
     ] {
         let name = file_name(src);
         let data = &files[src];
-        let (sha, _) = openflux_update::trust::sha256_hex(&data[..]).unwrap_or_default();
+        let (sha, _) = keyglass_update::trust::sha256_hex(&data[..]).unwrap_or_default();
         manifest.push_str(&format!("{sha}  {name}\n"));
         staged.push((format!("{}/{name}", device_paths::RESCUE_DIR), data.clone()));
     }
@@ -631,7 +631,7 @@ pub fn stage_rescue(svc: &UpdateService, job: &mut JobRecord, i: usize) -> Resul
         }
     }
     job.log
-        .push("Staged and verified the recovery copy of the OpenFlux bridge".into());
+        .push("Staged and verified the recovery copy of the Keyglass bridge".into());
     Ok(())
 }
 
@@ -651,7 +651,7 @@ pub fn stage_factory_restore(
     {
         return Ok(());
     }
-    let recovery = "The keyboard still runs OpenFlux. Reconnect it and try again.";
+    let recovery = "The keyboard still runs Keyglass. Reconnect it and try again.";
     let mut manifest = String::new();
     for c in [Component::Bridge, Component::Display] {
         let f = reference
@@ -680,7 +680,7 @@ pub fn stage_factory_restore(
                 recovery,
             )
         })?;
-        let (sha, _) = openflux_update::trust::sha256_hex(&back[..]).unwrap_or_default();
+        let (sha, _) = keyglass_update::trust::sha256_hex(&back[..]).unwrap_or_default();
         if sha != f.sha256 {
             return Err(JobError::new(
                 "verification",
@@ -756,7 +756,7 @@ pub fn await_factory(svc: &UpdateService, job: &mut JobRecord, i: usize) -> Resu
                 v.get("bridge").and_then(|x| x.as_str()).unwrap_or("nothing"),
                 v.get("display").and_then(|x| x.as_str()).unwrap_or("nothing")
             ),
-            "The keyboard keeps its OpenFlux bridge when the restore can't finish. Reconnect it and reset to factory again.",
+            "The keyboard keeps its Keyglass bridge when the restore can't finish. Reconnect it and reset to factory again.",
         ));
     }
     Ok(())

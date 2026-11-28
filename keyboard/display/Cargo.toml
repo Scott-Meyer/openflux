@@ -1,27 +1,27 @@
 [package]
-name = "openflux-display"
+name = "keyglass-display"
 version = "2.0.0-beta.1"
 edition.workspace = true
-description = "OpenFlux keyboard display: 1920x1080 Wayland renderer, also used for desktop previews"
+description = "Keyglass keyboard display: 1920x1080 Wayland renderer, also used for desktop previews"
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
 [lib]
-name = "openflux_display"
+name = "keyglass_display"
 path = "src/lib.rs"
 
 [[bin]]
-name = "openflux-display"
-path = "src/bin/openflux_display.rs"
+name = "keyglass-display"
+path = "src/bin/keyglass_display.rs"
 
 [dependencies]
 crc32fast = "1"
 fontdue = "0.9"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp"] }
-openflux-bus = { path = "../../crates/openflux-bus" }
-openflux-compositor = { path = "../../crates/openflux-compositor", default-features = false }
-openflux-modules = { path = "../../crates/openflux-modules" }
+keyglass-bus = { path = "../../crates/keyglass-bus" }
+keyglass-compositor = { path = "../../crates/keyglass-compositor", default-features = false }
+keyglass-modules = { path = "../../crates/keyglass-modules" }
 resvg = { version = "0.45", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

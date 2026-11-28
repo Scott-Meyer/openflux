@@ -7,15 +7,15 @@ import type {
   AssetCatalog,
   InstalledAppInfo,
   KeymapConfig,
-  OpenFluxConfig,
+  KeyglassConfig,
   ShortcutPackRow,
-} from "../types/openflux";
-import { humanKeyName } from "../types/openflux";
+} from "../types/keyglass";
+import { humanKeyName } from "../types/keyglass";
 
 interface ShortcutsProfilesPanelProps {
   client: DaemonClient;
   catalog: AssetCatalog | null;
-  config: OpenFluxConfig;
+  config: KeyglassConfig;
   activeLayer: number;
   selectedKeyIndex: number | null;
   keymapBlocked?: boolean;
@@ -350,8 +350,8 @@ export const ShortcutsProfilesPanel: React.FC<ShortcutsProfilesPanelProps> = ({
             className="btn-secondary"
             style={{ width: "100%" }}
             onClick={async () => {
-              const outPath = await client.pickSaveFile("Export Keyglass Bundle", "openflux-profile.openflux", [
-                "openflux",
+              const outPath = await client.pickSaveFile("Export Keyglass Bundle", "keyglass-profile.keyglass", [
+                "keyglass",
               ]);
               if (!outPath?.trim()) return;
               try {
@@ -370,7 +370,7 @@ export const ShortcutsProfilesPanel: React.FC<ShortcutsProfilesPanelProps> = ({
             className="btn-secondary"
             style={{ width: "100%" }}
             onClick={async () => {
-              const file = await client.pickFile("Import a Keyglass bundle or a .flux file", ["openflux", "flux"]);
+              const file = await client.pickFile("Import a Keyglass bundle or a .flux file", ["keyglass", "flux"]);
               if (!file?.trim()) return;
               try {
                 const res = await onImportBundle(file.trim());

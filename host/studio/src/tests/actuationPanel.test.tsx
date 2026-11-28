@@ -8,7 +8,7 @@ import {
   releasePointProblem,
   validReleasePoint,
 } from "../components/actuationTravel";
-import type { ActuationMode, OpenFluxConfig } from "../types/openflux";
+import type { ActuationMode, KeyglassConfig } from "../types/keyglass";
 import { TEST_CONFIG } from "./fixtures";
 
 afterEach(() => {
@@ -17,7 +17,7 @@ afterEach(() => {
 
 /** The panel over `modes` as the app holds it, sending every change to `sent`. */
 function Harness({ modes, sent }: { modes: ActuationMode[]; sent: ActuationMode[][] }) {
-  const [config, setConfig] = useState<OpenFluxConfig>({ ...structuredClone(TEST_CONFIG), actuationModes: modes });
+  const [config, setConfig] = useState<KeyglassConfig>({ ...structuredClone(TEST_CONFIG), actuationModes: modes });
   const [selected, setSelected] = useState<number | null>(0);
   return (
     <ActuationPanel

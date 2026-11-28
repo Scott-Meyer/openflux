@@ -73,7 +73,7 @@ pub trait CommandHooks {
 }
 
 fn sysroot_prefix() -> String {
-    std::env::var("OPENFLUX_SYSROOT").unwrap_or_default()
+    std::env::var("KEYGLASS_SYSROOT").unwrap_or_default()
 }
 
 #[allow(clippy::result_unit_err)]
@@ -733,7 +733,7 @@ pub fn bridge_handle_command(cmd: u8, payload: &[u8], hooks: &mut dyn CommandHoo
 }
 
 pub fn bridge_publish_trial_marker() {
-    let Ok(token) = std::env::var("OPENFLUX_TRIAL_ATTEMPT_ID") else {
+    let Ok(token) = std::env::var("KEYGLASS_TRIAL_ATTEMPT_ID") else {
         return;
     };
     let trimmed = token.trim();

@@ -358,7 +358,7 @@ mod tests {
         assert!(hung.is_none());
         assert!(started.elapsed() < Duration::from_secs(5));
         assert!(output_with_timeout(
-            &mut Command::new("/nonexistent/openflux-probe"),
+            &mut Command::new("/nonexistent/keyglass-probe"),
             Duration::from_secs(1)
         )
         .is_none());

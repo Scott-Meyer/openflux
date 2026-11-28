@@ -34,9 +34,9 @@ impl TrayController {
     pub fn new(mode: TrayMode, gui_binary: Option<String>) -> Self {
         let resolved_gui = gui_binary.or_else(|| {
             let name = if cfg!(windows) {
-                "openflux-studio.exe"
+                "keyglass-studio.exe"
             } else {
-                "openflux-studio"
+                "keyglass-studio"
             };
             Self::resolve_sibling_bin(name).map(|p| p.to_string_lossy().to_string())
         });
@@ -48,11 +48,11 @@ impl TrayController {
     }
 
     /// Shows the tray icon when the mode is `TrayMode::NativeStatus`:
-    /// - macOS: runs the `openflux-tray` helper next to the daemon (an AppKit `NSStatusBar` item).
+    /// - macOS: runs the `keyglass-tray` helper next to the daemon (an AppKit `NSStatusBar` item).
     /// - Windows: creates a `Shell_NotifyIconW` notification icon, removed when `running_flag`
     ///   clears.
     /// - Linux: runs `zenity --notification` when it is installed (or a helper named by
-    ///   `OPENFLUX_TRAY_BIN`); otherwise runs without an icon.
+    ///   `KEYGLASS_TRAY_BIN`); otherwise runs without an icon.
     ///
     /// `quit` is called when the user chooses Quit; it asks the daemon to stop, so keyboard work
     /// finishes first.
@@ -92,7 +92,7 @@ impl TrayController {
                 {
                     Ok(child) => *self.helper_child.lock().unwrap() = Some(child),
                     Err(_) => {
-                        eprintln!("openfluxd: no tray helper found; running without a tray icon")
+                        eprintln!("keyglassd: no tray helper found; running without a tray icon")
                     }
                 }
             }
@@ -101,15 +101,15 @@ impl TrayController {
 }
 
 impl TrayController {
-    /// Starts the `openflux-tray` helper (`OPENFLUX_TRAY_BIN`, else next to the daemon). `false`
+    /// Starts the `keyglass-tray` helper (`KEYGLASS_TRAY_BIN`, else next to the daemon). `false`
     /// when there is none or it couldn't be started.
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     fn spawn_helper(&self) -> bool {
-        let Some(tray_bin) = std::env::var("OPENFLUX_TRAY_BIN")
+        let Some(tray_bin) = std::env::var("KEYGLASS_TRAY_BIN")
             .ok()
             .filter(|s| !s.is_empty())
             .map(PathBuf::from)
-            .or_else(|| Self::resolve_sibling_bin("openflux-tray"))
+            .or_else(|| Self::resolve_sibling_bin("keyglass-tray"))
         else {
             return false;
         };
@@ -332,7 +332,7 @@ fn windows_tray_loop(
                     let _ = Command::new(b).spawn();
                 }
             } else if cmd == ID_QUIT {
-                // Close OpenFlux Studio cleanly if it is open, then stop the daemon.
+                // Close Keyglass Studio cleanly if it is open, then stop the daemon.
                 let title: Vec<u16> = "Keyglass Studio\0".encode_utf16().collect();
                 let studio_hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
                 if studio_hwnd != 0 {
@@ -366,7 +366,7 @@ fn windows_tray_loop(
     }
 
     unsafe {
-        let cls: Vec<u16> = "OpenFluxTrayClass\0".encode_utf16().collect();
+        let cls: Vec<u16> = "KeyglassTrayClass\0".encode_utf16().collect();
         let wc = WndClassW {
             style: 0,
             lpfn_wnd_proc: Some(wnd_proc),

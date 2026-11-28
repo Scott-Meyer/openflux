@@ -757,8 +757,8 @@ pub const CONSUMER_KIND: u32 = 0x4000_0000;
 /// The transparent key code: the key does what it does on the layer below.
 pub const TRANSPARENT_KEYCODE: u32 = 0x5000_0000;
 
-/// OpenFlux's own keyboard functions and their key codes.
-pub const OPENFLUX_KEYS: [(&str, u32); 14] = [
+/// Keyglass's own keyboard functions and their key codes.
+pub const KEYGLASS_KEYS: [(&str, u32); 14] = [
     ("KC_OF_BRIGHTNESS_UP", 0x5000_0002),
     ("KC_OF_BRIGHTNESS_DOWN", 0x5000_0003),
     ("KC_OF_PROFILE_CYCLE_NEXT", 0x5000_0004),
@@ -852,11 +852,11 @@ pub fn qmk_action_to_firmware_word(action: &serde_json::Value) -> Result<u32, Co
         other => {
             if let Some(usage) = crate::codecs::keycodes::keyboard_usage(other) {
                 usage
-            } else if let Some((_, w)) = OPENFLUX_KEYS.iter().find(|(name, _)| *name == other) {
+            } else if let Some((_, w)) = KEYGLASS_KEYS.iter().find(|(name, _)| *name == other) {
                 *w
             } else if let Some(usage) = crate::codecs::keycodes::consumer_usage(other) {
                 CONSUMER_KIND | usage
-            } else if let Some(of) = crate::codecs::keycode_names::openflux_name(other) {
+            } else if let Some(of) = crate::codecs::keycode_names::keyglass_name(other) {
                 return Err(CodecError(format!(
                     "Unsupported keyCode for the firmware keymap: {other} (the factory software's name for {of})"
                 )));
@@ -1107,7 +1107,7 @@ pub fn verify_keymap_matches_blob(
 pub fn firmware_word_to_action(word: u32) -> Result<serde_json::Value, CodecError> {
     let unnamed = || {
         CodecError(format!(
-            "The firmware keymap has a key code OpenFlux can't name: 0x{word:08X}"
+            "The firmware keymap has a key code Keyglass can't name: 0x{word:08X}"
         ))
     };
     let key = |name: &str, mods: u32| {
@@ -1121,7 +1121,7 @@ pub fn firmware_word_to_action(word: u32) -> Result<serde_json::Value, CodecErro
         0xF if word == NONE_KEYCODE => key("KC_NO", 0),
         0x5 if word == TRANSPARENT_KEYCODE => key("KC_TRANSPARENT", 0),
         0x5 => {
-            let (name, _) = OPENFLUX_KEYS
+            let (name, _) = KEYGLASS_KEYS
                 .iter()
                 .find(|(_, w)| *w == word)
                 .ok_or_else(unnamed)?;
@@ -1182,7 +1182,7 @@ pub fn keymap_json_from_blob(
             87 => "iso",
             n => {
                 return Err(CodecError(format!(
-                    "The firmware keymap has a layout with {n} keys; OpenFlux knows 85 (ANSI) and 87 (ISO)"
+                    "The firmware keymap has a layout with {n} keys; Keyglass knows 85 (ANSI) and 87 (ISO)"
                 )))
             }
         };
@@ -1559,14 +1559,14 @@ mod tests {
     const DEFAULT_KEYMAP_JSON: &str = include_str!("../../tests/fixtures/default_keymap.json");
     const DEFAULT_KEYMAP_BIN: &[u8] = include_bytes!("../../tests/fixtures/default_keymap.bin");
 
-    /// The fixtures are OpenFlux's default keymap and its firmware encoding. Regenerate them with
-    /// `OPENFLUX_REGENERATE_FIXTURES=1 cargo test -p openfluxd default_keymap_fixtures`.
+    /// The fixtures are Keyglass's default keymap and its firmware encoding. Regenerate them with
+    /// `KEYGLASS_REGENERATE_FIXTURES=1 cargo test -p keyglassd default_keymap_fixtures`.
     #[test]
     fn default_keymap_fixtures_match_the_encoder() {
         let km = crate::defaults::default_keymap();
         let json = serde_json::to_string_pretty(&km).unwrap() + "\n";
         let bin = encode_keymap_json_to_firmware_blob(&km, None, None).unwrap();
-        if std::env::var("OPENFLUX_REGENERATE_FIXTURES").as_deref() == Ok("1") {
+        if std::env::var("KEYGLASS_REGENERATE_FIXTURES").as_deref() == Ok("1") {
             let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
             std::fs::write(dir.join("default_keymap.json"), &json).unwrap();
             std::fs::write(dir.join("default_keymap.bin"), &bin).unwrap();
@@ -2497,13 +2497,13 @@ mod tests {
     }
 
     /// `tests/fixtures/actuation_words.json` is what this codec makes of its words and of
-    /// `default_keymap.bin`; `tools/openflux-dev/tests/test_codecs.py` checks the Python codec
+    /// `default_keymap.bin`; `tools/keyglass-dev/tests/test_codecs.py` checks the Python codec
     /// against the same file. Regenerate it with
-    /// `OPENFLUX_REGENERATE_FIXTURES=1 cargo test -p openfluxd actuation_words_fixture`.
+    /// `KEYGLASS_REGENERATE_FIXTURES=1 cargo test -p keyglassd actuation_words_fixture`.
     #[test]
     fn actuation_words_fixture_matches_the_codec() {
         let fixture = actuation_words_fixture();
-        if std::env::var("OPENFLUX_REGENERATE_FIXTURES").as_deref() == Ok("1") {
+        if std::env::var("KEYGLASS_REGENERATE_FIXTURES").as_deref() == Ok("1") {
             let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("tests/fixtures/actuation_words.json");
             std::fs::write(path, serde_json::to_string_pretty(&fixture).unwrap() + "\n").unwrap();

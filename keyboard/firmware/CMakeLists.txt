@@ -11,12 +11,12 @@ else()
     message(FATAL_ERROR "PICO_SDK_PATH must be set for RP2040 firmware build")
 endif()
 
-set(OPENFLUX_FIRMWARE_VERSION "2.0.0-beta.1") # x-release-please-version
-string(REGEX MATCH "^[0-9]+(\\.[0-9]+)*" _fw_cmake_version "${OPENFLUX_FIRMWARE_VERSION}")
+set(KEYGLASS_FIRMWARE_VERSION "2.0.0-beta.1") # x-release-please-version
+string(REGEX MATCH "^[0-9]+(\\.[0-9]+)*" _fw_cmake_version "${KEYGLASS_FIRMWARE_VERSION}")
 if("${_fw_cmake_version}" STREQUAL "")
-    message(FATAL_ERROR "Invalid OPENFLUX_FIRMWARE_VERSION: ${OPENFLUX_FIRMWARE_VERSION}")
+    message(FATAL_ERROR "Invalid KEYGLASS_FIRMWARE_VERSION: ${KEYGLASS_FIRMWARE_VERSION}")
 endif()
-project(openflux_firmware VERSION ${_fw_cmake_version} LANGUAGES C CXX ASM)
+project(keyglass_firmware VERSION ${_fw_cmake_version} LANGUAGES C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -29,7 +29,7 @@ endif()
 
 set(QMK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/vial-qmk")
 
-add_library(openflux_qmk STATIC
+add_library(keyglass_qmk STATIC
     ${QMK_DIR}/quantum/action.c
     ${QMK_DIR}/quantum/action_layer.c
     ${QMK_DIR}/quantum/action_tapping.c
@@ -74,7 +74,7 @@ add_library(openflux_qmk STATIC
     src/qmk/fw_qmk.c
 )
 
-target_include_directories(openflux_qmk PRIVATE
+target_include_directories(keyglass_qmk PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/qmk/qmk_platform
     ${CMAKE_CURRENT_SOURCE_DIR}/src/qmk
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -91,13 +91,13 @@ target_include_directories(openflux_qmk PRIVATE
     ${QMK_DIR}/platforms
 )
 
-target_compile_definitions(openflux_qmk PRIVATE
-    FW_PROJECT_VERSION="${OPENFLUX_FIRMWARE_VERSION}"
-    QMK_KEYBOARD_H="openflux_qmk.h"
+target_compile_definitions(keyglass_qmk PRIVATE
+    FW_PROJECT_VERSION="${KEYGLASS_FIRMWARE_VERSION}"
+    QMK_KEYBOARD_H="keyglass_qmk.h"
     KEYMAP_C="fw_qmk_keymap.c"
 )
 
-target_compile_options(openflux_qmk PRIVATE
+target_compile_options(keyglass_qmk PRIVATE
     -std=gnu11
     -Wall
     -Wno-unused-parameter
@@ -107,7 +107,7 @@ target_compile_options(openflux_qmk PRIVATE
     -include ${CMAKE_CURRENT_SOURCE_DIR}/src/qmk/qmk_platform/config.h
 )
 
-add_executable(openflux_firmware
+add_executable(keyglass_firmware
     src/rp2040_main.c
     src/fw_calibration.c
     src/fw_classic_row.c
@@ -132,18 +132,18 @@ add_executable(openflux_firmware
     ${LFS_DIR}/lfs_util.c
 )
 
-target_include_directories(openflux_firmware PRIVATE
+target_include_directories(keyglass_firmware PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${LFS_DIR}
 )
 
-set(FW_VERSION "${OPENFLUX_FIRMWARE_VERSION}")
-if(DEFINED OPENFLUX_VERSION AND NOT "${OPENFLUX_VERSION}" STREQUAL "")
-    set(FW_VERSION "${OPENFLUX_VERSION}")
+set(FW_VERSION "${KEYGLASS_FIRMWARE_VERSION}")
+if(DEFINED KEYGLASS_VERSION AND NOT "${KEYGLASS_VERSION}" STREQUAL "")
+    set(FW_VERSION "${KEYGLASS_VERSION}")
 endif()
 
 option(FW_ENABLE_PRESS_REFINEMENT "Run installed press-refinement data in the scan loop" ON)
-target_compile_definitions(openflux_firmware PRIVATE
+target_compile_definitions(keyglass_firmware PRIVATE
     FW_PROJECT_VERSION="${FW_VERSION}"
     # Reserve all of core 0's SCRATCH_Y bank. The MPU protects the low 32 bytes.
     PICO_STACK_SIZE=4096
@@ -151,11 +151,11 @@ target_compile_definitions(openflux_firmware PRIVATE
     FW_ENABLE_PRESS_REFINEMENT=$<BOOL:${FW_ENABLE_PRESS_REFINEMENT}>
 )
 
-target_compile_options(openflux_firmware PRIVATE -Wall -Wextra -Werror)
+target_compile_options(keyglass_firmware PRIVATE -Wall -Wextra -Werror)
 set_source_files_properties(${LFS_DIR}/lfs.c ${LFS_DIR}/lfs_util.c PROPERTIES COMPILE_OPTIONS "-Wno-unused-function")
 
-target_link_libraries(openflux_firmware
-    openflux_qmk
+target_link_libraries(keyglass_firmware
+    keyglass_qmk
     pico_stdlib
     hardware_adc
     hardware_flash
@@ -166,14 +166,14 @@ target_link_libraries(openflux_firmware
     tinyusb_board
 )
 
-pico_add_extra_outputs(openflux_firmware)
+pico_add_extra_outputs(keyglass_firmware)
 
 # The image must end before the calibration file system, which starts 15 MiB into flash
 # (FW_LFS_OFFSET_BYTES in src/fw_protocol.h), at XIP address 0x10000000 + 0x00F00000.
-add_custom_command(TARGET openflux_firmware POST_BUILD
+add_custom_command(TARGET keyglass_firmware POST_BUILD
     COMMAND ${CMAKE_COMMAND}
         -DNM=${CMAKE_NM}
-        -DELF=$<TARGET_FILE:openflux_firmware>
+        -DELF=$<TARGET_FILE:keyglass_firmware>
         -DLIMIT=0x10F00000
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_flash_end.cmake
     VERBATIM

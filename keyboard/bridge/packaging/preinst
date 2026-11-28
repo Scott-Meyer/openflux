@@ -1,18 +1,18 @@
 #!/bin/sh
 set -e
 
-ROOT="${OPENFLUX_SYSROOT:-}"
+ROOT="${KEYGLASS_SYSROOT:-}"
 OS_BOOT_LAUNCHER="${ROOT}/usr/bin/flux-weston-autolaunch.sh"
-RECOVERY_INIT="${ROOT}/etc/init.d/S05openflux-recovery"
-ROLLBACK_DIR="${ROOT}/home/root/.openflux/rollback/bridge"
+RECOVERY_INIT="${ROOT}/etc/init.d/S05keyglass-recovery"
+ROLLBACK_DIR="${ROOT}/home/root/.keyglass/rollback/bridge"
 ARMED_FILE="${ROLLBACK_DIR}/armed"
-RESCUE_STAGE_DIR="${ROOT}/home/root/.openflux/rescue"
-STAGED_RESCUE_BRIDGE="${RESCUE_STAGE_DIR}/openflux-bridge"
-STAGED_RESCUE_LAUNCHER="${RESCUE_STAGE_DIR}/openflux-autolaunch.sh"
+RESCUE_STAGE_DIR="${ROOT}/home/root/.keyglass/rescue"
+STAGED_RESCUE_BRIDGE="${RESCUE_STAGE_DIR}/keyglass-bridge"
+STAGED_RESCUE_LAUNCHER="${RESCUE_STAGE_DIR}/keyglass-autolaunch.sh"
 STAGED_RESCUE_MANIFEST="${RESCUE_STAGE_DIR}/manifest.sha256"
 
 flush_fs() {
-    [ "${OPENFLUX_SKIP_SYNC:-0}" = "1" ] && return 0
+    [ "${KEYGLASS_SKIP_SYNC:-0}" = "1" ] && return 0
     sync
 }
 
@@ -46,7 +46,7 @@ verify_rescue_manifest_entry() {
 
 # The package build substitutes the version. A missing or malformed one is recorded as "unknown",
 # so the new bridge's trial marker never matches and the install isn't confirmed.
-TARGET_VERSION="${OPENFLUX_TARGET_VERSION:-@OPENFLUX_VERSION@}"
+TARGET_VERSION="${KEYGLASS_TARGET_VERSION:-@KEYGLASS_VERSION@}"
 case "$TARGET_VERSION" in
     *[!0-9A-Za-z._+-]*|*@*|"") TARGET_VERSION="unknown" ;;
 esac
@@ -60,7 +60,7 @@ write_attempt_metadata() {
     if [ -z "$ATTEMPT_ID" ]; then
         ATTEMPT_ID=$(printf '%x%x' "$(date +%s)" "$$")
     fi
-    printf 'attempt_id=%s\nversion=openflux-bridge %s\n' "$ATTEMPT_ID" "$TARGET_VERSION" > "${ROLLBACK_DIR}/attempt.tmp"
+    printf 'attempt_id=%s\nversion=keyglass-bridge %s\n' "$ATTEMPT_ID" "$TARGET_VERSION" > "${ROLLBACK_DIR}/attempt.tmp"
     mv -f "${ROLLBACK_DIR}/attempt.tmp" "${ROLLBACK_DIR}/attempt"
     flush_fs
 }
@@ -75,16 +75,16 @@ case "$mode" in
     *) exit 0 ;;
 esac
 
-ROOT="${OPENFLUX_SYSROOT:-}"
-ROLLBACK_DIR="${ROOT}/home/root/.openflux/rollback/bridge"
+ROOT="${KEYGLASS_SYSROOT:-}"
+ROLLBACK_DIR="${ROOT}/home/root/.keyglass/rollback/bridge"
 ARMED_FILE="${ROLLBACK_DIR}/armed"
 OS_BOOT_LAUNCHER="${ROOT}/usr/bin/flux-weston-autolaunch.sh"
-BRIDGE_BIN="${ROOT}/usr/lib/openflux/bridge/openflux-bridge"
-BRIDGE_LAUNCHER="${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh"
-LOG_DIR="${ROOT}/home/root/openflux/logs"
+BRIDGE_BIN="${ROOT}/usr/lib/keyglass/bridge/keyglass-bridge"
+BRIDGE_LAUNCHER="${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh"
+LOG_DIR="${ROOT}/home/root/keyglass/logs"
 
 if [ ! -f "$ARMED_FILE" ]; then
-    rm -f "${ROOT}/etc/init.d/S05openflux-recovery"
+    rm -f "${ROOT}/etc/init.d/S05keyglass-recovery"
     if [ "$mode" = "start-and-exec" ] && [ -x "$BRIDGE_LAUNCHER" ]; then
         exec "$BRIDGE_LAUNCHER"
     fi
@@ -92,7 +92,7 @@ if [ ! -f "$ARMED_FILE" ]; then
 fi
 
 flush_fs() {
-    [ "${OPENFLUX_SKIP_SYNC:-0}" = "1" ] && return 0
+    [ "${KEYGLASS_SKIP_SYNC:-0}" = "1" ] && return 0
     sync
 }
 
@@ -109,22 +109,22 @@ atomic_copy() {
     return 0
 }
 
-if [ "${OPENFLUX_TRIAL_LAUNCH:-0}" = "1" ]; then
+if [ "${KEYGLASS_TRIAL_LAUNCH:-0}" = "1" ]; then
     exit 0
 fi
 
 mkdir -p "$LOG_DIR" 2>/dev/null || true
-if [ -f "${ROLLBACK_DIR}/openflux-bridge" ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - First-conversion S05openflux-recovery restoring rescue OpenFlux bridge" >> "${LOG_DIR}/autolaunch.log"
-    atomic_copy "${ROLLBACK_DIR}/openflux-bridge" "$BRIDGE_BIN" 1 || exit 1
-    if [ -f "${ROLLBACK_DIR}/openflux-autolaunch.sh" ]; then
-        atomic_copy "${ROLLBACK_DIR}/openflux-autolaunch.sh" "$BRIDGE_LAUNCHER" 1 || exit 1
+if [ -f "${ROLLBACK_DIR}/keyglass-bridge" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - First-conversion S05keyglass-recovery restoring rescue Keyglass bridge" >> "${LOG_DIR}/autolaunch.log"
+    atomic_copy "${ROLLBACK_DIR}/keyglass-bridge" "$BRIDGE_BIN" 1 || exit 1
+    if [ -f "${ROLLBACK_DIR}/keyglass-autolaunch.sh" ]; then
+        atomic_copy "${ROLLBACK_DIR}/keyglass-autolaunch.sh" "$BRIDGE_LAUNCHER" 1 || exit 1
     fi
     flush_fs || exit 1
-    if [ -f "${ROLLBACK_DIR}/openflux-autolaunch.sh" ]; then
+    if [ -f "${ROLLBACK_DIR}/keyglass-autolaunch.sh" ]; then
         atomic_copy "$BRIDGE_LAUNCHER" "$OS_BOOT_LAUNCHER" 1 && flush_fs || exit 1
     fi
-    rm -f "$ARMED_FILE" "${ROOT}/etc/init.d/S05openflux-recovery"
+    rm -f "$ARMED_FILE" "${ROOT}/etc/init.d/S05keyglass-recovery"
     flush_fs || true
 fi
 
@@ -138,16 +138,16 @@ EOF
 
     cat > "${OS_BOOT_LAUNCHER}.tmp" <<'EOF'
 #!/bin/sh
-ROOT="${OPENFLUX_SYSROOT:-}"
-RECOVERY_INIT="${ROOT}/etc/init.d/S05openflux-recovery"
-ARMED_FILE="${ROOT}/home/root/.openflux/rollback/bridge/armed"
+ROOT="${KEYGLASS_SYSROOT:-}"
+RECOVERY_INIT="${ROOT}/etc/init.d/S05keyglass-recovery"
+ARMED_FILE="${ROOT}/home/root/.keyglass/rollback/bridge/armed"
 
-if [ "${OPENFLUX_TRIAL_LAUNCH:-0}" != "1" ] && [ -f "$ARMED_FILE" ] && [ -x "$RECOVERY_INIT" ]; then
+if [ "${KEYGLASS_TRIAL_LAUNCH:-0}" != "1" ] && [ -f "$ARMED_FILE" ] && [ -x "$RECOVERY_INIT" ]; then
     exec "$RECOVERY_INIT" start-and-exec
 fi
 
-if [ -x "${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh" ]; then
-    exec "${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh"
+if [ -x "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" ]; then
+    exec "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh"
 fi
 EOF
     chmod +x "${OS_BOOT_LAUNCHER}.tmp"
@@ -160,7 +160,7 @@ if [ -d "$ROLLBACK_DIR" ]; then
     w_wait=0
     while [ "$w_wait" -lt 10 ]; do
         pgrep -f "${ROLLBACK_DIR}/watchdog.sh" >/dev/null 2>&1 || break
-        sleep "${OPENFLUX_PREINST_SLEEP:-0.1}"
+        sleep "${KEYGLASS_PREINST_SLEEP:-0.1}"
         w_wait=$((w_wait + 1))
     done
     pkill -KILL -f "${ROLLBACK_DIR}/watchdog.sh" 2>/dev/null || true
@@ -168,18 +168,18 @@ fi
 
 # Preserve existing rollback snapshots across interrupted/retried installs, while rotating attempt metadata.
 if [ -f "$ARMED_FILE" ]; then
-    if [ -f "${ROLLBACK_DIR}/openflux-bridge" ]; then
+    if [ -f "${ROLLBACK_DIR}/keyglass-bridge" ]; then
         write_attempt_metadata
     fi
     exit 0
 fi
 
 FIRST_CONV=0
-if [ ! -f "${ROOT}/usr/lib/openflux/bridge/openflux-bridge" ]; then
+if [ ! -f "${ROOT}/usr/lib/keyglass/bridge/keyglass-bridge" ]; then
     FIRST_CONV=1
-    # First conversion requires a verified staged OpenFlux rescue pair before modifying any state.
+    # First conversion requires a verified staged Keyglass rescue pair before modifying any state.
     if [ ! -s "$STAGED_RESCUE_BRIDGE" ] || [ ! -s "$STAGED_RESCUE_LAUNCHER" ] || [ ! -s "$STAGED_RESCUE_MANIFEST" ]; then
-        echo "ERROR: staged OpenFlux rescue pair and manifest.sha256 required in ${RESCUE_STAGE_DIR}" >&2
+        echo "ERROR: staged Keyglass rescue pair and manifest.sha256 required in ${RESCUE_STAGE_DIR}" >&2
         exit 1
     fi
     sha_cmd=""
@@ -194,7 +194,7 @@ if [ ! -f "${ROOT}/usr/lib/openflux/bridge/openflux-bridge" ]; then
     if ! (cd "$RESCUE_STAGE_DIR" && $sha_cmd -c "$STAGED_RESCUE_MANIFEST" >/dev/null 2>&1) \
         || ! verify_rescue_manifest_entry "$STAGED_RESCUE_BRIDGE" \
         || ! verify_rescue_manifest_entry "$STAGED_RESCUE_LAUNCHER"; then
-        echo "ERROR: staged OpenFlux rescue pair failed checksum verification; aborting install" >&2
+        echo "ERROR: staged Keyglass rescue pair failed checksum verification; aborting install" >&2
         exit 1
     fi
 fi
@@ -203,21 +203,21 @@ rm -rf "$ROLLBACK_DIR"
 mkdir -p "$ROLLBACK_DIR"
 
 if [ "$FIRST_CONV" -eq 0 ]; then
-    cp -p "${ROOT}/usr/lib/openflux/bridge/openflux-bridge" "${ROLLBACK_DIR}/openflux-bridge"
-    if [ -f "${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh" ]; then
-        cp -p "${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh" "${ROLLBACK_DIR}/openflux-autolaunch.sh"
+    cp -p "${ROOT}/usr/lib/keyglass/bridge/keyglass-bridge" "${ROLLBACK_DIR}/keyglass-bridge"
+    if [ -f "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" ]; then
+        cp -p "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" "${ROLLBACK_DIR}/keyglass-autolaunch.sh"
     fi
-    if [ -f "${ROOT}/home/root/.openflux/versions/bridge" ]; then
-        cp -p "${ROOT}/home/root/.openflux/versions/bridge" "${ROLLBACK_DIR}/bridge.version"
+    if [ -f "${ROOT}/home/root/.keyglass/versions/bridge" ]; then
+        cp -p "${ROOT}/home/root/.keyglass/versions/bridge" "${ROLLBACK_DIR}/bridge.version"
     fi
 else
-    cp -p "$STAGED_RESCUE_BRIDGE" "${ROLLBACK_DIR}/openflux-bridge"
-    cp -p "$STAGED_RESCUE_LAUNCHER" "${ROLLBACK_DIR}/openflux-autolaunch.sh"
+    cp -p "$STAGED_RESCUE_BRIDGE" "${ROLLBACK_DIR}/keyglass-bridge"
+    cp -p "$STAGED_RESCUE_LAUNCHER" "${ROLLBACK_DIR}/keyglass-autolaunch.sh"
 fi
 
 flush_fs
 
-if [ "${OPENFLUX_REQUIRE_USB_CONFIRM:-1}" != "0" ]; then
+if [ "${KEYGLASS_REQUIRE_USB_CONFIRM:-1}" != "0" ]; then
     write_attempt_metadata
     echo "pending-host-usb-confirm" > "$ARMED_FILE"
     flush_fs

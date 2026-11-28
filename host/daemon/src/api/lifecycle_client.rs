@@ -1,4 +1,4 @@
-//! Client side of `openfluxd --request-restart` and `--request-stop`.
+//! Client side of `keyglassd --request-restart` and `--request-stop`.
 //!
 //! The command finds the running daemon through its discovery file (`config/keys.json` in the data
 //! directory), authenticates with the owner-only enrollment secret and calls
@@ -240,7 +240,7 @@ fn dechunk(mut data: &[u8]) -> Option<Vec<u8>> {
 }
 
 fn read_secret(data_dir: &Path) -> Result<String, String> {
-    if let Ok(s) = std::env::var("OPENFLUX_ENROLLMENT_SECRET") {
+    if let Ok(s) = std::env::var("KEYGLASS_ENROLLMENT_SECRET") {
         if !s.is_empty() {
             return Ok(s);
         }

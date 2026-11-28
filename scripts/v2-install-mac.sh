@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Fast local build + replace-install of OpenFlux v2 (Studio.app + openfluxd + fluxctl) on macOS.
-# Removes any installed v1 app, installs fresh v2 into ~/Applications/OpenFlux Studio.app and
+# Fast local build + replace-install of Keyglass v2 (Studio.app + keyglassd + fluxctl) on macOS.
+# Removes any installed v1 app, installs fresh v2 into ~/Applications/Keyglass Studio.app and
 # ~/.local/bin/fluxctl, and launches the app ready for dogfooding.
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_DEST="$HOME/Applications/OpenFlux Studio.app"
+APP_DEST="$HOME/Applications/Keyglass Studio.app"
 CLI_DEST="$HOME/.local/bin/fluxctl"
 NO_LAUNCH=0
 
@@ -17,24 +17,24 @@ for arg in "$@"; do
   esac
 done
 
-echo "==> [1/6] Building OpenFlux Studio v2 frontend..."
+echo "==> [1/6] Building Keyglass Studio v2 frontend..."
 (cd "$REPO/host/studio" && npm run build)
 
-echo "==> [2/6] Building release Rust binaries (openfluxd, openflux-studio, fluxctl)..."
-(cd "$REPO" && cargo build --release -p openfluxd -p openflux-studio -p fluxctl)
+echo "==> [2/6] Building release Rust binaries (keyglassd, keyglass-studio, fluxctl)..."
+(cd "$REPO" && cargo build --release -p keyglassd -p keyglass-studio -p fluxctl)
 
 # Ensure macOS Swift helpers exist in target/release
-if [ ! -x "$REPO/target/release/openflux-tray" ] || [ ! -x "$REPO/target/release/openflux-sensors" ]; then
+if [ ! -x "$REPO/target/release/keyglass-tray" ] || [ ! -x "$REPO/target/release/keyglass-sensors" ]; then
   echo "==> Building macOS Swift helpers..."
   make -C "$REPO/host/macos-helpers"
-  cp "$REPO/host/macos-helpers/build/openflux-tray" "$REPO/target/release/openflux-tray"
-  cp "$REPO/host/macos-helpers/build/openflux-sensors" "$REPO/target/release/openflux-sensors"
+  cp "$REPO/host/macos-helpers/build/keyglass-tray" "$REPO/target/release/keyglass-tray"
+  cp "$REPO/host/macos-helpers/build/keyglass-sensors" "$REPO/target/release/keyglass-sensors"
 fi
 
-echo "==> [3/6] Staging OpenFlux Studio v2.app bundle..."
-STAGING="$(mktemp -d /tmp/openflux-v2-app-XXXXXX)"
+echo "==> [3/6] Staging Keyglass Studio v2.app bundle..."
+STAGING="$(mktemp -d /tmp/keyglass-v2-app-XXXXXX)"
 trap 'rm -rf "$STAGING"' EXIT
-APP_STAGE="$STAGING/OpenFlux Studio.app"
+APP_STAGE="$STAGING/Keyglass Studio.app"
 mkdir -p "$APP_STAGE/Contents/MacOS" "$APP_STAGE/Contents/Resources"
 
 cat > "$APP_STAGE/Contents/Info.plist" <<'PLIST'
@@ -45,9 +45,9 @@ cat > "$APP_STAGE/Contents/Info.plist" <<'PLIST'
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
 	<key>CFBundleExecutable</key>
-	<string>openflux-studio</string>
+	<string>keyglass-studio</string>
 	<key>CFBundleIdentifier</key>
-	<string>org.openflux.studio</string>
+	<string>dev.keyglass.studio</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleDisplayName</key>
@@ -74,13 +74,13 @@ cat > "$APP_STAGE/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-cp "$REPO/target/release/openflux-studio" "$APP_STAGE/Contents/MacOS/openflux-studio"
-cp "$REPO/target/release/openfluxd"       "$APP_STAGE/Contents/MacOS/openfluxd"
-cp "$REPO/target/release/openflux-tray"   "$APP_STAGE/Contents/MacOS/openflux-tray"
-cp "$REPO/target/release/openflux-sensors" "$APP_STAGE/Contents/MacOS/openflux-sensors"
+cp "$REPO/target/release/keyglass-studio" "$APP_STAGE/Contents/MacOS/keyglass-studio"
+cp "$REPO/target/release/keyglassd"       "$APP_STAGE/Contents/MacOS/keyglassd"
+cp "$REPO/target/release/keyglass-tray"   "$APP_STAGE/Contents/MacOS/keyglass-tray"
+cp "$REPO/target/release/keyglass-sensors" "$APP_STAGE/Contents/MacOS/keyglass-sensors"
 
 # Carry over ffmpeg/ffprobe sidecars from target/release or existing app bundle
-for tool in openflux-ffmpeg openflux-ffprobe; do
+for tool in keyglass-ffmpeg keyglass-ffprobe; do
   if [ -x "$REPO/target/release/$tool" ]; then
     cp "$REPO/target/release/$tool" "$APP_STAGE/Contents/MacOS/$tool"
   elif [ -x "$APP_DEST/Contents/MacOS/$tool" ]; then
@@ -95,14 +95,14 @@ cp -R "$REPO/modules" "$APP_STAGE/Contents/Resources/modules"
 
 codesign --force --deep --sign - "$APP_STAGE" >/dev/null 2>&1 || true
 
-echo "==> [4/6] Stopping running OpenFlux v1/v2 processes and removing old app..."
-pkill -f "OpenFlux Studio.app/Contents/MacOS/openflux-studio" 2>/dev/null || true
-pkill -f "OpenFlux Studio.app/Contents/MacOS/openflux-tray" 2>/dev/null || true
-pkill -f "OpenFlux Studio.app/Contents/MacOS/openfluxd" 2>/dev/null || true
-pkill -f "OpenFlux Studio.app/Contents/MacOS/openflux-sensors" 2>/dev/null || true
+echo "==> [4/6] Stopping running Keyglass v1/v2 processes and removing old app..."
+pkill -f "Keyglass Studio.app/Contents/MacOS/keyglass-studio" 2>/dev/null || true
+pkill -f "Keyglass Studio.app/Contents/MacOS/keyglass-tray" 2>/dev/null || true
+pkill -f "Keyglass Studio.app/Contents/MacOS/keyglassd" 2>/dev/null || true
+pkill -f "Keyglass Studio.app/Contents/MacOS/keyglass-sensors" 2>/dev/null || true
 sleep 1
 # Ensure nothing lingers
-pkill -9 -f "OpenFlux Studio.app/Contents/MacOS/openflux" 2>/dev/null || true
+pkill -9 -f "Keyglass Studio.app/Contents/MacOS/keyglass" 2>/dev/null || true
 sleep 0.3
 
 mkdir -p "$HOME/Applications" "$HOME/.local/bin"
@@ -114,17 +114,17 @@ cp "$REPO/target/release/fluxctl" "$CLI_DEST"
 chmod 0755 "$CLI_DEST"
 
 if [ "$NO_LAUNCH" -eq 0 ]; then
-  echo "==> [6/6] Launching OpenFlux Studio v2..."
+  echo "==> [6/6] Launching Keyglass Studio v2..."
   open "$APP_DEST"
   for _ in $(seq 1 30); do
     sleep 0.4
-    if "$CLI_DEST" status 2>/dev/null | grep -q "CONNECTED to live openfluxd"; then
+    if "$CLI_DEST" status 2>/dev/null | grep -q "CONNECTED to live keyglassd"; then
       echo ""
       "$CLI_DEST" status
       exit 0
     fi
   done
-  echo "Launched OpenFlux Studio.app (daemon still initializing; run 'fluxctl status' in a moment)."
+  echo "Launched Keyglass Studio.app (daemon still initializing; run 'fluxctl status' in a moment)."
 else
   echo "==> [6/6] Installed without launching (--no-launch)."
 fi

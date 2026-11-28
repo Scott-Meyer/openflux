@@ -1,5 +1,5 @@
 //! Hardware video decode via Rockchip `librockchip_mpp.so.1` (`/dev/mpp_service`)
-//! fed by an Annex-B elementary stream from `openflux-ffmpeg` (packet copy, no software decode: `-c:v copy -bsf:v *_mp4toannexb`).
+//! fed by an Annex-B elementary stream from `keyglass-ffmpeg` (packet copy, no software decode: `-c:v copy -bsf:v *_mp4toannexb`).
 //! Outputs tight linear `NV12` (`Y` WxH + `UV` Wx(H/2)) frames at the clip's native frame rate.
 
 use std::ffi::{c_char, c_void, CString};
@@ -78,7 +78,7 @@ impl MppLib {
             for name in [
                 "librockchip_mpp.so.1\0",
                 "/usr/lib/librockchip_mpp.so.1\0",
-                "/usr/lib/openflux/display/lib/librockchip_mpp.so.1\0",
+                "/usr/lib/keyglass/display/lib/librockchip_mpp.so.1\0",
             ] {
                 h = libc::dlopen(name.as_ptr() as *const c_char, libc::RTLD_NOW);
                 if !h.is_null() {
@@ -452,7 +452,7 @@ pub fn open_rkmpp_stream(path: &str) -> Option<RkmppVideoStream> {
                 let put_pkt = (*mpi).decode_put_packet;
                 let get_frm = (*mpi).decode_get_frame;
                 let ctrl_fn = (*mpi).control;
-                let caller = CString::new("openflux_rkmpp").unwrap();
+                let caller = CString::new("keyglass_rkmpp").unwrap();
 
                 let mut chunk = vec![0u8; 64 * 1024];
                 let mut frame_idx: u64 = 0;
@@ -653,7 +653,7 @@ impl LiveRkmppDecoder {
                 let put_pkt = (*mpi).decode_put_packet;
                 let get_frm = (*mpi).decode_get_frame;
                 let ctrl_fn = (*mpi).control;
-                let caller = CString::new("openflux_rkmpp_live").unwrap();
+                let caller = CString::new("keyglass_rkmpp_live").unwrap();
                 let mut frame_idx = 0u64;
 
                 while !stop_bg.load(Ordering::SeqCst) {

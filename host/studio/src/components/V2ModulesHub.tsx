@@ -304,7 +304,7 @@ export const V2ModulesHub: React.FC<V2ModulesHubProps> = ({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "openflux-v2-preset.json";
+      a.download = "keyglass-v2-preset.json";
       a.click();
       URL.revokeObjectURL(url);
       setNotice("Exported secret-free setup preset JSON.");

@@ -1,4 +1,4 @@
-//! Self-signed TLS for the local API (`0600` private key), OpenFlux's own discovery file
+//! Self-signed TLS for the local API (`0600` private key), Keyglass's own discovery file
 //! (`keys.json` in the data directory) and the connection-bounded HTTPS/WSS acceptor.
 
 use axum::Router;

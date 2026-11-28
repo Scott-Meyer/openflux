@@ -192,7 +192,7 @@ int fw_runtime_export_profile_settings(const fw_runtime_t *rt, uint8_t *out, siz
 /* Applies active profile index (updating active_actuation_mode and active_layer_bitfield). */
 int fw_runtime_set_active_profile(fw_runtime_t *rt, uint32_t profile_idx);
 
-/* Handles a built-in OpenFlux custom slot (0..13 -> fw_of_func_code 0x02..0x0F) fired by QMK. */
+/* Handles a built-in Keyglass custom slot (0..13 -> fw_of_func_code 0x02..0x0F) fired by QMK. */
 void fw_runtime_handle_of_action(fw_runtime_t *rt, uint16_t slot, bool pressed);
 
 /* Runs one Hall-effect evaluation pass over raw_adc[160], producing key_bitmap + HID report. */

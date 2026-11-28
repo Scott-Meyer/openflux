@@ -1,4 +1,4 @@
-# Container for cross-building openflux-display and openflux-ffmpeg (`keyboard/display` build context).
+# Container for cross-building keyglass-display and keyglass-ffmpeg (`keyboard/display` build context).
 # rust:1-slim-bookworm
 FROM rust:1-slim-bookworm@sha256:7c7d4eb4d05b7781187a327809466cfddf29753f6defdc3d19a0e291951b7a37
 ARG FFMPEG_VERSION=6.1.2
@@ -14,12 +14,12 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
       mkdir -p /usr/local/cargo && \
       printf '[target.aarch64-unknown-linux-gnu]\nlinker = "aarch64-linux-gnu-gcc"\n[target.aarch64-unknown-linux-musl]\nlinker = "aarch64-linux-gnu-gcc"\n' >> /usr/local/cargo/config.toml; \
     fi && \
-    mkdir -p /tmp/ff /opt/openflux-ffmpeg && \
-    curl -fsSL "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" -o "/opt/openflux-ffmpeg/openflux-ffmpeg-source-${FFMPEG_VERSION}.tar.xz" && \
-    echo "${FFMPEG_SHA256}  /opt/openflux-ffmpeg/openflux-ffmpeg-source-${FFMPEG_VERSION}.tar.xz" | sha256sum -c - && \
-    tar -xJf "/opt/openflux-ffmpeg/openflux-ffmpeg-source-${FFMPEG_VERSION}.tar.xz" -C /tmp/ff && \
+    mkdir -p /tmp/ff /opt/keyglass-ffmpeg && \
+    curl -fsSL "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" -o "/opt/keyglass-ffmpeg/keyglass-ffmpeg-source-${FFMPEG_VERSION}.tar.xz" && \
+    echo "${FFMPEG_SHA256}  /opt/keyglass-ffmpeg/keyglass-ffmpeg-source-${FFMPEG_VERSION}.tar.xz" | sha256sum -c - && \
+    tar -xJf "/opt/keyglass-ffmpeg/keyglass-ffmpeg-source-${FFMPEG_VERSION}.tar.xz" -C /tmp/ff && \
     cd "/tmp/ff/ffmpeg-${FFMPEG_VERSION}" && \
-    cp COPYING.LGPLv2.1 /opt/openflux-ffmpeg/FFMPEG-LGPL-2.1.txt && \
+    cp COPYING.LGPLv2.1 /opt/keyglass-ffmpeg/FFMPEG-LGPL-2.1.txt && \
     CROSS_FLAGS=""; \
     CC_NAME="gcc"; \
     if [ "$(uname -m)" != "aarch64" ]; then \
@@ -27,20 +27,20 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
       CC_NAME="aarch64-linux-gnu-gcc"; \
     fi && \
     CONFIGURE_FLAGS="$CROSS_FLAGS --enable-static --disable-shared --disable-doc --disable-htmlpages --disable-manpages --disable-podpages --disable-txtpages --disable-debug --disable-ffplay --disable-ffprobe --disable-everything --enable-ffmpeg --enable-decoder=h264,hevc,vp8,vp9,mpeg4,mjpeg,gif,rawvideo --enable-encoder=rawvideo --enable-demuxer=mov,matroska,avi,gif,image2 --enable-muxer=rawvideo,hevc,h264 --enable-bsf=hevc_mp4toannexb,h264_mp4toannexb --enable-parser=h264,hevc,vp8,vp9,mpeg4video,mjpeg --enable-protocol=file,pipe --enable-filter=scale,fps,format --enable-swscale --enable-small --extra-ldflags=-static" && \
-    ./configure --prefix=/opt/openflux-ffmpeg $CONFIGURE_FLAGS && \
+    ./configure --prefix=/opt/keyglass-ffmpeg $CONFIGURE_FLAGS && \
     make -j"$(nproc)" && \
-    cp ffmpeg /opt/openflux-ffmpeg/openflux-ffmpeg && \
-    if [ "$(uname -m)" != "aarch64" ]; then aarch64-linux-gnu-strip /opt/openflux-ffmpeg/openflux-ffmpeg; else strip /opt/openflux-ffmpeg/openflux-ffmpeg; fi && \
+    cp ffmpeg /opt/keyglass-ffmpeg/keyglass-ffmpeg && \
+    if [ "$(uname -m)" != "aarch64" ]; then aarch64-linux-gnu-strip /opt/keyglass-ffmpeg/keyglass-ffmpeg; else strip /opt/keyglass-ffmpeg/keyglass-ffmpeg; fi && \
     { \
-      echo "component=openflux-ffmpeg"; \
+      echo "component=keyglass-ffmpeg"; \
       echo "ffmpeg_version=${FFMPEG_VERSION}"; \
-      echo "source_tarball=openflux-ffmpeg-source-${FFMPEG_VERSION}.tar.xz"; \
+      echo "source_tarball=keyglass-ffmpeg-source-${FFMPEG_VERSION}.tar.xz"; \
       echo "source_sha256=${FFMPEG_SHA256}"; \
       echo "license=LGPL-2.1-or-later (COPYING.LGPLv2.1)"; \
       echo "toolchain=$($CC_NAME --version | head -n 1)"; \
       echo "configure_flags=$CONFIGURE_FLAGS"; \
       echo "linking_note=Statically linked against Debian Bookworm glibc (-static) to remain independent of host target libc symbol versions; LGPL-2.1 corresponding source tarball and build configuration are published with each release."; \
-    } > /opt/openflux-ffmpeg/openflux-ffmpeg-build.txt && \
+    } > /opt/keyglass-ffmpeg/keyglass-ffmpeg-build.txt && \
     rm -rf /tmp/ff && \
     rm -rf /var/lib/apt/lists/*
 # cargo-about writes the license texts of the Rust crates in the package

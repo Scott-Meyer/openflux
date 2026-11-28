@@ -1,22 +1,22 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use openfluxd::api::assets::MAX_KEYBOARD_MEDIA_BYTES;
-use openfluxd::api::build_router;
-use openfluxd::api::lifecycle_client::{request_exit, RequestOutcome};
-use openfluxd::api::routes::DEFAULT_API_PORT;
-use openfluxd::api::state::default_data_dir;
-use openfluxd::api::state::{ApiState, DeviceSink};
-use openfluxd::api::third_party;
-use openfluxd::api::tls::{
+use keyglassd::api::assets::MAX_KEYBOARD_MEDIA_BYTES;
+use keyglassd::api::build_router;
+use keyglassd::api::lifecycle_client::{request_exit, RequestOutcome};
+use keyglassd::api::routes::DEFAULT_API_PORT;
+use keyglassd::api::state::default_data_dir;
+use keyglassd::api::state::{ApiState, DeviceSink};
+use keyglassd::api::third_party;
+use keyglassd::api::tls::{
     ensure_tls_bundle, serve_tls_router, write_keys_discovery_json, write_owner_only_file,
 };
-use openfluxd::api::worker::{reconcile_tick, UsbWorkerHandle};
-use openfluxd::bridges::create_platform_bridge;
-use openfluxd::codecs::keymap::decode_keymap_blob;
-use openfluxd::device_paths;
-use openfluxd::lifecycle::ExitKind;
-use openfluxd::tray::{TrayController, TrayMode};
-use openfluxd::usb::libusb::KeyboardUsbClient;
+use keyglassd::api::worker::{reconcile_tick, UsbWorkerHandle};
+use keyglassd::bridges::create_platform_bridge;
+use keyglassd::codecs::keymap::decode_keymap_blob;
+use keyglassd::device_paths;
+use keyglassd::lifecycle::ExitKind;
+use keyglassd::tray::{TrayController, TrayMode};
+use keyglassd::usb::libusb::KeyboardUsbClient;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -90,7 +90,7 @@ impl PairedUsbTransport for KeyboardUsbClient {
     }
     fn get_profile_settings(&self) -> Result<Vec<u8>, String> {
         let raw = KeyboardUsbClient::firmware_file_to_host(self, 0).map_err(|e| e.to_string())?;
-        let parsed = openfluxd::codecs::keymap::decode_profile_settings(&raw, false)
+        let parsed = keyglassd::codecs::keymap::decode_profile_settings(&raw, false)
             .map_err(|e| format!("decode firmware profile settings: {e}"))?;
         parsed
             .to_transfer_bytes()
@@ -142,7 +142,7 @@ fn execute_atomic_save(
             let prof_bytes = serde_json::to_vec_pretty(prof_obj).map_err(|e| e.to_string())?;
             let ps_bytes = ApiState::decode_hex_bytes(hex_ps)
                 .map_err(|e| format!("invalid profileSettingsHex: {e}"))?;
-            openfluxd::codecs::keymap::decode_profile_settings(&ps_bytes, true)
+            keyglassd::codecs::keymap::decode_profile_settings(&ps_bytes, true)
                 .map_err(|e| format!("invalid profileSettings: {e}"))?;
             Some((prof_bytes, ps_bytes))
         }
@@ -194,7 +194,7 @@ fn execute_atomic_save(
             let blob_bytes = ApiState::decode_hex_bytes(hex_blob)
                 .map_err(|e| format!("invalid keymapBlobHex: {e}"))?;
             decode_keymap_blob(&blob_bytes).map_err(|e| format!("invalid keymap blob: {e}"))?;
-            openfluxd::codecs::keymap::verify_keymap_matches_blob(km_obj, &blob_bytes)
+            keyglassd::codecs::keymap::verify_keymap_matches_blob(km_obj, &blob_bytes)
                 .map_err(|e| format!("keymap JSON and blob in the save plan don't match: {e}"))?;
             Some((km_bytes, blob_bytes))
         }
@@ -544,7 +544,7 @@ fn execute_device_backup(
     out_dir_raw: &std::path::Path,
     versions: &serde_json::Value,
 ) -> Result<String, String> {
-    let out_path = openfluxd::api::assets::expand_home_path(&out_dir_raw.to_string_lossy());
+    let out_path = keyglassd::api::assets::expand_home_path(&out_dir_raw.to_string_lossy());
     std::fs::create_dir_all(&out_path).map_err(|e| format!("mkdir backup: {e}"))?;
     let mut errors: Vec<String> = Vec::new();
     for (remote, key) in device_paths::CONFIG_DOCUMENTS {
@@ -572,7 +572,7 @@ fn execute_device_backup(
     }
     match transport.get_profile_settings() {
         Ok(ps_xfer) => {
-            openfluxd::codecs::keymap::decode_profile_settings(&ps_xfer, true)
+            keyglassd::codecs::keymap::decode_profile_settings(&ps_xfer, true)
                 .map_err(|e| format!("firmware profile settings decode error: {e}"))?;
             std::fs::write(out_path.join("firmware_profile_settings.bin"), ps_xfer)
                 .map_err(|e| format!("write firmware_profile_settings.bin: {e}"))?;
@@ -599,7 +599,7 @@ fn execute_device_backup(
 
 struct UsbDeviceSink {
     client: Option<KeyboardUsbClient>,
-    v2_mux: std::sync::Mutex<Option<Arc<openfluxd::usb::v2_mux::V2UsbMux>>>,
+    v2_mux: std::sync::Mutex<Option<Arc<keyglassd::usb::v2_mux::V2UsbMux>>>,
 }
 
 impl UsbDeviceSink {
@@ -610,11 +610,11 @@ impl UsbDeviceSink {
         }
     }
 
-    fn attach_v2_mux(&self, mux: Arc<openfluxd::usb::v2_mux::V2UsbMux>) {
+    fn attach_v2_mux(&self, mux: Arc<keyglassd::usb::v2_mux::V2UsbMux>) {
         *self.v2_mux.lock().unwrap() = Some(mux);
     }
 
-    fn active_mux(&self) -> Option<Arc<openfluxd::usb::v2_mux::V2UsbMux>> {
+    fn active_mux(&self) -> Option<Arc<keyglassd::usb::v2_mux::V2UsbMux>> {
         self.v2_mux
             .lock()
             .unwrap()
@@ -657,7 +657,7 @@ impl DeviceSink for UsbDeviceSink {
     fn send_media_frame(
         &self,
         stream_name: &str,
-        codec: openflux_bus::MediaCodec,
+        codec: keyglass_bus::MediaCodec,
         data: &[u8],
         flags: u8,
     ) -> bool {
@@ -686,9 +686,9 @@ impl DeviceSink for UsbDeviceSink {
                             .and_then(|c| c.get_firmware_version().ok());
                         obj.insert("firmware".into(), serde_json::json!(fw));
                     }
-                    // Read real installed display version stamp and ensure canonical `openflux-display <ver>` prefix
+                    // Read real installed display version stamp and ensure canonical `keyglass-display <ver>` prefix
                     let raw_disp = m
-                        .get_file("/home/root/.openflux/versions/display")
+                        .get_file("/home/root/.keyglass/versions/display")
                         .ok()
                         .and_then(|b| String::from_utf8(b).ok())
                         .map(|s| s.trim().to_string())
@@ -699,10 +699,10 @@ impl DeviceSink for UsbDeviceSink {
                                 .map(|s| s.trim().to_string())
                         })
                         .unwrap_or_else(|| "2.1.0".into());
-                    let canon_disp = if raw_disp.starts_with("openflux-display ") {
+                    let canon_disp = if raw_disp.starts_with("keyglass-display ") {
                         raw_disp
                     } else {
-                        format!("openflux-display {raw_disp}")
+                        format!("keyglass-display {raw_disp}")
                     };
                     obj.insert("display".into(), serde_json::json!(canon_disp));
                 }
@@ -712,7 +712,7 @@ impl DeviceSink for UsbDeviceSink {
         self.client
             .as_ref()
             .map(|c| c.get_versions())
-            .unwrap_or_else(openfluxd::api::state::empty_versions)
+            .unwrap_or_else(keyglassd::api::state::empty_versions)
     }
 
     fn send_live_json(&self, _payload: &serde_json::Value) -> Result<(), String> {
@@ -720,11 +720,11 @@ impl DeviceSink for UsbDeviceSink {
         Err("legacy v1 live_json disabled in OFV2 mode".into())
     }
 
-    fn send_bus_frame(&self, _frame: &openflux_bus::WireFrame) -> Result<(), String> {
+    fn send_bus_frame(&self, _frame: &keyglass_bus::WireFrame) -> Result<(), String> {
         Err("legacy v1 bus frame disabled in OFV2 mode".into())
     }
 
-    fn poll_bus_frames(&self) -> Result<Vec<openflux_bus::WireFrame>, String> {
+    fn poll_bus_frames(&self) -> Result<Vec<keyglass_bus::WireFrame>, String> {
         Ok(Vec::new())
     }
 
@@ -758,12 +758,12 @@ impl DeviceSink for UsbDeviceSink {
             .map_err(|e| e.to_string())
     }
 
-    fn read_firmware_runtime(&self) -> Result<openfluxd::api::state::FirmwareRuntime, String> {
+    fn read_firmware_runtime(&self) -> Result<keyglassd::api::state::FirmwareRuntime, String> {
         let raw = self
             .client()?
             .get_runtime_state()
             .map_err(|e| e.to_string())?;
-        openfluxd::api::state::FirmwareRuntime::decode(&raw)
+        keyglassd::api::state::FirmwareRuntime::decode(&raw)
     }
 
     fn save_config_dir(&self, save_plan: &serde_json::Value) -> Result<(), String> {
@@ -830,11 +830,11 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn flash_uf2(&self, uf2_path: &str) -> Result<String, String> {
-        let expanded = openfluxd::api::assets::expand_home_path(uf2_path);
+        let expanded = keyglassd::api::assets::expand_home_path(uf2_path);
         let bytes =
             std::fs::read(&expanded).map_err(|e| format!("read {}: {e}", expanded.display()))?;
         let client = self.client()?;
-        openfluxd::usb::picoboot::flash_uf2_live(&bytes, || {
+        keyglassd::usb::picoboot::flash_uf2_live(&bytes, || {
             client
                 .enter_firmware_bootloader()
                 .map_err(|e| e.to_string())
@@ -880,12 +880,12 @@ impl DeviceSink for UsbDeviceSink {
         client.send_keymap(blob).map_err(|e| e.to_string())
     }
 
-    fn press_refinement_status(&self) -> Result<openfluxd::usb::press_refinement::Status, String> {
+    fn press_refinement_status(&self) -> Result<keyglassd::usb::press_refinement::Status, String> {
         let client = self.client()?;
         let raw = client
             .press_refinement_status()
             .map_err(|e| e.to_string())?;
-        openfluxd::usb::press_refinement::parse_status(&raw)
+        keyglassd::usb::press_refinement::parse_status(&raw)
     }
 
     fn put_press_refinement(&self, record: &[u8]) -> Result<(), String> {
@@ -966,7 +966,7 @@ impl DeviceSink for UsbDeviceSink {
 }
 
 const USAGE: &str = "\
-Usage: openfluxd [options]
+Usage: keyglassd [options]
 
   --help, -h           Print this help and exit.
   --version            Print the version and exit.
@@ -983,7 +983,7 @@ Usage: openfluxd [options]
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--version") {
-        println!("openfluxd {}", env!("CARGO_PKG_VERSION"));
+        println!("keyglassd {}", env!("CARGO_PKG_VERSION"));
         return;
     }
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -1005,8 +1005,8 @@ fn main() {
         }
     }
     if args.iter().any(|a| a == "--preview-worker") {
-        if let Err(e) = openfluxd::preview::run_preview_worker_stdio() {
-            eprintln!("openfluxd preview-worker error: {e}");
+        if let Err(e) = keyglassd::preview::run_preview_worker_stdio() {
+            eprintln!("keyglassd preview-worker error: {e}");
             std::process::exit(1);
         }
         return;
@@ -1020,23 +1020,23 @@ fn run_daemon(args: &[String]) -> i32 {
     let once = args.iter().any(|a| a == "--once");
     let no_tray = args.iter().any(|a| a == "--no-tray");
     let plaintext = args.iter().any(|a| a == "--plaintext")
-        || std::env::var("OPENFLUX_API_PLAINTEXT").as_deref() == Ok("1");
+        || std::env::var("KEYGLASS_API_PLAINTEXT").as_deref() == Ok("1");
 
     // One daemon per data directory. Nothing is read or written, and no device is opened, before
     // this process holds the lock. The lock also tells `--request-stop` whether a daemon that
     // doesn't answer is really gone.
     let data_dir = default_data_dir();
-    let _instance_lock = match openfluxd::lifecycle::InstanceLock::acquire(&data_dir) {
+    let _instance_lock = match keyglassd::lifecycle::InstanceLock::acquire(&data_dir) {
         Ok(Some(lock)) => lock,
         Ok(None) => {
             eprintln!(
-                "openfluxd: another openfluxd is already running for {}; exiting",
+                "keyglassd: another keyglassd is already running for {}; exiting",
                 data_dir.display()
             );
             return 0;
         }
         Err(e) => {
-            eprintln!("openfluxd: {e}");
+            eprintln!("keyglassd: {e}");
             return 1;
         }
     };
@@ -1047,7 +1047,7 @@ fn run_daemon(args: &[String]) -> i32 {
         } else {
             TrayMode::NativeStatus
         },
-        std::env::var("OPENFLUX_GUI_BIN").ok(),
+        std::env::var("KEYGLASS_GUI_BIN").ok(),
     );
 
     let cfg_dir = data_dir.join("config");
@@ -1056,13 +1056,13 @@ fn run_daemon(args: &[String]) -> i32 {
     let enrollment_secret = match enrollment_secret(&secret_path) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("openfluxd: {e}");
+            eprintln!("keyglassd: {e}");
             return 1;
         }
     };
 
     let no_usb = args.iter().any(|a| a == "--no-usb")
-        || std::env::var("OPENFLUX_DISABLE_USB").as_deref() == Ok("1");
+        || std::env::var("KEYGLASS_DISABLE_USB").as_deref() == Ok("1");
     let usb_sink = if no_usb {
         None
     } else {
@@ -1070,9 +1070,9 @@ fn run_daemon(args: &[String]) -> i32 {
     };
     let device: Arc<dyn DeviceSink> = match usb_sink {
         Some(ref s) => s.clone(),
-        None => Arc::new(openfluxd::api::state::NoopDeviceSink),
+        None => Arc::new(keyglassd::api::state::NoopDeviceSink),
     };
-    let local_token = std::env::var("OPENFLUX_API_TOKEN")
+    let local_token = std::env::var("KEYGLASS_API_TOKEN")
         .ok()
         .filter(|s| !s.is_empty())
         .or_else(|| ApiState::generate_csprng_token().ok());
@@ -1084,8 +1084,8 @@ fn run_daemon(args: &[String]) -> i32 {
         cfg_dir.join("api_tokens.json"),
         enrollment_secret,
     );
-    let updates = openfluxd::updates::UpdateService::new(
-        openfluxd::updates::UpdateConfig::installed(data_dir.clone()),
+    let updates = keyglassd::updates::UpdateService::new(
+        keyglassd::updates::UpdateConfig::installed(data_dir.clone()),
         device.clone(),
         api_state.lifecycle.clone(),
     );
@@ -1101,7 +1101,7 @@ fn run_daemon(args: &[String]) -> i32 {
     // first. The runtime, the API and the worker keep running until the exit is due.
     let running_flag = Arc::new(AtomicBool::new(true));
     if let Some(ref sink) = usb_sink {
-        let mux = openfluxd::usb::v2_mux::V2UsbMux::start(
+        let mux = keyglassd::usb::v2_mux::V2UsbMux::start(
             api_state.v2.broker.clone(),
             running_flag.clone(),
         );
@@ -1111,7 +1111,7 @@ fn run_daemon(args: &[String]) -> i32 {
         let lifecycle = api_state.lifecycle.clone();
         let running = running_flag.clone();
         std::thread::spawn(move || {
-            openfluxd::lifecycle::watch_exit(&lifecycle, &SIGNALLED, &running)
+            keyglassd::lifecycle::watch_exit(&lifecycle, &SIGNALLED, &running)
         });
     }
     {
@@ -1134,7 +1134,7 @@ fn run_daemon(args: &[String]) -> i32 {
     );
     api_state.set_worker(worker.clone());
     if !no_usb {
-        openfluxd::usb::function_keys::spawn(api_state.clone(), running_flag.clone());
+        keyglassd::usb::function_keys::spawn(api_state.clone(), running_flag.clone());
     }
     updates.start();
 
@@ -1145,7 +1145,7 @@ fn run_daemon(args: &[String]) -> i32 {
         .build()
         .expect("tokio runtime");
 
-    let api_addr: SocketAddr = std::env::var("OPENFLUX_API_ADDR")
+    let api_addr: SocketAddr = std::env::var("KEYGLASS_API_ADDR")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], DEFAULT_API_PORT)));
@@ -1157,7 +1157,7 @@ fn run_daemon(args: &[String]) -> i32 {
         let listener = match tokio::net::TcpListener::bind(api_addr).await {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("openfluxd: couldn't bind {api_addr} ({e}); using a free port");
+                eprintln!("keyglassd: couldn't bind {api_addr} ({e}); using a free port");
                 tokio::net::TcpListener::bind("127.0.0.1:0")
                     .await
                     .expect("ephemeral bind")
@@ -1191,19 +1191,19 @@ fn run_daemon(args: &[String]) -> i32 {
                         &bundle.cert_pem,
                         &bundle.cert_sha256,
                     ) {
-                        eprintln!("openfluxd: couldn't write third-party discovery file {}: {err}", path.display());
+                        eprintln!("keyglassd: couldn't write third-party discovery file {}: {err}", path.display());
                     }
                 }
                 None => {
                     eprintln!(
-                        "openfluxd: third-party discovery is off because OPENFLUX_DATA_DIR names a custom data directory; set OPENFLUX_HOME_OVERRIDE to enable it in another location"
+                        "keyglassd: third-party discovery is off because KEYGLASS_DATA_DIR names a custom data directory; set KEYGLASS_HOME_OVERRIDE to enable it in another location"
                     );
                     third_party::start_without_discovery(&state_for_server);
                 }
             }
             // Plain loopback HTTP listener (`http://127.0.0.1:52324`) for `/v2/*` so 3rd-party
             // host scripts (Python/Node/curl/Go) work cleanly without self-signed TLS workarounds!
-            let v2_plain_router = openfluxd::api::v2::router(state_for_server.clone());
+            let v2_plain_router = keyglassd::api::v2::router(state_for_server.clone());
             let v2_plain_running = running_flag.clone();
             tokio::spawn(async move {
                 if let Ok(plain_listener) =
@@ -1224,7 +1224,7 @@ fn run_daemon(args: &[String]) -> i32 {
     });
     worker.shutdown_and_join();
     api_state.v2.shutdown();
-    openfluxd::preview::kill_and_reap_child(&api_state.preview_child);
+    keyglassd::preview::kill_and_reap_child(&api_state.preview_child);
     api_state
         .lifecycle
         .exit_due()
@@ -1232,12 +1232,12 @@ fn run_daemon(args: &[String]) -> i32 {
         .unwrap_or(0)
 }
 
-/// The enrollment secret: `OPENFLUX_ENROLLMENT_SECRET`, else the one saved at `path`. A missing
+/// The enrollment secret: `KEYGLASS_ENROLLMENT_SECRET`, else the one saved at `path`. A missing
 /// or empty secret is replaced by a new one, saved for the next start; one that can't be read is
 /// replaced for this run only. A secret is never empty, since an empty one would match a request
 /// that sends an empty secret.
 fn enrollment_secret(path: &std::path::Path) -> Result<String, String> {
-    if let Some(s) = std::env::var("OPENFLUX_ENROLLMENT_SECRET")
+    if let Some(s) = std::env::var("KEYGLASS_ENROLLMENT_SECRET")
         .ok()
         .filter(|s| !s.is_empty())
     {
@@ -1249,7 +1249,7 @@ fn enrollment_secret(path: &std::path::Path) -> Result<String, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
             eprintln!(
-                "openfluxd: couldn't read the enrollment secret {}: {e}; using a new one until the next start",
+                "keyglassd: couldn't read the enrollment secret {}: {e}; using a new one until the next start",
                 path.display()
             );
             return ApiState::generate_csprng_token();
@@ -1258,7 +1258,7 @@ fn enrollment_secret(path: &std::path::Path) -> Result<String, String> {
     let secret = ApiState::generate_csprng_token()?;
     if let Err(e) = write_owner_only_file(path, secret.as_bytes(), true) {
         eprintln!(
-            "openfluxd: couldn't save the enrollment secret {}: {e}; it changes at the next start",
+            "keyglassd: couldn't save the enrollment secret {}: {e}; it changes at the next start",
             path.display()
         );
     }
@@ -1387,7 +1387,7 @@ mod tests {
         fn get_profile_settings(&self) -> Result<Vec<u8>, String> {
             // The firmware returns the raw data (no 16-byte file header); the transport adds the header.
             let raw_data = self.firmware_profile_settings.borrow().clone();
-            let parsed = openfluxd::codecs::keymap::decode_profile_settings(&raw_data, false)
+            let parsed = keyglassd::codecs::keymap::decode_profile_settings(&raw_data, false)
                 .map_err(|e| format!("mock decode raw profile_settings: {e}"))?;
             parsed
                 .to_transfer_bytes()
@@ -1398,7 +1398,7 @@ mod tests {
                 return Err("Simulated firmware profile settings NAK".into());
             }
             // The firmware accepts transfer bytes and stores the data after the 16-byte header.
-            openfluxd::codecs::keymap::decode_profile_settings(transfer_bytes, true)
+            keyglassd::codecs::keymap::decode_profile_settings(transfer_bytes, true)
                 .map_err(|e| format!("mock reject non-transfer profile_settings: {e}"))?;
             *self.firmware_profile_settings.borrow_mut() = transfer_bytes[16..].to_vec();
             Ok(())
@@ -1406,8 +1406,8 @@ mod tests {
     }
 
     fn base_mock(files: BTreeMap<String, Vec<u8>>, firmware_blob: Vec<u8>) -> MockTransport {
-        let default_ps_xfer = openfluxd::codecs::keymap::ProfileSettingsFile {
-            settings: vec![openfluxd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap()],
+        let default_ps_xfer = keyglassd::codecs::keymap::ProfileSettingsFile {
+            settings: vec![keyglassd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap()],
             file_version: 0,
             file_type: 0,
         }
@@ -1551,10 +1551,10 @@ mod tests {
 
         // 8. Keymap and profile settings together: if either profile settings write fails, the firmware
         //    keymap, the bridge keymap.json and the firmware profile settings all roll back.
-        let new_ps = openfluxd::codecs::keymap::ProfileSettingsFile {
+        let new_ps = keyglassd::codecs::keymap::ProfileSettingsFile {
             settings: vec![
-                openfluxd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
-                openfluxd::codecs::keymap::ProfileSetting::from_layer(1, 2).unwrap(),
+                keyglassd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
+                keyglassd::codecs::keymap::ProfileSetting::from_layer(1, 2).unwrap(),
             ],
             file_version: 0,
             file_type: 0,
@@ -1690,12 +1690,12 @@ mod tests {
         );
         t_bak.send_profile_settings(&new_ps).unwrap();
         let bak_dir =
-            std::env::temp_dir().join(format!("openfluxd_bak_test_{}", std::process::id()));
+            std::env::temp_dir().join(format!("keyglassd_bak_test_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&bak_dir);
         let bak_msg = execute_device_backup(
             &t_bak,
             &bak_dir,
-            &serde_json::json!({"firmware":"openflux-firmware 1.0.0"}),
+            &serde_json::json!({"firmware":"keyglass-firmware 1.0.0"}),
         )
         .unwrap();
         assert!(bak_msg.contains("profile settings"), "{bak_msg}");
@@ -1705,7 +1705,7 @@ mod tests {
         assert_eq!(bak_profs[1]["name"], "FPS");
         let bak_ps_raw = std::fs::read(bak_dir.join("firmware_profile_settings.bin")).unwrap();
         let bak_ps_dec =
-            openfluxd::codecs::keymap::decode_profile_settings(&bak_ps_raw, true).unwrap();
+            keyglassd::codecs::keymap::decode_profile_settings(&bak_ps_raw, true).unwrap();
         assert_eq!(bak_ps_dec.settings.len(), 2);
         assert_eq!(bak_ps_dec.settings[1].actuation_mode_index, 1);
         assert_eq!(bak_ps_dec.settings[1].default_layer_bitfield, 1 << 2);
@@ -1714,7 +1714,7 @@ mod tests {
         // 11. Appearance, an icon and a keymap: if the firmware rejects the keymap, appearance.json and
         //     the icon are not overwritten.
         let icon_tmp =
-            std::env::temp_dir().join(format!("openfluxd_icon_rb_{}.png", std::process::id()));
+            std::env::temp_dir().join(format!("keyglassd_icon_rb_{}.png", std::process::id()));
         std::fs::write(&icon_tmp, b"NEW_ICON").unwrap();
         let mixed_plan = serde_json::json!({
             "appearance": {"selectedId": "new_theme"},
@@ -1727,7 +1727,7 @@ mod tests {
                 (device_paths::KEYMAP_JSON.into(), b"OLD_KEYMAP".to_vec()),
                 (device_paths::APPEARANCE_JSON.into(), b"OLD_APP".to_vec()),
                 (
-                    "/home/root/openflux/media/key_icons/a.png".into(),
+                    "/home/root/keyglass/media/key_icons/a.png".into(),
                     b"OLD_ICON".to_vec(),
                 ),
             ]),
@@ -1747,7 +1747,7 @@ mod tests {
             t_mix_km_fail
                 .files
                 .borrow()
-                .get("/home/root/openflux/media/key_icons/a.png")
+                .get("/home/root/keyglass/media/key_icons/a.png")
                 .unwrap(),
             b"OLD_ICON"
         );
@@ -1758,7 +1758,7 @@ mod tests {
                 (device_paths::KEYMAP_JSON.into(), b"OLD_KEYMAP".to_vec()),
                 (device_paths::APPEARANCE_JSON.into(), b"OLD_APP".to_vec()),
                 (
-                    "/home/root/openflux/media/key_icons/a.png".into(),
+                    "/home/root/keyglass/media/key_icons/a.png".into(),
                     b"OLD_ICON".to_vec(),
                 ),
             ]),
@@ -1789,7 +1789,7 @@ mod tests {
 
         // 13. Media overwritten before a later settings failure is restored.
         let media_tmp =
-            std::env::temp_dir().join(format!("openfluxd_media_rb_{}.mp4", std::process::id()));
+            std::env::temp_dir().join(format!("keyglassd_media_rb_{}.mp4", std::process::id()));
         std::fs::write(&media_tmp, b"NEW_VIDEO_BYTES").unwrap();
         let media_plan = serde_json::json!({
             "mediaFiles": [{"name": "bg.mp4", "localPath": media_tmp.to_string_lossy()}],
@@ -1798,7 +1798,7 @@ mod tests {
         let mut t_med_fail = base_mock(
             BTreeMap::from([
                 (
-                    "/home/root/openflux/media/bg.mp4".into(),
+                    "/home/root/keyglass/media/bg.mp4".into(),
                     b"OLD_VIDEO_BYTES".to_vec(),
                 ),
                 (device_paths::SETTINGS_JSON.into(), b"OLD_SETTINGS".to_vec()),
@@ -1813,7 +1813,7 @@ mod tests {
             t_med_fail
                 .files
                 .borrow()
-                .get("/home/root/openflux/media/bg.mp4")
+                .get("/home/root/keyglass/media/bg.mp4")
                 .unwrap(),
             b"OLD_VIDEO_BYTES"
         );
@@ -1844,7 +1844,7 @@ mod tests {
             t_empty_dir
                 .files
                 .borrow()
-                .get("/home/root/openflux/media/key_icons/first.png")
+                .get("/home/root/keyglass/media/key_icons/first.png")
                 .unwrap(),
             b"NEW_ICON"
         );
@@ -1853,7 +1853,7 @@ mod tests {
             BTreeMap::from([
                 (device_paths::KEYMAP_JSON.into(), b"OLD_KEYMAP".to_vec()),
                 (
-                    "/home/root/openflux/config/other.json".into(),
+                    "/home/root/keyglass/config/other.json".into(),
                     b"OTHER".to_vec(),
                 ),
             ]),
@@ -1870,7 +1870,7 @@ mod tests {
         let mut t_med_unk = base_mock(
             BTreeMap::from([
                 (
-                    "/home/root/openflux/media/bg.mp4".into(),
+                    "/home/root/keyglass/media/bg.mp4".into(),
                     b"OLD_VIDEO_BYTES".to_vec(),
                 ),
                 (device_paths::SETTINGS_JSON.into(), b"OLD_SETTINGS".to_vec()),
@@ -1887,7 +1887,7 @@ mod tests {
             t_med_unk
                 .files
                 .borrow()
-                .get("/home/root/openflux/media/bg.mp4")
+                .get("/home/root/keyglass/media/bg.mp4")
                 .unwrap(),
             b"OLD_VIDEO_BYTES"
         );
@@ -1906,7 +1906,7 @@ mod tests {
         assert!(!t_new_media
             .files
             .borrow()
-            .contains_key("/home/root/openflux/media/bg.mp4"));
+            .contains_key("/home/root/keyglass/media/bg.mp4"));
 
         let _ = std::fs::remove_file(&icon_tmp);
         let _ = std::fs::remove_file(&media_tmp);

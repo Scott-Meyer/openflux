@@ -1,7 +1,7 @@
-Package: openflux-factory-restore
+Package: keyglass-factory-restore
 Version: 1.0.0
 Architecture: aarch64
-Maintainer: OpenFlux Contributors
-Description: Restores the keyboard's factory software, replacing OpenFlux
+Maintainer: Keyglass Contributors
+Description: Restores the keyboard's factory software, replacing Keyglass
 Section: utils
 Priority: optional

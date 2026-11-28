@@ -2,18 +2,18 @@
 # Verifies staged factory restore artifacts before launching detached restore-factory.sh.
 set -e
 
-ROOT="${OPENFLUX_SYSROOT:-}"
-RESTORE_DIR="${ROOT}/home/root/.openflux/factory-restore"
-RESTORE_SCRIPT="${ROOT}/usr/lib/openflux/bridge/restore-factory.sh"
-LOG_DIR="${ROOT}/home/root/openflux/logs"
+ROOT="${KEYGLASS_SYSROOT:-}"
+RESTORE_DIR="${ROOT}/home/root/.keyglass/factory-restore"
+RESTORE_SCRIPT="${ROOT}/usr/lib/keyglass/bridge/restore-factory.sh"
+LOG_DIR="${ROOT}/home/root/keyglass/logs"
 
 if [ ! -x "$RESTORE_SCRIPT" ]; then
-    echo "ERROR: ${RESTORE_SCRIPT} missing or not executable; leaving OpenFlux running" >&2
+    echo "ERROR: ${RESTORE_SCRIPT} missing or not executable; leaving Keyglass running" >&2
     exit 1
 fi
 
 if ! "$RESTORE_SCRIPT" --preflight-only "$RESTORE_DIR"; then
-    echo "ERROR: staged factory restore verification failed; leaving OpenFlux running" >&2
+    echo "ERROR: staged factory restore verification failed; leaving Keyglass running" >&2
     exit 1
 fi
 
@@ -89,12 +89,12 @@ resolve_opkg_ancestor() {
     return 1
 }
 
-WAIT_PID="${OPENFLUX_WAIT_OPKG_PID:-}"
+WAIT_PID="${KEYGLASS_WAIT_OPKG_PID:-}"
 if [ -z "$WAIT_PID" ]; then
     WAIT_PID=$(resolve_opkg_ancestor || true)
 fi
 
-WAIT_LOCK="${OPENFLUX_OPKG_LOCK:-}"
+WAIT_LOCK="${KEYGLASS_OPKG_LOCK:-}"
 if [ -z "$WAIT_LOCK" ]; then
     for cand in \
         "${ROOT}/var/lock/opkg.lock" \
@@ -108,12 +108,12 @@ if [ -z "$WAIT_LOCK" ]; then
 fi
 
 if [ -z "$WAIT_PID" ] && [ -z "$WAIT_LOCK" ]; then
-    echo "ERROR: could not resolve invoking opkg process or lock; leaving OpenFlux running" >&2
+    echo "ERROR: could not resolve invoking opkg process or lock; leaving Keyglass running" >&2
     exit 1
 fi
 
-WAIT_ITERS="${OPENFLUX_OPKG_WAIT_ITERS:-300}"
-WAIT_SLEEP="${OPENFLUX_OPKG_WAIT_SLEEP:-0.1}"
+WAIT_ITERS="${KEYGLASS_OPKG_WAIT_ITERS:-300}"
+WAIT_SLEEP="${KEYGLASS_OPKG_WAIT_SLEEP:-0.1}"
 
 mkdir -p "$LOG_DIR"
 # The detached script expands its own positional parameters, so it is quoted literally.
@@ -141,7 +141,7 @@ while [ "$n" -lt "$wait_iters" ]; do
 done
 
 if { [ -n "$wait_pid" ] && kill -0 "$wait_pid" 2>/dev/null; } || { [ -n "$wait_lock" ] && [ -e "$wait_lock" ]; }; then
-    echo "ERROR: timed out waiting for outer opkg transaction to finish; leaving OpenFlux running" >&2
+    echo "ERROR: timed out waiting for outer opkg transaction to finish; leaving Keyglass running" >&2
     exit 1
 fi
 

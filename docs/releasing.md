@@ -1,15 +1,15 @@
-# Releasing OpenFlux
+# Releasing Keyglass
 
-OpenFlux is released as four independently versioned units, with a clear split between what humans download and what `openfluxd` / Studio fetch automatically:
+Keyglass is released as four independently versioned units, with a clear split between what humans download and what `keyglassd` / Studio fetch automatically:
 
 | Unit | Git tag | Where it publishes | Artifacts |
 |---|---|---|---|
-| **host** | `host-vX.Y.Z` | **Public GitHub Release** (`OpenFlux Studio vX.Y.Z`, always `Latest`) + Tauri feed on GitHub Pages | 6 Studio installers (`.dmg`, `_x64-setup.exe`, 2× `.AppImage`, 2× `.deb`) + `SHA256SUMS`; `.app.tar.gz` updater archive and FFmpeg GPL source on GitHub Pages |
-| **firmware** | `firmware-vX.Y.Z` | **GitHub Pages** (`packages/firmware/X.Y.Z/`) | `openflux-firmware-X.Y.Z.uf2` |
-| **bridge** | `bridge-vX.Y.Z` | **GitHub Pages** (`packages/bridge/X.Y.Z/`) | `openflux-bridge_X.Y.Z_aarch64.ipk`, `openflux-factory-restore_X.Y.Z_aarch64.ipk` |
-| **display** | `display-vX.Y.Z` | **GitHub Pages** (`packages/display/X.Y.Z/`) | `openflux-display_X.Y.Z_aarch64.ipk` (LGPL FFmpeg source under `source/`) |
+| **host** | `host-vX.Y.Z` | **Public GitHub Release** (`Keyglass Studio vX.Y.Z`, always `Latest`) + Tauri feed on GitHub Pages | 6 Studio installers (`.dmg`, `_x64-setup.exe`, 2× `.AppImage`, 2× `.deb`) + `SHA256SUMS`; `.app.tar.gz` updater archive and FFmpeg GPL source on GitHub Pages |
+| **firmware** | `firmware-vX.Y.Z` | **GitHub Pages** (`packages/firmware/X.Y.Z/`) | `keyglass-firmware-X.Y.Z.uf2` |
+| **bridge** | `bridge-vX.Y.Z` | **GitHub Pages** (`packages/bridge/X.Y.Z/`) | `keyglass-bridge_X.Y.Z_aarch64.ipk`, `keyglass-factory-restore_X.Y.Z_aarch64.ipk` |
+| **display** | `display-vX.Y.Z` | **GitHub Pages** (`packages/display/X.Y.Z/`) | `keyglass-display_X.Y.Z_aarch64.ipk` (LGPL FFmpeg source under `source/`) |
 
-Keyboard components never create public GitHub Releases and never steal the `Latest` badge from OpenFlux Studio. Users download OpenFlux Studio from GitHub Releases; Studio bundles the latest stable keyboard software and `openfluxd` delivers independent keyboard updates over the air from GitHub Pages.
+Keyboard components never create public GitHub Releases and never steal the `Latest` badge from Keyglass Studio. Users download Keyglass Studio from GitHub Releases; Studio bundles the latest stable keyboard software and `keyglassd` delivers independent keyboard updates over the air from GitHub Pages.
 
 ## How a release happens
 
@@ -42,23 +42,23 @@ Betas use SemVer prereleases (`X.Y.Z-beta.N`) on the same tags and publish to th
 | Key | Where it lives | Signs |
 |---|---|---|
 | Root key | offline only | statements that trust or revoke release keys |
-| Release key | `OPENFLUX_RELEASE_KEY` in `release-signing` | `index.json`, every artifact |
+| Release key | `KEYGLASS_RELEASE_KEY` in `release-signing` | `index.json`, every artifact |
 | Updater key | `TAURI_SIGNING_PRIVATE_KEY` in `release-signing` | Studio update archives in `updates/*/latest.json` |
 | Developer ID certificate | `release-build` | macOS app and disk image (Apple) |
 | SignPath certificate | SignPath | Windows executables and the setup program |
 
 To rotate the release key from A to B:
 1. Trust B with an offline root-signed statement in `host/packaging/keys/statements/`, move `active-release.pub` to `previous-release.pub`, and commit B as `active-release.pub`.
-2. Update `OPENFLUX_RELEASE_KEY` in `release-signing` to B and run Actions → `Publish index` with `resign` checked.
+2. Update `KEYGLASS_RELEASE_KEY` in `release-signing` to B and run Actions → `Publish index` with `resign` checked.
 3. Commit a root-signed revocation statement for A, remove `previous-release.pub`, and run `Publish index` once more.
 
 ## Published files
 
-GitHub Releases (`https://github.com/Scott-Meyer/openflux/releases`):
-- Only `OpenFlux Studio vX.Y.Z` releases, containing the 6 installers + `SHA256SUMS`.
+GitHub Releases (`https://github.com/Scott-Meyer/keyglass/releases`):
+- Only `Keyglass Studio vX.Y.Z` releases, containing the 6 installers + `SHA256SUMS`.
 
-GitHub Pages (`https://scott-meyer.github.io/openflux/`):
-- `index.json`, `index.json.sig`: signed update index for `openfluxd`
+GitHub Pages (`https://scott-meyer.github.io/keyglass/`):
+- `index.json`, `index.json.sig`: signed update index for `keyglassd`
 - `site-manifest.json`: sha256 inventory used across deploys
 - `packages/<component>/<version>/...`: keyboard `.uf2` and `.ipk` OTA packages
 - `updates/stable/latest.json` (+ active `.app.tar.gz`) and `updates/beta/latest.json`: Tauri updater feeds

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Linux integration tests for the compiled openflux-display binary."""
+"""Linux integration tests for the compiled keyglass-display binary."""
 
 import json
 import os
@@ -14,11 +14,11 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "tools/openflux-dev"))
+sys.path.insert(0, str(ROOT / "tools/keyglass-dev"))
 import simple_hdlc
 
-DISPLAY_BIN = Path(os.environ.get("OPENFLUX_TEST_DISPLAY_BIN") or (ROOT / "keyboard/display/build/openflux-display"))
-BRIDGE_BIN = Path(os.environ.get("OPENFLUX_TEST_BRIDGE_BIN") or (ROOT / "keyboard/bridge/build/openflux-bridge"))
+DISPLAY_BIN = Path(os.environ.get("KEYGLASS_TEST_DISPLAY_BIN") or (ROOT / "keyboard/display/build/keyglass-display"))
+BRIDGE_BIN = Path(os.environ.get("KEYGLASS_TEST_BRIDGE_BIN") or (ROOT / "keyboard/bridge/build/keyglass-bridge"))
 
 
 def write_test_configs(cfg: Path, bg_path: str = "") -> None:
@@ -63,7 +63,7 @@ def write_test_configs(cfg: Path, bg_path: str = "") -> None:
 
 def test_version_and_headless_ppm_render() -> None:
     res = subprocess.run([str(DISPLAY_BIN), "--version"], capture_output=True, text=True, check=True)
-    assert res.stdout.strip().startswith("openflux-display "), res.stdout
+    assert res.stdout.strip().startswith("keyglass-display "), res.stdout
 
     with tempfile.TemporaryDirectory() as tmp:
         cfg = Path(tmp) / "config"
@@ -89,8 +89,8 @@ def test_version_and_headless_ppm_render() -> None:
         )
         ppm1 = Path(tmp) / "frame1.ppm"
         disp_env = os.environ.copy()
-        if has_ffmpeg and not Path("/usr/lib/openflux/display/openflux-ffmpeg").is_file():
-            disp_env["OPENFLUX_FFMPEG"] = shutil.which("ffmpeg") or ""
+        if has_ffmpeg and not Path("/usr/lib/keyglass/display/keyglass-ffmpeg").is_file():
+            disp_env["KEYGLASS_FFMPEG"] = shutil.which("ffmpeg") or ""
         subprocess.run([
             str(DISPLAY_BIN),
             "--config-dir", str(cfg),
@@ -109,8 +109,8 @@ def test_version_and_headless_ppm_render() -> None:
 
             # Target frame 5 is blue; target frame 8 is red after looping.
             env_f5 = disp_env.copy()
-            env_f5["OPENFLUX_VIDEO_TARGET_FRAME"] = "5"
-            env_f5["OPENFLUX_VIDEO_FPS"] = "15"
+            env_f5["KEYGLASS_VIDEO_TARGET_FRAME"] = "5"
+            env_f5["KEYGLASS_VIDEO_FPS"] = "15"
             ppm5 = Path(tmp) / "frame5.ppm"
             t0 = time.monotonic()
             subprocess.run([
@@ -126,8 +126,8 @@ def test_version_and_headless_ppm_render() -> None:
             assert dt_f5 < 3.0, f"Video pipe drain throttled: {dt_f5:.2f}s"
 
             env_f8 = disp_env.copy()
-            env_f8["OPENFLUX_VIDEO_TARGET_FRAME"] = "8"
-            env_f8["OPENFLUX_VIDEO_FPS"] = "15"
+            env_f8["KEYGLASS_VIDEO_TARGET_FRAME"] = "8"
+            env_f8["KEYGLASS_VIDEO_FPS"] = "15"
             ppm8 = Path(tmp) / "frame8.ppm"
             subprocess.run([
                 str(DISPLAY_BIN),
@@ -143,7 +143,7 @@ def test_version_and_headless_ppm_render() -> None:
         cfg_static = Path(tmp) / "cfg_static"
         write_test_configs(cfg_static, bg_path="")
         env_fixed = os.environ.copy()
-        env_fixed["OPENFLUX_FIXED_TIME_SEC"] = "1763414400"
+        env_fixed["KEYGLASS_FIXED_TIME_SEC"] = "1763414400"
         live_layer1 = Path(tmp) / "live_layer1.json"
         live_layer1.write_text(
             json.dumps({"type": "key_state", "seq": 1, "active_layer_bitfield": 1, "key_bitmap": "00" * 32}) + "\n"
@@ -175,17 +175,17 @@ def test_version_and_headless_ppm_render() -> None:
                 "--live-json", str(live_layer2),
                 "--render-ppm", str(out_p),
             ], env=env_fixed, check=True)
-        assert ppm_disp_a.read_bytes() == ppm_disp_b.read_bytes(), "openflux-display fixed-time renders differ"
-        print("openflux-display headless 1920x1080 PPM + video/layer + deterministic fixed-time render OK")
+        assert ppm_disp_a.read_bytes() == ppm_disp_b.read_bytes(), "keyglass-display fixed-time renders differ"
+        print("keyglass-display headless 1920x1080 PPM + video/layer + deterministic fixed-time render OK")
 
 
 def test_real_weston_compositor_and_bridge_ipc() -> None:
-    """Run compiled openflux-display against real headless Weston compositor + openflux-bridge IPC."""
-    require_full = os.environ.get("OPENFLUX_REQUIRE_FULL_E2E") == "1"
+    """Run compiled keyglass-display against real headless Weston compositor + keyglass-bridge IPC."""
+    require_full = os.environ.get("KEYGLASS_REQUIRE_FULL_E2E") == "1"
     if not shutil.which("weston") or not BRIDGE_BIN.exists():
         msg = f"Missing Weston ({shutil.which('weston')}) or Bridge binary ({BRIDGE_BIN})"
         if require_full:
-            raise RuntimeError(f"OPENFLUX_REQUIRE_FULL_E2E=1 set, cannot skip cross-stack test: {msg}")
+            raise RuntimeError(f"KEYGLASS_REQUIRE_FULL_E2E=1 set, cannot skip cross-stack test: {msg}")
         print(f"Skipping Weston compositor test ({msg})")
         return
 
@@ -197,7 +197,7 @@ def test_real_weston_compositor_and_bridge_ipc() -> None:
         log_dir.mkdir()
         write_test_configs(cfg, bg_path="")
 
-        sock_name = "wayland-openflux-test"
+        sock_name = "wayland-keyglass-test"
         w_env = os.environ.copy()
         w_env["XDG_RUNTIME_DIR"] = str(xdg_dir)
         weston = subprocess.Popen(
@@ -223,28 +223,28 @@ def test_real_weston_compositor_and_bridge_ipc() -> None:
 
             ready_file = Path(tmp) / "bridge_ready"
             bridge_sock = Path(tmp) / "bridge.sock"
-            marker_file = Path(tmp) / "openflux_display_active"
+            marker_file = Path(tmp) / "keyglass_display_active"
 
             b_env = os.environ.copy()
-            b_env["OPENFLUX_READY_FILE"] = str(ready_file)
-            b_env["OPENFLUX_TEST_EP_FDS"] = f"{out_w},{in_r}"
-            b_env["OPENFLUX_TEST_UART_FDS"] = f"{uart_rx_r},{uart_tx_w}"
-            b_env["OPENFLUX_BRIDGE_SOCK"] = str(bridge_sock)
+            b_env["KEYGLASS_READY_FILE"] = str(ready_file)
+            b_env["KEYGLASS_TEST_EP_FDS"] = f"{out_w},{in_r}"
+            b_env["KEYGLASS_TEST_UART_FDS"] = f"{uart_rx_r},{uart_tx_w}"
+            b_env["KEYGLASS_BRIDGE_SOCK"] = str(bridge_sock)
             bridge = subprocess.Popen([str(BRIDGE_BIN)], env=b_env, pass_fds=(out_w, in_r, uart_rx_r, uart_tx_w))
             os.close(out_w); os.close(in_r); os.close(uart_rx_r); os.close(uart_tx_w)
 
             while time.monotonic() < deadline and not (ready_file.exists() and bridge_sock.exists()):
                 time.sleep(0.02)
-            assert bridge_sock.exists(), "openflux-bridge IPC socket missing"
+            assert bridge_sock.exists(), "keyglass-bridge IPC socket missing"
 
             d_env = os.environ.copy()
             d_env["XDG_RUNTIME_DIR"] = str(xdg_dir)
             d_env["WAYLAND_DISPLAY"] = sock_name
-            d_env["OPENFLUX_CONFIG_DIR"] = str(cfg)
-            d_env["OPENFLUX_MEDIA_DIR"] = tmp
-            d_env["OPENFLUX_LOG_DIR"] = str(log_dir)
-            d_env["OPENFLUX_BRIDGE_SOCK"] = str(bridge_sock)
-            d_env["OPENFLUX_DISPLAY_MARKER"] = str(marker_file)
+            d_env["KEYGLASS_CONFIG_DIR"] = str(cfg)
+            d_env["KEYGLASS_MEDIA_DIR"] = tmp
+            d_env["KEYGLASS_LOG_DIR"] = str(log_dir)
+            d_env["KEYGLASS_BRIDGE_SOCK"] = str(bridge_sock)
+            d_env["KEYGLASS_DISPLAY_MARKER"] = str(marker_file)
             disp = subprocess.Popen(
                 [str(DISPLAY_BIN), "--width=1920", "--height=1080"],
                 env=d_env,
@@ -253,7 +253,7 @@ def test_real_weston_compositor_and_bridge_ipc() -> None:
             hb_file = log_dir / "display_heartbeat.log"
             while time.monotonic() < deadline and not (hb_file.exists() and marker_file.exists()):
                 time.sleep(0.02)
-            assert hb_file.exists() and marker_file.exists(), "openflux-display did not write heartbeat or active marker"
+            assert hb_file.exists() and marker_file.exists(), "keyglass-display did not write heartbeat or active marker"
 
             # Feed a canonical 139-byte UART MSG_UPDATE and verify ACK with bounded polling while display consumes IPC over Weston
             msg = bytearray(139)
@@ -278,16 +278,16 @@ def test_real_weston_compositor_and_bridge_ipc() -> None:
                     break
             assert ack_frame == bytes([2, 0, 0, 0]), f"Unexpected UART ACK: {ack_frame!r}"
 
-            # Shut down Weston compositor -> openflux-display must detect disconnect and exit cleanly without spinning
+            # Shut down Weston compositor -> keyglass-display must detect disconnect and exit cleanly without spinning
             weston.send_signal(signal.SIGTERM)
             weston.wait(timeout=3.0)
             disp_rc = disp.wait(timeout=3.0)
-            assert disp.poll() is not None, "openflux-display did not exit on compositor shutdown"
-            assert not marker_file.exists(), "openflux-display did not unlink active marker on compositor exit"
+            assert disp.poll() is not None, "keyglass-display did not exit on compositor shutdown"
+            assert not marker_file.exists(), "keyglass-display did not unlink active marker on compositor exit"
 
             bridge.send_signal(signal.SIGTERM)
             assert bridge.wait(timeout=2.0) == 0
-            print(f"openflux-display real Weston + bridge IPC + disconnect OK (exit={disp_rc})")
+            print(f"keyglass-display real Weston + bridge IPC + disconnect OK (exit={disp_rc})")
         finally:
             for p in (disp, bridge, weston):
                 if p is not None and p.poll() is None:

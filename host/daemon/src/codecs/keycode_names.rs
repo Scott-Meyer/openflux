@@ -1,13 +1,13 @@
-//! Keycode names that differ between OpenFlux and the keyboard's factory software.
+//! Keycode names that differ between Keyglass and the keyboard's factory software.
 //!
-//! OpenFlux names its own keyboard functions `KC_OF_*`. The factory software, and the third-party
+//! Keyglass names its own keyboard functions `KC_OF_*`. The factory software, and the third-party
 //! apps written against it, name the same functions `KC_FF_*`; the binary values are the same.
-//! The factory names also include `KC_WWW` for the WWW Home consumer control, which OpenFlux
+//! The factory names also include `KC_WWW` for the WWW Home consumer control, which Keyglass
 //! names with QMK's `KC_WWW_HOME`.
-//! Documents that come from outside OpenFlux (a factory keyboard's settings, third-party requests)
-//! are translated to OpenFlux names on the way in, and third-party replies are translated back.
+//! Documents that come from outside Keyglass (a factory keyboard's settings, third-party requests)
+//! are translated to Keyglass names on the way in, and third-party replies are translated back.
 
-/// `(OpenFlux name, factory name)` for every keycode whose names differ.
+/// `(Keyglass name, factory name)` for every keycode whose names differ.
 pub const KEYCODE_NAMES: [(&str, &str); 15] = [
     ("KC_OF_BRIGHTNESS_UP", "KC_FF_BRIGHTNESS_UP"),
     ("KC_OF_BRIGHTNESS_DOWN", "KC_FF_BRIGHTNESS_DOWN"),
@@ -26,19 +26,19 @@ pub const KEYCODE_NAMES: [(&str, &str); 15] = [
     ("KC_WWW_HOME", "KC_WWW"),
 ];
 
-/// The OpenFlux name of a factory keycode name.
-pub fn openflux_name(factory: &str) -> Option<&'static str> {
+/// The Keyglass name of a factory keycode name.
+pub fn keyglass_name(factory: &str) -> Option<&'static str> {
     KEYCODE_NAMES
         .iter()
         .find(|(_, f)| *f == factory)
         .map(|(of, _)| *of)
 }
 
-/// The factory name of an OpenFlux keycode name.
-pub fn factory_name(openflux: &str) -> Option<&'static str> {
+/// The factory name of an Keyglass keycode name.
+pub fn factory_name(keyglass: &str) -> Option<&'static str> {
     KEYCODE_NAMES
         .iter()
-        .find(|(of, _)| *of == openflux)
+        .find(|(of, _)| *of == keyglass)
         .map(|(_, f)| *f)
 }
 
@@ -57,13 +57,13 @@ fn rename(v: &mut serde_json::Value, map: fn(&str) -> Option<&'static str>) -> u
     }
 }
 
-/// Rewrites every string in `v` that is a factory keycode name to its OpenFlux name, at any
+/// Rewrites every string in `v` that is a factory keycode name to its Keyglass name, at any
 /// depth. Object keys are left alone. Returns how many strings changed.
-pub fn to_openflux(v: &mut serde_json::Value) -> usize {
-    rename(v, openflux_name)
+pub fn to_keyglass(v: &mut serde_json::Value) -> usize {
+    rename(v, keyglass_name)
 }
 
-/// Rewrites every string in `v` that is an OpenFlux keycode name to its factory name, at any
+/// Rewrites every string in `v` that is an Keyglass keycode name to its factory name, at any
 /// depth. Object keys are left alone. Returns how many strings changed.
 pub fn to_factory(v: &mut serde_json::Value) -> usize {
     rename(v, factory_name)
@@ -108,7 +108,7 @@ mod tests {
             factory_names_in(&v),
             ["KC_FF_BRIGHTNESS_UP", "KC_FF_THEME_CYCLE_NEXT"]
         );
-        assert_eq!(to_openflux(&mut v), 2);
+        assert_eq!(to_keyglass(&mut v), 2);
         assert_eq!(v["KC_FF_BRIGHTNESS_UP"], "KC_OF_BRIGHTNESS_UP");
         assert_eq!(
             v["layers"][0]["keyActions"][0]["keyCode"],
@@ -117,7 +117,7 @@ mod tests {
         assert_eq!(v["layers"][0]["keyActions"][1]["keyCode"], "KC_A");
         assert_eq!(v["label"], "KC_FF_THEME_CYCLE_NEXT is next theme");
         assert!(factory_names_in(&v).is_empty());
-        assert_eq!(to_openflux(&mut v), 0, "translating twice changes nothing");
+        assert_eq!(to_keyglass(&mut v), 0, "translating twice changes nothing");
         assert_eq!(to_factory(&mut v), 2);
         assert_eq!(
             v["layers"][0]["keyActions"][0]["keyCode"],
@@ -126,7 +126,7 @@ mod tests {
     }
 
     #[test]
-    fn every_openflux_name_is_one_the_keymap_codec_knows() {
+    fn every_keyglass_name_is_one_the_keymap_codec_knows() {
         for (of, _) in KEYCODE_NAMES {
             let action = serde_json::json!({"type": 0, "keyCode": of});
             assert!(

@@ -23,10 +23,10 @@ trap 'rm -rf "$work"' EXIT
 cat > "${work}/harness.nsi" <<EOF
 Unicode true
 !include LogicLib.nsh
-Name "OpenFlux hooks test"
+Name "Keyglass hooks test"
 OutFile "${work}/hooks-test.exe"
 RequestExecutionLevel user
-InstallDir "\$LOCALAPPDATA\\OpenFlux Studio"
+InstallDir "\$LOCALAPPDATA\\Keyglass Studio"
 ; Set by the Tauri template when the setup program runs as an update.
 Var UpdateMode
 
@@ -34,7 +34,7 @@ Var UpdateMode
 
 ; The wait for keyboard work is bounded at 15 minutes, like the systemd
 ; unit's TimeoutStopSec and the LaunchAgent's ExitTimeOut.
-!if \${OPENFLUX_STOP_TIMEOUT_SECONDS} != 900
+!if \${KEYGLASS_STOP_TIMEOUT_SECONDS} != 900
   !error "the wait for keyboard work must be bounded at 15 minutes"
 !endif
 

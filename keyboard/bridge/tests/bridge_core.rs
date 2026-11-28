@@ -1,17 +1,17 @@
-use openflux_bridge::ffs_aio::FfsTxQueue;
-use openflux_bridge::protocol::{
+use keyglass_bridge::ffs_aio::FfsTxQueue;
+use keyglass_bridge::protocol::{
     BRIDGE_PACKET_SIZE, CMD_DELETE_FILE, CMD_GET_LIST_OF_FILES, CMD_REQUEST_BRIDGE_VERSION,
     CMD_REQUEST_DISPLAY_VERSION, CMD_SEND_FILE_FROM_HOST, CMD_SEND_FILE_TO_HOST,
     CMD_SEND_LIVE_DATA, CMD_SET_SYSTEM_TIME, CMD_STAT_FILE, FW_MSG_QC_DATA_LEN, FW_MSG_UPDATE_LEN,
     RESP_ACK, RESP_NAK,
 };
-use openflux_bridge::simple_hdlc::{simple_hdlc_encode, SimpleHdlcDecoder};
-use openflux_bridge::uart_bridge::UartBridge;
-use openflux_bridge::usb_commands::{
+use keyglass_bridge::simple_hdlc::{simple_hdlc_encode, SimpleHdlcDecoder};
+use keyglass_bridge::uart_bridge::UartBridge;
+use keyglass_bridge::usb_commands::{
     bridge_handle_command, bridge_publish_trial_marker_with_version, bridge_resolve_path,
     CommandHooks,
 };
-use openflux_bridge::usb_rx::{BridgeRxState, RxMode};
+use keyglass_bridge::usb_rx::{BridgeRxState, RxMode};
 use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -28,8 +28,8 @@ struct SysrootGuard {
 impl SysrootGuard {
     fn enter(path: &Path) -> Self {
         let lock = SYSROOT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let prev = std::env::var_os("OPENFLUX_SYSROOT");
-        std::env::set_var("OPENFLUX_SYSROOT", path);
+        let prev = std::env::var_os("KEYGLASS_SYSROOT");
+        std::env::set_var("KEYGLASS_SYSROOT", path);
         Self { _lock: lock, prev }
     }
 }
@@ -37,9 +37,9 @@ impl SysrootGuard {
 impl Drop for SysrootGuard {
     fn drop(&mut self) {
         if let Some(ref p) = self.prev {
-            std::env::set_var("OPENFLUX_SYSROOT", p);
+            std::env::set_var("KEYGLASS_SYSROOT", p);
         } else {
-            std::env::remove_var("OPENFLUX_SYSROOT");
+            std::env::remove_var("KEYGLASS_SYSROOT");
         }
     }
 }
@@ -111,12 +111,12 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
         "/home/root/foo.ipk"
     );
     assert_eq!(
-        bridge_resolve_path("/home/root/openflux/config/keymap.json").unwrap(),
-        "/home/root/openflux/config/keymap.json"
+        bridge_resolve_path("/home/root/keyglass/config/keymap.json").unwrap(),
+        "/home/root/keyglass/config/keymap.json"
     );
     assert_eq!(
-        bridge_resolve_path("/home/root/.openflux/rollback/bridge/attempt").unwrap(),
-        "/home/root/.openflux/rollback/bridge/attempt"
+        bridge_resolve_path("/home/root/.keyglass/rollback/bridge/attempt").unwrap(),
+        "/home/root/.keyglass/rollback/bridge/attempt"
     );
     assert_eq!(bridge_resolve_path("/home").unwrap(), "/home");
     assert!(bridge_resolve_path("/homes/root/x").is_err());
@@ -130,11 +130,11 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
     assert_eq!(hooks.zlp_count, 1);
     assert_eq!(hooks.tx.len(), BRIDGE_PACKET_SIZE * 2);
     assert_eq!(hooks.tx[0], RESP_ACK);
-    assert!(hooks.tx[BRIDGE_PACKET_SIZE..].starts_with(b"openflux-bridge "));
+    assert!(hooks.tx[BRIDGE_PACKET_SIZE..].starts_with(b"keyglass-bridge "));
 
-    let tmp_ver = std::env::temp_dir().join(format!("openflux_ver_test_{}", std::process::id()));
+    let tmp_ver = std::env::temp_dir().join(format!("keyglass_ver_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp_ver);
-    std::fs::create_dir_all(tmp_ver.join("home/root/.openflux/versions")).unwrap();
+    std::fs::create_dir_all(tmp_ver.join("home/root/.keyglass/versions")).unwrap();
     {
         let _sysroot = SysrootGuard::enter(&tmp_ver);
         hooks.reset();
@@ -142,13 +142,13 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
         assert_eq!(hooks.tx[0], RESP_ACK);
         assert!(hooks.tx[BRIDGE_PACKET_SIZE..].starts_with(b"unknown\0"));
         std::fs::write(
-            tmp_ver.join("home/root/.openflux/versions/display"),
-            "openflux-display 1.0.0\n",
+            tmp_ver.join("home/root/.keyglass/versions/display"),
+            "keyglass-display 1.0.0\n",
         )
         .unwrap();
         hooks.reset();
         bridge_handle_command(CMD_REQUEST_DISPLAY_VERSION, &[], &mut hooks);
-        assert!(hooks.tx[BRIDGE_PACKET_SIZE..].starts_with(b"openflux-display 1.0.0\0"));
+        assert!(hooks.tx[BRIDGE_PACKET_SIZE..].starts_with(b"keyglass-display 1.0.0\0"));
     }
     let _ = std::fs::remove_dir_all(&tmp_ver);
 
@@ -175,9 +175,9 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
     assert_eq!(hooks.tx[0], RESP_ACK);
 
     // 4. Sysroot file put/get/list + clock set rollback
-    let tmp = std::env::temp_dir().join(format!("openflux_bridge_test_{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("keyglass_bridge_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(tmp.join("home/root/openflux/config")).unwrap();
+    std::fs::create_dir_all(tmp.join("home/root/keyglass/config")).unwrap();
     std::fs::create_dir_all(tmp.join("usr/share/zoneinfo/America")).unwrap();
     std::fs::create_dir_all(tmp.join("usr/share/zoneinfo/Europe")).unwrap();
     std::fs::create_dir_all(tmp.join("etc")).unwrap();
@@ -185,14 +185,14 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
     std::fs::write(tmp.join("usr/share/zoneinfo/Europe/London"), b"TZif2").unwrap();
     let sysroot_guard = SysrootGuard::enter(&tmp);
 
-    let put = b"/home/root/openflux/config/hello.txt\0world!".to_vec();
+    let put = b"/home/root/keyglass/config/hello.txt\0world!".to_vec();
     hooks.reset();
     bridge_handle_command(CMD_SEND_FILE_FROM_HOST, &put, &mut hooks);
     assert_eq!(hooks.tx[0], RESP_ACK);
     hooks.reset();
     bridge_handle_command(
         CMD_SEND_FILE_TO_HOST,
-        b"/home/root/openflux/config/hello.txt",
+        b"/home/root/keyglass/config/hello.txt",
         &mut hooks,
     );
     assert_eq!(hooks.tx[0], RESP_ACK);
@@ -201,7 +201,7 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
     hooks.reset();
     bridge_handle_command(
         CMD_GET_LIST_OF_FILES,
-        b"/home/root/openflux/config",
+        b"/home/root/keyglass/config",
         &mut hooks,
     );
     assert_eq!(hooks.tx[0], RESP_ACK);
@@ -209,7 +209,7 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
 
     // Streaming >16 MiB (18 MiB) file upload directly through BridgeRxState without full-file RAM allocation
     {
-        let path_prefix = b"/home/root/openflux/config/big_video.bin\0";
+        let path_prefix = b"/home/root/keyglass/config/big_video.bin\0";
         let file_sz = 18 * 1024 * 1024usize;
         let total_bytes = path_prefix.len() + file_sz;
         let total_pkts = total_bytes.div_ceil(BRIDGE_PACKET_SIZE);
@@ -246,9 +246,9 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
         }
         assert_eq!(rx.mode, RxMode::Idle);
         assert_eq!(hooks.tx[0], RESP_ACK);
-        let meta = std::fs::metadata(tmp.join("home/root/openflux/config/big_video.bin")).unwrap();
+        let meta = std::fs::metadata(tmp.join("home/root/keyglass/config/big_video.bin")).unwrap();
         assert_eq!(meta.len(), file_sz as u64);
-        let _ = std::fs::remove_file(tmp.join("home/root/openflux/config/big_video.bin"));
+        let _ = std::fs::remove_file(tmp.join("home/root/keyglass/config/big_video.bin"));
     }
 
     // Reserve limit overflow sends header-only NAK
@@ -256,7 +256,7 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
     hooks.reset();
     bridge_handle_command(
         CMD_SEND_FILE_TO_HOST,
-        b"/home/root/openflux/config/hello.txt",
+        b"/home/root/keyglass/config/hello.txt",
         &mut hooks,
     );
     assert_eq!(hooks.tx.first().copied(), Some(RESP_NAK));
@@ -265,7 +265,7 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
     // Reserve within USB_TX_MAX_PACKETS works; exceeding USB_TX_MAX_PACKETS fails.
     let mut tx_big = FfsTxQueue::init(0, false).unwrap();
     assert!(tx_big.reserve(35_000));
-    assert!(!tx_big.reserve(openflux_bridge::ffs_aio::USB_TX_MAX_PACKETS + 1));
+    assert!(!tx_big.reserve(keyglass_bridge::ffs_aio::USB_TX_MAX_PACKETS + 1));
 
     // Clock rollback when /etc/localtime is initially absent
     hooks.clock_rc = Err("EPERM".into());
@@ -396,7 +396,7 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
     let enc = simple_hdlc_encode(&msg).unwrap();
 
     let sock_path = tmp.join("bridge.sock");
-    let mut ipc = openflux_bridge::display_ipc::DisplayIpc::new();
+    let mut ipc = keyglass_bridge::display_ipc::DisplayIpc::new();
     ipc.init(Some(sock_path.to_str().unwrap())).unwrap();
     let mut cli = UnixStream::connect(&sock_path).unwrap();
     cli.set_nonblocking(true).unwrap();
@@ -487,7 +487,7 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
     hooks.reset();
     bridge_handle_command(
         CMD_STAT_FILE,
-        b"/home/root/openflux/config/hello.txt",
+        b"/home/root/keyglass/config/hello.txt",
         &mut hooks,
     );
     assert_eq!(hooks.tx[0], RESP_ACK);
@@ -510,36 +510,36 @@ fn path_sandbox_commands_framing_uart_ipc_and_streaming_upload() {
     assert_eq!(hooks.tx[0], RESP_ACK);
 
     // 8. Trial marker publication gates confirmation on matching attempt token + version + armed state
-    let rb_dir = tmp.join("home/root/.openflux/rollback/bridge");
+    let rb_dir = tmp.join("home/root/.keyglass/rollback/bridge");
     std::fs::create_dir_all(&rb_dir).unwrap();
     std::fs::write(
         rb_dir.join("attempt"),
-        "attempt_id=abc123\nversion=openflux-bridge 1.2.3\n",
+        "attempt_id=abc123\nversion=keyglass-bridge 1.2.3\n",
     )
     .unwrap();
     // Without `armed`, nothing is written even with matching token.
-    bridge_publish_trial_marker_with_version("openflux-bridge 1.2.3", Some("abc123"));
+    bridge_publish_trial_marker_with_version("keyglass-bridge 1.2.3", Some("abc123"));
     assert!(!rb_dir.join("trial-abc123").exists());
     // With `armed`, a running bridge of another version or a missing/wrong token publishes no trial marker.
     std::fs::write(rb_dir.join("armed"), "pending-host-usb-confirm\n").unwrap();
-    bridge_publish_trial_marker_with_version("openflux-bridge 1.0.0", Some("abc123"));
+    bridge_publish_trial_marker_with_version("keyglass-bridge 1.0.0", Some("abc123"));
     assert!(!rb_dir.join("trial-abc123").exists());
     // A bridge of the same version started without the postinst attempt token can't publish for this attempt.
-    bridge_publish_trial_marker_with_version("openflux-bridge 1.2.3", None);
+    bridge_publish_trial_marker_with_version("keyglass-bridge 1.2.3", None);
     assert!(!rb_dir.join("trial-abc123").exists());
-    bridge_publish_trial_marker_with_version("openflux-bridge 1.2.3", Some("oldtoken"));
+    bridge_publish_trial_marker_with_version("keyglass-bridge 1.2.3", Some("oldtoken"));
     assert!(!rb_dir.join("trial-abc123").exists());
     // Matching target version + postinst token writes trial-<attempt_id> cleanly.
-    bridge_publish_trial_marker_with_version("openflux-bridge 1.2.3", Some("abc123"));
+    bridge_publish_trial_marker_with_version("keyglass-bridge 1.2.3", Some("abc123"));
     let trial_body = std::fs::read_to_string(rb_dir.join("trial-abc123")).unwrap();
-    assert!(trial_body.contains("version=openflux-bridge 1.2.3"));
+    assert!(trial_body.contains("version=keyglass-bridge 1.2.3"));
     // Traversal attempt_id is rejected.
     std::fs::write(
         rb_dir.join("attempt"),
-        "attempt_id=../escape\nversion=openflux-bridge 1.2.3\n",
+        "attempt_id=../escape\nversion=keyglass-bridge 1.2.3\n",
     )
     .unwrap();
-    bridge_publish_trial_marker_with_version("openflux-bridge 1.2.3", Some("../escape"));
+    bridge_publish_trial_marker_with_version("keyglass-bridge 1.2.3", Some("../escape"));
     assert!(!rb_dir.join("../escape").exists());
 
     drop(sysroot_guard);
@@ -556,11 +556,11 @@ fn live_wire(message: &[u8]) -> Vec<u8> {
 
 #[test]
 fn live_data_reaches_display_clients_only_as_single_valid_json_lines() {
-    let tmp = std::env::temp_dir().join(format!("openflux_live_test_{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("keyglass_live_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
     let sock_path = tmp.join("bridge.sock");
-    let mut ipc = openflux_bridge::display_ipc::DisplayIpc::new();
+    let mut ipc = keyglass_bridge::display_ipc::DisplayIpc::new();
     ipc.init(Some(sock_path.to_str().unwrap())).unwrap();
     let mut cli = UnixStream::connect(&sock_path).unwrap();
     cli.set_nonblocking(true).unwrap();
@@ -601,16 +601,16 @@ fn live_data_reaches_display_clients_only_as_single_valid_json_lines() {
 
 #[test]
 fn streaming_put_file_rejects_over_limit_cleans_partial_on_abort_and_naks_oversized_get() {
-    let tmp = std::env::temp_dir().join(format!("openflux_stream_test_{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("keyglass_stream_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(tmp.join("home/root/openflux/media")).unwrap();
+    std::fs::create_dir_all(tmp.join("home/root/keyglass/media")).unwrap();
     let sysroot_guard = SysrootGuard::enter(&tmp);
 
     let mut hooks = MockHooks::new();
     let mut rx = BridgeRxState::new();
 
     // 1. Over-limit file upload (>128 MiB) must be rejected immediately with NAK
-    let over_bytes = (openflux_bridge::protocol::BRIDGE_MAX_FILE_UPLOAD_BYTES + 1) as u32;
+    let over_bytes = (keyglass_bridge::protocol::BRIDGE_MAX_FILE_UPLOAD_BYTES + 1) as u32;
     let over_pkts = (over_bytes as usize).div_ceil(BRIDGE_PACKET_SIZE) as u32;
     rx.feed(
         &make_hdr(CMD_SEND_FILE_FROM_HOST, over_pkts, over_bytes),
@@ -621,7 +621,7 @@ fn streaming_put_file_rejects_over_limit_cleans_partial_on_abort_and_naks_oversi
     assert_eq!(hooks.tx[0], RESP_NAK);
 
     // 2. Chunked streaming PUT_FILE interrupted mid-transfer must NAK and leave zero .part files
-    let path_hdr = b"/home/root/openflux/media/aborted.mp4\0";
+    let path_hdr = b"/home/root/keyglass/media/aborted.mp4\0";
     let total_bytes = path_hdr.len() + 2048;
     let total_pkts = total_bytes.div_ceil(BRIDGE_PACKET_SIZE);
     let mut first = make_hdr(
@@ -638,20 +638,20 @@ fn streaming_put_file_rejects_over_limit_cleans_partial_on_abort_and_naks_oversi
     rx.abort(&mut hooks);
     assert_eq!(rx.mode, RxMode::Idle);
     assert_eq!(hooks.tx[0], RESP_NAK);
-    assert!(!tmp.join("home/root/openflux/media/aborted.mp4").exists());
-    for ent in std::fs::read_dir(tmp.join("home/root/openflux/media")).unwrap() {
+    assert!(!tmp.join("home/root/keyglass/media/aborted.mp4").exists());
+    for ent in std::fs::read_dir(tmp.join("home/root/keyglass/media")).unwrap() {
         let name = ent.unwrap().file_name().to_string_lossy().to_string();
         assert!(!name.contains(".part."), "leftover partial file: {name}");
     }
 
     // 3. Oversized GET_FILE exceeding TX packet reserve sends immediate header-only NAK
-    let big_path = tmp.join("home/root/openflux/media/toobig.bin");
+    let big_path = tmp.join("home/root/keyglass/media/toobig.bin");
     std::fs::write(&big_path, vec![0x11u8; 4096]).unwrap();
     hooks.reserve_limit = Some(2);
     hooks.reset();
     bridge_handle_command(
         CMD_SEND_FILE_TO_HOST,
-        b"/home/root/openflux/media/toobig.bin",
+        b"/home/root/keyglass/media/toobig.bin",
         &mut hooks,
     );
     assert_eq!(hooks.tx.len(), BRIDGE_PACKET_SIZE);
@@ -661,7 +661,7 @@ fn streaming_put_file_rejects_over_limit_cleans_partial_on_abort_and_naks_oversi
     // 4. >64 MiB (65 MiB) and exactly 128 MiB readbacks succeed with bounded queue memory; 128 MiB + 1 NAKs.
     // Also verify FfsTxQueue::enqueue_stream with a stalled pipe + 257-byte short reads + premature EOF abort.
     {
-        use openflux_bridge::ffs_aio::PendingTxStream;
+        use keyglass_bridge::ffs_aio::PendingTxStream;
         use std::os::unix::io::FromRawFd;
 
         // 4a. 257-byte short-read injection produces exact contiguous payload with zero mid-stream padding.
@@ -808,16 +808,16 @@ fn streaming_put_file_rejects_over_limit_cleans_partial_on_abort_and_naks_oversi
         ("65mib.bin", 65 * 1024 * 1024usize, true),
         (
             "128mib.bin",
-            openflux_bridge::protocol::BRIDGE_MAX_FILE_UPLOAD_BYTES,
+            keyglass_bridge::protocol::BRIDGE_MAX_FILE_UPLOAD_BYTES,
             true,
         ),
         (
             "over128mib.bin",
-            openflux_bridge::protocol::BRIDGE_MAX_FILE_UPLOAD_BYTES + 1,
+            keyglass_bridge::protocol::BRIDGE_MAX_FILE_UPLOAD_BYTES + 1,
             false,
         ),
     ] {
-        let p = tmp.join("home/root/openflux/media").join(fname);
+        let p = tmp.join("home/root/keyglass/media").join(fname);
         let f = std::fs::File::create(&p).unwrap();
         f.set_len(size_bytes as u64).unwrap();
         drop(f);
@@ -827,7 +827,7 @@ fn streaming_put_file_rejects_over_limit_cleans_partial_on_abort_and_naks_oversi
             data_pkts: 0,
             zlp_count: 0,
         };
-        let remote = format!("/home/root/openflux/media/{fname}");
+        let remote = format!("/home/root/keyglass/media/{fname}");
         bridge_handle_command(CMD_SEND_FILE_TO_HOST, remote.as_bytes(), &mut ch);
         let hdr = ch.hdr.as_ref().expect("missing response header");
         assert_eq!(ch.zlp_count, 1);

@@ -1,4 +1,4 @@
-//! Weather for the keyboard's weather tile. openfluxd looks up the tile's city with Open-Meteo
+//! Weather for the keyboard's weather tile. keyglassd looks up the tile's city with Open-Meteo
 //! (open-meteo.com): its geocoding, forecast and air-quality APIs. Weather data by Open-Meteo.com,
 //! licensed CC BY 4.0.
 

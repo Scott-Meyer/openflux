@@ -114,7 +114,7 @@ pub struct WorkerLoopState {
     /// Reads the host's clock zone; [`HostClock::current`] when unset.
     pub host_clock: Option<Box<dyn Fn() -> HostClock + Send>>,
     /// Host broker subscription used for real-time Host -> Keyboard `WireFrame` streaming.
-    pub v2_bus_sub: Option<openflux_bus::Subscription>,
+    pub v2_bus_sub: Option<keyglass_bus::Subscription>,
     pub last_bus_poll_at: Option<Instant>,
     pub last_gamepad_cfg_sig: Option<String>,
     pub last_layer_override_sig: Option<String>,
@@ -138,7 +138,7 @@ impl HostClock {
             other => {
                 if !WARNED.swap(true, Ordering::Relaxed) {
                     eprintln!(
-                        "openfluxd: the host's time zone couldn't be determined ({other:?}); the keyboard's clock uses UTC"
+                        "keyglassd: the host's time zone couldn't be determined ({other:?}); the keyboard's clock uses UTC"
                     );
                 }
                 "UTC".into()
@@ -218,7 +218,7 @@ fn sync_keyboard_clock(device: &dyn DeviceSink, wstate: &mut WorkerLoopState) {
     if let Err(e) = &res {
         if !was_failing {
             eprintln!(
-                "openfluxd: setting the keyboard's clock ({}) failed: {e}",
+                "keyglassd: setting the keyboard's clock ({}) failed: {e}",
                 clock.zone
             );
         }
@@ -262,7 +262,7 @@ fn load_pending_bridge(state: &ApiState) -> Option<crate::bridge_install::Pendin
     serde_json::from_slice(&raw).ok()
 }
 
-/// Spawns the event-driven macOS focus watcher (`openflux-sensors --watch-focus`), which listens
+/// Spawns the event-driven macOS focus watcher (`keyglass-sensors --watch-focus`), which listens
 /// natively to `NSWorkspace.didActivateApplicationNotification` (<1ms latency, 0% CPU idle) and
 /// pushes `host/app/active` straight onto the unified v2 bus with zero polling delay!
 #[cfg(target_os = "macos")]
@@ -271,13 +271,13 @@ fn spawn_macos_focus_watcher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()));
     let helper = exe_dir
-        .map(|d| d.join("openflux-sensors"))
+        .map(|d| d.join("keyglass-sensors"))
         .filter(|p| p.is_file());
     let Some(helper_path) = helper else {
         return;
     };
     let _ = thread::Builder::new()
-        .name("openflux-focus-watch".into())
+        .name("keyglass-focus-watch".into())
         .spawn(move || {
             use std::io::{BufRead, BufReader};
             use std::process::{Command, Stdio};
@@ -348,14 +348,14 @@ fn spawn_macos_focus_watcher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
                         let changed = state
                             .v2
                             .broker
-                            .get_retained(openflux_bus::topics::HOST_APP_ACTIVE)
+                            .get_retained(keyglass_bus::topics::HOST_APP_ACTIVE)
                             .map(|m| m.payload != payload)
                             .unwrap_or(true);
                         if changed {
                             let _ = state.v2.broker.publish(
-                                openflux_bus::topics::HOST_APP_ACTIVE,
+                                keyglass_bus::topics::HOST_APP_ACTIVE,
                                 payload,
-                                openflux_bus::PublishOptions::retained().with_origin("focus-watch"),
+                                keyglass_bus::PublishOptions::retained().with_origin("focus-watch"),
                             );
                         }
                     }
@@ -369,14 +369,14 @@ fn spawn_macos_focus_watcher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
         });
 }
 
-/// Pure v2 host telemetry broadcaster (`openflux-host-telemetry`).
+/// Pure v2 host telemetry broadcaster (`keyglass-host-telemetry`).
 /// Completely decoupled from USB — simply broadcasts `host/system/metrics`, `host/media/now_playing`,
 /// and `host/weather/current` onto the broker every ~1.5s regardless of USB state, so a USB
 /// reconnect/handshake can NEVER block computer stats or weather!
 #[cfg(not(target_os = "macos"))]
 fn spawn_platform_focus_watcher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
     let _ = thread::Builder::new()
-        .name("openflux-focus-watch".into())
+        .name("keyglass-focus-watch".into())
         .spawn(move || {
             let mut bridge = crate::bridges::create_platform_bridge();
             let mut last_key = String::new();
@@ -409,9 +409,9 @@ fn spawn_platform_focus_watcher(state: Arc<ApiState>, running: Arc<AtomicBool>) 
                             "profile_name": profile_name,
                         });
                         let _ = state.v2.broker.publish(
-                            openflux_bus::topics::HOST_APP_ACTIVE,
+                            keyglass_bus::topics::HOST_APP_ACTIVE,
                             payload,
-                            openflux_bus::PublishOptions::retained().with_origin("focus-watch"),
+                            keyglass_bus::PublishOptions::retained().with_origin("focus-watch"),
                         );
                         state.v2.evaluate_profiles();
                     }
@@ -566,7 +566,7 @@ fn read_host_audio_volume_com(
 /// widget) runs as 100% pure sandboxed Lua with zero Python dependency!
 fn spawn_host_audio_volume_watcher(state: Arc<ApiState>, running: Arc<AtomicBool>) {
     let _ = thread::Builder::new()
-        .name("openflux-audio-vol".into())
+        .name("keyglass-audio-vol".into())
         .spawn(move || {
             #[cfg(target_os = "windows")]
             let win_enum = unsafe {
@@ -599,7 +599,7 @@ fn spawn_host_audio_volume_watcher(state: Arc<ApiState>, running: Arc<AtomicBool
                 let _ = state.v2.broker.publish(
                     "host/audio/volume",
                     serde_json::json!({ "level": rounded, "muted": muted, "initial": true }),
-                    openflux_bus::PublishOptions::retained().with_origin("host-audio"),
+                    keyglass_bus::PublishOptions::retained().with_origin("host-audio"),
                 );
             }
             while running.load(Ordering::Relaxed) {
@@ -618,7 +618,7 @@ fn spawn_host_audio_volume_watcher(state: Arc<ApiState>, running: Arc<AtomicBool
                     let _ = state.v2.broker.publish(
                         "host/audio/volume",
                         serde_json::json!({ "level": rounded, "muted": muted, "initial": false }),
-                        openflux_bus::PublishOptions::retained().with_origin("host-audio"),
+                        keyglass_bus::PublishOptions::retained().with_origin("host-audio"),
                     );
                 }
             }
@@ -630,7 +630,7 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
     spawn_platform_focus_watcher(state.clone(), running.clone());
     spawn_host_audio_volume_watcher(state.clone(), running.clone());
     let _ = thread::Builder::new()
-        .name("openflux-host-telemetry".into())
+        .name("keyglass-host-telemetry".into())
         .spawn(move || {
             let mut bridge = crate::bridges::create_platform_bridge();
             let mut last_time_pub: Option<Instant> = None;
@@ -645,17 +645,17 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
                             "asleep": display_asleep,
                             "platform": std::env::consts::OS,
                         }),
-                        openflux_bus::PublishOptions::retained().with_origin("host-telemetry"),
+                        keyglass_bus::PublishOptions::retained().with_origin("host-telemetry"),
                     );
                     let _ = state.v2.broker.publish_typed(
-                        openflux_bus::topics::HOST_CONNECTION,
-                        &openflux_bus::HostConnectionState {
+                        keyglass_bus::topics::HOST_CONNECTION,
+                        &keyglass_bus::HostConnectionState {
                             connected: true,
                             host_asleep: display_asleep,
-                            last_seen_ms: openflux_bus::now_unix_ms(),
+                            last_seen_ms: keyglass_bus::now_unix_ms(),
                             host_platform: Some(std::env::consts::OS.to_string()),
                         },
-                        openflux_bus::PublishOptions::retained().with_origin("host-telemetry"),
+                        keyglass_bus::PublishOptions::retained().with_origin("host-telemetry"),
                     );
                 }
                 if last_time_pub.map(|t| t.elapsed() >= Duration::from_secs(30)).unwrap_or(true) {
@@ -672,7 +672,7 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
                             "tz_offset_sec": hc.utc_offset_secs.unwrap_or(0),
                             "zone": hc.zone,
                         }),
-                        openflux_bus::PublishOptions::retained().with_origin("host-telemetry"),
+                        keyglass_bus::PublishOptions::retained().with_origin("host-telemetry"),
                     );
                 }
                 let hw = bridge.sample_hardware();
@@ -684,8 +684,8 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
                 }
 
                 let _ = state.v2.broker.publish_typed(
-                    openflux_bus::topics::HOST_SYSTEM_METRICS,
-                    &openflux_bus::SystemMetrics {
+                    keyglass_bus::topics::HOST_SYSTEM_METRICS,
+                    &keyglass_bus::SystemMetrics {
                         cpu_percent: hw.cpu_pct as f32,
                         memory_used_gb: hw.mem_used_gb as f32,
                         memory_total_gb: hw.mem_total_gb as f32,
@@ -698,11 +698,11 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
                         net_down_kbps: 0.0,
                         net_up_kbps: 0.0,
                     },
-                    openflux_bus::PublishOptions::retained(),
+                    keyglass_bus::PublishOptions::retained(),
                 );
                 let _ = state.v2.broker.publish_typed(
-                    openflux_bus::topics::HOST_MEDIA_NOW_PLAYING,
-                    &openflux_bus::MediaNowPlaying {
+                    keyglass_bus::topics::HOST_MEDIA_NOW_PLAYING,
+                    &keyglass_bus::MediaNowPlaying {
                         title: media.title.clone(),
                         artist: media.artists.clone(),
                         album: media.album.clone(),
@@ -712,7 +712,7 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
                         art_base64: String::new(),
                         track_id: String::new(),
                     },
-                    openflux_bus::PublishOptions::retained(),
+                    keyglass_bus::PublishOptions::retained(),
                 );
 
                 // Poll weather whenever ANY enabled module subscribes to `host/weather/#`
@@ -727,7 +727,7 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
                             continue;
                         }
                         if dm.manifest.channels.subscribes.iter().any(|p| {
-                            p == openflux_bus::topics::HOST_WEATHER_CURRENT
+                            p == keyglass_bus::topics::HOST_WEATHER_CURRENT
                                 || p == "host/weather/#"
                                 || p == "host/weather/+"
                         }) {
@@ -754,7 +754,7 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
                         .hourly
                         .iter()
                         .take(3)
-                        .map(|h| openflux_bus::WeatherHourly {
+                        .map(|h| keyglass_bus::WeatherHourly {
                             hour: h.hour_label.clone(),
                             temp: h.temp as f32,
                             condition: h.condition.clone(),
@@ -762,8 +762,8 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
                         })
                         .collect();
                     let _ = state.v2.broker.publish_typed(
-                        openflux_bus::topics::HOST_WEATHER_CURRENT,
-                        &openflux_bus::WeatherState {
+                        keyglass_bus::topics::HOST_WEATHER_CURRENT,
+                        &keyglass_bus::WeatherState {
                             city: w.city.clone(),
                             temp: w.temp as f32,
                             high: w.max_temp as f32,
@@ -778,7 +778,7 @@ fn spawn_host_telemetry_publisher(state: Arc<ApiState>, running: Arc<AtomicBool>
                             utc_offset_sec: w.utc_offset_seconds,
                             hourly,
                         },
-                        openflux_bus::PublishOptions::retained(),
+                        keyglass_bus::PublishOptions::retained(),
                     );
                 }
 
@@ -934,7 +934,7 @@ impl UsbWorkerHandle {
         snapshot: serde_json::Value,
     ) -> Result<crate::api::keyboard_edits::KeptFields, String> {
         if !self.accepting.load(Ordering::SeqCst) {
-            return Err("OpenFlux is shutting down".to_string());
+            return Err("Keyglass is shutting down".to_string());
         }
         // Uploads are written twice in the worst case (the save, then a rollback).
         let budget = transfer_budget(
@@ -990,7 +990,7 @@ impl UsbWorkerHandle {
 
     pub async fn flash_uf2(&self, uf2_path: String) -> Result<String, String> {
         if !self.accepting.load(Ordering::SeqCst) {
-            return Err("OpenFlux is shutting down".to_string());
+            return Err("Keyglass is shutting down".to_string());
         }
         let (reply_tx, reply_rx) = oneshot::channel();
         self.tx
@@ -1047,12 +1047,12 @@ impl UsbWorkerHandle {
     }
 }
 
-/// A package file is a bridge package when its name says so (`openflux-bridge_<version>_<arch>.ipk`).
+/// A package file is a bridge package when its name says so (`keyglass-bridge_<version>_<arch>.ipk`).
 pub fn is_bridge_package(path: &str) -> bool {
     std::path::Path::new(path)
         .file_name()
         .and_then(|n| n.to_str())
-        .map(|n| n.to_ascii_lowercase().starts_with("openflux-bridge"))
+        .map(|n| n.to_ascii_lowercase().starts_with("keyglass-bridge"))
         .unwrap_or(false)
 }
 
@@ -1323,7 +1323,7 @@ fn mismatch_reason(doc: &serde_json::Value, codec_error: &str) -> String {
         format!("keymap.json doesn't match the keyboard's firmware keymap: {codec_error}")
     } else {
         format!(
-            "keymap.json uses key names of the keyboard's factory software that OpenFlux doesn't use ({})",
+            "keymap.json uses key names of the keyboard's factory software that Keyglass doesn't use ({})",
             factory.join(", ")
         )
     }
@@ -1708,7 +1708,7 @@ fn observe_firmware_runtime(
         local
     };
     if let Err(e) = state.persist_profiles() {
-        eprintln!("openfluxd: the profile chosen on the keyboard couldn't be stored: {e}");
+        eprintln!("keyglassd: the profile chosen on the keyboard couldn't be stored: {e}");
     }
     state.emit(
         "profileChange",
@@ -1852,7 +1852,7 @@ pub fn reconcile_tick_with_state(
     {
         sync_keyboard_clock(device, wstate);
     }
-    // In pure OFV2 mode, `openflux-host-telemetry` + `focus-watch` already publish CPU/GPU/RAM,
+    // In pure OFV2 mode, `keyglass-host-telemetry` + `focus-watch` already publish CPU/GPU/RAM,
     // media, weather, and app focus cleanly without blocking USB — skip duplicate subprocess forks!
     let sample_due = !device.is_v2_mux_active()
         && (has_bridge
@@ -1918,7 +1918,7 @@ pub fn reconcile_tick_with_state(
             g.hardware = hw.clone();
             g.media = media.clone();
         }
-        // `openflux-host-telemetry` (`spawn_host_telemetry_publisher`) is the single authoritative
+        // `keyglass-host-telemetry` (`spawn_host_telemetry_publisher`) is the single authoritative
         // publisher of `HOST_SYSTEM_METRICS` and `HOST_MEDIA_NOW_PLAYING` — never overwrite them
         // here with unsampled/default values when `sample_due == false`!
         if !has_firmware {
@@ -2048,7 +2048,7 @@ pub fn reconcile_tick_with_state(
     } else {
         cur_desired_prof_id
     };
-    // Publish active foreground application and active profile onto the OpenFlux v2 pub/sub bus
+    // Publish active foreground application and active profile onto the Keyglass v2 pub/sub bus
     // so any module (e.g. game-specific StreamDeck ability bars, IDE shortcuts, companion behavior)
     // can react automatically when you switch apps or profiles!
     let active_profile_name = {
@@ -2072,21 +2072,21 @@ pub fn reconcile_tick_with_state(
     let focus_watch_active = state
         .v2
         .broker
-        .get_retained(openflux_bus::topics::HOST_APP_ACTIVE)
+        .get_retained(keyglass_bus::topics::HOST_APP_ACTIVE)
         .and_then(|m| m.origin)
         .is_some_and(|o| o == "focus-watch");
     let app_changed = !focus_watch_active
         && state
             .v2
             .broker
-            .get_retained(openflux_bus::topics::HOST_APP_ACTIVE)
+            .get_retained(keyglass_bus::topics::HOST_APP_ACTIVE)
             .map(|m| m.payload != app_payload)
             .unwrap_or(true);
     if app_changed {
         let _ = state.v2.broker.publish(
-            openflux_bus::topics::HOST_APP_ACTIVE,
+            keyglass_bus::topics::HOST_APP_ACTIVE,
             app_payload,
-            openflux_bus::PublishOptions::retained(),
+            keyglass_bus::PublishOptions::retained(),
         );
     }
     let prof_payload = serde_json::json!({
@@ -2104,7 +2104,7 @@ pub fn reconcile_tick_with_state(
         let _ = state.v2.broker.publish(
             "host/profile/active",
             prof_payload,
-            openflux_bus::PublishOptions::retained(),
+            keyglass_bus::PublishOptions::retained(),
         );
     }
 
@@ -2130,7 +2130,7 @@ pub fn reconcile_tick_with_state(
         drop(g);
         if theme_rev_changed {
             if let Err(e) = state.persist_profiles() {
-                eprintln!("openfluxd: the theme revision couldn't be stored: {e}");
+                eprintln!("keyglassd: the theme revision couldn't be stored: {e}");
             }
         }
     }
@@ -2246,7 +2246,7 @@ pub fn reconcile_tick_with_state(
                 continue;
             }
             let wants_weather = dm.manifest.channels.subscribes.iter().any(|p| {
-                p == openflux_bus::topics::HOST_WEATHER_CURRENT
+                p == keyglass_bus::topics::HOST_WEATHER_CURRENT
                     || p == "host/weather/#"
                     || p == "host/weather/+"
             });
@@ -2282,7 +2282,7 @@ pub fn reconcile_tick_with_state(
             .hourly
             .iter()
             .take(3)
-            .map(|h| openflux_bus::WeatherHourly {
+            .map(|h| keyglass_bus::WeatherHourly {
                 hour: h.hour_label.clone(),
                 temp: h.temp as f32,
                 condition: h.condition.clone(),
@@ -2290,8 +2290,8 @@ pub fn reconcile_tick_with_state(
             })
             .collect();
         let _ = state.v2.broker.publish_typed(
-            openflux_bus::topics::HOST_WEATHER_CURRENT,
-            &openflux_bus::WeatherState {
+            keyglass_bus::topics::HOST_WEATHER_CURRENT,
+            &keyglass_bus::WeatherState {
                 city: w.city.clone(),
                 temp: w.temp as f32,
                 high: w.max_temp as f32,
@@ -2306,7 +2306,7 @@ pub fn reconcile_tick_with_state(
                 utc_offset_sec: w.utc_offset_seconds,
                 hourly,
             },
-            openflux_bus::PublishOptions::retained(),
+            keyglass_bus::PublishOptions::retained(),
         );
     }
     let mut live_json = build_live_data_json(&hw, &media, weather_snap.as_ref());
@@ -2331,7 +2331,7 @@ pub fn reconcile_tick_with_state(
                     let _ = state.v2.broker.publish(
                         "keyboard/keymap",
                         km_layout.clone(),
-                        openflux_bus::PublishOptions::retained(),
+                        keyglass_bus::PublishOptions::retained(),
                     );
                 }
             }
@@ -2413,13 +2413,13 @@ pub fn reconcile_tick_with_state(
             let pack_rows = crate::api::shortcuts::overlay_rows(state, &active_pack);
             wstate.cached_pack_overlays = shortcut_overlays(platform_code, &pack_rows);
             let _ = state.v2.broker.publish(
-                openflux_bus::topics::HOST_APP_SHORTCUTS,
+                keyglass_bus::topics::HOST_APP_SHORTCUTS,
                 serde_json::json!({
                     "pack": active_pack,
                     "platform_code": platform_code,
                     "overlays": wstate.cached_pack_overlays,
                 }),
-                openflux_bus::PublishOptions::retained(),
+                keyglass_bus::PublishOptions::retained(),
             );
         }
         if let Some(obj) = live_json.as_object_mut() {
@@ -2503,7 +2503,7 @@ pub fn reconcile_tick_with_state(
     }
 
     // Attach retained v2 host-module state (`modules/#`, `host/profile/active`) for legacy keepalive;
-    // `host/app/active` is owned exclusively by the real-time `openflux-bus-bridge` push thread so
+    // `host/app/active` is owned exclusively by the real-time `keyglass-bus-bridge` push thread so
     // slow 1 Hz sensor snapshots can NEVER overwrite a newer focus change with a stale app!
     let mut v2_map = serde_json::Map::new();
     for pat in ["modules/#", "host/profile/active"] {
@@ -2628,7 +2628,7 @@ mod tests {
             (self.attached.load(Ordering::SeqCst), false)
         }
         fn versions(&self) -> serde_json::Value {
-            serde_json::json!({"bridge": "openflux-bridge 1.0.0"})
+            serde_json::json!({"bridge": "keyglass-bridge 1.0.0"})
         }
         fn send_live_json(&self, _: &serde_json::Value) -> Result<(), String> {
             Ok(())
@@ -2800,7 +2800,7 @@ mod tests {
             (true, false)
         }
         fn versions(&self) -> serde_json::Value {
-            serde_json::json!({"bridge": *self.live_bridge.lock().unwrap(), "display": "openflux-display 1.0.0"})
+            serde_json::json!({"bridge": *self.live_bridge.lock().unwrap(), "display": "keyglass-display 1.0.0"})
         }
         fn send_live_json(&self, _: &serde_json::Value) -> Result<(), String> {
             Ok(())
@@ -2848,7 +2848,7 @@ mod tests {
     #[test]
     fn a_bridge_that_merely_answers_is_never_confirmed() {
         let state = ApiState::new(Arc::new(crate::api::state::NoopDeviceSink), None);
-        let sink = InstallSink::new("openflux-bridge 1.0.0");
+        let sink = InstallSink::new("keyglass-bridge 1.0.0");
         sink.write(crate::device_paths::BRIDGE_ROLLBACK_ARMED, "");
         let mut wstate = WorkerLoopState::default();
         for _ in 0..3 {
@@ -2861,17 +2861,17 @@ mod tests {
     #[test]
     fn only_the_new_trial_of_the_started_install_is_confirmed() {
         let state = ApiState::new(Arc::new(crate::api::state::NoopDeviceSink), None);
-        let sink = InstallSink::new("openflux-bridge 1.0.0");
-        sink.write(ATTEMPT, "attempt_id=aa01\nversion=openflux-bridge 1.0.0\n");
+        let sink = InstallSink::new("keyglass-bridge 1.0.0");
+        sink.write(ATTEMPT, "attempt_id=aa01\nversion=keyglass-bridge 1.0.0\n");
         let pending =
-            crate::bridge_install::PendingInstall::begin(&sink, "openflux-bridge 1.0.1".into());
+            crate::bridge_install::PendingInstall::begin(&sink, "keyglass-bridge 1.0.1".into());
         let mut wstate = WorkerLoopState {
             pending_bridge: Some((pending, Instant::now())),
             ..Default::default()
         };
 
         // The package's preinst arms the rollback while the previous bridge still runs.
-        sink.write(ATTEMPT, "attempt_id=bb02\nversion=openflux-bridge 1.0.1\n");
+        sink.write(ATTEMPT, "attempt_id=bb02\nversion=keyglass-bridge 1.0.1\n");
         sink.write(crate::device_paths::BRIDGE_ROLLBACK_ARMED, "");
         tick(&state, &sink, &mut wstate);
         assert_eq!(
@@ -2883,7 +2883,7 @@ mod tests {
         // A trial file of an earlier attempt proves nothing.
         sink.write(
             &crate::device_paths::bridge_trial_path("aa01"),
-            "version=openflux-bridge 1.0.1\npid=1\n",
+            "version=keyglass-bridge 1.0.1\npid=1\n",
         );
         tick(&state, &sink, &mut wstate);
         assert_eq!(sink.confirms.load(Ordering::SeqCst), 0);
@@ -2891,13 +2891,13 @@ mod tests {
         // The new bridge's trial file, while another bridge still answers: not yet.
         sink.write(
             &crate::device_paths::bridge_trial_path("bb02"),
-            "version=openflux-bridge 1.0.1\npid=42\n",
+            "version=keyglass-bridge 1.0.1\npid=42\n",
         );
         tick(&state, &sink, &mut wstate);
         assert_eq!(sink.confirms.load(Ordering::SeqCst), 0);
 
         // The new bridge answers with the target version: confirmed once.
-        *sink.live_bridge.lock().unwrap() = "openflux-bridge 1.0.1".into();
+        *sink.live_bridge.lock().unwrap() = "keyglass-bridge 1.0.1".into();
         tick(&state, &sink, &mut wstate);
         assert_eq!(sink.confirms.load(Ordering::SeqCst), 1);
         assert!(!sink.armed());
@@ -2909,7 +2909,7 @@ mod tests {
     #[test]
     fn a_daemon_restart_mid_install_keeps_waiting_for_the_new_trial() {
         let dir =
-            std::env::temp_dir().join(format!("openfluxd_bridge_install_{}", std::process::id()));
+            std::env::temp_dir().join(format!("keyglassd_bridge_install_{}", std::process::id()));
         std::fs::create_dir_all(dir.join("config")).unwrap();
         let persistent = || {
             ApiState::with_persistent_stores(
@@ -2922,11 +2922,11 @@ mod tests {
             )
         };
         let state = persistent();
-        let sink = InstallSink::new("openflux-bridge 1.0.0");
+        let sink = InstallSink::new("keyglass-bridge 1.0.0");
         let pending =
-            crate::bridge_install::PendingInstall::begin(&sink, "openflux-bridge 1.0.1".into());
+            crate::bridge_install::PendingInstall::begin(&sink, "keyglass-bridge 1.0.1".into());
         persist_pending_bridge(&state, Some(&pending));
-        sink.write(ATTEMPT, "attempt_id=cc03\nversion=openflux-bridge 1.0.1\n");
+        sink.write(ATTEMPT, "attempt_id=cc03\nversion=keyglass-bridge 1.0.1\n");
         sink.write(crate::device_paths::BRIDGE_ROLLBACK_ARMED, "");
 
         // The restarted daemon reads the started install back and the previous bridge reconnects.
@@ -2941,9 +2941,9 @@ mod tests {
 
         sink.write(
             &crate::device_paths::bridge_trial_path("cc03"),
-            "version=openflux-bridge 1.0.1\npid=7\n",
+            "version=keyglass-bridge 1.0.1\npid=7\n",
         );
-        *sink.live_bridge.lock().unwrap() = "openflux-bridge 1.0.1".into();
+        *sink.live_bridge.lock().unwrap() = "keyglass-bridge 1.0.1".into();
         tick(&state, &sink, &mut wstate);
         assert_eq!(sink.confirms.load(Ordering::SeqCst), 1);
         assert!(
@@ -2964,7 +2964,7 @@ mod tests {
             (true, true)
         }
         fn versions(&self) -> serde_json::Value {
-            serde_json::json!({"firmware": "openflux-firmware 1.0.0", "bridge": "openflux-bridge 1.0.0", "display": "openflux-display 1.0.0"})
+            serde_json::json!({"firmware": "keyglass-firmware 1.0.0", "bridge": "keyglass-bridge 1.0.0", "display": "keyglass-display 1.0.0"})
         }
         fn send_live_json(&self, _: &serde_json::Value) -> Result<(), String> {
             Ok(())

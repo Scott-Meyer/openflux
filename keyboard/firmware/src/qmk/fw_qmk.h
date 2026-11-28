@@ -52,7 +52,7 @@ typedef struct {
 void fw_qmk_init(const fw_qmk_platform_t *plat, uint8_t initial_layout_id, uint32_t now_ms);
 
 /* One-time migration: if the current layout had no saved Vial EEPROM on flash and rt holds a
- * valid legacy 32-bit OpenFlux keymap section for layout_id, seed QMK's dynamic keymap from it. */
+ * valid legacy 32-bit Keyglass keymap section for layout_id, seed QMK's dynamic keymap from it. */
 bool fw_qmk_seed_from_legacy_keymap(const fw_runtime_t *rt, uint8_t layout_id);
 
 /* Switch active physical keyframe layout (1=ANSI, 2=ISO, 3=JIS). Flushes dirty EEPROM for the

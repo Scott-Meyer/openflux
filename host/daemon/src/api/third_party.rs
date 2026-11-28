@@ -2,13 +2,13 @@
 //!
 //! Existing third-party apps (editor plugins, desktop-environment helpers and similar) talk to the
 //! keyboard's desktop service through this API, the Flux keyboard API published at
-//! <https://github.com/FluxKeyboard/flux_api> (OpenFlux notes: `docs/third-party-api.md`). Its wire
+//! <https://github.com/FluxKeyboard/flux_api> (Keyglass notes: `docs/third-party-api.md`). Its wire
 //! format is a fixed external contract: route paths, JSON field names, error messages, WebSocket
 //! messages, the discovery files and the enrollment flow stay exactly as these apps expect.
 //!
 //! This module is the only place that uses the external names. Anything that crosses the boundary
 //! is translated with [`KEYCODE_NAMES`] (the factory keycode names these apps use); the rest of
-//! the daemon uses OpenFlux names only.
+//! the daemon uses Keyglass names only.
 //!
 //! Tokens issued to third-party apps can call only the routes in this module.
 
@@ -33,7 +33,7 @@ use std::time::Instant;
 pub const DOCS_URL: &str = "https://github.com/FluxKeyboard/flux_api";
 /// Served by `GET /`.
 pub const ROOT_BANNER: &str =
-    "OpenFlux API, compatible with the Flux keyboard API: https://github.com/FluxKeyboard/flux_api";
+    "Keyglass API, compatible with the Flux keyboard API: https://github.com/FluxKeyboard/flux_api";
 
 /// Error message for a denied or previously denied registration.
 pub const DENIED_MESSAGE: &str = "User denied the request";
@@ -46,18 +46,18 @@ pub const API_OFF_MESSAGE: &str = "The third-party app API is turned off";
 // Translation table
 // ---------------------------------------------------------------------------------------------
 
-/// Keycodes whose OpenFlux name differs from the name third-party apps use:
-/// `(OpenFlux name, third-party name)`. Binary values are the same.
+/// Keycodes whose Keyglass name differs from the name third-party apps use:
+/// `(Keyglass name, third-party name)`. Binary values are the same.
 pub use crate::codecs::keycode_names::KEYCODE_NAMES;
 
-/// Rewrites OpenFlux keycode names in `v` to the names third-party apps use.
+/// Rewrites Keyglass keycode names in `v` to the names third-party apps use.
 pub fn keycodes_to_external(v: &mut serde_json::Value) {
     crate::codecs::keycode_names::to_factory(v);
 }
 
-/// Rewrites third-party keycode names in `v` to OpenFlux names.
+/// Rewrites third-party keycode names in `v` to Keyglass names.
 pub fn keycodes_to_internal(v: &mut serde_json::Value) {
-    crate::codecs::keycode_names::to_openflux(v);
+    crate::codecs::keycode_names::to_keyglass(v);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -118,14 +118,14 @@ impl DiscoveryEnv {
 
     /// The locations the daemon uses for third-party discovery and for adopting earlier state.
     ///
-    /// `OPENFLUX_HOME_OVERRIDE` roots every location in another directory (tests and development).
-    /// Without it, a daemon given its own `OPENFLUX_DATA_DIR` is not the user's installed daemon,
+    /// `KEYGLASS_HOME_OVERRIDE` roots every location in another directory (tests and development).
+    /// Without it, a daemon given its own `KEYGLASS_DATA_DIR` is not the user's installed daemon,
     /// so it touches none of the user's locations: `None`. Otherwise the user's real locations.
     pub fn for_daemon() -> Option<Self> {
-        if let Some(root) = std::env::var_os("OPENFLUX_HOME_OVERRIDE").filter(|v| !v.is_empty()) {
+        if let Some(root) = std::env::var_os("KEYGLASS_HOME_OVERRIDE").filter(|v| !v.is_empty()) {
             return Some(Self::rooted_at(PathBuf::from(root)));
         }
-        if std::env::var_os("OPENFLUX_DATA_DIR").is_some_and(|v| !v.is_empty()) {
+        if std::env::var_os("KEYGLASS_DATA_DIR").is_some_and(|v| !v.is_empty()) {
             return None;
         }
         Some(Self::from_process())
@@ -550,7 +550,7 @@ const MIGRATED_FILE: &str = "third_party_migrated.json";
 ///
 /// On the first start, tokens and denials found in an existing `keys.json` or in the shared token
 /// store are added to the daemon's own stores, and the permission flags (including
-/// `apiActive`) are adopted unless the user already has OpenFlux settings. When everything is
+/// `apiActive`) are adopted unless the user already has Keyglass settings. When everything is
 /// saved, a marker records that the import happened; later starts read only the daemon's stores,
 /// so a revoked token or a forgotten denial stays that way. Existing files are read before
 /// anything is written.
@@ -748,7 +748,7 @@ async fn any_token(
     }
 }
 
-/// Accepts only tokens issued to OpenFlux's own clients.
+/// Accepts only tokens issued to Keyglass's own clients.
 pub(crate) async fn first_party_token(
     State(state): State<Arc<ApiState>>,
     req: Request,
@@ -840,7 +840,7 @@ async fn auth_check() -> impl IntoResponse {
 
 /// `POST /authentication/register`.
 ///
-/// OpenFlux's own clients send `enrollmentSecret` (the owner-only `enrollment.secret` file) and
+/// Keyglass's own clients send `enrollmentSecret` (the owner-only `enrollment.secret` file) and
 /// get a first-party token at once. Third-party apps send any body and name themselves with
 /// `User-Agent`; the request waits until the user approves or denies the app. Approval answers
 /// 200 `{"message": token}`, denial 403, and no decision within the timeout 408. A denied app is
@@ -1677,7 +1677,7 @@ pub fn keymap_data_response(keymap_doc: &serde_json::Value) -> serde_json::Value
 }
 
 /// `POST /config/import`. A `.flux` file is a JSON manifest (`appearance`, `profiles`, `media`,
-/// `actuation` and `shortcuts`, each a list); a `.openflux` file is an OpenFlux bundle. The file's
+/// `actuation` and `shortcuts`, each a list); a `.keyglass` file is an Keyglass bundle. The file's
 /// content must match its extension.
 pub(crate) async fn import_file(
     State(state): State<Arc<ApiState>>,
@@ -1720,7 +1720,7 @@ pub(crate) async fn import_file(
         if !looks_like_zip {
             return err_msg(
                 StatusCode::BAD_REQUEST,
-                "This .openflux file is not an OpenFlux bundle",
+                "This .keyglass file is not an Keyglass bundle",
             );
         }
         let state_clone = state.clone();
@@ -1753,7 +1753,7 @@ pub(crate) async fn import_file(
     if looks_like_zip {
         return err_msg(
             StatusCode::BAD_REQUEST,
-            "This .flux file is an archive; OpenFlux bundles use the .openflux extension",
+            "This .flux file is an archive; Keyglass bundles use the .keyglass extension",
         );
     }
     const MAX_MANIFEST_BYTES: u64 = 32 * 1024 * 1024;
@@ -1997,7 +1997,7 @@ async fn update_active_process(
     };
     if theme_rev_changed {
         if let Err(e) = state.persist_profiles() {
-            eprintln!("openfluxd: the theme revision couldn't be stored: {e}");
+            eprintln!("keyglassd: the theme revision couldn't be stored: {e}");
         }
     }
     if let (Some(pidx), Some(prof_id)) = (midx, pid) {
@@ -2157,7 +2157,7 @@ async fn ws_handler(
 
 /// Close code sent to a third-party socket whose access ended (RFC 6455 policy violation).
 pub const WS_ACCESS_ENDED_CODE: u16 = 1008;
-/// Events only OpenFlux's own clients receive.
+/// Events only Keyglass's own clients receive.
 const FIRST_PARTY_EVENTS: [&str; 1] = ["registrationPending"];
 
 /// Why a third-party connection may no longer be used, or `None` while it may.
@@ -2308,7 +2308,7 @@ async fn process_ws_message(
                 (pid, slot)
             };
             if let Err(e) = state.persist_profiles() {
-                eprintln!("openfluxd: the theme revision couldn't be stored: {e}");
+                eprintln!("keyglassd: the theme revision couldn't be stored: {e}");
             }
             if has_firmware {
                 let res = if let Some(w) = state.get_worker() {

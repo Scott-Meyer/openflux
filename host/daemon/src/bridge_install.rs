@@ -15,14 +15,14 @@ use std::collections::BTreeMap;
 
 /// Version string a bridge of `version` reports.
 pub fn bridge_version_string(version: &str) -> String {
-    format!("openflux-bridge {version}")
+    format!("keyglass-bridge {version}")
 }
 
-/// The bridge version a package file installs, from its name (`openflux-bridge_<version>_<arch>.ipk`).
+/// The bridge version a package file installs, from its name (`keyglass-bridge_<version>_<arch>.ipk`).
 pub fn package_target(path: &str) -> Option<String> {
     let name = std::path::Path::new(path).file_name()?.to_str()?;
     let rest = name
-        .strip_prefix("openflux-bridge_")?
+        .strip_prefix("keyglass-bridge_")?
         .strip_suffix(".ipk")?;
     let (version, _arch) = rest.rsplit_once('_')?;
     (!version.is_empty()).then(|| bridge_version_string(version))
@@ -134,15 +134,15 @@ mod tests {
     #[test]
     fn the_target_comes_from_the_package_name() {
         assert_eq!(
-            package_target("/c/openflux-bridge_1.0.1_aarch64.ipk").as_deref(),
-            Some("openflux-bridge 1.0.1")
+            package_target("/c/keyglass-bridge_1.0.1_aarch64.ipk").as_deref(),
+            Some("keyglass-bridge 1.0.1")
         );
         assert_eq!(
-            package_target("/c/openflux-bridge_1.1.0-beta.2_aarch64.ipk").as_deref(),
-            Some("openflux-bridge 1.1.0-beta.2")
+            package_target("/c/keyglass-bridge_1.1.0-beta.2_aarch64.ipk").as_deref(),
+            Some("keyglass-bridge 1.1.0-beta.2")
         );
         assert_eq!(
-            package_target("/c/openflux-display_1.0.1_aarch64.ipk"),
+            package_target("/c/keyglass-display_1.0.1_aarch64.ipk"),
             None
         );
         assert_eq!(package_target("/c/bridge.ipk"), None);
@@ -150,8 +150,8 @@ mod tests {
 
     #[test]
     fn key_value_files_are_read_line_by_line() {
-        let kv = parse_kv("attempt_id=ab12\nversion=openflux-bridge 1.0.1\n");
+        let kv = parse_kv("attempt_id=ab12\nversion=keyglass-bridge 1.0.1\n");
         assert_eq!(kv["attempt_id"], "ab12");
-        assert_eq!(kv["version"], "openflux-bridge 1.0.1");
+        assert_eq!(kv["version"], "keyglass-bridge 1.0.1");
     }
 }

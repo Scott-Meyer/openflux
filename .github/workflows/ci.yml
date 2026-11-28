@@ -62,14 +62,14 @@ jobs:
       - name: Clippy
         run: |
           if [ "${RUNNER_OS}" = "Windows" ]; then
-            cargo clippy --workspace --exclude openflux-bridge --exclude openflux-display --all-targets --locked -- -D warnings
+            cargo clippy --workspace --exclude keyglass-bridge --exclude keyglass-display --all-targets --locked -- -D warnings
           else
             cargo clippy --workspace --all-targets --locked -- -D warnings
           fi
       - name: Test
         run: |
           if [ "${RUNNER_OS}" = "Windows" ]; then
-            cargo test --workspace --exclude openflux-bridge --exclude openflux-display --locked
+            cargo test --workspace --exclude keyglass-bridge --exclude keyglass-display --locked
           else
             cargo test --workspace --locked
           fi
@@ -92,8 +92,8 @@ jobs:
       - name: Release tool
         run: |
           # production-keys: fails if an embedded trust anchor is a placeholder development key.
-          cargo build --locked --release -p openflux-update --bin openflux-release --features production-keys
-          echo "TOOL=$PWD/target/release/openflux-release" >> "$GITHUB_ENV"
+          cargo build --locked --release -p keyglass-update --bin keyglass-release --features production-keys
+          echo "TOOL=$PWD/target/release/keyglass-release" >> "$GITHUB_ENV"
       - name: compat.toml
         run: '"$TOOL" compat --compat compat.toml'
       - name: factory-reference.toml
@@ -103,7 +103,7 @@ jobs:
           # The active key is the initial key built into hosts, or one that a
           # root-signed statement in host/packaging/keys/statements trusts.
           active="$(sed -n 2p host/packaging/keys/active-release.pub)"
-          if [ "$active" != "$(sed -n 2p crates/openflux-update/keys/release.pub)" ]; then
+          if [ "$active" != "$(sed -n 2p crates/keyglass-update/keys/release.pub)" ]; then
             grep -rlF "$active" host/packaging/keys/statements/ > /dev/null ||
               { echo "host/packaging/keys/active-release.pub is neither the initial release key nor trusted by a statement" >&2; exit 1; }
           fi
@@ -179,13 +179,13 @@ jobs:
             | xargs -0 --no-run-if-empty clang-format-18 --dry-run --Werror
       - name: RP2040 build
         run: |
-          docker build -t openflux-firmware-build -f keyboard/firmware/Dockerfile.build keyboard/firmware
-          docker run --rm --network none -v "$PWD:/work" -w /work openflux-firmware-build \
+          docker build -t keyglass-firmware-build -f keyboard/firmware/Dockerfile.build keyboard/firmware
+          docker run --rm --network none -v "$PWD:/work" -w /work keyglass-firmware-build \
             sh -c "cmake -S keyboard/firmware -B build/firmware -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/firmware"
           ls -l build/firmware/*.uf2
       - name: Firmware licenses
         # build/firmware belongs to the container's root user.
-        run: .github/scripts/firmware-licenses.sh openflux-firmware-build "$RUNNER_TEMP/openflux-firmware-licenses.txt"
+        run: .github/scripts/firmware-licenses.sh keyglass-firmware-build "$RUNNER_TEMP/keyglass-firmware-licenses.txt"
 
   shell:
     runs-on: ubuntu-latest

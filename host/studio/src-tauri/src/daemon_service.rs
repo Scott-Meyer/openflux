@@ -1,10 +1,10 @@
-//! Starting the daemon, `openfluxd`, when Studio finds none running.
+//! Starting the daemon, `keyglassd`, when Studio finds none running.
 //!
 //! Each platform registers the daemon with its own service manager:
 //! - macOS: the LaunchAgent inside the app bundle, registered with `SMAppService`. The user can
 //!   turn it off in System Settings > General > Login Items, in which case it needs approval
 //!   there before it can run.
-//! - Windows: the `OpenFlux` value under the per-user Run key, written by the installer. Studio
+//! - Windows: the `Keyglass` value under the per-user Run key, written by the installer. Studio
 //!   writes it again if it is missing and starts the bundled daemon.
 //! - Linux: the systemd user unit, when the package installed one; otherwise Studio starts the
 //!   bundled daemon itself. Studio starts the unit but never enables it, so a user who disabled
@@ -17,14 +17,14 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 /// LaunchAgent property list inside `Contents/Library/LaunchAgents`.
-pub const LAUNCH_AGENT_PLIST: &str = "org.openflux.openfluxd.plist";
+pub const LAUNCH_AGENT_PLIST: &str = "dev.keyglass.keyglassd.plist";
 /// launchd label of the LaunchAgent.
-pub const LAUNCH_AGENT_LABEL: &str = "org.openflux.openfluxd";
+pub const LAUNCH_AGENT_LABEL: &str = "dev.keyglass.keyglassd";
 /// systemd user unit.
-pub const SYSTEMD_UNIT: &str = "openfluxd.service";
+pub const SYSTEMD_UNIT: &str = "keyglassd.service";
 /// Run key and value the Windows installer writes.
 pub const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-pub const RUN_VALUE: &str = "OpenFlux";
+pub const RUN_VALUE: &str = "Keyglass";
 
 /// What starts the daemon at login on this platform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -195,15 +195,15 @@ pub fn execute(p: &dyn Platform, mode: StartMode) -> StartReport {
     }
 }
 
-/// The daemon executable next to Studio's own. `OPENFLUX_DAEMON_BIN` overrides it.
+/// The daemon executable next to Studio's own. `KEYGLASS_DAEMON_BIN` overrides it.
 pub fn bundled_daemon() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("OPENFLUX_DAEMON_BIN").filter(|v| !v.is_empty()) {
+    if let Some(p) = std::env::var_os("KEYGLASS_DAEMON_BIN").filter(|v| !v.is_empty()) {
         return Some(PathBuf::from(p)).filter(|p| p.is_file());
     }
     let exe = std::env::current_exe().ok()?;
     let p = exe
         .parent()?
-        .join(format!("openfluxd{}", std::env::consts::EXE_SUFFIX));
+        .join(format!("keyglassd{}", std::env::consts::EXE_SUFFIX));
     p.is_file().then_some(p)
 }
 
@@ -272,7 +272,7 @@ fn spawn_detached(binary: &Path) -> Result<(), String> {
 
 fn start_bundled() -> Result<(), String> {
     let bin = bundled_daemon()
-        .ok_or_else(|| "This installation of OpenFlux Studio has no openfluxd".to_string())?;
+        .ok_or_else(|| "This installation of Keyglass Studio has no keyglassd".to_string())?;
     spawn_detached(&bin)
 }
 
@@ -377,7 +377,7 @@ mod platform {
             match step {
                 Step::WriteRunEntry => {
                     let bin = bundled_daemon()
-                        .ok_or_else(|| "This installation has no openfluxd.exe".to_string())?;
+                        .ok_or_else(|| "This installation has no keyglassd.exe".to_string())?;
                     let (key, _) = RegKey::predef(HKEY_CURRENT_USER)
                         .create_subkey_with_flags(RUN_KEY, KEY_SET_VALUE)
                         .map_err(|e| format!("Couldn't open the Run key: {e}"))?;
@@ -531,7 +531,7 @@ mod tests {
             platform: "test",
             manager,
             registration,
-            daemon_binary: Some(PathBuf::from("/app/openfluxd")),
+            daemon_binary: Some(PathBuf::from("/app/keyglassd")),
             detail: None,
         }
     }
@@ -734,16 +734,16 @@ mod tests {
 
     #[test]
     fn run_entries_quote_the_path_and_parse_back() {
-        let p = PathBuf::from(r"C:\Users\a b\AppData\Local\OpenFlux Studio\openfluxd.exe");
+        let p = PathBuf::from(r"C:\Users\a b\AppData\Local\Keyglass Studio\keyglassd.exe");
         let v = run_entry_value(&p);
         assert_eq!(
             v,
-            r#""C:\Users\a b\AppData\Local\OpenFlux Studio\openfluxd.exe""#
+            r#""C:\Users\a b\AppData\Local\Keyglass Studio\keyglassd.exe""#
         );
         assert_eq!(run_entry_target(&v), p);
         assert_eq!(
-            run_entry_target(r"C:\x\openfluxd.exe --flag"),
-            PathBuf::from(r"C:\x\openfluxd.exe")
+            run_entry_target(r"C:\x\keyglassd.exe --flag"),
+            PathBuf::from(r"C:\x\keyglassd.exe")
         );
     }
 

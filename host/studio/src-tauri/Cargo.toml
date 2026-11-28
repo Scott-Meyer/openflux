@@ -1,7 +1,7 @@
 [package]
-name = "openflux-studio"
+name = "keyglass-studio"
 version.workspace = true
-description = "OpenFlux Studio, the desktop app for configuring the keyboard"
+description = "Keyglass Studio, the desktop app for configuring the keyboard"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

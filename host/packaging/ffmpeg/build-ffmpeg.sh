@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds openflux-ffmpeg and openflux-ffprobe, the FFmpeg command-line tools
-# bundled with OpenFlux Studio for importing media.
+# Builds keyglass-ffmpeg and keyglass-ffprobe, the FFmpeg command-line tools
+# bundled with Keyglass Studio for importing media.
 #
 # The build is self-contained: FFmpeg and x264 come from pinned, verified
 # sources, autodetection is off so nothing on the build machine is linked by
@@ -9,7 +9,7 @@
 # and join them again, encode H.264, write MP4 and JPEG thumbnails, read
 # durations). Both tools come from the same configured tree. The result is
 # GPL-2.0-or-later because it includes x264. The tools ship as separate
-# executables that OpenFlux runs as child processes.
+# executables that Keyglass runs as child processes.
 #
 # Usage:
 #   build-ffmpeg.sh --target <triple> --out <dir> [--work <dir>] [--jobs <n>]
@@ -23,10 +23,10 @@
 #                             executable has no MinGW runtime dependencies)
 #
 # Outputs, for --target:
-#   <out>/openflux-ffmpeg[.exe]
-#   <out>/openflux-ffprobe[.exe]
-#   <out>/openflux-ffmpeg-<target>.buildinfo.txt   configure lines and toolchain
-#   <out>/openflux-ffmpeg-COPYING.GPLv2.txt        the license both tools are under
+#   <out>/keyglass-ffmpeg[.exe]
+#   <out>/keyglass-ffprobe[.exe]
+#   <out>/keyglass-ffmpeg-<target>.buildinfo.txt   configure lines and toolchain
+#   <out>/keyglass-ffmpeg-COPYING.GPLv2.txt        the license both tools are under
 #
 # --source-archive writes the complete corresponding source: the verified
 # upstream FFmpeg tarball, the x264 source at the pinned commit, and this
@@ -102,7 +102,7 @@ fetch_sources() {
 
 write_source_archive() {
     local dest="$1" stage name epoch
-    name="openflux-ffmpeg-${FFMPEG_VERSION}-source"
+    name="keyglass-ffmpeg-${FFMPEG_VERSION}-source"
     stage="${work_dir}/${name}"
     epoch="${SOURCE_DATE_EPOCH:-0}"
     rm -rf "$stage"
@@ -111,12 +111,12 @@ write_source_archive() {
     git -C "$x264_src" archive --format=tar --prefix="x264-${X264_COMMIT}/" HEAD > "${stage}/x264-${X264_COMMIT}.tar"
     cp "${script_dir}/build-ffmpeg.sh" "$stage/"
     cat > "${stage}/README.txt" <<EOF
-openflux-ffmpeg ${FFMPEG_VERSION} - complete corresponding source
+keyglass-ffmpeg ${FFMPEG_VERSION} - complete corresponding source
 
-openflux-ffmpeg and openflux-ffprobe are the ffmpeg and ffprobe tools of
-FFmpeg ${FFMPEG_VERSION} built with x264. They are distributed with OpenFlux
+keyglass-ffmpeg and keyglass-ffprobe are the ffmpeg and ffprobe tools of
+FFmpeg ${FFMPEG_VERSION} built with x264. They are distributed with Keyglass
 Studio as separate executables under the GNU General Public License,
-version 2 or later (openflux-ffmpeg-COPYING.GPLv2.txt).
+version 2 or later (keyglass-ffmpeg-COPYING.GPLv2.txt).
 
   ffmpeg-${FFMPEG_VERSION}.tar.xz     upstream release, sha256 ${FFMPEG_SHA256}
   x264-${X264_COMMIT}.tar   ${X264_REPO} at commit ${X264_COMMIT}
@@ -125,7 +125,7 @@ version 2 or later (openflux-ffmpeg-COPYING.GPLv2.txt).
 Rebuild for a target with:
   ./build-ffmpeg.sh --target <triple> --out <dir>
 The configure lines used for each published build are in the
-openflux-ffmpeg-<target>.buildinfo.txt files published with the same release.
+keyglass-ffmpeg-<target>.buildinfo.txt files published with the same release.
 EOF
     mkdir -p "$(dirname "$dest")"
     if tar --version 2>/dev/null | grep -q 'GNU tar'; then
@@ -252,7 +252,7 @@ ffmpeg_configure=(./configure
 )
 
 for tool in ffmpeg ffprobe; do
-    dest="${out_dir}/openflux-${tool}${exe_suffix}"
+    dest="${out_dir}/keyglass-${tool}${exe_suffix}"
     cp "${build_root}/ffmpeg-${FFMPEG_VERSION}/${tool}${exe_suffix}" "$dest"
     case "$target" in
         *-apple-darwin) strip -x "$dest" ;;
@@ -260,10 +260,10 @@ for tool in ffmpeg ffprobe; do
     esac
     chmod 0755 "$dest"
 done
-cp "${build_root}/ffmpeg-${FFMPEG_VERSION}/COPYING.GPLv2" "${out_dir}/openflux-ffmpeg-COPYING.GPLv2.txt"
+cp "${build_root}/ffmpeg-${FFMPEG_VERSION}/COPYING.GPLv2" "${out_dir}/keyglass-ffmpeg-COPYING.GPLv2.txt"
 
 {
-    echo "openflux-ffmpeg and openflux-ffprobe build for ${target}"
+    echo "keyglass-ffmpeg and keyglass-ffprobe build for ${target}"
     echo
     echo "License: GPL-2.0-or-later (FFmpeg configured with --enable-gpl and libx264)"
     echo "FFmpeg ${FFMPEG_VERSION} (sha256 ${FFMPEG_SHA256})"
@@ -277,8 +277,8 @@ cp "${build_root}/ffmpeg-${FFMPEG_VERSION}/COPYING.GPLv2" "${out_dir}/openflux-f
     echo
     echo "Compiler:"
     ${cc%% *} --version 2>&1 | sed 's/^/  /'
-} > "${out_dir}/openflux-ffmpeg-${target}.buildinfo.txt"
+} > "${out_dir}/keyglass-ffmpeg-${target}.buildinfo.txt"
 
-"${out_dir}/openflux-ffmpeg${exe_suffix}" -hide_banner -version | head -n 1 || true
-"${out_dir}/openflux-ffprobe${exe_suffix}" -hide_banner -version | head -n 1 || true
-echo "build-ffmpeg: wrote openflux-ffmpeg${exe_suffix} and openflux-ffprobe${exe_suffix} to ${out_dir}"
+"${out_dir}/keyglass-ffmpeg${exe_suffix}" -hide_banner -version | head -n 1 || true
+"${out_dir}/keyglass-ffprobe${exe_suffix}" -hide_banner -version | head -n 1 || true
+echo "build-ffmpeg: wrote keyglass-ffmpeg${exe_suffix} and keyglass-ffprobe${exe_suffix} to ${out_dir}"

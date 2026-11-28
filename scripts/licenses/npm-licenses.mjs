@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Writes the license texts of the npm packages bundled into a web interface
-// (OpenFlux Studio's): every production package in its package-lock.json,
+// (Keyglass Studio's): every production package in its package-lock.json,
 // plus the build tools named with --bundled whose code the build emits into
 // the bundle, with every license, copying and notice file each package ships.
 // One plain text file.
@@ -165,7 +165,7 @@ let text = `npm packages
 
 The licenses of the npm packages bundled into this program's interface,
 generated from its package-lock.json by npm-licenses.mjs
-(scripts/licenses/npm-licenses.mjs in the OpenFlux source). Each package's
+(scripts/licenses/npm-licenses.mjs in the Keyglass source). Each package's
 license, copying and notice files are reproduced as the package ships them.
 
 Packages:

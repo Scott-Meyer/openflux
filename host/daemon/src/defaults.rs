@@ -1,4 +1,4 @@
-//! OpenFlux's default configuration: the built-in keymap and the defaults bundled in
+//! Keyglass's default configuration: the built-in keymap and the defaults bundled in
 //! `assets/default_config.json`.
 //!
 //! The keyboard has no printed legends; the display draws every label, so the default layout is
@@ -206,19 +206,19 @@ fn layout(
     })
 }
 
-/// OpenFlux's default keymap document for both physical layouts.
+/// Keyglass's default keymap document for both physical layouts.
 pub fn default_keymap() -> serde_json::Value {
     serde_json::json!({
         "keymaps": {
             "ansi": layout(
-                "OpenFlux ANSI",
+                "Keyglass ANSI",
                 "ansi",
                 ansi_base(),
                 &ANSI_ROWS,
                 ["6f0c3a52-8e1d-4b7a-9c24-31d5e07a1b01", "6f0c3a52-8e1d-4b7a-9c24-31d5e07a1b02"],
             ),
             "iso": layout(
-                "OpenFlux ISO",
+                "Keyglass ISO",
                 "iso",
                 iso_base(),
                 &ISO_ROWS,

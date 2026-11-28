@@ -1,21 +1,21 @@
-//! OpenFlux v2 keyboard-side display engine: bridges `openflux-bridge` IPC lines (`key_state`,
-//! `key_analog`, `live_data`, `bus_frame`) onto the keyboard's local `openflux-bus` broker,
-//! runs `openflux-modules::ModuleRuntime` (100% standalone capable!), steps `WaveField2D`,
+//! Keyglass v2 keyboard-side display engine: bridges `keyglass-bridge` IPC lines (`key_state`,
+//! `key_analog`, `live_data`, `bus_frame`) onto the keyboard's local `keyglass-bus` broker,
+//! runs `keyglass-modules::ModuleRuntime` (100% standalone capable!), steps `WaveField2D`,
 //! `ParticleSystem` (Key-SDF wall bounces + clear-keycap lens magnification + collisions),
 //! and `Canvas2D` (cached key legends + top-bar widgets + Idle Pet), ready for native Mali-G52
 //! OpenGL ES 2.0 presentation with zero-copy `rkmpp` 1080p NV12 video refraction.
 
-use openflux_bus::{
+use keyglass_bus::{
     apply_remote_frame, topics, AnalogKeyFrame, AnalogKeySample, Broker, FluxActionEvent,
     FrameLayout, HostConnectionState, KeyEvent, KeyEventKind, KeyboardGeometry, KeyboardState,
     MediaNowPlaying, PublishOptions, ResolvedKeyEntry, ResolvedKeysState, SystemMetrics,
     WeatherState, WireFrame, DISPLAY_HEIGHT_PX, DISPLAY_WIDTH_PX,
 };
-use openflux_compositor::{
+use keyglass_compositor::{
     Canvas2D, KeySdfGrid, ParticleDot, ParticleSystem, WaveField2D, DEFAULT_ANSI_LABELS, WAVE2D_H,
     WAVE2D_W,
 };
-use openflux_modules::{
+use keyglass_modules::{
     KeyGlowShape, ModuleRegistry, ModuleRuntime, WaveFieldParams,
 };
 use serde_json::Value;
@@ -25,9 +25,9 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::SystemTime;
 
 struct OverlayRasterReq {
-    under_key_draws: Vec<openflux_modules::DrawCommand>,
-    tile_draws: Vec<openflux_modules::DrawCommand>,
-    world_overlay_draws: Vec<openflux_modules::DrawCommand>,
+    under_key_draws: Vec<keyglass_modules::DrawCommand>,
+    tile_draws: Vec<keyglass_modules::DrawCommand>,
+    world_overlay_draws: Vec<keyglass_modules::DrawCommand>,
     has_custom_keys_renderer: bool,
     has_custom_dock: bool,
     geometry: KeyboardGeometry,
@@ -181,12 +181,12 @@ pub struct KeyboardV2Display {
     pub wave_params: WaveFieldParams,
     pub active_media_path: Option<String>,
     pub active_stream_name: Option<String>,
-    pub stream_overlays: Vec<openflux_modules::StreamOverlayCmd>,
+    pub stream_overlays: Vec<keyglass_modules::StreamOverlayCmd>,
     pub bg_dimming: f32,
     pub top_fade: f32,
-    parallax_rx: openflux_bus::Subscription,
-    power_rx: openflux_bus::Subscription,
-    host_display_rx: openflux_bus::Subscription,
+    parallax_rx: keyglass_bus::Subscription,
+    power_rx: keyglass_bus::Subscription,
+    host_display_rx: keyglass_bus::Subscription,
     last_parallax_sig: String,
     pub brightness_pct: u32,
     pub sleep_timeout_sec: u64,
@@ -197,15 +197,15 @@ pub struct KeyboardV2Display {
     prefs_path: PathBuf,
     resolved_keys_cache_path: PathBuf,
     pub dt_sec: f32,
-    pub background_shaders: Vec<openflux_modules::ShaderPassCmd>,
-    pub distortion_shaders: Vec<openflux_modules::ShaderPassCmd>,
-    pub under_key_shaders: Vec<openflux_modules::ShaderPassCmd>,
+    pub background_shaders: Vec<keyglass_modules::ShaderPassCmd>,
+    pub distortion_shaders: Vec<keyglass_modules::ShaderPassCmd>,
+    pub under_key_shaders: Vec<keyglass_modules::ShaderPassCmd>,
     pub glows: Vec<V2GlowDraw>,
     pub particle_dots: Vec<ParticleDot>,
     pub time_sec: f32,
     pub overlay_dirty: bool,
     last_keys_hash: u64,
-    cached_under_key_draws: Vec<openflux_modules::DrawCommand>,
+    cached_under_key_draws: Vec<keyglass_modules::DrawCommand>,
     last_tiles_hash: u64,
     last_world_hash: u64,
     last_tiles_ms: u64,
@@ -218,7 +218,7 @@ pub struct KeyboardV2Display {
     last_reload_check: std::time::Instant,
     pub last_lua_us: u64,
     pub last_physics_us: u64,
-    pub mirror: openflux_bus::BrokerMirror,
+    pub mirror: keyglass_bus::BrokerMirror,
 }
 
 fn hash_f32<H: std::hash::Hasher>(h: &mut H, v: f32) {
@@ -233,8 +233,8 @@ fn hash_color<H: std::hash::Hasher>(h: &mut H, c: &[f32; 4]) {
 }
 
 /// Fast zero-allocation structural hash for DrawCommand slices (replaces slow JSON serialization).
-fn hash_draw_list(cmds: &[openflux_modules::DrawCommand]) -> u64 {
-    use openflux_modules::DrawCommand;
+fn hash_draw_list(cmds: &[keyglass_modules::DrawCommand]) -> u64 {
+    use keyglass_modules::DrawCommand;
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     cmds.len().hash(&mut h);
@@ -358,7 +358,7 @@ impl KeyboardV2Display {
         let last_state_mtime = file_mtime(&state_path);
         let base_v2_dir = state_path
             .parent()
-            .unwrap_or_else(|| std::path::Path::new("/home/root/openflux/v2"));
+            .unwrap_or_else(|| std::path::Path::new("/home/root/keyglass/v2"));
         let prefs_path = base_v2_dir.join("display_prefs.json");
         let resolved_keys_cache_path = base_v2_dir.join("resolved_keys.json");
         let registry = ModuleRegistry::new(bundled_dir, installed_dir, local_dir, state_path);
@@ -371,15 +371,15 @@ impl KeyboardV2Display {
         let overlay_rgba = vec![0u8; (DISPLAY_WIDTH_PX * DISPLAY_HEIGHT_PX * 4) as usize];
         let overlay_worker = OverlayRasterWorker::spawn(font_bytes.map(|b| b.to_vec()));
         let parallax_rx = broker
-            .subscribe("display/parallax", openflux_bus::SubscribeOptions::default())
+            .subscribe("display/parallax", keyglass_bus::SubscribeOptions::default())
             .expect("valid parallax topic");
         let power_rx = broker
-            .subscribe("display/power", openflux_bus::SubscribeOptions::default())
+            .subscribe("display/power", keyglass_bus::SubscribeOptions::default())
             .expect("valid power topic");
         let host_display_rx = broker
-            .subscribe("host/display/state", openflux_bus::SubscribeOptions::default())
+            .subscribe("host/display/state", keyglass_bus::SubscribeOptions::default())
             .expect("valid host display state topic");
-        let mirror = openflux_bus::BrokerMirror::new(broker.clone(), "host");
+        let mirror = keyglass_bus::BrokerMirror::new(broker.clone(), "host");
 
         let mut this = Self {
             broker,
@@ -426,7 +426,7 @@ impl KeyboardV2Display {
             last_bitmap: [0u8; 32],
             last_key_seq: None,
             last_key_press_ms: [0u64; 256],
-            last_input_ms: openflux_bus::now_unix_ms(),
+            last_input_ms: keyglass_bus::now_unix_ms(),
             last_input_mono: std::time::Instant::now(),
             last_state_mtime,
             last_reload_check: std::time::Instant::now(),
@@ -491,7 +491,7 @@ impl KeyboardV2Display {
     }
 
     /// Builds a `PeerBusFrame::Subscribe` advertising all patterns active keyboard modules care about.
-    pub fn build_mirror_subscribe(&mut self, force: bool) -> Option<openflux_bus::PeerBusFrame> {
+    pub fn build_mirror_subscribe(&mut self, force: bool) -> Option<keyglass_bus::PeerBusFrame> {
         let extra = vec![
             "host/#".to_string(),
             "modules/#".to_string(),
@@ -511,12 +511,12 @@ impl KeyboardV2Display {
 
     pub fn on_mirror_frame(
         &mut self,
-        frame: openflux_bus::PeerBusFrame,
-    ) -> Vec<openflux_bus::PeerBusFrame> {
+        frame: keyglass_bus::PeerBusFrame,
+    ) -> Vec<keyglass_bus::PeerBusFrame> {
         self.mirror.on_remote_frame(frame)
     }
 
-    pub fn drain_mirror_outgoing(&self) -> Vec<openflux_bus::PeerBusFrame> {
+    pub fn drain_mirror_outgoing(&self) -> Vec<keyglass_bus::PeerBusFrame> {
         self.mirror.drain_outgoing()
     }
 
@@ -553,7 +553,7 @@ impl KeyboardV2Display {
         !self.runtime.check_hot_reload().is_empty()
     }
 
-    pub fn take_module_perf_snapshot(&mut self) -> Vec<openflux_modules::ModulePerfStats> {
+    pub fn take_module_perf_snapshot(&mut self) -> Vec<keyglass_modules::ModulePerfStats> {
         self.runtime.take_perf_snapshot()
     }
 
@@ -569,13 +569,13 @@ impl KeyboardV2Display {
         (WAVE2D_W, WAVE2D_H)
     }
 
-    /// Consumes one newline-delimited JSON IPC message from `openflux-bridge` and publishes
-    /// semantic events onto the keyboard's local `openflux-bus`.
+    /// Consumes one newline-delimited JSON IPC message from `keyglass-bridge` and publishes
+    /// semantic events onto the keyboard's local `keyglass-bus`.
     pub fn ingest_bridge_ipc_line(&mut self, line: &str) {
         let Ok(val) = serde_json::from_str::<Value>(line) else {
             return;
         };
-        let now_ms = openflux_bus::now_unix_ms();
+        let now_ms = keyglass_bus::now_unix_ms();
         match val.get("type").and_then(|v| v.as_str()) {
             Some("key_state") => self.handle_key_state(&val, now_ms),
             Some("key_analog") => self.handle_key_analog(&val, now_ms),
@@ -747,20 +747,20 @@ impl KeyboardV2Display {
             }
         }
         const BUILTINS: [&str; 14] = [
-            "openflux.brightness_up",
-            "openflux.brightness_down",
-            "openflux.profile_next",
-            "openflux.profile_prev",
-            "openflux.actuation_next",
-            "openflux.actuation_prev",
-            "openflux.platform_linux",
-            "openflux.platform_macos",
-            "openflux.platform_windows",
-            "openflux.auto_profile_lock",
+            "keyglass.brightness_up",
+            "keyglass.brightness_down",
+            "keyglass.profile_next",
+            "keyglass.profile_prev",
+            "keyglass.actuation_next",
+            "keyglass.actuation_prev",
+            "keyglass.platform_linux",
+            "keyglass.platform_macos",
+            "keyglass.platform_windows",
+            "keyglass.auto_profile_lock",
             "widget-pomodoro.toggle",
             "widget-pomodoro.reset",
-            "openflux.theme_next",
-            "openflux.theme_prev",
+            "keyglass.theme_next",
+            "keyglass.theme_prev",
         ];
         BUILTINS.get(slot as usize).map(|s| (*s).to_string())
     }
@@ -998,7 +998,7 @@ impl KeyboardV2Display {
                 .map(|arr| {
                     arr.iter()
                         .take(3)
-                        .map(|h| openflux_bus::WeatherHourly {
+                        .map(|h| keyglass_bus::WeatherHourly {
                             hour: h
                                 .get("hour")
                                 .and_then(|x| x.as_str())
@@ -1104,7 +1104,7 @@ impl KeyboardV2Display {
             self.host_display_asleep = asleep;
             if was_asleep && !asleep {
                 // Computer screen woke up -> wake the keyboard display immediately too!
-                self.last_input_ms = openflux_bus::now_unix_ms();
+                self.last_input_ms = keyglass_bus::now_unix_ms();
                 self.last_input_mono = std::time::Instant::now();
             }
         }
@@ -1247,7 +1247,7 @@ impl KeyboardV2Display {
             k.parallax_dy = dy as f32;
             k.visual_x = k.center_x + dx as f32;
             k.visual_y = k.center_y + dy as f32;
-            k.visual_rect = Some(openflux_bus::RectPx {
+            k.visual_rect = Some(keyglass_bus::RectPx {
                 x: k.rect.x + dx as f32,
                 y: k.rect.y + dy as f32,
                 w: k.rect.w,

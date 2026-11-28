@@ -1,6 +1,6 @@
 # Assets and their licenses
 
-Every file under `assets/` is either part of OpenFlux, under the project's
+Every file under `assets/` is either part of Keyglass, under the project's
 license (MIT OR Apache-2.0, see `NOTICE`), or a third-party asset listed
 below with its license. Third-party files are unmodified copies of the
 upstream files named here, except where the table says otherwise.
@@ -26,11 +26,11 @@ The weather icons are `wi-cloudy`, `wi-day-cloudy`, `wi-day-rain-mix`,
 `wi-sleet`, `wi-snow-wind`, `wi-snow`, `wi-sprinkle`, `wi-storm-showers` and
 `wi-thunderstorm`.
 
-## OpenFlux assets
+## Keyglass assets
 
 - `default_config.json`: the default appearance, settings, Mosaic layout and
   actuation modes used by the daemon.
-- `icons/openflux.svg`: the OpenFlux logo.
+- `icons/keyglass.svg`: the Keyglass logo.
 - `default_backgrounds/*.png` and `default_backgrounds/thumbnails/*.jpg`: the
   default background images offered as theme presets.
 

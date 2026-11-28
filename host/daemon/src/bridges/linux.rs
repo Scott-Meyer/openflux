@@ -189,7 +189,7 @@ impl OsSensorBridge for LinuxBridge {
         #[cfg(target_os = "linux")]
         let poller = self.media.get_or_insert_with(|| {
             Poller::spawn(
-                "openflux-mpris",
+                "keyglass-mpris",
                 MEDIA_POLL,
                 crate::bridges::mpris::MprisState::default,
                 |state| state.sample(),

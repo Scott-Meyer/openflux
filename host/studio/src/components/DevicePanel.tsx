@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import type { DaemonClient, SocStatsSample } from "../api/daemonClient";
-import type { DeviceStatus, SettingsConfig } from "../types/openflux";
+import type { DeviceStatus, SettingsConfig } from "../types/keyglass";
 import { ParallaxDiagram } from "./ParallaxDiagram";
 import { PressRefinementRow } from "./PressRefinementRow";
 import { v2Client } from "../api/v2Client";
@@ -144,8 +144,8 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
   const formatComponentVersion = (raw: string | null | undefined, label: string, fallback: string) => {
     if (!raw) return fallback;
     const trimmed = raw.trim();
-    if (/^openflux-(bridge|firmware|display)\b/i.test(trimmed)) {
-      const ver = trimmed.replace(/^openflux-(bridge|firmware|display)\s*/i, "").trim();
+    if (/^keyglass-(bridge|firmware|display)\b/i.test(trimmed)) {
+      const ver = trimmed.replace(/^keyglass-(bridge|firmware|display)\s*/i, "").trim();
       return ver ? `${label} v${ver}` : label;
     }
     return trimmed;

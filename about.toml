@@ -1,5 +1,5 @@
 # cargo-about configuration for the third-party license files installed with
-# every OpenFlux binary (scripts/licenses/rust-licenses.sh).
+# every Keyglass binary (scripts/licenses/rust-licenses.sh).
 #
 # `accepted` must list exactly the licenses deny.toml allows; CI compares the
 # two (.github/scripts/test-licenses.sh).
@@ -24,7 +24,7 @@ accepted = [
 ignore-dev-dependencies = true
 
 # libusb1-sys compiles its bundled C libusb (LGPL-2.1-or-later) into
-# openfluxd (feature "vendored"); its crate license covers only the Rust
+# keyglassd (feature "vendored"); its crate license covers only the Rust
 # bindings. See NOTICE. The checksums pin the reviewed texts: a new version
 # with different files fails the generation until it is reviewed again.
 [libusb1-sys]
@@ -44,7 +44,7 @@ license = "LGPL-2.1-or-later"
 checksum = "5df07007198989c622f5d41de8d703e7bef3d0e79d62e24332ee739a452af62a"
 
 # hidapi compiles its bundled C HIDAPI on macOS. HIDAPI is offered under a
-# choice of licenses; OpenFlux uses it under the BSD-style license.
+# choice of licenses; Keyglass uses it under the BSD-style license.
 [hidapi.clarify]
 license = "MIT AND BSD-3-Clause"
 

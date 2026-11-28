@@ -1,8 +1,8 @@
-//! `openfluxd --request-restart` / `--request-stop` and the busy lease that defers them.
+//! `keyglassd --request-restart` / `--request-stop` and the busy lease that defers them.
 
-use openfluxd::api::build_router;
-use openfluxd::api::state::{ApiState, NoopDeviceSink};
-use openfluxd::lifecycle::ExitKind;
+use keyglassd::api::build_router;
+use keyglassd::api::state::{ApiState, NoopDeviceSink};
+use keyglassd::lifecycle::ExitKind;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use tokio::net::{TcpListener, TcpStream};
 
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "openfluxd_lifecycle_{tag}_{}_{}",
+        "keyglassd_lifecycle_{tag}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -120,10 +120,10 @@ impl Drop for Daemon {
 
 fn daemon_command(bin: &str, tmp: &Path) -> Command {
     let mut cmd = Command::new(bin);
-    cmd.env("OPENFLUX_DATA_DIR", tmp.join("data"))
-        .env("OPENFLUX_HOME_OVERRIDE", tmp.join("home"))
+    cmd.env("KEYGLASS_DATA_DIR", tmp.join("data"))
+        .env("KEYGLASS_HOME_OVERRIDE", tmp.join("home"))
         .env(
-            "OPENFLUX_UPDATE_INDEX_URL",
+            "KEYGLASS_UPDATE_INDEX_URL",
             format!("file://{}/no-index.json", tmp.display()),
         )
         .env("HOME", tmp.join("home"))
@@ -131,8 +131,8 @@ fn daemon_command(bin: &str, tmp: &Path) -> Command {
         .env("APPDATA", tmp.join("home/AppData/Roaming"))
         .env("LOCALAPPDATA", tmp.join("home/AppData/Local"))
         .env_remove("XDG_DATA_HOME")
-        .env_remove("OPENFLUX_ENROLLMENT_SECRET")
-        .env("OPENFLUX_API_ADDR", "127.0.0.1:0");
+        .env_remove("KEYGLASS_ENROLLMENT_SECRET")
+        .env("KEYGLASS_API_ADDR", "127.0.0.1:0");
     cmd
 }
 
@@ -151,7 +151,7 @@ fn start_daemon(bin: &str, tmp: &Path) -> Daemon {
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
         if let Ok(Some(ep)) =
-            openfluxd::api::lifecycle_client::DaemonEndpoint::discover(&tmp.join("data"))
+            keyglassd::api::lifecycle_client::DaemonEndpoint::discover(&tmp.join("data"))
         {
             if std::net::TcpStream::connect(ep.addr).is_ok() {
                 return daemon;
@@ -183,7 +183,7 @@ fn wait_exit(d: &mut Daemon) -> i32 {
 
 #[test]
 fn an_idle_daemon_exits_at_once_and_reports_how() {
-    let bin = env!("CARGO_BIN_EXE_openfluxd");
+    let bin = env!("CARGO_BIN_EXE_keyglassd");
     let tmp = temp_dir("binary");
 
     assert_eq!(
@@ -218,9 +218,9 @@ fn an_idle_daemon_exits_at_once_and_reports_how() {
     );
 
     // Third-party discovery says the API is off while the daemon is stopped.
-    let platform_keys = openfluxd::api::third_party::discovery_locations(
-        openfluxd::api::third_party::DiscoveryPlatform::current(),
-        &openfluxd::api::third_party::DiscoveryEnv {
+    let platform_keys = keyglassd::api::third_party::discovery_locations(
+        keyglassd::api::third_party::DiscoveryPlatform::current(),
+        &keyglassd::api::third_party::DiscoveryEnv {
             home: Some(tmp.join("home")),
             xdg_data_home: None,
             appdata: None,
@@ -257,15 +257,15 @@ fn refused_addr() -> std::net::SocketAddr {
     addr
 }
 
-fn stop_with(data: &Path) -> openfluxd::api::lifecycle_client::RequestOutcome {
+fn stop_with(data: &Path) -> keyglassd::api::lifecycle_client::RequestOutcome {
     stop_with_connect_timeout(data, Duration::from_millis(300))
 }
 
 fn stop_with_connect_timeout(
     data: &Path,
     timeout: Duration,
-) -> openfluxd::api::lifecycle_client::RequestOutcome {
-    openfluxd::api::lifecycle_client::request_exit_with_timeout(
+) -> keyglassd::api::lifecycle_client::RequestOutcome {
+    keyglassd::api::lifecycle_client::request_exit_with_timeout(
         data,
         ExitKind::Stop,
         Duration::from_secs(1),
@@ -322,7 +322,7 @@ fn a_refused_connection_means_not_running_only_without_a_daemon_process() {
         "nothing listens and nothing holds the instance lock"
     );
 
-    let lock = openfluxd::lifecycle::InstanceLock::acquire(&data)
+    let lock = keyglassd::lifecycle::InstanceLock::acquire(&data)
         .unwrap()
         .expect("lock is free");
     let outcome = stop_with_connect_timeout(&data, refused_timeout);
@@ -332,7 +332,7 @@ fn a_refused_connection_means_not_running_only_without_a_daemon_process() {
         "a process holds the instance lock: {outcome:?}"
     );
     assert!(
-        openfluxd::lifecycle::InstanceLock::acquire(&data)
+        keyglassd::lifecycle::InstanceLock::acquire(&data)
             .unwrap()
             .is_none(),
         "a second daemon can't take the lock"
@@ -349,7 +349,7 @@ fn a_refused_connection_means_not_running_only_without_a_daemon_process() {
 fn a_held_lock_without_a_discovery_file_is_an_error() {
     let tmp = temp_dir("client_lock_no_discovery");
     let data = tmp.join("data");
-    let _lock = openfluxd::lifecycle::InstanceLock::acquire(&data)
+    let _lock = keyglassd::lifecycle::InstanceLock::acquire(&data)
         .unwrap()
         .unwrap();
     let outcome = stop_with(&data);
@@ -395,7 +395,7 @@ fn http_ok(body: &str) -> &'static str {
 fn malformed_or_failed_answers_are_errors() {
     let tmp = temp_dir("client_malformed");
     let data = tmp.join("data");
-    let lock = openfluxd::lifecycle::InstanceLock::acquire(&data)
+    let lock = keyglassd::lifecycle::InstanceLock::acquire(&data)
         .unwrap()
         .unwrap();
     for resp in [
@@ -416,7 +416,7 @@ fn malformed_or_failed_answers_are_errors() {
 fn another_daemon_appearing_during_a_stop_is_an_error() {
     let tmp = temp_dir("client_new_instance");
     let data = tmp.join("data");
-    let lock = openfluxd::lifecycle::InstanceLock::acquire(&data)
+    let lock = keyglassd::lifecycle::InstanceLock::acquire(&data)
         .unwrap()
         .unwrap();
     let addr = canned_daemon(vec![
@@ -432,10 +432,10 @@ fn another_daemon_appearing_during_a_stop_is_an_error() {
 
 #[test]
 fn a_second_daemon_for_the_same_data_directory_touches_nothing() {
-    let bin = env!("CARGO_BIN_EXE_openfluxd");
+    let bin = env!("CARGO_BIN_EXE_keyglassd");
     let tmp = temp_dir("second_instance");
     let data = tmp.join("data");
-    let lock = openfluxd::lifecycle::InstanceLock::acquire(&data)
+    let lock = keyglassd::lifecycle::InstanceLock::acquire(&data)
         .unwrap()
         .unwrap();
     for args in [vec!["--no-tray", "--no-usb"], vec!["--once", "--no-usb"]] {
@@ -448,7 +448,7 @@ fn a_second_daemon_for_the_same_data_directory_touches_nothing() {
     }
     let created: Vec<String> = walk(&tmp)
         .into_iter()
-        .filter(|p| !p.ends_with("openfluxd.lock"))
+        .filter(|p| !p.ends_with("keyglassd.lock"))
         .collect();
     assert!(created.is_empty(), "nothing is written: {created:?}");
     drop(lock);
@@ -472,7 +472,7 @@ fn walk(dir: &Path) -> Vec<String> {
 
 #[test]
 fn of_two_daemons_started_together_one_runs_and_a_crash_releases_the_lock() {
-    let bin = env!("CARGO_BIN_EXE_openfluxd");
+    let bin = env!("CARGO_BIN_EXE_keyglassd");
     let tmp = temp_dir("concurrent");
     let spawn = || {
         daemon_command(bin, &tmp)
@@ -515,7 +515,7 @@ fn of_two_daemons_started_together_one_runs_and_a_crash_releases_the_lock() {
     // The discovery file names the running daemon.
     while Instant::now() < deadline && running.is_none() {
         if let Ok(Some(ep)) =
-            openfluxd::api::lifecycle_client::DaemonEndpoint::discover(&tmp.join("data"))
+            keyglassd::api::lifecycle_client::DaemonEndpoint::discover(&tmp.join("data"))
         {
             if std::net::TcpStream::connect(ep.addr).is_ok() {
                 running = Some(ep.addr);
@@ -529,11 +529,11 @@ fn of_two_daemons_started_together_one_runs_and_a_crash_releases_the_lock() {
     winner.child.kill().unwrap();
     winner.child.wait().unwrap();
     let freed = Instant::now() + Duration::from_secs(3);
-    while openfluxd::lifecycle::InstanceLock::probe(&tmp.join("data"))
-        != openfluxd::lifecycle::InstanceProbe::Free
+    while keyglassd::lifecycle::InstanceLock::probe(&tmp.join("data"))
+        != keyglassd::lifecycle::InstanceProbe::Free
     {
         let holders = std::process::Command::new("lsof")
-            .arg(tmp.join("data/config/openfluxd.lock"))
+            .arg(tmp.join("data/config/keyglassd.lock"))
             .output();
         assert!(
             Instant::now() < freed,
@@ -544,8 +544,8 @@ fn of_two_daemons_started_together_one_runs_and_a_crash_releases_the_lock() {
     }
     let mut next = start_daemon(bin, &tmp);
     assert_eq!(
-        openfluxd::lifecycle::InstanceLock::probe(&tmp.join("data")),
-        openfluxd::lifecycle::InstanceProbe::Held
+        keyglassd::lifecycle::InstanceLock::probe(&tmp.join("data")),
+        keyglassd::lifecycle::InstanceProbe::Held
     );
     assert_eq!(request(bin, &tmp, "--request-stop"), (0, "stopped".into()));
     assert_eq!(wait_exit(&mut next), 0);
@@ -555,7 +555,7 @@ fn of_two_daemons_started_together_one_runs_and_a_crash_releases_the_lock() {
 #[cfg(unix)]
 #[test]
 fn a_signal_stops_an_idle_daemon_with_exit_0() {
-    let bin = env!("CARGO_BIN_EXE_openfluxd");
+    let bin = env!("CARGO_BIN_EXE_keyglassd");
     let tmp = temp_dir("sigterm");
     let mut d = start_daemon(bin, &tmp);
     unsafe {
@@ -573,12 +573,12 @@ async fn work_racing_a_stop_finishes_first_or_is_refused() {
     struct SlowSave {
         calls: Mutex<Vec<(Instant, Instant)>>,
     }
-    impl openfluxd::api::state::DeviceSink for SlowSave {
+    impl keyglassd::api::state::DeviceSink for SlowSave {
         fn is_connected(&self) -> (bool, bool) {
             (true, true)
         }
         fn versions(&self) -> serde_json::Value {
-            openfluxd::api::state::empty_versions()
+            keyglassd::api::state::empty_versions()
         }
         fn send_live_json(&self, _: &serde_json::Value) -> Result<(), String> {
             Ok(())

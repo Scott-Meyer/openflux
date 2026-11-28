@@ -869,7 +869,7 @@
           "name": "FN"
         }
       ],
-      "name": "OpenFlux ANSI"
+      "name": "Keyglass ANSI"
     },
     "iso": {
       "defaultLayer": 0,
@@ -1760,7 +1760,7 @@
           "name": "FN"
         }
       ],
-      "name": "OpenFlux ISO"
+      "name": "Keyglass ISO"
     }
   },
   "macros": {},

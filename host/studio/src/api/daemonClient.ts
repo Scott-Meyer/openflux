@@ -4,10 +4,10 @@ import type {
   AutoProfileSwitch,
   DeviceStatus,
   InstalledAppInfo,
-  OpenFluxConfig,
+  KeyglassConfig,
   PreviewKeyRect,
   ShortcutPackRow,
-} from "../types/openflux";
+} from "../types/keyglass";
 import { toDaemonError } from "./daemonError";
 
 /** A preview frame request. Studio's preview keeps its own clock. */
@@ -15,7 +15,7 @@ export interface RenderPreviewOptions {
   suspended?: boolean;
   halfRes?: boolean;
   liveJson?: Record<string, unknown>;
-  config?: OpenFluxConfig;
+  config?: KeyglassConfig;
 }
 
 export interface AerialVideoItem {
@@ -82,7 +82,7 @@ export interface PressRefinementStatus {
 export interface PressRefinementInstall extends PressRefinementStatus {
   /** The keyboard already had exactly this data. */
   alreadyInstalled: boolean;
-  /** The data came from the copy OpenFlux keeps rather than a download. */
+  /** The data came from the copy Keyglass keeps rather than a download. */
   fromCache: boolean;
 }
 
@@ -106,17 +106,17 @@ export interface DaemonClient extends PressRefinementClient {
   getStatus(): Promise<DeviceStatus>;
   /** Locks or unlocks automatic profile switching; answers with the new state. */
   setAutoProfileLock(locked: boolean): Promise<AutoProfileSwitch>;
-  getConfig(): Promise<OpenFluxConfig>;
+  getConfig(): Promise<KeyglassConfig>;
   /** The daemon's default configuration, in the same shape as `getConfig`. */
-  getDefaultConfig(): Promise<OpenFluxConfig>;
-  updateConfig(patch: Partial<OpenFluxConfig>): Promise<void>;
+  getDefaultConfig(): Promise<KeyglassConfig>;
+  updateConfig(patch: Partial<KeyglassConfig>): Promise<void>;
   saveToKeyboard(): Promise<{ message: string }>;
   /**
    * Rebuilds the keymap file from the keyboard's firmware keymap, writes it to the keyboard and
    * answers with the new config. Rejects with a `DaemonError`: a 409 when there is no readable
    * firmware keymap, other keyboard work is running, or the keyboard needs conversion.
    */
-  adoptFirmwareKeymap(): Promise<OpenFluxConfig>;
+  adoptFirmwareKeymap(): Promise<KeyglassConfig>;
   importBundle(filePath: string): Promise<{ message: string; profiles: string[] }>;
   exportBundle(outPath: string): Promise<{ message: string; outPath: string }>;
   addIcon(filePath: string): Promise<{ message: string; iconPaths: string[] }>;
@@ -144,12 +144,12 @@ export function createDaemonClient(): DaemonClient {
   return {
     getStatus: () => invoke<DeviceStatus>("get_status"),
     setAutoProfileLock: (locked) => invoke<AutoProfileSwitch>("set_auto_profile_lock", { locked }),
-    getConfig: () => invoke<OpenFluxConfig>("get_config"),
-    getDefaultConfig: () => invoke<OpenFluxConfig>("get_default_config"),
+    getConfig: () => invoke<KeyglassConfig>("get_config"),
+    getDefaultConfig: () => invoke<KeyglassConfig>("get_default_config"),
     updateConfig: (patch) => invoke("update_config", { patch }),
     saveToKeyboard: () => invoke("save_to_keyboard"),
     adoptFirmwareKeymap: () =>
-      invoke<OpenFluxConfig>("adopt_firmware_keymap").catch((e) => {
+      invoke<KeyglassConfig>("adopt_firmware_keymap").catch((e) => {
         throw toDaemonError(e);
       }),
     importBundle: (filePath) => invoke("import_bundle", { filePath }),

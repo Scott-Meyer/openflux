@@ -2,11 +2,11 @@
 //! keyboard as a firmware keymap it accepts, and come back unchanged when the keyboard is read
 //! again, driven through a mock keyboard that keeps whatever a save writes.
 
-use openfluxd::api::build_router;
-use openfluxd::api::state::{ApiState, DeviceSink};
-use openfluxd::api::worker::reconcile_tick;
-use openfluxd::bridges::{ActiveWindowInfo, HardwareMetrics, MediaSnapshot, OsSensorBridge};
-use openfluxd::codecs::keymap::{decode_keymap_blob, FirmwareKeymapBlob};
+use keyglassd::api::build_router;
+use keyglassd::api::state::{ApiState, DeviceSink};
+use keyglassd::api::worker::reconcile_tick;
+use keyglassd::bridges::{ActiveWindowInfo, HardwareMetrics, MediaSnapshot, OsSensorBridge};
+use keyglassd::codecs::keymap::{decode_keymap_blob, FirmwareKeymapBlob};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -18,7 +18,7 @@ const TOKEN: &str = "tok_layers";
 
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "openfluxd_layers_{tag}_{}_{}",
+        "keyglassd_layers_{tag}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -43,8 +43,8 @@ struct MockKeyboard {
 
 impl MockKeyboard {
     fn new() -> Arc<Self> {
-        let settings = openfluxd::codecs::keymap::ProfileSettingsFile {
-            settings: vec![openfluxd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap()],
+        let settings = keyglassd::codecs::keymap::ProfileSettingsFile {
+            settings: vec![keyglassd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap()],
             file_version: 0,
             file_type: 0,
         }
@@ -81,7 +81,7 @@ impl DeviceSink for MockKeyboard {
         (true, true)
     }
     fn versions(&self) -> Value {
-        json!({"firmware": "openflux-firmware 1.0.0", "bridge": "openflux-bridge 1.0.0"})
+        json!({"firmware": "keyglass-firmware 1.0.0", "bridge": "keyglass-bridge 1.0.0"})
     }
     fn send_live_json(&self, _: &Value) -> Result<(), String> {
         Ok(())

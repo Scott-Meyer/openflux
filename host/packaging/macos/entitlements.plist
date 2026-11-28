@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Code-signing entitlements for OpenFlux Studio and its helper executables,
+  Code-signing entitlements for Keyglass Studio and its helper executables,
   signed with the hardened runtime and notarized.
 
   The set is intentionally empty. The app is not sandboxed, so USB access

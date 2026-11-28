@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState } from "react";
-import type { OpenFluxConfig } from "../types/openflux";
+import type { KeyglassConfig } from "../types/keyglass";
 import type { ConfigEdit } from "./layerModeEdits";
 
 type AcceptedEdit = Extract<ConfigEdit, { ok: true }>;
@@ -10,7 +10,7 @@ type AcceptedEdit = Extract<ConfigEdit, { ok: true }>;
  * side effects waits for the user to confirm them, and a refused edit shows why.
  * `dialog` must be rendered for confirmations to appear.
  */
-export function useConfigEdits(onApply: (patch: Partial<OpenFluxConfig>) => void) {
+export function useConfigEdits(onApply: (patch: Partial<KeyglassConfig>) => void) {
   const [pending, setPending] = useState<{ title: string; edit: AcceptedEdit; after?: () => void } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 

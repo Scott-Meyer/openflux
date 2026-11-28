@@ -30,7 +30,7 @@ impl JobKind {
     pub fn activity(self) -> &'static str {
         match self {
             JobKind::Update => "updating the keyboard",
-            JobKind::Convert => "converting the keyboard to OpenFlux",
+            JobKind::Convert => "converting the keyboard to Keyglass",
             JobKind::Restore => "restoring the keyboard's factory software",
             JobKind::LocalInstall => "installing local keyboard builds",
         }
@@ -91,7 +91,7 @@ pub struct PlannedStep {
     pub expect: Option<String>,
     /// The artifact installed by this step, as the verified index lists it.
     #[serde(default)]
-    pub artifact: Option<openflux_update::manifest::Artifact>,
+    pub artifact: Option<keyglass_update::manifest::Artifact>,
     /// Step-specific progress that must survive a restart, such as the bridge install attempt.
     #[serde(default)]
     pub state: serde_json::Map<String, serde_json::Value>,
@@ -112,9 +112,9 @@ pub enum StepKind {
     FlashLocalFirmware,
     /// Read the keyboard's existing settings for import.
     ReadSettings,
-    /// Stage the OpenFlux bridge and its launcher as the keyboard's rescue pair.
+    /// Stage the Keyglass bridge and its launcher as the keyboard's rescue pair.
     StageRescue,
-    /// Write the imported settings into the OpenFlux configuration.
+    /// Write the imported settings into the Keyglass configuration.
     ImportSettings,
     /// Stage the factory packages and start the keyboard's restore.
     StageFactoryRestore,
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn a_running_job_is_found_after_a_restart_and_a_finished_one_is_not() {
-        let dir = std::env::temp_dir().join(format!("openfluxd_journal_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("keyglassd_journal_{}", std::process::id()));
         let j = Journal::new(dir.clone());
         let mut job = JobRecord::new(JobKind::Update, Vec::new());
         j.save(&job).unwrap();
@@ -331,7 +331,7 @@ mod tests {
 
     #[test]
     fn the_latest_job_is_the_one_started_last_whatever_its_timestamp_precision() {
-        let dir = std::env::temp_dir().join(format!("openfluxd_latest_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("keyglassd_latest_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let j = Journal::new(dir.clone());
         let mut earlier = JobRecord::new(JobKind::Update, Vec::new());

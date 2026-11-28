@@ -1,7 +1,7 @@
 //! Key code names: the `KC_*` names keymap documents use for keyboard keys and consumer controls,
 //! and the HID usages they stand for.
 //!
-//! Every name is the full QMK-style name, which is what OpenFlux writes. [`KEY_ALIASES`] lists
+//! Every name is the full QMK-style name, which is what Keyglass writes. [`KEY_ALIASES`] lists
 //! the short and older QMK names that are accepted as well. `tests/fixtures/keycodes.json` holds
 //! the same tables for the Python codec and Studio.
 
@@ -411,7 +411,7 @@ pub fn consumer_name(usage: u32) -> Option<&'static str> {
 mod tests {
     use super::*;
     use crate::codecs::keymap::{
-        firmware_word_to_action, qmk_action_to_firmware_word, NONE_KEYCODE, OPENFLUX_KEYS,
+        firmware_word_to_action, qmk_action_to_firmware_word, NONE_KEYCODE, KEYGLASS_KEYS,
         TRANSPARENT_KEYCODE,
     };
 
@@ -423,13 +423,13 @@ mod tests {
     }
 
     /// Every name a key action can hold: the special keys, the keyboard keys, the consumer
-    /// controls and OpenFlux's functions.
+    /// controls and Keyglass's functions.
     fn names() -> Vec<&'static str> {
         ["KC_TRANSPARENT", "KC_NO"]
             .into_iter()
             .chain(KEYBOARD_KEYS.iter().map(|(n, _)| *n))
             .chain(CONSUMER_CONTROLS.iter().map(|(n, _)| *n))
-            .chain(OPENFLUX_KEYS.iter().map(|(n, _)| *n))
+            .chain(KEYGLASS_KEYS.iter().map(|(n, _)| *n))
             .collect()
     }
 
@@ -483,7 +483,7 @@ mod tests {
                 .map(|(n, u)| serde_json::json!({"name": n, "usage": u}))
                 .collect()
         };
-        let openflux: Vec<_> = OPENFLUX_KEYS
+        let keyglass: Vec<_> = KEYGLASS_KEYS
             .iter()
             .map(|(n, w)| serde_json::json!({"name": n, "word": w}))
             .collect();
@@ -499,22 +499,22 @@ mod tests {
         serde_json::json!({
             "keyboard": table(&KEYBOARD_KEYS),
             "consumer": table(&CONSUMER_CONTROLS),
-            "openflux": openflux,
+            "keyglass": keyglass,
             "aliases": aliases,
             "words": words,
         })
     }
 
     /// `tests/fixtures/keycodes.json` is this module's tables and the firmware word of every name
-    /// and alias; `tools/openflux-dev/tests/test_codecs.py` and Studio's tests check their own
+    /// and alias; `tools/keyglass-dev/tests/test_codecs.py` and Studio's tests check their own
     /// tables against the same file. Regenerate it with
-    /// `OPENFLUX_REGENERATE_FIXTURES=1 cargo test -p openfluxd keycodes_fixture`.
+    /// `KEYGLASS_REGENERATE_FIXTURES=1 cargo test -p keyglassd keycodes_fixture`.
     #[test]
     fn keycodes_fixture_matches_the_tables() {
         let fixture = keycodes_fixture();
         let path =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/keycodes.json");
-        if std::env::var("OPENFLUX_REGENERATE_FIXTURES").as_deref() == Ok("1") {
+        if std::env::var("KEYGLASS_REGENERATE_FIXTURES").as_deref() == Ok("1") {
             std::fs::write(
                 &path,
                 serde_json::to_string_pretty(&fixture).unwrap() + "\n",

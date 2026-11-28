@@ -1460,9 +1460,9 @@ version = "2.0.0-alpha.1"
 dependencies = [
  "base64 0.22.1",
  "clap",
- "openflux-bus",
- "openflux-compositor",
- "openflux-modules",
+ "keyglass-bus",
+ "keyglass-compositor",
+ "keyglass-modules",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -2703,6 +2703,156 @@ dependencies = [
 ]
 
 [[package]]
+name = "keyglass-bridge"
+version = "2.0.0-beta.1"
+dependencies = [
+ "base64 0.22.1",
+ "keyglass-bus",
+ "libc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "keyglass-bus"
+version = "2.0.0-alpha.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "keyglass-compositor"
+version = "2.0.0-alpha.1"
+dependencies = [
+ "bytemuck",
+ "fontdue",
+ "image",
+ "keyglass-bus",
+ "keyglass-modules",
+ "pollster",
+ "wgpu",
+]
+
+[[package]]
+name = "keyglass-display"
+version = "2.0.0-beta.1"
+dependencies = [
+ "crc32fast",
+ "fontdue",
+ "image",
+ "keyglass-bus",
+ "keyglass-compositor",
+ "keyglass-modules",
+ "libc",
+ "resvg",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "wayland-client",
+ "wayland-protocols",
+]
+
+[[package]]
+name = "keyglass-modules"
+version = "2.0.0-alpha.1"
+dependencies = [
+ "base64 0.22.1",
+ "keyglass-bus",
+ "libc",
+ "mlua",
+ "reqwest 0.12.28",
+ "rustls",
+ "rustls-native-certs",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "toml 0.8.2",
+ "walkdir",
+ "webpki-roots",
+]
+
+[[package]]
+name = "keyglass-studio"
+version = "2.0.0-beta.1"
+dependencies = [
+ "libc",
+ "objc2",
+ "objc2-foundation",
+ "objc2-service-management",
+ "reqwest 0.12.28",
+ "rfd",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-updater",
+ "tokio",
+ "winreg 0.55.0",
+]
+
+[[package]]
+name = "keyglass-update"
+version = "2.0.0-beta.1"
+dependencies = [
+ "clap",
+ "minisign",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "time",
+ "toml 0.8.2",
+ "ureq",
+]
+
+[[package]]
+name = "keyglassd"
+version = "2.0.0-beta.1"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "flate2",
+ "futures-util",
+ "getrandom 0.2.17",
+ "hidapi",
+ "http-body",
+ "hyper",
+ "hyper-util",
+ "iana-time-zone",
+ "image",
+ "keyglass-bus",
+ "keyglass-compositor",
+ "keyglass-modules",
+ "keyglass-update",
+ "libc",
+ "libusb1-sys",
+ "rcgen",
+ "reqwest 0.12.28",
+ "rusb",
+ "rustls",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "time",
+ "tokio",
+ "tokio-rustls",
+ "tokio-tungstenite 0.20.1",
+ "tower",
+ "windows 0.62.2",
+ "windows-future",
+ "zbus",
+ "zip",
+]
+
+[[package]]
 name = "khronos-egl"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3461,156 +3611,6 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
-
-[[package]]
-name = "openflux-bridge"
-version = "2.0.0-beta.1"
-dependencies = [
- "base64 0.22.1",
- "libc",
- "openflux-bus",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "openflux-bus"
-version = "2.0.0-alpha.1"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "openflux-compositor"
-version = "2.0.0-alpha.1"
-dependencies = [
- "bytemuck",
- "fontdue",
- "image",
- "openflux-bus",
- "openflux-modules",
- "pollster",
- "wgpu",
-]
-
-[[package]]
-name = "openflux-display"
-version = "2.0.0-beta.1"
-dependencies = [
- "crc32fast",
- "fontdue",
- "image",
- "libc",
- "openflux-bus",
- "openflux-compositor",
- "openflux-modules",
- "resvg",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "wayland-client",
- "wayland-protocols",
-]
-
-[[package]]
-name = "openflux-modules"
-version = "2.0.0-alpha.1"
-dependencies = [
- "base64 0.22.1",
- "libc",
- "mlua",
- "openflux-bus",
- "reqwest 0.12.28",
- "rustls",
- "rustls-native-certs",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.21",
- "toml 0.8.2",
- "walkdir",
- "webpki-roots",
-]
-
-[[package]]
-name = "openflux-studio"
-version = "2.0.0-beta.1"
-dependencies = [
- "libc",
- "objc2",
- "objc2-foundation",
- "objc2-service-management",
- "reqwest 0.12.28",
- "rfd",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-single-instance",
- "tauri-plugin-updater",
- "tokio",
- "winreg 0.55.0",
-]
-
-[[package]]
-name = "openflux-update"
-version = "2.0.0-beta.1"
-dependencies = [
- "clap",
- "minisign",
- "semver",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.21",
- "time",
- "toml 0.8.2",
- "ureq",
-]
-
-[[package]]
-name = "openfluxd"
-version = "2.0.0-beta.1"
-dependencies = [
- "axum",
- "base64 0.22.1",
- "bytes",
- "flate2",
- "futures-util",
- "getrandom 0.2.17",
- "hidapi",
- "http-body",
- "hyper",
- "hyper-util",
- "iana-time-zone",
- "image",
- "libc",
- "libusb1-sys",
- "openflux-bus",
- "openflux-compositor",
- "openflux-modules",
- "openflux-update",
- "rcgen",
- "reqwest 0.12.28",
- "rusb",
- "rustls",
- "semver",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tar",
- "time",
- "tokio",
- "tokio-rustls",
- "tokio-tungstenite 0.20.1",
- "tower",
- "windows 0.62.2",
- "windows-future",
- "zbus",
- "zip",
-]
 
 [[package]]
 name = "openssl"

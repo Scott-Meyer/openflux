@@ -18,14 +18,14 @@ export function refusal(code: string, message: string, status = 409, recovery: s
   return new DaemonError({ kind: "daemon", status, code, message, recovery });
 }
 
-export const OPENFLUX_KEYBOARD: KeyboardStatus = {
+export const KEYGLASS_KEYBOARD: KeyboardStatus = {
   connected: true,
-  mode: "openflux",
+  mode: "keyglass",
   components: [
     {
       component: "firmware",
       installed: "1.0.0",
-      kind: "openflux",
+      kind: "keyglass",
       latest: "1.0.0",
       state: "upToDate",
       required: false,
@@ -35,7 +35,7 @@ export const OPENFLUX_KEYBOARD: KeyboardStatus = {
     {
       component: "bridge",
       installed: "1.0.0",
-      kind: "openflux",
+      kind: "keyglass",
       latest: "1.0.1",
       state: "updateAvailable",
       required: false,
@@ -45,7 +45,7 @@ export const OPENFLUX_KEYBOARD: KeyboardStatus = {
     {
       component: "display",
       installed: "1.0.0",
-      kind: "openflux",
+      kind: "keyglass",
       latest: "1.0.1",
       state: "updateAvailable",
       required: true,
@@ -131,7 +131,7 @@ export class MockDaemon {
   restoreError: DaemonError | null = null;
   private nextId = 1;
 
-  constructor(keyboard: KeyboardStatus = OPENFLUX_KEYBOARD) {
+  constructor(keyboard: KeyboardStatus = KEYGLASS_KEYBOARD) {
     this.status = {
       checkedAt: "2026-01-01T10:00:00Z",
       checking: false,
@@ -159,7 +159,7 @@ export class MockDaemon {
     this.assertAlive();
     if (this.stopRequested) {
       this.events.push(`refused:${activity}`);
-      throw refusal("busy", "OpenFlux is stopping");
+      throw refusal("busy", "Keyglass is stopping");
     }
     this.leases.add(activity);
     this.events.push(`begin:${activity}`);
@@ -175,7 +175,7 @@ export class MockDaemon {
     this.assertAlive();
     if (this.stopRequested) {
       this.events.push(`refused:${kind}`);
-      throw refusal("busy", "OpenFlux is stopping");
+      throw refusal("busy", "Keyglass is stopping");
     }
     if (this.busyNames().length > 0) throw refusal("busy", "Another job is running");
     const job: Job = {
@@ -329,7 +329,7 @@ export function mockDaemonService(daemon: MockDaemon | null, overrides: Partial<
     platform: "macos",
     manager: "launchAgent" as const,
     registration: "enabled" as const,
-    daemonBinary: "/Applications/OpenFlux Studio.app/Contents/MacOS/openfluxd",
+    daemonBinary: "/Applications/Keyglass Studio.app/Contents/MacOS/keyglassd",
     detail: null,
   };
   const report: StartReport = {

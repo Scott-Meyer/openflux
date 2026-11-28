@@ -1,5 +1,5 @@
 import type React from "react";
-import type { SettingsConfig } from "../types/openflux";
+import type { SettingsConfig } from "../types/keyglass";
 
 const FRAME_W_UNITS = 309.31;
 const FRAME_H_UNITS = 121.82;

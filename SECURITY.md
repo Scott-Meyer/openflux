@@ -4,14 +4,14 @@
 
 Security fixes are made in the latest release of each component (host,
 firmware, bridge, display) and ship as a new release of the affected
-component. Update through OpenFlux Studio, or download the release from
-[GitHub Releases](https://github.com/Scott-Meyer/openflux/releases).
+component. Update through Keyglass Studio, or download the release from
+[GitHub Releases](https://github.com/Scott-Meyer/keyglass/releases).
 
 ## Reporting a vulnerability
 
 Please report vulnerabilities privately, not in public issues or
 discussions. Use **Report a vulnerability** on the repository's
-[Security tab](https://github.com/Scott-Meyer/openflux/security/advisories/new),
+[Security tab](https://github.com/Scott-Meyer/keyglass/security/advisories/new),
 which opens a private advisory visible only to the maintainers.
 
 Include what you can of:
@@ -36,6 +36,6 @@ Of particular interest:
   packages, files, firmware images;
 - the keyboard's USB interfaces and the bridge's file access.
 
-The keyboard's operating system is not part of OpenFlux; problems in it are
+The keyboard's operating system is not part of Keyglass; problems in it are
 outside this project's scope, but we want to hear about anything in it that
-affects OpenFlux.
+affects Keyglass.

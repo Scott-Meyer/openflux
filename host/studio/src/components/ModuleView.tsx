@@ -199,7 +199,7 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
         name: `${mod.manifest.name} (Local Fork)`,
       });
       await onUpdated();
-      setStatusMsg(`Forked to ~/.local/share/openflux/v2/modules/local/${newId.trim()} — edit script.lua and click Reload!`);
+      setStatusMsg(`Forked to ~/.local/share/keyglass/v2/modules/local/${newId.trim()} — edit script.lua and click Reload!`);
     } catch (err) {
       setStatusMsg(err instanceof Error ? err.message : String(err));
     } finally {

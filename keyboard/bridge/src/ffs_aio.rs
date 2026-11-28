@@ -104,8 +104,8 @@ impl FfsAioReader {
         }
         #[cfg(target_os = "linux")]
         {
-            if std::env::var("OPENFLUX_FORCE_AIO_FAIL").as_deref() == Ok("1") {
-                return Err("OPENFLUX_FORCE_AIO_FAIL".into());
+            if std::env::var("KEYGLASS_FORCE_AIO_FAIL").as_deref() == Ok("1") {
+                return Err("KEYGLASS_FORCE_AIO_FAIL".into());
             }
             let efd = unsafe { libc::eventfd(0, libc::EFD_NONBLOCK | libc::EFD_CLOEXEC) };
             if efd < 0 {
@@ -348,8 +348,8 @@ impl FfsTxQueue {
         }
         #[cfg(target_os = "linux")]
         {
-            if std::env::var("OPENFLUX_FORCE_AIO_FAIL").as_deref() == Ok("1") {
-                return Err("OPENFLUX_FORCE_AIO_FAIL".into());
+            if std::env::var("KEYGLASS_FORCE_AIO_FAIL").as_deref() == Ok("1") {
+                return Err("KEYGLASS_FORCE_AIO_FAIL".into());
             }
             let efd = unsafe { libc::eventfd(0, libc::EFD_NONBLOCK | libc::EFD_CLOEXEC) };
             if efd < 0 {

@@ -226,7 +226,7 @@ pub fn encode_live_json(payload: &serde_json::Value) -> Result<Vec<u8>, HdlcErro
     encode_live_data(DataType::Json, s.as_bytes())
 }
 
-pub fn encode_live_bus_frame(frame: &openflux_bus::WireFrame) -> Result<Vec<u8>, HdlcError> {
+pub fn encode_live_bus_frame(frame: &keyglass_bus::WireFrame) -> Result<Vec<u8>, HdlcError> {
     let s = serde_json::to_string(frame).map_err(|e| HdlcError(e.to_string()))?;
     encode_live_data(DataType::BusFrame, s.as_bytes())
 }

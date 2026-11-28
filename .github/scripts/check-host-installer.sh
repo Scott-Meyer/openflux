@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Checks that a host installer contains what every installation needs:
-# OpenFlux Studio, openfluxd, openflux-ffmpeg and openflux-ffprobe, the
+# Keyglass Studio, keyglassd, keyglass-ffmpeg and keyglass-ffprobe, the
 # third-party license texts (licenses/: the FFmpeg tools' license, and the
-# licenses of the Rust crates in openfluxd and Studio and of the npm packages
+# licenses of the Rust crates in keyglassd and Studio and of the npm packages
 # in Studio's interface; each must be non-empty), and the bundled keyboard
 # software with its signed index. On macOS it also checks the helpers and the LaunchAgent, and that
 # every bundled executable is universal (arm64 and x86_64).
@@ -45,10 +45,10 @@ require() {
 
 # The files every installer's licenses/ directory holds (build-sidecars.sh).
 license_files=(
-    openflux-ffmpeg-COPYING.GPLv2.txt
-    openfluxd-rust-licenses.txt
-    openflux-studio-rust-licenses.txt
-    openflux-studio-ui-npm-licenses.txt
+    keyglass-ffmpeg-COPYING.GPLv2.txt
+    keyglassd-rust-licenses.txt
+    keyglass-studio-rust-licenses.txt
+    keyglass-studio-ui-npm-licenses.txt
 )
 # require_licenses <listing of non-empty files> <extended regex for the directory holding licenses/>
 require_licenses() {
@@ -68,11 +68,11 @@ check_macos_tree() {
     [ -n "$app" ] || die "no .app bundle in ${installer}"
     (cd "$app" && find . -print) | sed 's|^\./||' > "${work}/list"
     nonempty_files "$app" > "${work}/nonempty"
-    for bin in openfluxd fluxctl openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe; do
+    for bin in keyglassd fluxctl keyglass-tray keyglass-sensors keyglass-ffmpeg keyglass-ffprobe; do
         require "${work}/list" "$bin" "^Contents/MacOS/${bin}$"
     done
     require "${work}/list" "bundled core modules" '^Contents/Resources/modules/keys-renderer/module\.toml$'
-    require "${work}/list" "LaunchAgent" '^Contents/Library/LaunchAgents/org\.openflux\.openfluxd\.plist$'
+    require "${work}/list" "LaunchAgent" '^Contents/Library/LaunchAgents/dev\.keyglass\.keyglassd\.plist$'
     require_licenses "${work}/nonempty" '^Contents/Resources/'
     require "${work}/list" "keyboard index" '^Contents/Resources/keyboard/index\.json$'
     require "${work}/list" "keyboard index signature" '^Contents/Resources/keyboard/index\.json\.sig$'
@@ -87,15 +87,15 @@ check_macos_tree() {
             fi
         done
     fi
-    "$app/Contents/MacOS/openflux-ffmpeg" -hide_banner -version | head -n 1
-    "$app/Contents/MacOS/openflux-ffprobe" -hide_banner -version | head -n 1
+    "$app/Contents/MacOS/keyglass-ffmpeg" -hide_banner -version | head -n 1
+    "$app/Contents/MacOS/keyglass-ffprobe" -hide_banner -version | head -n 1
 }
 
 check_linux_tree() {
     local root="$1"
     (cd "$root" && find . -print) | sed 's|^\./||' > "${work}/list"
     nonempty_files "$root" > "${work}/nonempty"
-    for bin in openfluxd fluxctl openflux-ffmpeg openflux-ffprobe; do
+    for bin in keyglassd fluxctl keyglass-ffmpeg keyglass-ffprobe; do
         require "${work}/list" "$bin" "^usr/bin/${bin}$"
     done
     require "${work}/list" "bundled core modules" '/modules/keys-renderer/module\.toml$'
@@ -103,8 +103,8 @@ check_linux_tree() {
     require "${work}/list" "keyboard index" '/keyboard/index\.json$'
     require "${work}/list" "keyboard index signature" '/keyboard/index\.json\.sig$'
     if [ "${#missing[@]}" -eq 0 ] && [ "$(uname -s)" = Linux ]; then
-        "$root/usr/bin/openflux-ffmpeg" -hide_banner -version | head -n 1
-        "$root/usr/bin/openflux-ffprobe" -hide_banner -version | head -n 1
+        "$root/usr/bin/keyglass-ffmpeg" -hide_banner -version | head -n 1
+        "$root/usr/bin/keyglass-ffprobe" -hide_banner -version | head -n 1
     fi
 }
 
@@ -127,7 +127,7 @@ case "$installer" in
         # Paths of the entries with a non-zero Size.
         awk '/^Path = / { path = substr($0, 8) } /^Size = / { if (substr($0, 8) + 0 > 0) print path }' "${work}/7z" |
             tr '\134' '/' > "${work}/nonempty"
-        for bin in openflux-studio openfluxd fluxctl openflux-ffmpeg openflux-ffprobe; do
+        for bin in keyglass-studio keyglassd fluxctl keyglass-ffmpeg keyglass-ffprobe; do
             require "${work}/list" "${bin}.exe" "(^|/)${bin}\\.exe$"
         done
         require "${work}/list" "bundled core modules" '(^|/)modules/keys-renderer/module\.toml$'
@@ -139,8 +139,8 @@ case "$installer" in
         mkdir -p "${work}/deb"
         dpkg-deb -x "$installer" "${work}/deb"
         check_linux_tree "${work}/deb"
-        require "${work}/list" "udev rules" '^usr/lib/udev/rules\.d/70-openflux\.rules$'
-        require "${work}/list" "systemd user unit" '^usr/lib/systemd/user/openfluxd\.service$'
+        require "${work}/list" "udev rules" '^usr/lib/udev/rules\.d/70-keyglass\.rules$'
+        require "${work}/list" "systemd user unit" '^usr/lib/systemd/user/keyglassd\.service$'
         dpkg-deb -e "$installer" "${work}/control"
         for script in postinst prerm postrm; do
             if [ -f "${work}/control/${script}" ]; then echo "  ${script}: present"; else missing+=("$script"); fi

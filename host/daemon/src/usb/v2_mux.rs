@@ -1,17 +1,17 @@
-//! OpenFlux v2 Persistent Full-Duplex Priority-Multiplexed USB Transport (`OFV2`).
+//! Keyglass v2 Persistent Full-Duplex Priority-Multiplexed USB Transport (`OFV2`).
 //!
 //! Replaces v1's per-call USB enumerate/open/claim/transact/close loop, SimpleHDLC, `live_json`,
 //! and 50 ms `CMD_POLL_BUS_FRAMES` polling with a true full-duplex USB 2.0 multiplexed link:
 //! - Holds ONE claimed `Arc<rusb::DeviceHandle<Context>>` persistently while attached.
-//! - Dedicated Bulk-IN reader thread (`openflux-v2-rx`): 0 ms polling push from keyboard!
-//! - Dedicated Priority Bulk-OUT writer thread (`openflux-v2-tx`): wakes via Condvar in < 0.05 ms:
+//! - Dedicated Bulk-IN reader thread (`keyglass-v2-rx`): 0 ms polling push from keyboard!
+//! - Dedicated Priority Bulk-OUT writer thread (`keyglass-v2-tx`): wakes via Condvar in < 0.05 ms:
 //!   - Priority 0 (`CH_BUS`): Broker-to-broker pub/sub mirroring ALWAYS goes first (< 1 ms!).
 //!   - Priority 1 (`CH_MEDIA`): Per-stream drop-old live H.264/JPEG video frames (zero disk I/O!).
 //!   - Priority 2 (`CH_BULK_REQ`): 16 KB chunked file/package/stat/clock RPCs.
 
 use crate::usb::protocol::{BRIDGE_TARGET, KEYBOARD_VID};
 use base64::Engine;
-use openflux_bus::{
+use keyglass_bus::{
     encode_media_payload, Broker, BrokerMirror, BulkRpcRequest, BulkRpcResponse, MediaCodec,
     MuxChannel, MuxDecoder, MuxFrame, PeerBusFrame, FLAG_STREAM_CLOSE, V2_UPGRADE_ACK,
     V2_UPGRADE_MAGIC,
@@ -85,7 +85,7 @@ impl V2UsbMux {
 
         let mux_bg = mux.clone();
         let _ = thread::Builder::new()
-            .name("openflux-v2-usb".into())
+            .name("keyglass-v2-usb".into())
             .spawn(move || mux_bg.supervisor_loop());
         mux
     }
@@ -319,14 +319,14 @@ impl V2UsbMux {
                 thread::sleep(Duration::from_millis(600));
                 continue;
             };
-            eprintln!("[openflux-v2-usb] Connected in pure full-duplex OFV2 multiplexed stream mode!");
+            eprintln!("[keyglass-v2-usb] Connected in pure full-duplex OFV2 multiplexed stream mode!");
             // Disarm any pending bridge upgrade rollback watchdog once OFV2 is proven alive!
             let disarm_ref = self.clone();
             let _ = thread::Builder::new()
-                .name("openflux-v2-confirm-bridge".into())
+                .name("keyglass-v2-confirm-bridge".into())
                 .spawn(move || {
                     thread::sleep(Duration::from_millis(600));
-                    let _ = disarm_ref.delete_file("/home/root/.openflux/rollback/bridge/armed");
+                    let _ = disarm_ref.delete_file("/home/root/.keyglass/rollback/bridge/armed");
                 });
             self.run_session(Arc::new(handle));
             drop(_usb_lock);
@@ -360,14 +360,14 @@ impl V2UsbMux {
         // Re-assert `host/connection { connected: true }` on every OFV2 connect so replugging
         // never leaves the keyboard stuck on stale `connected: false`!
         let _ = self.broker.publish_typed(
-            openflux_bus::topics::HOST_CONNECTION,
-            &openflux_bus::HostConnectionState {
+            keyglass_bus::topics::HOST_CONNECTION,
+            &keyglass_bus::HostConnectionState {
                 connected: true,
                 host_asleep: false,
-                last_seen_ms: openflux_bus::now_unix_ms(),
+                last_seen_ms: keyglass_bus::now_unix_ms(),
                 host_platform: Some(std::env::consts::OS.to_string()),
             },
-            openflux_bus::PublishOptions::retained(),
+            keyglass_bus::PublishOptions::retained(),
         );
 
         // Immediately advertise host's active subscriptions to keyboard AND seed default
@@ -414,7 +414,7 @@ impl V2UsbMux {
         let tx_running = self.running.clone();
         let tx_lock = self.tx_lock.clone();
         let tx_thread = thread::Builder::new()
-            .name("openflux-v2-tx".into())
+            .name("keyglass-v2-tx".into())
             .spawn(move || {
                 let (lock, cv) = &*tx_lock;
                 while tx_alive.load(Ordering::Relaxed) && tx_running.load(Ordering::Relaxed) {
@@ -456,13 +456,13 @@ impl V2UsbMux {
         let mir_tx_lock = self.tx_lock.clone();
         let mir_broker = self.broker.clone();
         let mir_thread = thread::Builder::new()
-            .name("openflux-v2-mirror".into())
+            .name("keyglass-v2-mirror".into())
             .spawn(move || {
                 // Separate local condvar wait on our mirror subscription
                 let sub = mir_broker
                     .subscribe(
                         "#",
-                        openflux_bus::SubscribeOptions {
+                        keyglass_bus::SubscribeOptions {
                             replay_retained: false,
                             ignore_origin: Some("peer:keyboard".into()),
                             capacity: 2048,
@@ -574,7 +574,7 @@ impl V2UsbLockGuard {
         use std::fs::OpenOptions;
         use std::os::unix::fs::OpenOptionsExt;
         use std::os::unix::io::AsRawFd;
-        let path = format!("/tmp/openflux_usb_{pid:04x}.lock");
+        let path = format!("/tmp/keyglass_usb_{pid:04x}.lock");
         let file = OpenOptions::new()
             .create(true)
             .read(true)

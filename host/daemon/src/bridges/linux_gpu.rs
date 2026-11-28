@@ -297,7 +297,7 @@ mod tests {
     impl Tree {
         fn new(name: &str) -> Self {
             let dir = std::env::temp_dir().join(format!(
-                "openflux-gpu-{name}-{}-{:?}",
+                "keyglass-gpu-{name}-{}-{:?}",
                 std::process::id(),
                 std::thread::current().id()
             ));

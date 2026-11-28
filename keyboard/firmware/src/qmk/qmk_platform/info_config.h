@@ -1,2 +1,2 @@
 #pragma once
-/* Intentionally minimal: all OpenFlux QMK configuration lives in config.h. */
+/* Intentionally minimal: all Keyglass QMK configuration lives in config.h. */

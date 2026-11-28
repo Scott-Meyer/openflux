@@ -110,7 +110,7 @@ impl MacOsBridge {
         })
     }
 
-    /// Parses what `openflux-sensors --once` prints: the frontmost app, the active keyboard input
+    /// Parses what `keyglass-sensors --once` prints: the frontmost app, the active keyboard input
     /// source (`com.apple.keylayout.*`, not the preferred languages), media and hardware metrics.
     pub fn parse_macos_sensors_json(
         json_str: &str,
@@ -207,14 +207,14 @@ impl MacOsBridge {
     }
 
     fn resolve_helper_path() -> String {
-        if let Ok(env_p) = std::env::var("OPENFLUX_MACOS_SENSORS_BIN") {
+        if let Ok(env_p) = std::env::var("KEYGLASS_MACOS_SENSORS_BIN") {
             if !env_p.is_empty() {
                 return env_p;
             }
         }
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
-                for name in ["openflux-sensors", "macos_sensors"] {
+                for name in ["keyglass-sensors", "macos_sensors"] {
                     let candidate = dir.join(name);
                     if candidate.is_file() {
                         return candidate.to_string_lossy().to_string();
@@ -238,7 +238,7 @@ impl MacOsBridge {
             .unwrap_or_default()
     }
 
-    /// The artwork bytes in what `openflux-sensors --artwork` prints.
+    /// The artwork bytes in what `keyglass-sensors --artwork` prints.
     pub fn parse_artwork(json_str: &str) -> Option<Vec<u8>> {
         let v = serde_json::from_str::<serde_json::Value>(json_str).ok()?;
         let b64 = v.get("media")?.get("artwork")?.as_str()?;
@@ -553,12 +553,12 @@ mod tests {
     #[test]
     fn the_helpers_artwork_is_fetched_once_per_track_and_sent_with_it() {
         use base64::Engine as _;
-        let dir = std::env::temp_dir().join(format!("openflux-macos-art-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("keyglass-macos-art-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let png = base64::engine::general_purpose::STANDARD
             .encode(crate::bridges::artwork::test_png(600, 600));
         let fetches = dir.join("fetches");
-        let helper = dir.join("openflux-sensors");
+        let helper = dir.join("keyglass-sensors");
         std::fs::write(
             &helper,
             format!(
@@ -603,7 +603,7 @@ Pages occupied by compressor:            131072.";
         let w = MacOsBridge::parse_frontmost_tsv("com.microsoft.VSCode\tCode\tmain.rs\n").unwrap();
         assert_eq!(w.app_id, "com.microsoft.VSCode");
 
-        // The schema openflux_sensors.swift prints.
+        // The schema keyglass_sensors.swift prints.
         let sensor_json = r#"{
             "frontmostApp":{"bundleId":"com.microsoft.VSCode","name":"Code","pid":1234},
             "hardware":{"batteryPct":88,"cpuPct":14.2,"gpuPct":31.5,"memTotalMB":32768,"memUsedMB":16384,"netRxBps":2097152,"netTxBps":65536},

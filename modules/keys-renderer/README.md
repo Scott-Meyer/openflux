@@ -19,4 +19,4 @@ Core modular key-face compositor: resolves all `keys/providers/#` claims (keymap
 
 ## Installing & Customizing
 
-- Ships built into **Keyglass Studio**. Toggle it under **Manage Modules**, or click **Fork to Local** to customize its code under `~/.local/share/openflux/v2/modules/local/`.
+- Ships built into **Keyglass Studio**. Toggle it under **Manage Modules**, or click **Fork to Local** to customize its code under `~/.local/share/keyglass/v2/modules/local/`.

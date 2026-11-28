@@ -118,14 +118,14 @@ describe("Press refinement", () => {
     let refuse = true;
     const client: PressRefinementRowClient = {
       getPressRefinement: vi.fn(async () => {
-        if (refuse) throw refusal("conversionRequired", "Convert the keyboard to OpenFlux first");
+        if (refuse) throw refusal("conversionRequired", "Convert the keyboard to Keyglass first");
         return { state: "absent" as const, crc32: null };
       }),
       installPressRefinement: vi.fn(),
       pickFile: vi.fn(),
     };
     const { rerender } = render(<PressRefinementRow client={client} firmwareConnected={false} />);
-    await screen.findByText("Convert the keyboard to OpenFlux first");
+    await screen.findByText("Convert the keyboard to Keyglass first");
     expect(installButton()).toBeNull();
     refuse = false;
     rerender(<PressRefinementRow client={client} firmwareConnected />);

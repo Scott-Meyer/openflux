@@ -57,7 +57,7 @@ export type ComponentState =
 export interface ComponentStatus {
   component: KeyboardComponent;
   installed: string | null;
-  kind: "openflux" | "preRelease" | "factory" | "unknown";
+  kind: "keyglass" | "preRelease" | "factory" | "unknown";
   customBuild?: boolean;
   latest: string | null;
   state: ComponentState;
@@ -84,7 +84,7 @@ export interface UpdatePlan {
 
 export interface KeyboardStatus {
   connected: boolean;
-  mode: "openflux" | "needsConversion" | "disconnected";
+  mode: "keyglass" | "needsConversion" | "disconnected";
   components: ComponentStatus[];
   plan: UpdatePlan | null;
   conversion: { found: ComponentStatus[]; install: { component: KeyboardComponent; version: string }[] } | null;
@@ -134,7 +134,7 @@ export interface ConversionStatus {
   job: Job | null;
 }
 
-/** `convert`: install OpenFlux on the whole keyboard. `restore`: reinstall the factory software. */
+/** `convert`: install Keyglass on the whole keyboard. `restore`: reinstall the factory software. */
 export type ConversionStep = "convert" | "restore";
 
 /** `POST /v1/daemon/lifecycle`. `not-running` means no daemon answered. */

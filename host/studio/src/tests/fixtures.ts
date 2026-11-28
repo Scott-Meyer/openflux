@@ -1,4 +1,4 @@
-import type { KeyAction, KeymapLayer, OpenFluxConfig } from "../types/openflux";
+import type { KeyAction, KeymapLayer, KeyglassConfig } from "../types/keyglass";
 
 // A complete configuration for UI tests, shaped like the daemon's GET /v1/config response.
 
@@ -51,7 +51,7 @@ function layers(rows: string[]): KeymapLayer[] {
   ];
 }
 
-export const TEST_CONFIG: OpenFluxConfig = {
+export const TEST_CONFIG: KeyglassConfig = {
   appearance: {
     selectedId: "default",
     defaultTheme: {

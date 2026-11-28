@@ -220,7 +220,7 @@ struct BridgeFfsStrings {
     str_count: u32,
     lang_count: u32,
     code: u16,
-    str1: [u8; 9], // "OpenFlux\0"
+    str1: [u8; 9], // "Keyglass\0"
 }
 
 #[cfg(target_os = "linux")]
@@ -322,7 +322,7 @@ pub fn bridge_setup_gadget(mount_point: &str) -> Result<(), String> {
         &format!("{GADGET_PATH}/os_desc/c.1"),
     );
 
-    let c_src = CString::new("openflux").unwrap();
+    let c_src = CString::new("keyglass").unwrap();
     let c_tgt = CString::new(mount_point).map_err(|e| e.to_string())?;
     let c_fs = CString::new("functionfs").unwrap();
     let rc = unsafe {
@@ -433,7 +433,7 @@ pub fn bridge_open_ffs(mount_point: &str) -> Result<(RawFd, RawFd, RawFd), Strin
         str_count: 1u32.to_le(),
         lang_count: 1u32.to_le(),
         code: 0x0409u16.to_le(),
-        str1: *b"OpenFlux\0",
+        str1: *b"Keyglass\0",
     };
     let s_bytes = unsafe {
         std::slice::from_raw_parts(

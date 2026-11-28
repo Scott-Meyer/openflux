@@ -10,17 +10,17 @@ use super::jobs::{JobError, JobRecord};
 use super::source::{FetchError, ObtainError};
 use super::UpdateService;
 use crate::bridge_install::{PendingInstall, Progress};
-use openflux_update::manifest::{Artifact, Release};
-use openflux_update::Component;
+use keyglass_update::manifest::{Artifact, Release};
+use keyglass_update::Component;
 use std::path::PathBuf;
 use std::time::Instant;
 
 /// The file of `release` that installs its component.
 pub fn artifact_for(release: &Release) -> Option<Artifact> {
     let prefix = match release.component {
-        Component::Firmware => "openflux-firmware",
-        Component::Bridge => "openflux-bridge",
-        Component::Display => "openflux-display",
+        Component::Firmware => "keyglass-firmware",
+        Component::Bridge => "keyglass-bridge",
+        Component::Display => "keyglass-display",
         Component::Host => return None,
     };
     let ext = if release.component == Component::Firmware {
@@ -43,7 +43,7 @@ pub fn factory_restore_trigger(release: &Release) -> Option<Artifact> {
                 .artifacts
                 .iter()
                 .find(|a| {
-                    a.name.starts_with("openflux-factory-restore_") && a.name.ends_with(".ipk")
+                    a.name.starts_with("keyglass-factory-restore_") && a.name.ends_with(".ipk")
                 })
                 .cloned()
         })
@@ -301,7 +301,7 @@ pub(crate) fn flash_verified_uf2(
         let (code, recovery) = if step_flag(job, i, "flashing") {
             (
                 "interrupted",
-                "The firmware was being written when OpenFlux stopped and doesn't answer. Keep the keyboard connected. If it doesn't come back, copy the firmware .uf2 file from the OpenFlux release onto the RPI-RP2 drive that appears, then check for updates.",
+                "The firmware was being written when Keyglass stopped and doesn't answer. Keep the keyboard connected. If it doesn't come back, copy the firmware .uf2 file from the Keyglass release onto the RPI-RP2 drive that appears, then check for updates.",
             )
         } else {
             (
@@ -351,7 +351,7 @@ pub(crate) fn flash_verified_uf2(
                 JobError::new(
                     "installFailed",
                     format!("Flashing the firmware failed: {e}"),
-                    "Keep the keyboard connected and install the firmware again. If the keyboard doesn't come back, copy the firmware .uf2 file from the OpenFlux release onto the RPI-RP2 drive that appears, then check for updates.",
+                    "Keep the keyboard connected and install the firmware again. If the keyboard doesn't come back, copy the firmware .uf2 file from the Keyglass release onto the RPI-RP2 drive that appears, then check for updates.",
                 )
             });
         }

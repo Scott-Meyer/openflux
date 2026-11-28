@@ -15,8 +15,8 @@ import { QmkKeymapView } from "./components/QmkKeymapView";
 import { ShortcutsProfilesPanel } from "./components/ShortcutsProfilesPanel";
 import { StreamDeckView } from "./components/StreamDeckView";
 import { TopBarDockTab } from "./components/TopBarDockTab";
-import type { AssetCatalog, DeviceStatus, OpenFluxConfig, PreviewKeyRect } from "./types/openflux";
-import { isKeyboardConnected, PLACEHOLDER_CONFIG } from "./types/openflux";
+import type { AssetCatalog, DeviceStatus, KeyglassConfig, PreviewKeyRect } from "./types/keyglass";
+import { isKeyboardConnected, PLACEHOLDER_CONFIG } from "./types/keyglass";
 
 export type StudioView =
   | { kind: "home" }
@@ -27,7 +27,7 @@ export type StudioView =
 
 interface AppProps {
   client?: DaemonClient;
-  initialConfig?: OpenFluxConfig;
+  initialConfig?: KeyglassConfig;
   platform?: string;
 }
 
@@ -212,7 +212,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
   const [modules, setModules] = useState<V2ModuleRecord[]>([]);
   const [geomKeys, setGeomKeys] = useState<SurfaceKeyGeom[]>([]);
   const [v2UsbProtocol, setV2UsbProtocol] = useState<string>("offline");
-  const [config, setConfig] = useState<OpenFluxConfig>(initialConfig ?? PLACEHOLDER_CONFIG);
+  const [config, setConfig] = useState<KeyglassConfig>(initialConfig ?? PLACEHOLDER_CONFIG);
   const [status, setStatus] = useState<DeviceStatus | null>(null);
   const [catalog, setCatalog] = useState<AssetCatalog | null>(null);
   const [previewRects, setPreviewRects] = useState<PreviewKeyRect[]>([]);
@@ -228,7 +228,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
   const [activeProfile, setActiveProfile] = useState<ActiveProfileState | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [htmlSdPlugins, setHtmlSdPlugins] = useState<Array<{ id: string; url: string }>>([]);
-  const configRef = useRef<OpenFluxConfig>(config);
+  const configRef = useRef<KeyglassConfig>(config);
   const modulesRevRef = useRef<number | null>(null);
   configRef.current = config;
 
@@ -397,7 +397,7 @@ export const App: React.FC<AppProps> = ({ client: injectedClient, initialConfig,
   const keyboardConnected = v2UsbProtocol === "ofv2" || isKeyboardConnected(status);
 
   const pushConfigPatch = useCallback(
-    async (patch: Partial<OpenFluxConfig>) => {
+    async (patch: Partial<KeyglassConfig>) => {
       const next = { ...configRef.current, ...patch };
       setConfig(next);
       try {

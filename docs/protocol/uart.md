@@ -79,9 +79,9 @@ State offsets are relative to byte 5:
 | `0x26` | 1 | switch feel |
 | `0x27` | 4 | active layers: bit `n` set for each active layer, including layers held with a layer key |
 | `0x2B` | 4 | active actuation mode index |
-| `0x2F` | 1 | OpenFlux event ring format: `1`; `0` means the ring fields below are not filled |
-| `0x30` | 2 | `seq`: OpenFlux function-key (`0x5000_00xx`) presses since boot, a `u16` that wraps at 65536 |
-| `0x32` | 16 | ring of the last 16 OpenFlux function codes in press order; the newest is at `ring[(seq - 1) & 15]`. A slot holds up to `0x1F`; the assigned codes are 2 to 15 (see [keymap-format.md](keymap-format.md)) |
+| `0x2F` | 1 | Keyglass event ring format: `1`; `0` means the ring fields below are not filled |
+| `0x30` | 2 | `seq`: Keyglass function-key (`0x5000_00xx`) presses since boot, a `u16` that wraps at 65536 |
+| `0x32` | 16 | ring of the last 16 Keyglass function codes in press order; the newest is at `ring[(seq - 1) & 15]`. A slot holds up to `0x1F`; the assigned codes are 2 to 15 (see [keymap-format.md](keymap-format.md)) |
 | `0x42` | 16 | active profile index at the completion of each corresponding event in `0x32` |
 | `0x5C` | 1 | host lock LEDs: `0x01` Num Lock, `0x02` Caps Lock, `0x04` Scroll Lock |
 | `0x5D` | 4 | input language code (set with `SET_LANGUAGE`) |

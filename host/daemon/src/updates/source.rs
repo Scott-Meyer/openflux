@@ -1,12 +1,12 @@
 //! Where releases come from: the signed online index, the index bundled with the installer, and
 //! the artifacts they list.
 //!
-//! Everything read here is checked with `openflux_update` before it is used: indexes against the
+//! Everything read here is checked with `keyglass_update` before it is used: indexes against the
 //! trust anchors and the persisted trust state, artifacts against their size, hash and signature.
 
-use openflux_update::manifest::Artifact;
-use openflux_update::trust::{ArtifactError, VerifiedArtifact};
-use openflux_update::{
+use keyglass_update::manifest::Artifact;
+use keyglass_update::trust::{ArtifactError, VerifiedArtifact};
+use keyglass_update::{
     verify_artifact, verify_bundled_index, verify_index, Catalog, TrustAnchors, TrustState,
     TrustStore, VerifiedIndex,
 };
@@ -172,8 +172,8 @@ pub struct SourceError {
 }
 
 impl SourceError {
-    fn from_index(e: &openflux_update::trust::IndexError) -> Self {
-        use openflux_update::trust::IndexError as E;
+    fn from_index(e: &keyglass_update::trust::IndexError) -> Self {
+        use keyglass_update::trust::IndexError as E;
         let code = match e {
             E::Expired { .. } => "expired",
             E::Replayed { .. } => "replayed",
@@ -403,7 +403,7 @@ mod tests {
 
     #[test]
     fn the_trust_store_starts_empty_and_persists() {
-        let dir = std::env::temp_dir().join(format!("openfluxd_trust_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("keyglassd_trust_{}", std::process::id()));
         let path = dir.join("trust.json");
         let mut store = FileTrustStore::new(path.clone());
         assert_eq!(store.load().unwrap(), TrustState::default());

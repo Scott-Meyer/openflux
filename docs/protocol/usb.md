@@ -18,8 +18,8 @@ Implementations: `host/daemon/src/usb/protocol.rs` (host side),
 |---|---|---|
 | USB VID | `0x3761` | `0x3761` |
 | USB PID | `0x0104` | `0x4015` |
-| Manufacturer string | `OpenFlux` | `OpenFlux` |
-| Product string | `OpenFlux Keyboard` | `OpenFlux Firmware` |
+| Manufacturer string | `Keyglass` | `Keyglass` |
+| Product string | `Keyglass Keyboard` | `Keyglass Firmware` |
 | Command interface | 0 (FunctionFS) | 1 (class `0xFF`) |
 | Bulk OUT / IN | `0x01` / `0x81` | `0x01` / `0x84` |
 | Packet size | 512 bytes (high speed) | 64 bytes (full speed) |
@@ -30,7 +30,7 @@ The firmware is a composite device. Besides the command interface it has:
 |---|---|---|---|
 | 0 | HID, boot keyboard protocol | IN `0x83` | Report ID 1: NKRO keyboard (1 reserved byte + 256-bit usage bitmap `0x00..0xFF`), with 8-byte boot keyboard fallback on `SET_PROTOCOL(0)`. Report ID 2: consumer control (one 16-bit usage). Output report: lock LEDs. |
 | 2, 3 | CDC ACM | notification `0x81`, data `0x02` / `0x82` | Diagnostic log |
-| 4 | HID, vendor (`HID_ITF_PROTOCOL_NONE`) | IN `0x85` | Vendor page `0xFF00` OpenFlux actions (4-byte LE 32-bit pressed-function mask, no Report ID) |
+| 4 | HID, vendor (`HID_ITF_PROTOCOL_NONE`) | IN `0x85` | Vendor page `0xFF00` Keyglass actions (4-byte LE 32-bit pressed-function mask, no Report ID) |
 
 The firmware's serial number string is the RP2040's unique board ID.
 
@@ -65,7 +65,7 @@ Usage Page (0xFF00), Usage (0x01), Collection (Application):
 End Collection
 ```
 
-The report is a 4-byte little-endian bitmask of the held OpenFlux function
+The report is a 4-byte little-endian bitmask of the held Keyglass function
 keys (see [keymap-format.md](keymap-format.md)): bit `c` is 1 while
 `0x5000_0000 | c` is held. The report has room for 32 function codes; codes
 2 to 15 are assigned. The firmware queues every press and release, so a
@@ -123,7 +123,7 @@ Strings in payloads are UTF-8 and NUL-terminated unless stated otherwise.
 
 | Number | Name | Request payload | ACK payload |
 |---|---|---|---|
-| 1 | `BRIDGE_VERSION` | none | `openflux-bridge <version>` |
+| 1 | `BRIDGE_VERSION` | none | `keyglass-bridge <version>` |
 | 2 | `DISPLAY_VERSION` | none | the installed display's version file, or `unknown` |
 | 3 | `OS_VERSION` | none | the keyboard operating system's version file, or `unknown` |
 | 4 | `SET_SYSTEM_TIME` | `YYYY-MM-DD HH:MM:SS <zone>`: UTC time and an IANA time zone name | none |
@@ -173,24 +173,24 @@ setting the clock fails, the previous zone is restored.
 
 | Path | Contents |
 |---|---|
-| `/home/root/openflux/config/` | display configuration: `appearance.json`, `settings.json`, `mosaic.json`, `keymap.json`, `profiles.json` |
-| `/home/root/openflux/media/` | background images and videos; key icons in `key_icons/` |
-| `/home/root/openflux/logs/` | logs, and state the display publishes for the host: `pomo_state.json`, `soc_stats.json` |
-| `/home/root/.openflux/versions/<component>` | installed version of each OpenFlux keyboard component |
-| `/home/root/.openflux/rollback/bridge/` | the previous bridge, kept while an update is unconfirmed |
+| `/home/root/keyglass/config/` | display configuration: `appearance.json`, `settings.json`, `mosaic.json`, `keymap.json`, `profiles.json` |
+| `/home/root/keyglass/media/` | background images and videos; key icons in `key_icons/` |
+| `/home/root/keyglass/logs/` | logs, and state the display publishes for the host: `pomo_state.json`, `soc_stats.json` |
+| `/home/root/.keyglass/versions/<component>` | installed version of each Keyglass keyboard component |
+| `/home/root/.keyglass/rollback/bridge/` | the previous bridge, kept while an update is unconfirmed |
 | `/home/root/*.ipk` | packages placed here are installed by the keyboard |
 
 Installing a package means uploading it to `/home/root/` with `PUT_FILE`;
 the keyboard installs it and the bridge restarts if it was replaced. After a
 bridge update, the previous bridge is restored at the next start unless the
 host confirms the update by deleting
-`/home/root/.openflux/rollback/bridge/armed`.
+`/home/root/.keyglass/rollback/bridge/armed`.
 
 ## Firmware commands
 
 | Number | Name | Request payload | ACK payload |
 |---|---|---|---|
-| 1 | `VERSION` | none | `openflux-firmware <version>` |
+| 1 | `VERSION` | none | `keyglass-firmware <version>` |
 | 100 | `SEND_KEYMAP` | keymap blob | none |
 | 101 | `ENTER_BOOTLOADER` | none | none |
 | 102 | `ENTER_OS_BOOTLOADER` | none | none |
@@ -271,8 +271,8 @@ it sent.
 
 ## Versions
 
-Every OpenFlux component reports its version as `openflux-<component>
-<version>`, for example `openflux-bridge 1.0.0`, with `<version>` the SemVer
+Every Keyglass component reports its version as `keyglass-<component>
+<version>`, for example `keyglass-bridge 1.0.0`, with `<version>` the SemVer
 version of the release. The host treats a keyboard whose firmware, bridge
 or display reports anything else as one that needs converting (see
 [converting-a-keyboard.md](../converting-a-keyboard.md)).

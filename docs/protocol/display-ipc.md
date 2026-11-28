@@ -16,7 +16,7 @@ Implementations: `keyboard/bridge/src/display_ipc.rs` (server),
 
 | | |
 |---|---|
-| Path | `/tmp/openflux_bridge.sock` (`OPENFLUX_BRIDGE_SOCK` overrides it for the display) |
+| Path | `/tmp/keyglass_bridge.sock` (`KEYGLASS_BRIDGE_SOCK` overrides it for the display) |
 | Type | Unix domain stream socket |
 | Clients | up to 8 at a time; further connections are closed |
 
@@ -54,9 +54,9 @@ Sent for every key-state message from the firmware (see [uart.md](uart.md)).
 ```
 
 `key_bitmap` is the 32-byte pressed-key bitmap as 64 lowercase hex digits,
-byte 0 first. When the firmware fills the OpenFlux event ring (its
+byte 0 first. When the firmware fills the Keyglass event ring (its
 capability byte at key-state offset `0x2F` is nonzero; see
-[uart.md](uart.md)), `of_events_seq` counts OpenFlux function-key presses,
+[uart.md](uart.md)), `of_events_seq` counts Keyglass function-key presses,
 `of_events_ring` holds the last 16 function codes in press order, and
 `of_events_profiles` holds the profile that was active after each of those
 presses. The other fields are the firmware's key-state fields; the three
@@ -136,8 +136,8 @@ restarts: the host stores it and sends the same value again.
 
 ## Configuration files
 
-The display reads its configuration from `/home/root/openflux/config/`
-(`OPENFLUX_CONFIG_DIR` overrides it) and checks the files for changes four
+The display reads its configuration from `/home/root/keyglass/config/`
+(`KEYGLASS_CONFIG_DIR` overrides it) and checks the files for changes four
 times a second. The host writes them with the bridge's `PUT_FILE` command,
 which replaces a file atomically.
 
@@ -150,12 +150,12 @@ which replaces a file atomically.
 | `profiles.json` | profiles with their theme, shortcut contexts and actuation mode |
 
 `assets/default_config.json` holds the defaults the host starts from.
-Backgrounds named in a theme are looked up in `/home/root/openflux/media/`
+Backgrounds named in a theme are looked up in `/home/root/keyglass/media/`
 and the display's own resources; a name ending in `.frag` selects one of the
 display's procedural backgrounds (`aurora_drift`, `cobalt_waves`,
 `horizon_split`, `tidal_caustics`, `perimeter_glow`).
 
-The display writes to `/home/root/openflux/logs/`:
+The display writes to `/home/root/keyglass/logs/`:
 
 | File | Contents |
 |---|---|

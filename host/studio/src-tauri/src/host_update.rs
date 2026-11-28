@@ -1,4 +1,4 @@
-//! Updates of OpenFlux itself (Studio, the daemon and helpers ship as one bundle), through the
+//! Updates of Keyglass itself (Studio, the daemon and helpers ship as one bundle), through the
 //! Tauri updater.
 //!
 //! The commands are single steps: check, download (which verifies the signature), install and
@@ -64,7 +64,7 @@ pub fn support_for(os: &str, appimage: bool) -> Support {
         "linux" if !appimage => Support {
             mode: "notify",
             reason: Some(
-                "OpenFlux was installed with the system package manager. Install the updated package from the release page."
+                "Keyglass was installed with the system package manager. Install the updated package from the release page."
                     .into(),
             ),
             installer_exits_app: false,

@@ -26,11 +26,11 @@ fn write_exec(path: &Path, content: &str) {
 }
 
 fn make_temp_root(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("openflux_pkg_{name}_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("keyglass_pkg_{name}_{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("tmp")).unwrap();
     fs::create_dir_all(dir.join("usr/bin")).unwrap();
-    fs::create_dir_all(dir.join("home/root/openflux/logs")).unwrap();
+    fs::create_dir_all(dir.join("home/root/keyglass/logs")).unwrap();
     fs::create_dir_all(dir.join("home/root/flux/logs")).unwrap();
     dir
 }
@@ -63,7 +63,7 @@ fn build_mock_ipk(out_ipk: &Path, pkg_name: &str, corrupt_data: bool) {
     if pkg_name == "garfield" {
         write_exec(
             &data_dir.join("usr/lib/garfield/scripts/flux-weston-autolaunch.sh"),
-            "#!/bin/sh\necho \"factory-autolaunch\" >> \"${OPENFLUX_SYSROOT}/tmp/boot_trace.log\"\n",
+            "#!/bin/sh\necho \"factory-autolaunch\" >> \"${KEYGLASS_SYSROOT}/tmp/boot_trace.log\"\n",
         );
     }
     fs::write(
@@ -123,11 +123,11 @@ fn staged_preinst_writes_target_attempt_and_rotates_on_armed_retries() {
     let raw_preinst = fs::read_to_string(pkg_dir.join("packaging/preinst")).unwrap();
     let root = make_temp_root("preinst_attempt");
 
-    // Stage preinst the exact way Makefile substitutes @OPENFLUX_VERSION@ with VERSION=1.2.3.
+    // Stage preinst the exact way Makefile substitutes @KEYGLASS_VERSION@ with VERSION=1.2.3.
     let staged_preinst = root.join("tmp/staged_preinst_123");
     fs::write(
         &staged_preinst,
-        raw_preinst.replace("@OPENFLUX_VERSION@", "1.2.3"),
+        raw_preinst.replace("@KEYGLASS_VERSION@", "1.2.3"),
     )
     .unwrap();
     fs::set_permissions(&staged_preinst, fs::Permissions::from_mode(0o755)).unwrap();
@@ -136,48 +136,48 @@ fn staged_preinst_writes_target_attempt_and_rotates_on_armed_retries() {
     //    and proceeds cleanly once the verified rescue pair + manifest.sha256 are staged.
     assert!(!Command::new("sh")
         .arg(&staged_preinst)
-        .env("OPENFLUX_SYSROOT", &root)
-        .env("OPENFLUX_SKIP_SYNC", "1")
+        .env("KEYGLASS_SYSROOT", &root)
+        .env("KEYGLASS_SKIP_SYNC", "1")
         .status()
         .unwrap()
         .success());
-    assert!(!root.join("home/root/.openflux/rollback/bridge").exists());
+    assert!(!root.join("home/root/.keyglass/rollback/bridge").exists());
 
     {
         let root_fc = make_temp_root("first_conv_rescue");
-        let rescue_dir = root_fc.join("home/root/.openflux/rescue");
-        let bridge_file = rescue_dir.join("openflux-bridge");
-        let launch_file = rescue_dir.join("openflux-autolaunch.sh");
+        let rescue_dir = root_fc.join("home/root/.keyglass/rescue");
+        let bridge_file = rescue_dir.join("keyglass-bridge");
+        let launch_file = rescue_dir.join("keyglass-autolaunch.sh");
         write_exec(&bridge_file, "#!/bin/sh\n# rescue-bridge\n");
         let pre_fc = root_fc.join("tmp/preinst");
-        fs::write(&pre_fc, raw_preinst.replace("@OPENFLUX_VERSION@", "1.0.0")).unwrap();
+        fs::write(&pre_fc, raw_preinst.replace("@KEYGLASS_VERSION@", "1.0.0")).unwrap();
         fs::set_permissions(&pre_fc, fs::Permissions::from_mode(0o755)).unwrap();
 
-        // 1a: Missing openflux-autolaunch.sh -> preinst refuses and changes nothing.
+        // 1a: Missing keyglass-autolaunch.sh -> preinst refuses and changes nothing.
         fs::write(
             rescue_dir.join("manifest.sha256"),
-            format!("{}  openflux-bridge\n", sha256_file(&bridge_file)),
+            format!("{}  keyglass-bridge\n", sha256_file(&bridge_file)),
         )
         .unwrap();
         assert!(!Command::new("sh")
             .arg(&pre_fc)
-            .env("OPENFLUX_SYSROOT", &root_fc)
-            .env("OPENFLUX_SKIP_SYNC", "1")
+            .env("KEYGLASS_SYSROOT", &root_fc)
+            .env("KEYGLASS_SKIP_SYNC", "1")
             .status()
             .unwrap()
             .success());
-        assert!(!root_fc.join("home/root/.openflux/rollback/bridge").exists());
+        assert!(!root_fc.join("home/root/.keyglass/rollback/bridge").exists());
         assert!(!root_fc.join("usr/bin/flux-weston-autolaunch.sh").exists());
 
         // 1b: Manifest mismatch -> preinst refuses and changes nothing.
         write_exec(
             &launch_file,
-            "#!/bin/sh\necho rescue-openflux-booted >> \"${OPENFLUX_SYSROOT}/tmp/fc_boot.log\"\n",
+            "#!/bin/sh\necho rescue-keyglass-booted >> \"${KEYGLASS_SYSROOT}/tmp/fc_boot.log\"\n",
         );
         fs::write(
             rescue_dir.join("manifest.sha256"),
             format!(
-                "{}  openflux-bridge\n{}  openflux-autolaunch.sh\n",
+                "{}  keyglass-bridge\n{}  keyglass-autolaunch.sh\n",
                 sha256_file(&bridge_file),
                 "0".repeat(64),
             ),
@@ -185,19 +185,19 @@ fn staged_preinst_writes_target_attempt_and_rotates_on_armed_retries() {
         .unwrap();
         assert!(!Command::new("sh")
             .arg(&pre_fc)
-            .env("OPENFLUX_SYSROOT", &root_fc)
-            .env("OPENFLUX_SKIP_SYNC", "1")
+            .env("KEYGLASS_SYSROOT", &root_fc)
+            .env("KEYGLASS_SKIP_SYNC", "1")
             .status()
             .unwrap()
             .success());
-        assert!(!root_fc.join("home/root/.openflux/rollback/bridge").exists());
+        assert!(!root_fc.join("home/root/.keyglass/rollback/bridge").exists());
         assert!(!root_fc.join("usr/bin/flux-weston-autolaunch.sh").exists());
 
-        // 1c: Full verified rescue pair + matching manifest -> proceeds, and a power cut recovers the OpenFlux rescue bridge.
+        // 1c: Full verified rescue pair + matching manifest -> proceeds, and a power cut recovers the Keyglass rescue bridge.
         fs::write(
             rescue_dir.join("manifest.sha256"),
             format!(
-                "{}  openflux-bridge\n{}  openflux-autolaunch.sh\n",
+                "{}  keyglass-bridge\n{}  keyglass-autolaunch.sh\n",
                 sha256_file(&bridge_file),
                 sha256_file(&launch_file),
             ),
@@ -205,55 +205,55 @@ fn staged_preinst_writes_target_attempt_and_rotates_on_armed_retries() {
         .unwrap();
         assert!(Command::new("sh")
             .arg(&pre_fc)
-            .env("OPENFLUX_SYSROOT", &root_fc)
-            .env("OPENFLUX_SKIP_SYNC", "1")
+            .env("KEYGLASS_SYSROOT", &root_fc)
+            .env("KEYGLASS_SKIP_SYNC", "1")
             .status()
             .unwrap()
             .success());
         assert!(root_fc
-            .join("home/root/.openflux/rollback/bridge/armed")
+            .join("home/root/.keyglass/rollback/bridge/armed")
             .is_file());
         assert!(Command::new("sh")
             .arg(root_fc.join("usr/bin/flux-weston-autolaunch.sh"))
-            .env("OPENFLUX_SYSROOT", &root_fc)
-            .env("OPENFLUX_SKIP_SYNC", "1")
+            .env("KEYGLASS_SYSROOT", &root_fc)
+            .env("KEYGLASS_SKIP_SYNC", "1")
             .status()
             .unwrap()
             .success());
         assert!(!root_fc
-            .join("home/root/.openflux/rollback/bridge/armed")
+            .join("home/root/.keyglass/rollback/bridge/armed")
             .exists());
         assert!(root_fc
-            .join("usr/lib/openflux/bridge/openflux-bridge")
+            .join("usr/lib/keyglass/bridge/keyglass-bridge")
             .is_file());
         assert!(fs::read_to_string(root_fc.join("tmp/fc_boot.log"))
             .unwrap()
-            .contains("rescue-openflux-booted"));
+            .contains("rescue-keyglass-booted"));
         let _ = fs::remove_dir_all(&root_fc);
     }
 
-    // 2. Seed existing OpenFlux 0.9 bridge, run staged 1.2.3 preinst -> writes attempt with version=openflux-bridge 1.2.3 and arms.
+    // 2. Seed existing Keyglass 0.9 bridge, run staged 1.2.3 preinst -> writes attempt with version=keyglass-bridge 1.2.3 and arms.
     write_exec(
-        &root.join("usr/lib/openflux/bridge/openflux-bridge"),
+        &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
         "#!/bin/sh\n# old-0.9\n",
     );
     write_exec(
-        &root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
+        &root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
         "#!/bin/sh\n# old-launcher\n",
     );
     let st_up = Command::new("sh")
         .arg(&staged_preinst)
-        .env("OPENFLUX_SYSROOT", &root)
-        .env("OPENFLUX_SKIP_SYNC", "1")
+        .env("KEYGLASS_SYSROOT", &root)
+        .env("KEYGLASS_SKIP_SYNC", "1")
         .status()
         .unwrap();
     assert!(st_up.success());
 
-    let rb_dir = root.join("home/root/.openflux/rollback/bridge");
+    let rb_dir = root.join("home/root/.keyglass/rollback/bridge");
     assert!(rb_dir.join("armed").is_file());
     let attempt1 = fs::read_to_string(rb_dir.join("attempt")).unwrap();
     assert!(
-        attempt1.contains("version=openflux-bridge 1.2.3\n"),
+        attempt1.contains("version=keyglass-bridge 1.2.3\n"),
         "got: {attempt1}"
     );
     let id1 = attempt1
@@ -266,26 +266,26 @@ fn staged_preinst_writes_target_attempt_and_rotates_on_armed_retries() {
     // Simulate stale trial marker from interrupted 1.2.3 attempt and a retry to 1.2.4.
     fs::write(
         rb_dir.join(format!("trial-{id1}")),
-        "version=openflux-bridge 1.2.3\n",
+        "version=keyglass-bridge 1.2.3\n",
     )
     .unwrap();
     let staged_124 = root.join("tmp/staged_preinst_124");
     fs::write(
         &staged_124,
-        raw_preinst.replace("@OPENFLUX_VERSION@", "1.2.4"),
+        raw_preinst.replace("@KEYGLASS_VERSION@", "1.2.4"),
     )
     .unwrap();
     fs::set_permissions(&staged_124, fs::Permissions::from_mode(0o755)).unwrap();
     let st_retry = Command::new("sh")
         .arg(&staged_124)
-        .env("OPENFLUX_SYSROOT", &root)
-        .env("OPENFLUX_SKIP_SYNC", "1")
+        .env("KEYGLASS_SYSROOT", &root)
+        .env("KEYGLASS_SKIP_SYNC", "1")
         .status()
         .unwrap();
     assert!(st_retry.success());
 
     // The original 0.9 snapshot is preserved, the stale trial marker is cleared, and the attempt metadata rotates to 1.2.4.
-    assert!(fs::read_to_string(rb_dir.join("openflux-bridge"))
+    assert!(fs::read_to_string(rb_dir.join("keyglass-bridge"))
         .unwrap()
         .contains("old-0.9"));
     assert!(
@@ -294,7 +294,7 @@ fn staged_preinst_writes_target_attempt_and_rotates_on_armed_retries() {
     );
     let attempt2 = fs::read_to_string(rb_dir.join("attempt")).unwrap();
     assert!(
-        attempt2.contains("version=openflux-bridge 1.2.4\n"),
+        attempt2.contains("version=keyglass-bridge 1.2.4\n"),
         "got: {attempt2}"
     );
     let id2 = attempt2
@@ -314,7 +314,7 @@ fn packaged_shell_scripts_pass_sh_syntax_check() {
         pkg_dir.join("packaging/preinst"),
         pkg_dir.join("packaging/postinst"),
         pkg_dir.join("packaging/prerm"),
-        pkg_dir.join("packaging/openflux-autolaunch.sh"),
+        pkg_dir.join("packaging/keyglass-autolaunch.sh"),
         pkg_dir.join("packaging/restore-factory.sh"),
         pkg_dir.join("factory-restore-packaging/postinst"),
     ];
@@ -337,17 +337,17 @@ fn confirmed_retry_quiesces_old_watchdog_and_upgrade_publishes_trial_marker() {
     let pkg_dir = repo_bridge_dir();
     let raw_preinst = fs::read_to_string(pkg_dir.join("packaging/preinst")).unwrap();
     let raw_postinst = fs::read_to_string(pkg_dir.join("packaging/postinst")).unwrap();
-    let bin_bridge = PathBuf::from(env!("CARGO_BIN_EXE_openflux-bridge"));
+    let bin_bridge = PathBuf::from(env!("CARGO_BIN_EXE_keyglass-bridge"));
     let version = env!("CARGO_PKG_VERSION");
 
     let root = make_temp_root("trial_e2e");
-    let rb_dir = root.join("home/root/.openflux/rollback/bridge");
+    let rb_dir = root.join("home/root/.keyglass/rollback/bridge");
     fs::create_dir_all(&rb_dir).unwrap();
 
     // 1. Seed a confirmed earlier attempt whose sleeping watchdog is still running (`armed` deleted by the host).
     fs::write(
         rb_dir.join("attempt"),
-        "attempt_id=oldattempt\nversion=openflux-bridge 0.9.0\n",
+        "attempt_id=oldattempt\nversion=keyglass-bridge 0.9.0\n",
     )
     .unwrap();
     write_exec(&rb_dir.join("watchdog.sh"), "#!/bin/sh\nsleep 30\n");
@@ -358,11 +358,11 @@ fn confirmed_retry_quiesces_old_watchdog_and_upgrade_publishes_trial_marker() {
 
     // Seed installed 0.9 bridge + launcher.
     write_exec(
-        &root.join("usr/lib/openflux/bridge/openflux-bridge"),
+        &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
         "#!/bin/sh\n# old-0.9\n",
     );
     write_exec(
-        &root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
+        &root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
         "#!/bin/sh\nexit 0\n",
     );
 
@@ -370,12 +370,12 @@ fn confirmed_retry_quiesces_old_watchdog_and_upgrade_publishes_trial_marker() {
     let staged_post = root.join("tmp/postinst");
     fs::write(
         &staged_pre,
-        raw_preinst.replace("@OPENFLUX_VERSION@", version),
+        raw_preinst.replace("@KEYGLASS_VERSION@", version),
     )
     .unwrap();
     fs::write(
         &staged_post,
-        raw_postinst.replace("@OPENFLUX_VERSION@", version),
+        raw_postinst.replace("@KEYGLASS_VERSION@", version),
     )
     .unwrap();
     fs::set_permissions(&staged_pre, fs::Permissions::from_mode(0o755)).unwrap();
@@ -384,9 +384,9 @@ fn confirmed_retry_quiesces_old_watchdog_and_upgrade_publishes_trial_marker() {
     // Run preinst for the next upgrade -> stops the earlier sleeping watchdog, saves the 0.9 snapshot, writes the attempt + armed.
     assert!(Command::new("sh")
         .arg(&staged_pre)
-        .env("OPENFLUX_SYSROOT", &root)
-        .env("OPENFLUX_SKIP_SYNC", "1")
-        .env("OPENFLUX_PREINST_SLEEP", "0.05")
+        .env("KEYGLASS_SYSROOT", &root)
+        .env("KEYGLASS_SKIP_SYNC", "1")
+        .env("KEYGLASS_PREINST_SLEEP", "0.05")
         .status()
         .unwrap()
         .success());
@@ -408,38 +408,38 @@ fn confirmed_retry_quiesces_old_watchdog_and_upgrade_publishes_trial_marker() {
         .to_string();
     assert_ne!(attempt_id, "oldattempt");
 
-    // 2. Unpack a candidate wrapper that runs the real compiled openflux-bridge binary in test FD mode.
-    let bridge_bin_dst = root.join("usr/lib/openflux/bridge/openflux-bridge");
+    // 2. Unpack a candidate wrapper that runs the real compiled keyglass-bridge binary in test FD mode.
+    let bridge_bin_dst = root.join("usr/lib/keyglass/bridge/keyglass-bridge");
     write_exec(
         &bridge_bin_dst,
         &format!(
-            "#!/bin/sh\nexec 3</dev/null 4>/dev/null\nexport OPENFLUX_TEST_EP_FDS=4,3\nexec \"{}\" \"$@\"\n",
+            "#!/bin/sh\nexec 3</dev/null 4>/dev/null\nexport KEYGLASS_TEST_EP_FDS=4,3\nexec \"{}\" \"$@\"\n",
             bin_bridge.display()
         ),
     );
     write_exec(
-        &root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
-        "#!/bin/sh\nexec \"${OPENFLUX_SYSROOT}/usr/lib/openflux/bridge/openflux-bridge\" \"${OPENFLUX_SYSROOT}/dev/ffs-openflux\"\n",
+        &root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
+        "#!/bin/sh\nexec \"${KEYGLASS_SYSROOT}/usr/lib/keyglass/bridge/keyglass-bridge\" \"${KEYGLASS_SYSROOT}/dev/ffs-keyglass\"\n",
     );
 
     let ready_file = root.join("tmp/bridge_ready");
     let st_post = Command::new("sh")
         .arg(&staged_post)
-        .env("OPENFLUX_SYSROOT", &root)
-        .env("OPENFLUX_SKIP_SYNC", "1")
-        .env("OPENFLUX_STOP_WAIT_ITERS", "1")
-        .env("OPENFLUX_POSTINST_SLEEP", "0.05")
-        .env("OPENFLUX_READY_WAIT_ITERS", "40")
-        .env("OPENFLUX_STARTUP_CHECK_SLEEP", "0.05")
-        .env("OPENFLUX_STABILIZE_SLEEP", "0.05")
-        .env("OPENFLUX_USB_CONFIRM_ITERS", "40")
-        .env("OPENFLUX_USB_CONFIRM_SLEEP", "0.1")
-        .env("OPENFLUX_READY_FILE", &ready_file)
+        .env("KEYGLASS_SYSROOT", &root)
+        .env("KEYGLASS_SKIP_SYNC", "1")
+        .env("KEYGLASS_STOP_WAIT_ITERS", "1")
+        .env("KEYGLASS_POSTINST_SLEEP", "0.05")
+        .env("KEYGLASS_READY_WAIT_ITERS", "40")
+        .env("KEYGLASS_STARTUP_CHECK_SLEEP", "0.05")
+        .env("KEYGLASS_STABILIZE_SLEEP", "0.05")
+        .env("KEYGLASS_USB_CONFIRM_ITERS", "40")
+        .env("KEYGLASS_USB_CONFIRM_SLEEP", "0.1")
+        .env("KEYGLASS_READY_FILE", &ready_file)
         .status()
         .unwrap();
     assert!(
         st_post.success(),
-        "postinst trial launch with real openflux-bridge failed"
+        "postinst trial launch with real keyglass-bridge failed"
     );
 
     let trial_path = rb_dir.join(format!("trial-{attempt_id}"));
@@ -449,11 +449,11 @@ fn confirmed_retry_quiesces_old_watchdog_and_upgrade_publishes_trial_marker() {
     }
     assert!(
         trial_path.is_file(),
-        "postinst + real openflux-bridge did not publish {}",
+        "postinst + real keyglass-bridge did not publish {}",
         trial_path.display()
     );
     let trial_txt = fs::read_to_string(&trial_path).unwrap();
-    assert!(trial_txt.contains(&format!("version=openflux-bridge {version}")));
+    assert!(trial_txt.contains(&format!("version=keyglass-bridge {version}")));
 
     // Confirm upgrade by removing armed, then clean up child processes and temp root.
     let _ = fs::remove_file(rb_dir.join("armed"));
@@ -474,19 +474,19 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
     let pkg_dir = repo_bridge_dir();
     let preinst = pkg_dir.join("packaging/preinst");
     let postinst = pkg_dir.join("packaging/postinst");
-    let autolaunch = pkg_dir.join("packaging/openflux-autolaunch.sh");
+    let autolaunch = pkg_dir.join("packaging/keyglass-autolaunch.sh");
 
-    let seed_existing_openflux = |root: &Path| {
+    let seed_existing_keyglass = |root: &Path| {
         write_exec(
-            &root.join("usr/lib/openflux/bridge/openflux-bridge"),
-            "#!/bin/sh\n# old-bridge-0.9\necho \"$$\" > \"${OPENFLUX_READY_FILE}\"\nsleep 30\n",
+            &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
+            "#!/bin/sh\n# old-bridge-0.9\necho \"$$\" > \"${KEYGLASS_READY_FILE}\"\nsleep 30\n",
         );
         write_exec(
-            &root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
-            "#!/bin/sh\necho \"old-launcher-0.9\" >> \"${OPENFLUX_SYSROOT}/tmp/launch_trace.log\"\n",
+            &root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
+            "#!/bin/sh\necho \"old-launcher-0.9\" >> \"${KEYGLASS_SYSROOT}/tmp/launch_trace.log\"\n",
         );
         fs::copy(
-            root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
+            root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
             root.join("usr/bin/flux-weston-autolaunch.sh"),
         )
         .unwrap();
@@ -495,10 +495,10 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
             fs::Permissions::from_mode(0o755),
         )
         .unwrap();
-        fs::create_dir_all(root.join("home/root/.openflux/versions")).unwrap();
+        fs::create_dir_all(root.join("home/root/.keyglass/versions")).unwrap();
         fs::write(
-            root.join("home/root/.openflux/versions/bridge"),
-            "openflux-bridge 0.9.0\n",
+            root.join("home/root/.keyglass/versions/bridge"),
+            "keyglass-bridge 0.9.0\n",
         )
         .unwrap();
     };
@@ -506,41 +506,41 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
     // Case A: Immediate readiness failure -> rolls back to 0.9 bridge + launcher and clears armed.
     {
         let root = make_temp_root("imm_rb");
-        seed_existing_openflux(&root);
+        seed_existing_keyglass(&root);
         assert!(Command::new("sh")
             .arg(&preinst)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
             .status()
             .unwrap()
             .success());
         write_exec(
-            &root.join("usr/lib/openflux/bridge/openflux-bridge"),
+            &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
             "#!/bin/sh\nexit 1\n",
         );
         write_exec(
-            &root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
+            &root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
             "#!/bin/sh\nexit 1\n",
         );
         let st = Command::new("sh")
             .arg(&postinst)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
-            .env("OPENFLUX_STOP_WAIT_ITERS", "1")
-            .env("OPENFLUX_POSTINST_SLEEP", "0.05")
-            .env("OPENFLUX_READY_WAIT_ITERS", "2")
-            .env("OPENFLUX_STARTUP_CHECK_SLEEP", "0.05")
-            .env("OPENFLUX_READY_FILE", root.join("tmp/ready"))
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
+            .env("KEYGLASS_STOP_WAIT_ITERS", "1")
+            .env("KEYGLASS_POSTINST_SLEEP", "0.05")
+            .env("KEYGLASS_READY_WAIT_ITERS", "2")
+            .env("KEYGLASS_STARTUP_CHECK_SLEEP", "0.05")
+            .env("KEYGLASS_READY_FILE", root.join("tmp/ready"))
             .status()
             .unwrap();
         assert!(!st.success(), "postinst must fail on broken candidate");
         assert!(
-            fs::read_to_string(root.join("usr/lib/openflux/bridge/openflux-bridge"))
+            fs::read_to_string(root.join("usr/lib/keyglass/bridge/keyglass-bridge"))
                 .unwrap()
                 .contains("old-bridge-0.9")
         );
         assert!(!root
-            .join("home/root/.openflux/rollback/bridge/armed")
+            .join("home/root/.keyglass/rollback/bridge/armed")
             .exists());
         let _ = fs::remove_dir_all(&root);
     }
@@ -548,35 +548,35 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
     // Case B: Watchdog timeout rollback -> rolls back after USB confirm timeout.
     {
         let root = make_temp_root("wd_rb");
-        seed_existing_openflux(&root);
+        seed_existing_keyglass(&root);
         assert!(Command::new("sh")
             .arg(&preinst)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
             .status()
             .unwrap()
             .success());
         write_exec(
-            &root.join("usr/lib/openflux/bridge/openflux-bridge"),
-            "#!/bin/sh\n# new-bridge-1.0\necho \"$$\" > \"${OPENFLUX_READY_FILE}\"\nsleep 30\n",
+            &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
+            "#!/bin/sh\n# new-bridge-1.0\necho \"$$\" > \"${KEYGLASS_READY_FILE}\"\nsleep 30\n",
         );
         write_exec(
-            &root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
-            "#!/bin/sh\n\"${OPENFLUX_SYSROOT}/usr/lib/openflux/bridge/openflux-bridge\"\n",
+            &root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
+            "#!/bin/sh\n\"${KEYGLASS_SYSROOT}/usr/lib/keyglass/bridge/keyglass-bridge\"\n",
         );
         let ready_file = root.join("tmp/ready");
         let st = Command::new("sh")
             .arg(&postinst)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
-            .env("OPENFLUX_STOP_WAIT_ITERS", "1")
-            .env("OPENFLUX_POSTINST_SLEEP", "0.05")
-            .env("OPENFLUX_READY_WAIT_ITERS", "20")
-            .env("OPENFLUX_STARTUP_CHECK_SLEEP", "0.05")
-            .env("OPENFLUX_STABILIZE_SLEEP", "0.05")
-            .env("OPENFLUX_USB_CONFIRM_ITERS", "2")
-            .env("OPENFLUX_USB_CONFIRM_SLEEP", "0.1")
-            .env("OPENFLUX_READY_FILE", &ready_file)
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
+            .env("KEYGLASS_STOP_WAIT_ITERS", "1")
+            .env("KEYGLASS_POSTINST_SLEEP", "0.05")
+            .env("KEYGLASS_READY_WAIT_ITERS", "20")
+            .env("KEYGLASS_STARTUP_CHECK_SLEEP", "0.05")
+            .env("KEYGLASS_STABILIZE_SLEEP", "0.05")
+            .env("KEYGLASS_USB_CONFIRM_ITERS", "2")
+            .env("KEYGLASS_USB_CONFIRM_SLEEP", "0.1")
+            .env("KEYGLASS_READY_FILE", &ready_file)
             .status()
             .unwrap();
         assert!(
@@ -587,19 +587,19 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline
             && root
-                .join("home/root/.openflux/rollback/bridge/armed")
+                .join("home/root/.keyglass/rollback/bridge/armed")
                 .exists()
         {
             std::thread::sleep(Duration::from_millis(50));
         }
         assert!(
             !root
-                .join("home/root/.openflux/rollback/bridge/armed")
+                .join("home/root/.keyglass/rollback/bridge/armed")
                 .exists(),
             "watchdog did not disarm after rollback"
         );
         assert!(
-            fs::read_to_string(root.join("usr/lib/openflux/bridge/openflux-bridge"))
+            fs::read_to_string(root.join("usr/lib/keyglass/bridge/keyglass-bridge"))
                 .unwrap()
                 .contains("old-bridge-0.9")
         );
@@ -609,11 +609,11 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
     // Case C: Mocked cp failure keeps `armed` and snapshots intact across immediate, watchdog, and boot rollback.
     for mode in ["immediate", "watchdog", "boot"] {
         let root = make_temp_root(&format!("cp_fail_{mode}"));
-        seed_existing_openflux(&root);
+        seed_existing_keyglass(&root);
         assert!(Command::new("sh")
             .arg(&preinst)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
             .status()
             .unwrap()
             .success());
@@ -627,56 +627,56 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
 
         if mode == "immediate" {
             write_exec(
-                &root.join("usr/lib/openflux/bridge/openflux-bridge"),
+                &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
                 "#!/bin/sh\nexit 1\n",
             );
             write_exec(
-                &root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
+                &root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
                 "#!/bin/sh\nexit 1\n",
             );
             let st = Command::new("sh")
                 .arg(&postinst)
                 .env("PATH", &path_env)
-                .env("OPENFLUX_SYSROOT", &root)
-                .env("OPENFLUX_SKIP_SYNC", "1")
-                .env("OPENFLUX_STOP_WAIT_ITERS", "1")
-                .env("OPENFLUX_POSTINST_SLEEP", "0.05")
-                .env("OPENFLUX_READY_WAIT_ITERS", "2")
-                .env("OPENFLUX_STARTUP_CHECK_SLEEP", "0.05")
-                .env("OPENFLUX_READY_FILE", root.join("tmp/ready"))
+                .env("KEYGLASS_SYSROOT", &root)
+                .env("KEYGLASS_SKIP_SYNC", "1")
+                .env("KEYGLASS_STOP_WAIT_ITERS", "1")
+                .env("KEYGLASS_POSTINST_SLEEP", "0.05")
+                .env("KEYGLASS_READY_WAIT_ITERS", "2")
+                .env("KEYGLASS_STARTUP_CHECK_SLEEP", "0.05")
+                .env("KEYGLASS_READY_FILE", root.join("tmp/ready"))
                 .status()
                 .unwrap();
             assert!(!st.success());
             assert!(
-                root.join("home/root/.openflux/rollback/bridge/armed")
+                root.join("home/root/.keyglass/rollback/bridge/armed")
                     .exists(),
                 "immediate copy failure must preserve armed"
             );
             assert!(root
-                .join("home/root/.openflux/rollback/bridge/openflux-bridge")
+                .join("home/root/.keyglass/rollback/bridge/keyglass-bridge")
                 .exists());
         } else if mode == "watchdog" {
             write_exec(
-                &root.join("usr/lib/openflux/bridge/openflux-bridge"),
-                "#!/bin/sh\necho \"$$\" > \"${OPENFLUX_READY_FILE}\"\nsleep 30\n",
+                &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
+                "#!/bin/sh\necho \"$$\" > \"${KEYGLASS_READY_FILE}\"\nsleep 30\n",
             );
             write_exec(
-                &root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
-                "#!/bin/sh\n\"${OPENFLUX_SYSROOT}/usr/lib/openflux/bridge/openflux-bridge\"\n",
+                &root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
+                "#!/bin/sh\n\"${KEYGLASS_SYSROOT}/usr/lib/keyglass/bridge/keyglass-bridge\"\n",
             );
             let st = Command::new("sh")
                 .arg(&postinst)
                 .env("PATH", &path_env)
-                .env("OPENFLUX_SYSROOT", &root)
-                .env("OPENFLUX_SKIP_SYNC", "1")
-                .env("OPENFLUX_STOP_WAIT_ITERS", "1")
-                .env("OPENFLUX_POSTINST_SLEEP", "0.05")
-                .env("OPENFLUX_READY_WAIT_ITERS", "20")
-                .env("OPENFLUX_STARTUP_CHECK_SLEEP", "0.05")
-                .env("OPENFLUX_STABILIZE_SLEEP", "0.05")
-                .env("OPENFLUX_USB_CONFIRM_ITERS", "2")
-                .env("OPENFLUX_USB_CONFIRM_SLEEP", "0.1")
-                .env("OPENFLUX_READY_FILE", root.join("tmp/ready"))
+                .env("KEYGLASS_SYSROOT", &root)
+                .env("KEYGLASS_SKIP_SYNC", "1")
+                .env("KEYGLASS_STOP_WAIT_ITERS", "1")
+                .env("KEYGLASS_POSTINST_SLEEP", "0.05")
+                .env("KEYGLASS_READY_WAIT_ITERS", "20")
+                .env("KEYGLASS_STARTUP_CHECK_SLEEP", "0.05")
+                .env("KEYGLASS_STABILIZE_SLEEP", "0.05")
+                .env("KEYGLASS_USB_CONFIRM_ITERS", "2")
+                .env("KEYGLASS_USB_CONFIRM_SLEEP", "0.1")
+                .env("KEYGLASS_READY_FILE", root.join("tmp/ready"))
                 .status()
                 .unwrap();
             assert!(st.success());
@@ -684,7 +684,7 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
             let mut logged_err = false;
             while Instant::now() < deadline {
                 if let Ok(log) =
-                    fs::read_to_string(root.join("home/root/openflux/logs/bridge_rollback.log"))
+                    fs::read_to_string(root.join("home/root/keyglass/logs/bridge_rollback.log"))
                 {
                     if log.contains("watchdog rollback copy/flush failed") {
                         logged_err = true;
@@ -695,7 +695,7 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
             }
             assert!(logged_err, "watchdog copy failure was not recorded");
             assert!(
-                root.join("home/root/.openflux/rollback/bridge/armed")
+                root.join("home/root/.keyglass/rollback/bridge/armed")
                     .exists(),
                 "watchdog copy failure must preserve armed"
             );
@@ -706,8 +706,8 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
             let st = Command::new("sh")
                 .arg(&autolaunch)
                 .env("PATH", &path_env)
-                .env("OPENFLUX_SYSROOT", &root)
-                .env("OPENFLUX_SKIP_SYNC", "1")
+                .env("KEYGLASS_SYSROOT", &root)
+                .env("KEYGLASS_SKIP_SYNC", "1")
                 .status()
                 .unwrap();
             assert!(
@@ -715,7 +715,7 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
                 "boot rollback must exit nonzero when cp fails"
             );
             assert!(
-                root.join("home/root/.openflux/rollback/bridge/armed")
+                root.join("home/root/.keyglass/rollback/bridge/armed")
                     .exists(),
                 "boot copy failure must preserve armed"
             );
@@ -723,33 +723,33 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
         let _ = fs::remove_dir_all(&root);
     }
 
-    // Case D: Successful boot rollback via openflux-autolaunch.sh clears armed and execs restored launcher.
+    // Case D: Successful boot rollback via keyglass-autolaunch.sh clears armed and execs restored launcher.
     {
         let root = make_temp_root("boot_rb_ok");
-        seed_existing_openflux(&root);
+        seed_existing_keyglass(&root);
         assert!(Command::new("sh")
             .arg(&preinst)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
             .status()
             .unwrap()
             .success());
         write_exec(
-            &root.join("usr/lib/openflux/bridge/openflux-bridge"),
+            &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
             "#!/bin/sh\n# new-1.0\n",
         );
         let st = Command::new("sh")
             .arg(&autolaunch)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
             .status()
             .unwrap();
         assert!(st.success(), "boot rollback failed");
         assert!(!root
-            .join("home/root/.openflux/rollback/bridge/armed")
+            .join("home/root/.keyglass/rollback/bridge/armed")
             .exists());
         assert!(
-            fs::read_to_string(root.join("usr/lib/openflux/bridge/openflux-bridge"))
+            fs::read_to_string(root.join("usr/lib/keyglass/bridge/keyglass-bridge"))
                 .unwrap()
                 .contains("old-bridge-0.9")
         );
@@ -763,20 +763,20 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
     // the installed bridge, so the host can reach the keyboard.
     {
         let root = make_temp_root("boot_rb_no_snapshot");
-        let armed = root.join("home/root/.openflux/rollback/bridge/armed");
+        let armed = root.join("home/root/.keyglass/rollback/bridge/armed");
         fs::create_dir_all(armed.parent().unwrap()).unwrap();
         fs::write(&armed, "pending-host-usb-confirm\n").unwrap();
         write_exec(
-            &root.join("usr/lib/openflux/bridge/openflux-bridge"),
-            "#!/bin/sh\necho started >> \"${OPENFLUX_SYSROOT}/tmp/bridge.started\"\nsleep 2\n",
+            &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
+            "#!/bin/sh\necho started >> \"${KEYGLASS_SYSROOT}/tmp/bridge.started\"\nsleep 2\n",
         );
 
         use std::os::unix::process::CommandExt;
         let mut child = unsafe {
             Command::new("sh")
                 .arg(&autolaunch)
-                .env("OPENFLUX_SYSROOT", &root)
-                .env("OPENFLUX_SKIP_SYNC", "1")
+                .env("KEYGLASS_SYSROOT", &root)
+                .env("KEYGLASS_SKIP_SYNC", "1")
                 .pre_exec(|| {
                     libc::setpgid(0, 0);
                     Ok(())
@@ -802,7 +802,7 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
             "armed sentinel must stay without a snapshot"
         );
         assert!(
-            fs::read_to_string(root.join("home/root/openflux/logs/autolaunch.log"))
+            fs::read_to_string(root.join("home/root/keyglass/logs/autolaunch.log"))
                 .unwrap()
                 .contains("rollback snapshot missing")
         );
@@ -812,11 +812,11 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
     // Case E: A flush failure before disarming preserves the armed sentinel and the recovery launcher at OS_BOOT_LAUNCHER.
     {
         let root = make_temp_root("sync_fail");
-        seed_existing_openflux(&root);
+        seed_existing_keyglass(&root);
         assert!(Command::new("sh")
             .arg(&preinst)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
             .status()
             .unwrap()
             .success());
@@ -830,7 +830,7 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
         let st = Command::new("sh")
             .arg(&os_launcher)
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
+            .env("KEYGLASS_SYSROOT", &root)
             .status()
             .unwrap();
         assert!(
@@ -838,14 +838,14 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
             "boot rollback must fail when sync fails before disarming"
         );
         assert!(
-            root.join("home/root/.openflux/rollback/bridge/armed")
+            root.join("home/root/.keyglass/rollback/bridge/armed")
                 .exists(),
             "failed sync must preserve armed"
         );
         let retry_st = Command::new("sh")
             .arg(&os_launcher)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
             .status()
             .unwrap();
         assert!(
@@ -853,10 +853,10 @@ fn upgrade_rollback_paths_succeed_and_preserve_armed_on_copy_failure() {
             "recovery retry via OS_BOOT_LAUNCHER after sync failure failed"
         );
         assert!(!root
-            .join("home/root/.openflux/rollback/bridge/armed")
+            .join("home/root/.keyglass/rollback/bridge/armed")
             .exists());
         assert!(
-            fs::read_to_string(root.join("usr/lib/openflux/bridge/openflux-bridge"))
+            fs::read_to_string(root.join("usr/lib/keyglass/bridge/keyglass-bridge"))
                 .unwrap()
                 .contains("old-bridge-0.9")
         );
@@ -875,19 +875,19 @@ fn restore_factory_binds_manifest_checks_data_tar_and_rescues_on_opkg_install_fa
     let setup_sysroot = |name: &str| -> (PathBuf, PathBuf, PathBuf, PathBuf) {
         let root = make_temp_root(name);
         write_exec(
-            &root.join("usr/lib/openflux/bridge/openflux-bridge"),
-            "#!/bin/sh\necho rescued-bridge >> \"${OPENFLUX_SYSROOT}/tmp/rescue.log\"\n",
+            &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
+            "#!/bin/sh\necho rescued-bridge >> \"${KEYGLASS_SYSROOT}/tmp/rescue.log\"\n",
         );
         write_exec(
-            &root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
-            "#!/bin/sh\necho rescued-autolaunch >> \"${OPENFLUX_SYSROOT}/tmp/rescue.log\"\n",
+            &root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
+            "#!/bin/sh\necho rescued-autolaunch >> \"${KEYGLASS_SYSROOT}/tmp/rescue.log\"\n",
         );
         write_exec(
-            &root.join("usr/lib/openflux/display/openflux-display"),
+            &root.join("usr/lib/keyglass/display/keyglass-display"),
             "#!/bin/sh\nexit 0\n",
         );
         fs::copy(
-            root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
+            root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
             root.join("usr/bin/flux-weston-autolaunch.sh"),
         )
         .unwrap();
@@ -897,7 +897,7 @@ fn restore_factory_binds_manifest_checks_data_tar_and_rescues_on_opkg_install_fa
         )
         .unwrap();
 
-        let restore_dir = root.join("home/root/.openflux/factory-restore");
+        let restore_dir = root.join("home/root/.keyglass/factory-restore");
         fs::create_dir_all(&restore_dir).unwrap();
         let b_ipk = restore_dir.join("garfield_1.4.11_aarch64.ipk");
         let d_ipk = restore_dir.join("garfunkel_1.4.28_aarch64.ipk");
@@ -914,7 +914,7 @@ fn restore_factory_binds_manifest_checks_data_tar_and_rescues_on_opkg_install_fa
         (root, restore_dir, b_ipk, d_ipk)
     };
 
-    // 1. Negative preflight: extra unverified garfield_*.ipk alongside valid ones must abort before touching OpenFlux.
+    // 1. Negative preflight: extra unverified garfield_*.ipk alongside valid ones must abort before touching Keyglass.
     {
         let (root, restore_dir, _, _) = setup_sysroot("restore_dup");
         build_mock_ipk(
@@ -924,15 +924,15 @@ fn restore_factory_binds_manifest_checks_data_tar_and_rescues_on_opkg_install_fa
         );
         let st = Command::new("sh")
             .args([restore_sh.to_str().unwrap(), restore_dir.to_str().unwrap()])
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .status()
             .unwrap();
         assert!(!st.success(), "duplicate bridge IPK must fail preflight");
         assert!(root
-            .join("usr/lib/openflux/bridge/openflux-bridge")
+            .join("usr/lib/keyglass/bridge/keyglass-bridge")
             .exists());
-        assert!(!root.join("tmp/openflux_updating_bridge").exists());
+        assert!(!root.join("tmp/keyglass_updating_bridge").exists());
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -954,8 +954,8 @@ fn restore_factory_binds_manifest_checks_data_tar_and_rescues_on_opkg_install_fa
         assert!(b_ipk.exists());
         let st = Command::new("sh")
             .args([restore_sh.to_str().unwrap(), restore_dir.to_str().unwrap()])
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .status()
             .unwrap();
         assert!(
@@ -963,7 +963,7 @@ fn restore_factory_binds_manifest_checks_data_tar_and_rescues_on_opkg_install_fa
             "selected IPK without manifest entry must fail preflight"
         );
         assert!(root
-            .join("usr/lib/openflux/bridge/openflux-bridge")
+            .join("usr/lib/keyglass/bridge/keyglass-bridge")
             .exists());
         let _ = fs::remove_dir_all(&root);
     }
@@ -982,15 +982,15 @@ fn restore_factory_binds_manifest_checks_data_tar_and_rescues_on_opkg_install_fa
         fs::write(restore_dir.join("manifest.sha256"), manifest).unwrap();
         let st = Command::new("sh")
             .args([restore_sh.to_str().unwrap(), restore_dir.to_str().unwrap()])
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .status()
             .unwrap();
         assert!(!st.success(), "corrupt data.tar.gz must fail preflight");
         assert!(root
-            .join("usr/lib/openflux/bridge/openflux-bridge")
+            .join("usr/lib/keyglass/bridge/keyglass-bridge")
             .exists());
-        assert!(!root.join("tmp/openflux_updating_bridge").exists());
+        assert!(!root.join("tmp/keyglass_updating_bridge").exists());
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -1035,16 +1035,16 @@ fn restore_factory_binds_manifest_checks_data_tar_and_rescues_on_opkg_install_fa
         fs::write(restore_dir.join("manifest.sha256"), manifest).unwrap();
         let st = Command::new("sh")
             .args([restore_sh.to_str().unwrap(), restore_dir.to_str().unwrap()])
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .status()
             .unwrap();
         assert!(
             !st.success(),
             "truncated data.tar.gz must fail preflight before rescue/opkg"
         );
-        assert!(!root.join("home/root/.openflux/rescue").exists());
-        assert!(!root.join("tmp/openflux_updating_bridge").exists());
+        assert!(!root.join("home/root/.keyglass/rescue").exists());
+        assert!(!root.join("tmp/keyglass_updating_bridge").exists());
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -1090,30 +1090,30 @@ fn restore_factory_binds_manifest_checks_data_tar_and_rescues_on_opkg_install_fa
         fs::write(restore_dir.join("manifest.sha256"), manifest).unwrap();
         let st = Command::new("sh")
             .args([restore_sh.to_str().unwrap(), restore_dir.to_str().unwrap()])
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .status()
             .unwrap();
         assert!(
             !st.success(),
             "truncated control.tar.gz must fail preflight before rescue/opkg"
         );
-        assert!(!root.join("home/root/.openflux/rescue").exists());
-        assert!(!root.join("tmp/openflux_updating_bridge").exists());
+        assert!(!root.join("home/root/.keyglass/rescue").exists());
+        assert!(!root.join("tmp/keyglass_updating_bridge").exists());
         let _ = fs::remove_dir_all(&root);
     }
 
     // 4. Partial restore failure: the garfield postinst overwrites the launcher and starts the factory daemon,
-    //    then garfunkel fails -> restore-factory stops the factory daemon and reinstates OpenFlux.
+    //    then garfunkel fails -> restore-factory stops the factory daemon and reinstates Keyglass.
     {
         let (root, _restore_dir, _, _) = setup_sysroot("restore_opkg_live_fail");
         fs::copy(
             &restore_sh,
-            root.join("usr/lib/openflux/bridge/restore-factory.sh"),
+            root.join("usr/lib/keyglass/bridge/restore-factory.sh"),
         )
         .unwrap();
         fs::set_permissions(
-            root.join("usr/lib/openflux/bridge/restore-factory.sh"),
+            root.join("usr/lib/keyglass/bridge/restore-factory.sh"),
             fs::Permissions::from_mode(0o755),
         )
         .unwrap();
@@ -1125,29 +1125,29 @@ fn restore_factory_binds_manifest_checks_data_tar_and_rescues_on_opkg_install_fa
             &format!(
                 r#"#!/bin/sh
 if [ "$1" = "remove" ]; then
-    rm -f "${{OPENFLUX_SYSROOT}}/usr/lib/openflux/bridge/openflux-bridge" \
-          "${{OPENFLUX_SYSROOT}}/usr/lib/openflux/bridge/openflux-autolaunch.sh" \
-          "${{OPENFLUX_SYSROOT}}/usr/lib/openflux/bridge/restore-factory.sh" \
-          "${{OPENFLUX_SYSROOT}}/usr/lib/openflux/display/openflux-display"
+    rm -f "${{KEYGLASS_SYSROOT}}/usr/lib/keyglass/bridge/keyglass-bridge" \
+          "${{KEYGLASS_SYSROOT}}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" \
+          "${{KEYGLASS_SYSROOT}}/usr/lib/keyglass/bridge/restore-factory.sh" \
+          "${{KEYGLASS_SYSROOT}}/usr/lib/keyglass/display/keyglass-display"
     exit 0
 fi
 if [ -e "{flag}" ]; then
     rm -f "{flag}"
-    mkdir -p "${{OPENFLUX_SYSROOT}}/usr/lib/garfield" "${{OPENFLUX_SYSROOT}}/usr/bin"
-    cat > "${{OPENFLUX_SYSROOT}}/usr/lib/garfield/garfield" <<'G_EOF'
+    mkdir -p "${{KEYGLASS_SYSROOT}}/usr/lib/garfield" "${{KEYGLASS_SYSROOT}}/usr/bin"
+    cat > "${{KEYGLASS_SYSROOT}}/usr/lib/garfield/garfield" <<'G_EOF'
 #!/bin/sh
-echo "$$" > "${{OPENFLUX_SYSROOT}}/tmp/live_garfield.pid"
+echo "$$" > "${{KEYGLASS_SYSROOT}}/tmp/live_garfield.pid"
 sleep 30
 G_EOF
-    chmod +x "${{OPENFLUX_SYSROOT}}/usr/lib/garfield/garfield"
-    cat > "${{OPENFLUX_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh" <<'L_EOF'
+    chmod +x "${{KEYGLASS_SYSROOT}}/usr/lib/garfield/garfield"
+    cat > "${{KEYGLASS_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh" <<'L_EOF'
 #!/bin/sh
-echo "factory-overwrote-launcher" >> "${{OPENFLUX_SYSROOT}}/tmp/factory_ran.log"
-"${{OPENFLUX_SYSROOT}}/usr/lib/garfield/garfield" &
+echo "factory-overwrote-launcher" >> "${{KEYGLASS_SYSROOT}}/tmp/factory_ran.log"
+"${{KEYGLASS_SYSROOT}}/usr/lib/garfield/garfield" &
 wait
 L_EOF
-    chmod +x "${{OPENFLUX_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh"
-    nohup "${{OPENFLUX_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh" </dev/null >/dev/null 2>&1 &
+    chmod +x "${{KEYGLASS_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh"
+    nohup "${{KEYGLASS_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh" </dev/null >/dev/null 2>&1 &
     sleep 0.2
     exit 1
 fi
@@ -1160,14 +1160,14 @@ exit 0
         let st = Command::new("sh")
             .args([
                 restore_sh.to_str().unwrap(),
-                root.join("home/root/.openflux/factory-restore")
+                root.join("home/root/.keyglass/factory-restore")
                     .to_str()
                     .unwrap(),
             ])
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
-            .env("OPENFLUX_STOP_SLEEP", "0.1")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
+            .env("KEYGLASS_STOP_SLEEP", "0.1")
             .status()
             .unwrap();
         assert!(
@@ -1175,31 +1175,31 @@ exit 0
             "restore-factory must exit nonzero when opkg install fails"
         );
         assert!(
-            root.join("usr/lib/openflux/bridge/openflux-bridge")
+            root.join("usr/lib/keyglass/bridge/keyglass-bridge")
                 .is_file(),
             "rescued bridge missing"
         );
         assert!(
-            root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh")
+            root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh")
                 .is_file(),
             "rescued launcher missing"
         );
         assert!(
-            root.join("usr/lib/openflux/bridge/restore-factory.sh")
+            root.join("usr/lib/keyglass/bridge/restore-factory.sh")
                 .is_file(),
             "rescued restore-factory.sh missing"
         );
         assert!(
-            root.join("usr/lib/openflux/display/openflux-display")
+            root.join("usr/lib/keyglass/display/keyglass-display")
                 .is_file(),
             "rescued display missing"
         );
         assert!(
-            !root.join("tmp/openflux_updating_bridge").exists(),
+            !root.join("tmp/keyglass_updating_bridge").exists(),
             "bridge update semaphore leaked"
         );
         assert!(
-            !root.join("tmp/openflux_updating_display").exists(),
+            !root.join("tmp/keyglass_updating_display").exists(),
             "display update semaphore leaked"
         );
         assert!(
@@ -1207,7 +1207,7 @@ exit 0
             "factory update semaphore leaked"
         );
         assert!(
-            !root.join("etc/init.d/S05openflux-recovery").exists(),
+            !root.join("etc/init.d/S05keyglass-recovery").exists(),
             "recovery init script left behind after reinstate"
         );
         if let Ok(pid_txt) = fs::read_to_string(root.join("tmp/live_garfield.pid")) {
@@ -1233,20 +1233,20 @@ exit 0
             .unwrap()
             .contains("rescued-autolaunch"));
 
-        // A second restore through the reinstated `/usr/lib/openflux/bridge/restore-factory.sh` succeeds.
+        // A second restore through the reinstated `/usr/lib/keyglass/bridge/restore-factory.sh` succeeds.
         let st_retry = Command::new("sh")
             .args([
-                root.join("usr/lib/openflux/bridge/restore-factory.sh")
+                root.join("usr/lib/keyglass/bridge/restore-factory.sh")
                     .to_str()
                     .unwrap(),
-                root.join("home/root/.openflux/factory-restore")
+                root.join("home/root/.keyglass/factory-restore")
                     .to_str()
                     .unwrap(),
             ])
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .status()
             .unwrap();
         assert!(
@@ -1264,16 +1264,16 @@ exit 0
     }
 
     // 5. Power loss right after garfield overwrote OS_BOOT_LAUNCHER (before garfunkel finishes): boot runs
-    //    /etc/init.d/S05openflux-recovery before the Weston autolaunch -> OpenFlux is reinstated.
+    //    /etc/init.d/S05keyglass-recovery before the Weston autolaunch -> Keyglass is reinstated.
     {
         let (root, restore_dir, _, _) = setup_sysroot("restore_powerloss_after_overwrite");
         fs::copy(
             &restore_sh,
-            root.join("usr/lib/openflux/bridge/restore-factory.sh"),
+            root.join("usr/lib/keyglass/bridge/restore-factory.sh"),
         )
         .unwrap();
         fs::set_permissions(
-            root.join("usr/lib/openflux/bridge/restore-factory.sh"),
+            root.join("usr/lib/keyglass/bridge/restore-factory.sh"),
             fs::Permissions::from_mode(0o755),
         )
         .unwrap();
@@ -1285,19 +1285,19 @@ exit 0
             &format!(
                 r#"#!/bin/sh
 if [ "$1" = "remove" ]; then
-    rm -f "${{OPENFLUX_SYSROOT}}/usr/lib/openflux/bridge/openflux-bridge" \
-          "${{OPENFLUX_SYSROOT}}/usr/lib/openflux/bridge/openflux-autolaunch.sh" \
-          "${{OPENFLUX_SYSROOT}}/usr/lib/openflux/bridge/restore-factory.sh" \
-          "${{OPENFLUX_SYSROOT}}/usr/lib/openflux/display/openflux-display"
+    rm -f "${{KEYGLASS_SYSROOT}}/usr/lib/keyglass/bridge/keyglass-bridge" \
+          "${{KEYGLASS_SYSROOT}}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" \
+          "${{KEYGLASS_SYSROOT}}/usr/lib/keyglass/bridge/restore-factory.sh" \
+          "${{KEYGLASS_SYSROOT}}/usr/lib/keyglass/display/keyglass-display"
     exit 0
 fi
 if [ -e "{flag}" ]; then
     rm -f "{flag}"
-    cat > "${{OPENFLUX_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh" <<'L_EOF'
+    cat > "${{KEYGLASS_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh" <<'L_EOF'
 #!/bin/sh
-echo "half-restored-factory-launcher" >> "${{OPENFLUX_SYSROOT}}/tmp/factory_half.log"
+echo "half-restored-factory-launcher" >> "${{KEYGLASS_SYSROOT}}/tmp/factory_half.log"
 L_EOF
-    chmod +x "${{OPENFLUX_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh"
+    chmod +x "${{KEYGLASS_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh"
     kill -KILL "$PPID"
     exit 137
 fi
@@ -1310,17 +1310,17 @@ exit 0
         let st = Command::new("sh")
             .args([restore_sh.to_str().unwrap(), restore_dir.to_str().unwrap()])
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .status()
             .unwrap();
         assert!(!st.success());
         assert!(!root
-            .join("usr/lib/openflux/bridge/openflux-bridge")
+            .join("usr/lib/keyglass/bridge/keyglass-bridge")
             .exists());
-        assert!(root.join("home/root/.openflux/rescue/armed").is_file());
-        assert!(root.join("etc/init.d/S05openflux-recovery").is_file());
+        assert!(root.join("home/root/.keyglass/rescue/armed").is_file());
+        assert!(root.join("etc/init.d/S05keyglass-recovery").is_file());
         assert!(
             fs::read_to_string(root.join("usr/bin/flux-weston-autolaunch.sh"))
                 .unwrap()
@@ -1330,49 +1330,49 @@ exit 0
         write_exec(&fake_bin.join("sync"), "#!/bin/sh\nexit 1\n");
         let fail_boot = Command::new("sh")
             .args([
-                root.join("etc/init.d/S05openflux-recovery")
+                root.join("etc/init.d/S05keyglass-recovery")
                     .to_str()
                     .unwrap(),
                 "start",
             ])
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
+            .env("KEYGLASS_SYSROOT", &root)
             .status()
             .unwrap();
         assert!(
             !fail_boot.success(),
-            "S05openflux-recovery must fail closed when sync fails"
+            "S05keyglass-recovery must fail closed when sync fails"
         );
         assert!(
-            root.join("home/root/.openflux/rescue/armed").is_file(),
+            root.join("home/root/.keyglass/rescue/armed").is_file(),
             "sync failure must preserve rescue/armed"
         );
 
         let rec_st = Command::new("sh")
             .args([
-                root.join("etc/init.d/S05openflux-recovery")
+                root.join("etc/init.d/S05keyglass-recovery")
                     .to_str()
                     .unwrap(),
                 "start",
             ])
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .status()
             .unwrap();
-        assert!(rec_st.success(), "S05openflux-recovery failed");
-        assert!(!root.join("home/root/.openflux/rescue/armed").exists());
-        assert!(!root.join("etc/init.d/S05openflux-recovery").exists());
+        assert!(rec_st.success(), "S05keyglass-recovery failed");
+        assert!(!root.join("home/root/.keyglass/rescue/armed").exists());
+        assert!(!root.join("etc/init.d/S05keyglass-recovery").exists());
         assert!(root
-            .join("usr/lib/openflux/bridge/openflux-bridge")
+            .join("usr/lib/keyglass/bridge/keyglass-bridge")
             .is_file());
         assert!(root
-            .join("usr/lib/openflux/display/openflux-display")
+            .join("usr/lib/keyglass/display/keyglass-display")
             .is_file());
 
         let boot_st = Command::new("sh")
             .arg(root.join("usr/bin/flux-weston-autolaunch.sh"))
-            .env("OPENFLUX_SYSROOT", &root)
+            .env("KEYGLASS_SYSROOT", &root)
             .status()
             .unwrap();
         assert!(boot_st.success());
@@ -1384,7 +1384,7 @@ exit 0
             "half-restored factory launcher must never execute after recovery"
         );
         assert!(
-            root.join("usr/lib/openflux/bridge/restore-factory.sh")
+            root.join("usr/lib/keyglass/bridge/restore-factory.sh")
                 .is_file(),
             "S05 must reinstate restore-factory.sh"
         );
@@ -1392,15 +1392,15 @@ exit 0
         // A second restore after boot recovery succeeds through the reinstated restore-factory.sh.
         let st_retry = Command::new("sh")
             .args([
-                root.join("usr/lib/openflux/bridge/restore-factory.sh")
+                root.join("usr/lib/keyglass/bridge/restore-factory.sh")
                     .to_str()
                     .unwrap(),
                 restore_dir.to_str().unwrap(),
             ])
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .status()
             .unwrap();
         assert!(
@@ -1425,9 +1425,9 @@ exit 0
             &fake_bin.join("opkg"),
             r#"#!/bin/sh
 if [ "$1" = "remove" ]; then
-    rm -f "${OPENFLUX_SYSROOT}/usr/lib/openflux/bridge/openflux-bridge" \
-          "${OPENFLUX_SYSROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh" \
-          "${OPENFLUX_SYSROOT}/usr/lib/openflux/display/openflux-display"
+    rm -f "${KEYGLASS_SYSROOT}/usr/lib/keyglass/bridge/keyglass-bridge" \
+          "${KEYGLASS_SYSROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" \
+          "${KEYGLASS_SYSROOT}/usr/lib/keyglass/display/keyglass-display"
     exit 0
 fi
 kill -KILL "$PPID"
@@ -1438,35 +1438,35 @@ exit 137
         let st = Command::new("sh")
             .args([restore_sh.to_str().unwrap(), restore_dir.to_str().unwrap()])
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .status()
             .unwrap();
         assert!(!st.success());
         assert!(!root
-            .join("usr/lib/openflux/bridge/openflux-bridge")
+            .join("usr/lib/keyglass/bridge/keyglass-bridge")
             .exists());
-        assert!(root.join("home/root/.openflux/rescue/armed").is_file());
+        assert!(root.join("home/root/.keyglass/rescue/armed").is_file());
 
         let direct_st = Command::new("sh")
             .arg(root.join("usr/bin/flux-weston-autolaunch.sh"))
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .status()
             .unwrap();
         assert!(
             direct_st.success(),
             "direct launcher recovery killed itself or failed"
         );
-        assert!(!root.join("home/root/.openflux/rescue/armed").exists());
-        assert!(!root.join("etc/init.d/S05openflux-recovery").exists());
+        assert!(!root.join("home/root/.keyglass/rescue/armed").exists());
+        assert!(!root.join("etc/init.d/S05keyglass-recovery").exists());
         assert!(root
-            .join("usr/lib/openflux/bridge/openflux-bridge")
+            .join("usr/lib/keyglass/bridge/keyglass-bridge")
             .is_file());
         assert!(root
-            .join("usr/lib/openflux/display/openflux-display")
+            .join("usr/lib/keyglass/display/keyglass-display")
             .is_file());
         assert!(fs::read_to_string(root.join("tmp/rescue.log"))
             .unwrap()
@@ -1478,7 +1478,7 @@ exit 137
     //    restore-factory extracts and installs the launcher from the verified garfield IPK before disarming rescue.
     {
         let (root, restore_dir, _, _) = setup_sysroot("restore_ok");
-        // The OpenFlux launcher had set the OS time service's init script aside.
+        // The Keyglass launcher had set the OS time service's init script aside.
         write_exec(
             &root.join("etc/init.d/disabled_S49chrony"),
             "#!/bin/sh\n# os-time-service\n",
@@ -1489,9 +1489,9 @@ exit 137
         let st = Command::new("sh")
             .args([restore_sh.to_str().unwrap(), restore_dir.to_str().unwrap()])
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .status()
             .unwrap();
         assert!(st.success(), "restore-factory happy path failed");
@@ -1499,8 +1499,8 @@ exit 137
         assert!(fs::read_to_string(root.join("etc/init.d/S49chrony"))
             .unwrap()
             .contains("os-time-service"));
-        assert!(!root.join("home/root/.openflux/rescue").exists());
-        assert!(!root.join("etc/init.d/S05openflux-recovery").exists());
+        assert!(!root.join("home/root/.keyglass/rescue").exists());
+        assert!(!root.join("etc/init.d/S05keyglass-recovery").exists());
         let deadline = Instant::now() + Duration::from_secs(3);
         while Instant::now() < deadline && !root.join("tmp/boot_trace.log").exists() {
             std::thread::sleep(Duration::from_millis(30));
@@ -1511,18 +1511,18 @@ exit 137
         let _ = fs::remove_dir_all(&root);
     }
 
-    // 8. openflux-factory-restore postinst: rejects an unresolved opkg owner even under `var/lib/opkg/info/`,
-    //    rejects tampered packages, and waits for the outer `opkg -> sh` ancestor without OPENFLUX_OPKG_LOCK.
+    // 8. keyglass-factory-restore postinst: rejects an unresolved opkg owner even under `var/lib/opkg/info/`,
+    //    rejects tampered packages, and waits for the outer `opkg -> sh` ancestor without KEYGLASS_OPKG_LOCK.
     {
         let fr_postinst = pkg_dir.join("factory-restore-packaging/postinst");
         let (root, _restore_dir, b_ipk, _) = setup_sysroot("factory_restore_pkg");
         fs::copy(
             &restore_sh,
-            root.join("usr/lib/openflux/bridge/restore-factory.sh"),
+            root.join("usr/lib/keyglass/bridge/restore-factory.sh"),
         )
         .unwrap();
         fs::set_permissions(
-            root.join("usr/lib/openflux/bridge/restore-factory.sh"),
+            root.join("usr/lib/keyglass/bridge/restore-factory.sh"),
             fs::Permissions::from_mode(0o755),
         )
         .unwrap();
@@ -1537,11 +1537,11 @@ if [ "$1" = "--outer-sh" ]; then
     exit 0
 fi
 if [ "$1" = "install" ]; then
-    cat > "${OPENFLUX_SYSROOT}/usr/bin/flux-weston-autolaunch.sh" <<'F_EOF'
+    cat > "${KEYGLASS_SYSROOT}/usr/bin/flux-weston-autolaunch.sh" <<'F_EOF'
 #!/bin/sh
-echo "factory-autolaunch" >> "${OPENFLUX_SYSROOT}/tmp/boot_trace.log"
+echo "factory-autolaunch" >> "${KEYGLASS_SYSROOT}/tmp/boot_trace.log"
 F_EOF
-    chmod +x "${OPENFLUX_SYSROOT}/usr/bin/flux-weston-autolaunch.sh"
+    chmod +x "${KEYGLASS_SYSROOT}/usr/bin/flux-weston-autolaunch.sh"
 fi
 exit 0
 "#,
@@ -1551,13 +1551,13 @@ exit 0
         // 8a: Placed under `var/lib/opkg/info/...` and run via `sh -c` without an opkg executable -> fails closed.
         let info_dir = root.join("var/lib/opkg/info");
         fs::create_dir_all(&info_dir).unwrap();
-        let placed_postinst = info_dir.join("openflux-factory-restore.postinst");
+        let placed_postinst = info_dir.join("keyglass-factory-restore.postinst");
         fs::copy(&fr_postinst, &placed_postinst).unwrap();
         fs::set_permissions(&placed_postinst, fs::Permissions::from_mode(0o755)).unwrap();
         let no_opkg_st = Command::new("sh")
             .args(["-c", "sh \"$1\"", "sh", placed_postinst.to_str().unwrap()])
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
+            .env("KEYGLASS_SYSROOT", &root)
             .status()
             .unwrap();
         assert!(
@@ -1565,16 +1565,16 @@ exit 0
             "postinst must fail closed when invoked under opkg/info without real opkg ancestor"
         );
         assert!(root
-            .join("usr/lib/openflux/bridge/openflux-bridge")
+            .join("usr/lib/keyglass/bridge/keyglass-bridge")
             .is_file());
 
-        // 8b: A tampered staged bridge IPK -> postinst exits nonzero and leaves OpenFlux untouched.
+        // 8b: A tampered staged bridge IPK -> postinst exits nonzero and leaves Keyglass untouched.
         let saved_ipk = fs::read(&b_ipk).unwrap();
         fs::write(&b_ipk, b"tampered").unwrap();
         let bad_st = Command::new(fake_bin.join("opkg"))
             .args(["--outer-sh", placed_postinst.to_str().unwrap()])
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
+            .env("KEYGLASS_SYSROOT", &root)
             .status()
             .unwrap();
         assert!(
@@ -1582,10 +1582,10 @@ exit 0
             "factory-restore postinst must reject tampered staged IPK"
         );
         assert!(root
-            .join("usr/lib/openflux/bridge/openflux-bridge")
+            .join("usr/lib/keyglass/bridge/keyglass-bridge")
             .is_file());
         assert!(!root
-            .join("home/root/openflux/logs/factory_restore.log")
+            .join("home/root/keyglass/logs/factory_restore.log")
             .exists());
 
         // 8c: Valid IPK again -> an opkg -> sh wrapper holds the outer opkg PID for 0.35s with no lock override;
@@ -1594,11 +1594,11 @@ exit 0
         let ok_st = Command::new(fake_bin.join("opkg"))
             .args(["--outer-sh", placed_postinst.to_str().unwrap()])
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_SKIP_SYNC", "1")
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
-            .env("OPENFLUX_OPKG_WAIT_ITERS", "40")
-            .env("OPENFLUX_OPKG_WAIT_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_SKIP_SYNC", "1")
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_OPKG_WAIT_ITERS", "40")
+            .env("KEYGLASS_OPKG_WAIT_SLEEP", "0.05")
             .env("OUTER_HOLD_SEC", "0.35")
             .status()
             .unwrap();
@@ -1616,25 +1616,25 @@ exit 0
         let _ = fs::remove_dir_all(&root);
     }
 
-    // 9. The production default path (no OPENFLUX_OPKG_LOCK override) with a shell intermediary and an outer
+    // 9. The production default path (no KEYGLASS_OPKG_LOCK override) with a shell intermediary and an outer
     //    transaction: a held opkg lock is waited for, within a bounded timeout.
     {
         let fr_postinst = pkg_dir.join("factory-restore-packaging/postinst");
         let (root, _restore_dir, _, _) = setup_sysroot("factory_restore_opkg_lock");
         fs::copy(
             &restore_sh,
-            root.join("usr/lib/openflux/bridge/restore-factory.sh"),
+            root.join("usr/lib/keyglass/bridge/restore-factory.sh"),
         )
         .unwrap();
         fs::set_permissions(
-            root.join("usr/lib/openflux/bridge/restore-factory.sh"),
+            root.join("usr/lib/keyglass/bridge/restore-factory.sh"),
             fs::Permissions::from_mode(0o755),
         )
         .unwrap();
 
         let info_dir = root.join("var/lib/opkg/info");
         fs::create_dir_all(&info_dir).unwrap();
-        let placed_postinst = info_dir.join("openflux-factory-restore.postinst");
+        let placed_postinst = info_dir.join("keyglass-factory-restore.postinst");
         fs::copy(&fr_postinst, &placed_postinst).unwrap();
         fs::set_permissions(&placed_postinst, fs::Permissions::from_mode(0o755)).unwrap();
 
@@ -1658,11 +1658,11 @@ if [ -e "$LOCK" ]; then
     exit 99
 fi
 if [ "$1" = "install" ]; then
-    cat > "${{OPENFLUX_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh" <<'F_EOF'
+    cat > "${{KEYGLASS_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh" <<'F_EOF'
 #!/bin/sh
-echo "factory-autolaunch" >> "${{OPENFLUX_SYSROOT}}/tmp/boot_trace.log"
+echo "factory-autolaunch" >> "${{KEYGLASS_SYSROOT}}/tmp/boot_trace.log"
 F_EOF
-    chmod +x "${{OPENFLUX_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh"
+    chmod +x "${{KEYGLASS_SYSROOT}}/usr/bin/flux-weston-autolaunch.sh"
 fi
 exit 0
 "#,
@@ -1675,11 +1675,11 @@ exit 0
         let st_ok = Command::new(fake_bin.join("opkg"))
             .args(["--outer-install", placed_postinst.to_str().unwrap()])
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
-            .env("OPENFLUX_OPKG_WAIT_ITERS", "40")
-            .env("OPENFLUX_OPKG_WAIT_SLEEP", "0.05")
-            .env("OPENFLUX_SKIP_SYNC", "1")
-            .env("OPENFLUX_STOP_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root)
+            .env("KEYGLASS_OPKG_WAIT_ITERS", "40")
+            .env("KEYGLASS_OPKG_WAIT_SLEEP", "0.05")
+            .env("KEYGLASS_SKIP_SYNC", "1")
+            .env("KEYGLASS_STOP_SLEEP", "0.05")
             .env("OUTER_HOLD_SEC", "0.35")
             .status()
             .unwrap();
@@ -1697,15 +1697,15 @@ exit 0
         );
         let _ = fs::remove_dir_all(&root);
 
-        // 9b: Default `${ROOT}/var/lock/opkg.lock` remains held past bounded wait (no OPENFLUX_OPKG_LOCK override)
+        // 9b: Default `${ROOT}/var/lock/opkg.lock` remains held past bounded wait (no KEYGLASS_OPKG_LOCK override)
         let (root2, _restore_dir2, _, _) = setup_sysroot("factory_restore_opkg_timeout");
         fs::copy(
             &restore_sh,
-            root2.join("usr/lib/openflux/bridge/restore-factory.sh"),
+            root2.join("usr/lib/keyglass/bridge/restore-factory.sh"),
         )
         .unwrap();
         fs::set_permissions(
-            root2.join("usr/lib/openflux/bridge/restore-factory.sh"),
+            root2.join("usr/lib/keyglass/bridge/restore-factory.sh"),
             fs::Permissions::from_mode(0o755),
         )
         .unwrap();
@@ -1724,9 +1724,9 @@ exit 0
         let st_to = Command::new("sh")
             .arg(&fr_postinst)
             .env("PATH", &path_env2)
-            .env("OPENFLUX_SYSROOT", &root2)
-            .env("OPENFLUX_OPKG_WAIT_ITERS", "3")
-            .env("OPENFLUX_OPKG_WAIT_SLEEP", "0.05")
+            .env("KEYGLASS_SYSROOT", &root2)
+            .env("KEYGLASS_OPKG_WAIT_ITERS", "3")
+            .env("KEYGLASS_OPKG_WAIT_SLEEP", "0.05")
             .status()
             .unwrap();
         assert!(st_to.success());
@@ -1734,7 +1734,7 @@ exit 0
         let mut saw_timeout = false;
         while Instant::now() < deadline2 {
             if let Ok(log) =
-                fs::read_to_string(root2.join("home/root/openflux/logs/factory_restore.log"))
+                fs::read_to_string(root2.join("home/root/keyglass/logs/factory_restore.log"))
             {
                 if log.contains("timed out waiting for outer opkg") {
                     saw_timeout = true;
@@ -1746,7 +1746,7 @@ exit 0
         assert!(saw_timeout, "expected bounded wait timeout log");
         assert!(!root2.join("tmp/lock_violation2.log").exists());
         assert!(root2
-            .join("usr/lib/openflux/bridge/openflux-bridge")
+            .join("usr/lib/keyglass/bridge/keyglass-bridge")
             .is_file());
         let _ = fs::remove_dir_all(&root2);
     }
@@ -1757,7 +1757,7 @@ fn sysroot_scripts_never_touch_host_commands_or_unscoped_patterns() {
     let pkg_dir = repo_bridge_dir();
     let display_prerm = repo_root_dir().join("keyboard/display/packaging/prerm");
     let bridge_prerm = pkg_dir.join("packaging/prerm");
-    let autolaunch = pkg_dir.join("packaging/openflux-autolaunch.sh");
+    let autolaunch = pkg_dir.join("packaging/keyglass-autolaunch.sh");
 
     let root = make_temp_root("sysroot_guard");
     let fake_bin = root.join("fake_bin");
@@ -1775,30 +1775,30 @@ fn sysroot_scripts_never_touch_host_commands_or_unscoped_patterns() {
     }
     let path_env = format!("{}:{}", fake_bin.display(), std::env::var("PATH").unwrap());
 
-    // 1. Run both prerm scripts under OPENFLUX_SYSROOT and verify zero unscoped pkill patterns.
+    // 1. Run both prerm scripts under KEYGLASS_SYSROOT and verify zero unscoped pkill patterns.
     assert!(Command::new("sh")
         .arg(&bridge_prerm)
         .env("PATH", &path_env)
-        .env("OPENFLUX_SYSROOT", &root)
+        .env("KEYGLASS_SYSROOT", &root)
         .status()
         .unwrap()
         .success());
     assert!(Command::new("sh")
         .arg(&display_prerm)
         .env("PATH", &path_env)
-        .env("OPENFLUX_SYSROOT", &root)
-        .env("OPENFLUX_STOP_SLEEP", "0.05")
+        .env("KEYGLASS_SYSROOT", &root)
+        .env("KEYGLASS_STOP_SLEEP", "0.05")
         .status()
         .unwrap()
         .success());
 
-    // 2. Run openflux-autolaunch.sh briefly under OPENFLUX_SYSROOT with staged manifest and dummy binaries.
+    // 2. Run keyglass-autolaunch.sh briefly under KEYGLASS_SYSROOT with staged manifest and dummy binaries.
     write_exec(
-        &root.join("usr/lib/openflux/bridge/openflux-bridge"),
+        &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
         "#!/bin/sh\nsleep 2\n",
     );
     write_exec(
-        &root.join("usr/lib/openflux/display/openflux-display"),
+        &root.join("usr/lib/keyglass/display/keyglass-display"),
         "#!/bin/sh\nsleep 2\n",
     );
     write_exec(
@@ -1807,7 +1807,7 @@ fn sysroot_scripts_never_touch_host_commands_or_unscoped_patterns() {
     );
     write_exec(
         &root.join("tmp/ipk-updates/update-manifest"),
-        "#!/bin/sh\necho ran-sysroot-manifest >> \"${OPENFLUX_SYSROOT}/tmp/manifest.ran\"\n",
+        "#!/bin/sh\necho ran-sysroot-manifest >> \"${KEYGLASS_SYSROOT}/tmp/manifest.ran\"\n",
     );
 
     use std::os::unix::process::CommandExt;
@@ -1815,7 +1815,7 @@ fn sysroot_scripts_never_touch_host_commands_or_unscoped_patterns() {
         Command::new("sh")
             .arg(&autolaunch)
             .env("PATH", &path_env)
-            .env("OPENFLUX_SYSROOT", &root)
+            .env("KEYGLASS_SYSROOT", &root)
             .pre_exec(|| {
                 libc::setpgid(0, 0);
                 Ok(())
@@ -1840,11 +1840,11 @@ fn sysroot_scripts_never_touch_host_commands_or_unscoped_patterns() {
     let logged = fs::read_to_string(&cmd_log).unwrap_or_default();
     assert!(
         !logged.contains("pidof:"),
-        "openflux-autolaunch invoked pidof under SYSROOT: {logged}"
+        "keyglass-autolaunch invoked pidof under SYSROOT: {logged}"
     );
     assert!(
         !logged.contains("killall:"),
-        "openflux-autolaunch invoked killall under SYSROOT: {logged}"
+        "keyglass-autolaunch invoked killall under SYSROOT: {logged}"
     );
     for line in logged.lines() {
         if line.starts_with("pkill:") || line.starts_with("pgrep:") {
@@ -1865,39 +1865,39 @@ fn nondefault_release_version_propagates_to_bridge_binary_and_publishes_trial_ma
     let root = make_temp_root("nondefault_ver");
     let target_dir = root.join("cargo_target");
 
-    // Compile openflux-bridge with OPENFLUX_VERSION=1.0.1 into an isolated target-dir.
+    // Compile keyglass-bridge with KEYGLASS_VERSION=1.0.1 into an isolated target-dir.
     let build_st = Command::new("cargo")
         .args([
             "build",
             "-p",
-            "openflux-bridge",
+            "keyglass-bridge",
             "--bin",
-            "openflux-bridge",
+            "keyglass-bridge",
             "--target-dir",
             target_dir.to_str().unwrap(),
         ])
-        .env("OPENFLUX_VERSION", "1.0.1")
+        .env("KEYGLASS_VERSION", "1.0.1")
         .status()
         .unwrap();
     assert!(
         build_st.success(),
-        "cargo build with OPENFLUX_VERSION=1.0.1 failed"
+        "cargo build with KEYGLASS_VERSION=1.0.1 failed"
     );
-    let bin_101 = target_dir.join("debug/openflux-bridge");
+    let bin_101 = target_dir.join("debug/keyglass-bridge");
     let ver_out = Command::new(&bin_101).arg("--version").output().unwrap();
     assert!(ver_out.status.success());
     assert_eq!(
         String::from_utf8_lossy(&ver_out.stdout).trim(),
-        "openflux-bridge 1.0.1"
+        "keyglass-bridge 1.0.1"
     );
 
     // Seed a 1.0.0 bridge and run the staged 1.0.1 preinst/postinst -> trial-<attempt_id> is published.
     write_exec(
-        &root.join("usr/lib/openflux/bridge/openflux-bridge"),
+        &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
         "#!/bin/sh\n# old-1.0.0\n",
     );
     write_exec(
-        &root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
+        &root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
         "#!/bin/sh\nexit 0\n",
     );
 
@@ -1905,12 +1905,12 @@ fn nondefault_release_version_propagates_to_bridge_binary_and_publishes_trial_ma
     let staged_post = root.join("tmp/postinst_101");
     fs::write(
         &staged_pre,
-        raw_preinst.replace("@OPENFLUX_VERSION@", "1.0.1"),
+        raw_preinst.replace("@KEYGLASS_VERSION@", "1.0.1"),
     )
     .unwrap();
     fs::write(
         &staged_post,
-        raw_postinst.replace("@OPENFLUX_VERSION@", "1.0.1"),
+        raw_postinst.replace("@KEYGLASS_VERSION@", "1.0.1"),
     )
     .unwrap();
     fs::set_permissions(&staged_pre, fs::Permissions::from_mode(0o755)).unwrap();
@@ -1918,15 +1918,15 @@ fn nondefault_release_version_propagates_to_bridge_binary_and_publishes_trial_ma
 
     assert!(Command::new("sh")
         .arg(&staged_pre)
-        .env("OPENFLUX_SYSROOT", &root)
-        .env("OPENFLUX_SKIP_SYNC", "1")
+        .env("KEYGLASS_SYSROOT", &root)
+        .env("KEYGLASS_SKIP_SYNC", "1")
         .status()
         .unwrap()
         .success());
-    let rb_dir = root.join("home/root/.openflux/rollback/bridge");
+    let rb_dir = root.join("home/root/.keyglass/rollback/bridge");
     let attempt_txt = fs::read_to_string(rb_dir.join("attempt")).unwrap();
     assert!(
-        attempt_txt.contains("version=openflux-bridge 1.0.1\n"),
+        attempt_txt.contains("version=keyglass-bridge 1.0.1\n"),
         "got: {attempt_txt}"
     );
     let attempt_id = attempt_txt
@@ -1936,30 +1936,30 @@ fn nondefault_release_version_propagates_to_bridge_binary_and_publishes_trial_ma
         .to_string();
 
     write_exec(
-        &root.join("usr/lib/openflux/bridge/openflux-bridge"),
+        &root.join("usr/lib/keyglass/bridge/keyglass-bridge"),
         &format!(
-            "#!/bin/sh\nexec 3</dev/null 4>/dev/null\nexport OPENFLUX_TEST_EP_FDS=4,3\nexec \"{}\" \"$@\"\n",
+            "#!/bin/sh\nexec 3</dev/null 4>/dev/null\nexport KEYGLASS_TEST_EP_FDS=4,3\nexec \"{}\" \"$@\"\n",
             bin_101.display()
         ),
     );
     write_exec(
-        &root.join("usr/lib/openflux/bridge/openflux-autolaunch.sh"),
-        "#!/bin/sh\nexec \"${OPENFLUX_SYSROOT}/usr/lib/openflux/bridge/openflux-bridge\" \"${OPENFLUX_SYSROOT}/dev/ffs-openflux\"\n",
+        &root.join("usr/lib/keyglass/bridge/keyglass-autolaunch.sh"),
+        "#!/bin/sh\nexec \"${KEYGLASS_SYSROOT}/usr/lib/keyglass/bridge/keyglass-bridge\" \"${KEYGLASS_SYSROOT}/dev/ffs-keyglass\"\n",
     );
 
     let ready_file = root.join("tmp/bridge_ready");
     assert!(Command::new("sh")
         .arg(&staged_post)
-        .env("OPENFLUX_SYSROOT", &root)
-        .env("OPENFLUX_SKIP_SYNC", "1")
-        .env("OPENFLUX_STOP_WAIT_ITERS", "1")
-        .env("OPENFLUX_POSTINST_SLEEP", "0.05")
-        .env("OPENFLUX_READY_WAIT_ITERS", "40")
-        .env("OPENFLUX_STARTUP_CHECK_SLEEP", "0.05")
-        .env("OPENFLUX_STABILIZE_SLEEP", "0.05")
-        .env("OPENFLUX_USB_CONFIRM_ITERS", "40")
-        .env("OPENFLUX_USB_CONFIRM_SLEEP", "0.1")
-        .env("OPENFLUX_READY_FILE", &ready_file)
+        .env("KEYGLASS_SYSROOT", &root)
+        .env("KEYGLASS_SKIP_SYNC", "1")
+        .env("KEYGLASS_STOP_WAIT_ITERS", "1")
+        .env("KEYGLASS_POSTINST_SLEEP", "0.05")
+        .env("KEYGLASS_READY_WAIT_ITERS", "40")
+        .env("KEYGLASS_STARTUP_CHECK_SLEEP", "0.05")
+        .env("KEYGLASS_STABILIZE_SLEEP", "0.05")
+        .env("KEYGLASS_USB_CONFIRM_ITERS", "40")
+        .env("KEYGLASS_USB_CONFIRM_SLEEP", "0.1")
+        .env("KEYGLASS_READY_FILE", &ready_file)
         .status()
         .unwrap()
         .success());
@@ -1976,7 +1976,7 @@ fn nondefault_release_version_propagates_to_bridge_binary_and_publishes_trial_ma
     );
     assert!(fs::read_to_string(&trial_path)
         .unwrap()
-        .contains("version=openflux-bridge 1.0.1"));
+        .contains("version=keyglass-bridge 1.0.1"));
 
     let _ = fs::remove_file(rb_dir.join("armed"));
     if let Ok(pid_s) = fs::read_to_string(&ready_file) {

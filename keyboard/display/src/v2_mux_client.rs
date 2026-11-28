@@ -1,4 +1,4 @@
-//! Binary `OFV2` Unix socket client (`openflux-display` <-> `openflux-bridge` at `/tmp/openflux_v2.sock`).
+//! Binary `OFV2` Unix socket client (`keyglass-display` <-> `keyglass-bridge` at `/tmp/keyglass_v2.sock`).
 //!
 //! Receives:
 //! - `CH_BUS`: `PeerBusFrame` messages for subscription-driven `BrokerMirror` mirroring (< 0.2 ms!).
@@ -6,7 +6,7 @@
 //!   JPEG frames (zero disk writes, drop-old backpressure, instant transparent close on EOF!).
 
 #[cfg(unix)]
-use openflux_bus::{
+use keyglass_bus::{
     decode_media_payload, MediaCodec, MuxChannel, MuxDecoder, PeerBusFrame, FLAG_STREAM_CLOSE,
 };
 #[cfg(unix)]
@@ -18,7 +18,7 @@ use std::os::unix::io::AsRawFd;
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
 
-pub const V2_MUX_SOCK_PATH: &str = "/tmp/openflux_v2.sock";
+pub const V2_MUX_SOCK_PATH: &str = "/tmp/keyglass_v2.sock";
 
 #[cfg(target_os = "linux")]
 pub enum LiveMediaSlot {
@@ -73,7 +73,7 @@ impl V2MuxClient {
         self.stream.as_ref().map(|s| s.as_raw_fd())
     }
 
-    /// Attempts a non-blocking connect to `/tmp/openflux_v2.sock`. Returns `true` ONLY on a
+    /// Attempts a non-blocking connect to `/tmp/keyglass_v2.sock`. Returns `true` ONLY on a
     /// fresh connection transition so the caller immediately sends its initial `Subscribe` frame.
     fn ensure_connected(&mut self) -> bool {
         if self.stream.is_some() {
@@ -134,7 +134,7 @@ impl V2MuxClient {
         }
     }
 
-    /// Automatically connects/reconnects to `/tmp/openflux_v2.sock` and polls all available
+    /// Automatically connects/reconnects to `/tmp/keyglass_v2.sock` and polls all available
     /// binary `MuxFrame`s with an explicit, unambiguous [`V2MuxPollResult`].
     pub fn poll(&mut self) -> V2MuxPollResult {
         let connected_now = self.ensure_connected();

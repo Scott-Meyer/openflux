@@ -1,7 +1,7 @@
 #!/bin/sh
-ROOT="${OPENFLUX_SYSROOT:-}"
-pkill -TERM -f "${ROOT}/usr/lib/openflux/display/openflux-display" 2>/dev/null || true
-sleep "${OPENFLUX_STOP_SLEEP:-2}"
-pkill -KILL -f "${ROOT}/usr/lib/openflux/display/openflux-display" 2>/dev/null || true
-rm -f "${ROOT}/home/root/.openflux/versions/display" "${ROOT}/tmp/openflux_display_active"
+ROOT="${KEYGLASS_SYSROOT:-}"
+pkill -TERM -f "${ROOT}/usr/lib/keyglass/display/keyglass-display" 2>/dev/null || true
+sleep "${KEYGLASS_STOP_SLEEP:-2}"
+pkill -KILL -f "${ROOT}/usr/lib/keyglass/display/keyglass-display" 2>/dev/null || true
+rm -f "${ROOT}/home/root/.keyglass/versions/display" "${ROOT}/tmp/keyglass_display_active"
 exit 0

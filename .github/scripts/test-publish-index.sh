@@ -25,8 +25,8 @@ repo="$(cd "${here}/../.." && pwd)"
 die() { echo "test-publish-index: FAIL: $*" >&2; exit 1; }
 step() { echo; echo "== $*"; }
 
-cargo build --quiet --locked --release --manifest-path "${repo}/crates/openflux-update/Cargo.toml" --bin openflux-release
-tool="$(cargo metadata --format-version 1 --no-deps --manifest-path "${repo}/crates/openflux-update/Cargo.toml" | jq -r .target_directory)/release/openflux-release"
+cargo build --quiet --locked --release --manifest-path "${repo}/crates/keyglass-update/Cargo.toml" --bin keyglass-release
+tool="$(cargo metadata --format-version 1 --no-deps --manifest-path "${repo}/crates/keyglass-update/Cargo.toml" | jq -r .target_directory)/release/keyglass-release"
 
 work="$(mktemp -d)"
 server_pid=""
@@ -36,7 +36,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-export FAKE_GH_ROOT="${work}/web" GITHUB_REPOSITORY=example/openflux GH_TOKEN=unused
+export FAKE_GH_ROOT="${work}/web" GITHUB_REPOSITORY=example/keyglass GH_TOKEN=unused
 export PATH="${here}/testing:${PATH}"
 mkdir -p "${FAKE_GH_ROOT}/pages"
 port="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
@@ -131,17 +131,17 @@ host_accepts() {
 }
 
 step "1. first publish (firmware + bridge hosted on Pages)"
-export OPENFLUX_RELEASE_KEY="$A_KEY"
+export KEYGLASS_RELEASE_KEY="$A_KEY"
 rm -rf "${work}/staged" && mkdir -p "${work}/staged"
-stage_release "${work}/staged" firmware 1.0.0 openflux-firmware-1.0.0.uf2
-stage_release "${work}/staged" bridge 1.0.0 openflux-bridge_1.0.0_aarch64.ipk openflux-factory-restore_1.0.0_aarch64.ipk
+stage_release "${work}/staged" firmware 1.0.0 keyglass-firmware-1.0.0.uf2
+stage_release "${work}/staged" bridge 1.0.0 keyglass-bridge_1.0.0_aarch64.ipk keyglass-factory-restore_1.0.0_aarch64.ipk
 publish "${work}/staged"
 
 [ "$(index .sequence)" = 1 ] || die "expected sequence 1, got $(index .sequence)"
 [ "$(index '[.releases[][]] | length')" = 2 ] || die "expected 2 releases"
-[ "$(index '.releases[][] | select(.component == "firmware") | .artifacts[0].url')" = "${pages}/packages/firmware/1.0.0/openflux-firmware-1.0.0.uf2" ] ||
+[ "$(index '.releases[][] | select(.component == "firmware") | .artifacts[0].url')" = "${pages}/packages/firmware/1.0.0/keyglass-firmware-1.0.0.uf2" ] ||
     die "firmware artifact URL does not point to Pages"
-[ -f "${FAKE_GH_ROOT}/pages/packages/firmware/1.0.0/openflux-firmware-1.0.0.uf2" ] || die "firmware file missing from Pages"
+[ -f "${FAKE_GH_ROOT}/pages/packages/firmware/1.0.0/keyglass-firmware-1.0.0.uf2" ] || die "firmware file missing from Pages"
 [ -f "${FAKE_GH_ROOT}/pages/source/firmware-source.txt" ] || die "firmware source file missing from Pages"
 host_accepts "${pages}/index.json" --pubkey "$a_pub" --root-pubkey "$root_pub" ||
     die "host refuses the first live index: $(cat "${work}/host.log")"
@@ -149,14 +149,14 @@ echo "ok: sequence 1, keyboard packages hosted on Pages and verified by host"
 
 step "2. subsequent publish preserves prior Pages packages and sources"
 rm -rf "${work}/staged" && mkdir -p "${work}/staged"
-stage_release "${work}/staged" display 1.0.0 openflux-display_1.0.0_aarch64.ipk
+stage_release "${work}/staged" display 1.0.0 keyglass-display_1.0.0_aarch64.ipk
 publish "${work}/staged"
 
 [ "$(index .sequence)" = 2 ] || die "expected sequence 2"
 [ "$(index '[.releases[][]] | length')" = 3 ] || die "expected 3 releases"
-[ -f "${FAKE_GH_ROOT}/pages/packages/firmware/1.0.0/openflux-firmware-1.0.0.uf2" ] || die "prior firmware package lost across deploy"
-[ -f "${FAKE_GH_ROOT}/pages/packages/bridge/1.0.0/openflux-bridge_1.0.0_aarch64.ipk" ] || die "prior bridge package lost across deploy"
-[ -f "${FAKE_GH_ROOT}/pages/packages/display/1.0.0/openflux-display_1.0.0_aarch64.ipk" ] || die "new display package missing"
+[ -f "${FAKE_GH_ROOT}/pages/packages/firmware/1.0.0/keyglass-firmware-1.0.0.uf2" ] || die "prior firmware package lost across deploy"
+[ -f "${FAKE_GH_ROOT}/pages/packages/bridge/1.0.0/keyglass-bridge_1.0.0_aarch64.ipk" ] || die "prior bridge package lost across deploy"
+[ -f "${FAKE_GH_ROOT}/pages/packages/display/1.0.0/keyglass-display_1.0.0_aarch64.ipk" ] || die "new display package missing"
 [ -f "${FAKE_GH_ROOT}/pages/source/firmware-source.txt" ] || die "prior source file lost across deploy"
 host_accepts "${pages}/index.json" --pubkey "$a_pub" --root-pubkey "$root_pub" ||
     die "host refuses sequence 2: $(cat "${work}/host.log")"
@@ -165,7 +165,7 @@ host_accepts "${pages}/index.json" --pubkey "$a_pub" --root-pubkey "$root_pub" |
 rm -rf "${work}/staged" && mkdir -p "${work}/staged"
 publish "${work}/staged"
 [ "$(index .sequence)" = 3 ] || die "expected sequence 3"
-[ -f "${FAKE_GH_ROOT}/pages/packages/display/1.0.0/openflux-display_1.0.0_aarch64.ipk" ] || die "display package lost on empty refresh"
+[ -f "${FAKE_GH_ROOT}/pages/packages/display/1.0.0/keyglass-display_1.0.0_aarch64.ipk" ] || die "display package lost on empty refresh"
 echo "ok: sequence 3, all Pages packages and sources preserved across deploys"
 
 step "3. rollback protection refuses older or missing index"
@@ -183,18 +183,18 @@ echo "ok: rollback refused"
 step "4. host release references GitHub Release URLs and rotates cleanly with key B"
 gh release create host-v1.0.0
 rm -rf "${work}/staged" && mkdir -p "${work}/staged"
-stage_release "${work}/staged" host 1.0.0 openflux-studio_1.0.0_universal.dmg openflux-studio_1.0.0_x64-setup.exe
+stage_release "${work}/staged" host 1.0.0 keyglass-studio_1.0.0_universal.dmg keyglass-studio_1.0.0_x64-setup.exe
 "${here}/upload-release-assets.sh" host-v1.0.0 \
-    "${work}/staged/staged-host/artifacts/openflux-studio_1.0.0_universal.dmg" \
-    "${work}/staged/staged-host/artifacts/openflux-studio_1.0.0_x64-setup.exe" > /dev/null
+    "${work}/staged/staged-host/artifacts/keyglass-studio_1.0.0_universal.dmg" \
+    "${work}/staged/staged-host/artifacts/keyglass-studio_1.0.0_x64-setup.exe" > /dev/null
 publish "${work}/staged"
-[ "$(index '.releases[][] | select(.component == "host") | .artifacts[0].url')" = "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/host-v1.0.0/openflux-studio_1.0.0_universal.dmg" ] ||
+[ "$(index '.releases[][] | select(.component == "host") | .artifacts[0].url')" = "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/host-v1.0.0/keyglass-studio_1.0.0_universal.dmg" ] ||
     die "host artifact URL does not point to GitHub release"
 
 "$tool" statement --root-key-env ROOT_KEY --trust "$b_pub" -o "${pipeline_keys}/statements/trust-b.json" 2> /dev/null
 cp "$a_pub" "${pipeline_keys}/previous-release.pub"
 cp "$b_pub" "${pipeline_keys}/active-release.pub"
-export OPENFLUX_RELEASE_KEY="$B_KEY"
+export KEYGLASS_RELEASE_KEY="$B_KEY"
 rm -rf "${work}/staged" && mkdir -p "${work}/staged"
 publish "${work}/staged" --resign
 [ "$(index '[.releases[][] | .artifacts[] | .signatures | length] | unique')" = "$(printf '[\n  2\n]')" ] ||
@@ -208,7 +208,7 @@ publish "${work}/staged"
 host_accepts "${pages}/index.json" --pubkey "$a_pub" --root-pubkey "$root_pub" ||
     die "host refuses index after A is revoked: $(cat "${work}/host.log")"
 cp "${FAKE_GH_ROOT}/pages/index.json" "${work}/forged.json"
-OPENFLUX_RELEASE_KEY="$A_KEY" "$tool" sign --key-env OPENFLUX_RELEASE_KEY "${work}/forged.json" 2> /dev/null
+KEYGLASS_RELEASE_KEY="$A_KEY" "$tool" sign --key-env KEYGLASS_RELEASE_KEY "${work}/forged.json" 2> /dev/null
 if host_accepts "${work}/forged.json" --pubkey "$a_pub" --root-pubkey "$root_pub"; then
     die "host accepts an index signed by revoked key A"
 fi

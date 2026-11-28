@@ -1,4 +1,4 @@
-//! OpenFlux's own local API, used by OpenFlux Studio, the tray and the daemon's command line.
+//! Keyglass's own local API, used by Keyglass Studio, the tray and the daemon's command line.
 //! Most routes require a first-party token; `/v1/daemon/lifecycle` also accepts the enrollment
 //! secret. The third-party app API lives in [`crate::api::third_party`], which shares the icon
 //! import and save handlers defined here.
@@ -1419,7 +1419,7 @@ async fn adopt_firmware_keymap(State(state): State<Arc<ApiState>>) -> impl IntoR
         )
         .into_response();
     };
-    crate::codecs::keycode_names::to_openflux(&mut base);
+    crate::codecs::keycode_names::to_keyglass(&mut base);
     if base.get("keymaps").and_then(|v| v.as_object()).is_none() {
         base = crate::defaults::default_keymap();
     }

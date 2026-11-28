@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Writes the license texts of the third-party Rust crates compiled into one
-# OpenFlux binary: every crate its package depends on for the given targets
+# Keyglass binary: every crate its package depends on for the given targets
 # (normal and build dependencies, not dev-dependencies), with the license
 # chosen under about.toml and the texts the crates ship. One plain text file.
 #

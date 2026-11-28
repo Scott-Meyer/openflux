@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests the installer and service hooks against a stand-in openfluxd that
+# Tests the installer and service hooks against a stand-in keyglassd that
 # answers --request-restart / --request-stop with scripted exit statuses
 # (testing/hooks/). The hooks fail closed:
 #   0 (stopped or restarted) and 4 (not running) proceed,
@@ -71,7 +71,7 @@ grep -q 'systemctl --user -M 1000@ start' <<<"$calls" && fail "postinst started 
 
 run_hook postinst configure 4
 expect "postinst: not running (4) starts the service" 0 1 0
-grep -q 'systemctl --user -M 1000@ start openfluxd.service' <<<"$calls" || fail "postinst did not start the service: ${calls}"
+grep -q 'systemctl --user -M 1000@ start keyglassd.service' <<<"$calls" || fail "postinst did not start the service: ${calls}"
 
 run_hook postinst configure 3 3 0
 expect "postinst: deferred (3) waits, then proceeds" 0 3 10 "finishing work on the keyboard for alice"
@@ -86,7 +86,7 @@ run_hook postinst configure 2
 expect "postinst: unknown status (2) stops with a message" 1 1 0 "failed (status 2)"
 
 run_hook postinst configure 127
-expect "postinst: openfluxd missing (127) stops with a message" 1 1 0 "failed (status 127)"
+expect "postinst: keyglassd missing (127) stops with a message" 1 1 0 "failed (status 127)"
 
 DISABLED=1 run_hook postinst configure 1
 expect "postinst: a user who disabled the service is left alone" 0 0 0
@@ -95,7 +95,7 @@ expect "postinst: a user who disabled the service is left alone" 0 0 0
 run_hook prerm remove 0
 expect "prerm: stopped (0) proceeds" 0 1 0
 grep -q -- '--request-stop' "${FAKE_HOOKS}/requests.log" || fail "prerm did not ask for a stop"
-grep -q 'systemctl --global disable openfluxd.service' <<<"$calls" || fail "prerm did not disable the unit"
+grep -q 'systemctl --global disable keyglassd.service' <<<"$calls" || fail "prerm did not disable the unit"
 
 run_hook prerm remove 4
 expect "prerm: not running (4) proceeds" 0 1 0
@@ -118,7 +118,7 @@ expect "prerm: an upgrade leaves the daemon running" 0 0 0
 
 # Service definitions: exit 75 relaunches, exit 0 stays stopped, and a stop
 # waits for keyboard work.
-plist="${repo}/host/packaging/macos/org.openflux.openfluxd.plist"
+plist="${repo}/host/packaging/macos/dev.keyglass.keyglassd.plist"
 before=$fails
 python3 - "$plist" <<'EOF' || fail "LaunchAgent settings"
 import plistlib, sys
@@ -128,11 +128,11 @@ assert p["ExitTimeOut"] >= 900, p.get("ExitTimeOut")
 assert p["RunAtLoad"] is True
 EOF
 [ "$fails" = "$before" ] && echo "ok: LaunchAgent relaunches after a non-zero exit only, ExitTimeOut 900"
-unit="${repo}/host/packaging/linux/openfluxd.service"
+unit="${repo}/host/packaging/linux/keyglassd.service"
 before=$fails
-grep -qx 'Restart=on-failure' "$unit" || fail "openfluxd.service: Restart=on-failure missing"
-grep -qx 'TimeoutStopSec=15min' "$unit" || fail "openfluxd.service: TimeoutStopSec=15min missing"
-grep -q '^RestartPreventExitStatus\|^SuccessExitStatus' "$unit" && fail "openfluxd.service must not change which statuses restart"
+grep -qx 'Restart=on-failure' "$unit" || fail "keyglassd.service: Restart=on-failure missing"
+grep -qx 'TimeoutStopSec=15min' "$unit" || fail "keyglassd.service: TimeoutStopSec=15min missing"
+grep -q '^RestartPreventExitStatus\|^SuccessExitStatus' "$unit" && fail "keyglassd.service must not change which statuses restart"
 [ "$fails" = "$before" ] && echo "ok: systemd unit restarts on failure (including 75), not after 0, TimeoutStopSec 15min"
 
 if [ "$fails" -gt 0 ]; then

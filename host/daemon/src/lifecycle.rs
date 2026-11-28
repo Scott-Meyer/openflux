@@ -100,8 +100,8 @@ pub struct ExitPending(pub ExitKind);
 impl std::fmt::Display for ExitPending {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.0 {
-            ExitKind::Restart => f.write_str("OpenFlux is restarting; try again in a moment"),
-            ExitKind::Stop => f.write_str("OpenFlux is stopping"),
+            ExitKind::Restart => f.write_str("Keyglass is restarting; try again in a moment"),
+            ExitKind::Stop => f.write_str("Keyglass is stopping"),
         }
     }
 }
@@ -214,7 +214,7 @@ pub fn watch_exit(
 }
 
 /// Data-directory file the running daemon holds an exclusive lock on for its whole life.
-pub const INSTANCE_LOCK_FILE: &str = "config/openfluxd.lock";
+pub const INSTANCE_LOCK_FILE: &str = "config/keyglassd.lock";
 
 /// Proof that this process is the daemon for a data directory. The lock is released when the
 /// process exits, however it exits.

@@ -1,14 +1,14 @@
-//! OpenFlux local API: HTTP, HTTPS and WebSocket behaviour of the daemon's routes, driven over real
+//! Keyglass local API: HTTP, HTTPS and WebSocket behaviour of the daemon's routes, driven over real
 //! sockets against in-process and spawned daemons.
 
 use futures_util::{SinkExt, StreamExt};
-use openfluxd::api::build_router;
-use openfluxd::api::state::{ApiState, DeviceSink, NoopDeviceSink};
-use openfluxd::api::tls::{
+use keyglassd::api::build_router;
+use keyglassd::api::state::{ApiState, DeviceSink, NoopDeviceSink};
+use keyglassd::api::tls::{
     ensure_tls_bundle, serve_tls_router_with_limits, write_keys_discovery_json,
 };
-use openfluxd::api::worker::{reconcile_tick, UsbWorkerHandle};
-use openfluxd::bridges::{ActiveWindowInfo, HardwareMetrics, MediaSnapshot, OsSensorBridge};
+use keyglassd::api::worker::{reconcile_tick, UsbWorkerHandle};
+use keyglassd::bridges::{ActiveWindowInfo, HardwareMetrics, MediaSnapshot, OsSensorBridge};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::CertificateDer;
 use std::path::PathBuf;
@@ -23,7 +23,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 fn isolated_temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "openfluxd_test_{tag}_{}_{}",
+        "keyglassd_test_{tag}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -101,7 +101,7 @@ fn keyboard_file<'a>(
     docs: impl DoubleEndedIterator<Item = &'a serde_json::Value>,
     path: &str,
 ) -> Option<Vec<u8>> {
-    use openfluxd::device_paths::{APPEARANCE_JSON, MOSAIC_JSON, SETTINGS_JSON};
+    use keyglassd::device_paths::{APPEARANCE_JSON, MOSAIC_JSON, SETTINGS_JSON};
     let key = [
         (APPEARANCE_JSON, "appearance"),
         (SETTINGS_JSON, "settings"),
@@ -144,7 +144,7 @@ impl DeviceSink for RecordingDeviceSink {
         *self.connected.lock().unwrap()
     }
     fn versions(&self) -> serde_json::Value {
-        serde_json::json!({"firmware": "openflux-firmware 1.0.0", "bridge": "openflux-bridge 1.0.0"})
+        serde_json::json!({"firmware": "keyglass-firmware 1.0.0", "bridge": "keyglass-bridge 1.0.0"})
     }
     fn pull_config_dir(&self) -> Result<serde_json::Value, String> {
         self.pulled_snapshot
@@ -344,7 +344,7 @@ async fn enrollment_secret_issues_unique_first_party_tokens_and_untrusted_origin
         .unwrap()
         .to_string();
     assert_ne!(t1, t2);
-    assert!(t1.starts_with("openflux_") && t1.len() == 73, "{t1}");
+    assert!(t1.starts_with("keyglass_") && t1.len() == 73, "{t1}");
     let auth = format!("Bearer {t1}");
     assert_eq!(
         http_req(
@@ -420,7 +420,7 @@ async fn tls_accepts_a_client_using_the_discovered_certificate_and_reaps_stalled
     )
     .unwrap();
 
-    // OpenFlux's discovery file: `openPort`, `host`, `publicKeyLocation` (the certificate file), `certHash`.
+    // Keyglass's discovery file: `openPort`, `host`, `publicKeyLocation` (the certificate file), `certHash`.
     let keys_doc: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&keys_path).unwrap()).unwrap();
     assert_eq!(keys_doc["openPort"], bound.port());
@@ -473,7 +473,7 @@ async fn tls_accepts_a_client_using_the_discovered_certificate_and_reaps_stalled
     tls_stream.read_to_end(&mut resp).await.unwrap();
     let txt = String::from_utf8_lossy(&resp);
     assert!(
-        txt.contains("200 OK") && txt.contains(openfluxd::api::third_party::DOCS_URL),
+        txt.contains("200 OK") && txt.contains(keyglassd::api::third_party::DOCS_URL),
         "{txt}"
     );
 
@@ -797,7 +797,7 @@ async fn rest_ws_keystyles_icons_imports_and_saves_round_trip() {
         400
     );
     assert_eq!(
-        openfluxd::api::third_party::canonical_key_index("iso", 3, 14).unwrap(),
+        keyglassd::api::third_party::canonical_key_index("iso", 3, 14).unwrap(),
         60
     );
 
@@ -880,7 +880,7 @@ async fn rest_ws_keystyles_icons_imports_and_saves_round_trip() {
     let default_km: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/default_keymap.json")).unwrap();
     let default_blob = include_bytes!("fixtures/default_keymap.bin");
-    let decoded_default = openfluxd::codecs::keymap::decode_keymap_blob(default_blob).unwrap();
+    let decoded_default = keyglassd::codecs::keymap::decode_keymap_blob(default_blob).unwrap();
     assert_eq!(decoded_default.num_keymaps, 2);
     assert_eq!(decoded_default.keymaps[0].layers[0][3], 0x3C); // KC_F3
     let expected_hex: String = default_blob.iter().map(|b| format!("{b:02x}")).collect();
@@ -1043,8 +1043,8 @@ async fn rest_ws_keystyles_icons_imports_and_saves_round_trip() {
             .step_by(2)
             .map(|i| u8::from_str_radix(&last_hex[i..i + 2], 16).unwrap())
             .collect();
-        let dec_b = openfluxd::codecs::keymap::decode_keymap_blob(&raw_b).unwrap();
-        let expected_rt = openfluxd::codecs::keymap::encode_actuation_word(2, 800, 200).unwrap();
+        let dec_b = keyglassd::codecs::keymap::decode_keymap_blob(&raw_b).unwrap();
+        let expected_rt = keyglassd::codecs::keymap::encode_actuation_word(2, 800, 200).unwrap();
         assert_eq!(dec_b.keymaps[0].actuation_tables[0][0], expected_rt);
     }
 
@@ -1264,10 +1264,10 @@ async fn blocked_usb_worker_keeps_status_auth_and_shutdown_responsive() {
 async fn reconcile_loop_override_expiry_restores_os_layout_and_resyncs_reconnect() {
     let tmp = isolated_temp_dir("reconcile");
     let sink = RecordingDeviceSink::new((false, true), false);
-    let ps_replug = openfluxd::codecs::keymap::ProfileSettingsFile {
+    let ps_replug = keyglassd::codecs::keymap::ProfileSettingsFile {
         settings: vec![
-            openfluxd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
-            openfluxd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
+            keyglassd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
+            keyglassd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
         ],
         file_version: 0,
         file_type: 0,
@@ -1308,7 +1308,7 @@ async fn reconcile_loop_override_expiry_restores_os_layout_and_resyncs_reconnect
     assert_eq!(c_st0, 200);
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&b_st0).unwrap()["versions"]["firmware"],
-        "openflux-firmware 1.0.0"
+        "keyglass-firmware 1.0.0"
     );
 
     // 2. API override sets German(334) and active process rule matches VS Code (profile 1)
@@ -1316,7 +1316,7 @@ async fn reconcile_loop_override_expiry_restores_os_layout_and_resyncs_reconnect
         .lock()
         .unwrap()
         .app_rules
-        .push(openfluxd::bridges::AppProfileRule {
+        .push(keyglassd::bridges::AppProfileRule {
             matcher: "code".into(),
             profile_index: 1,
             language_code: None,
@@ -1380,16 +1380,16 @@ impl Drop for ChildGuard {
 
 #[tokio::test]
 async fn binary_enrollment_persistence_and_tls_restart() {
-    let bin = env!("CARGO_BIN_EXE_openfluxd");
+    let bin = env!("CARGO_BIN_EXE_keyglassd");
     let tmp = isolated_temp_dir("bin_restart");
 
     let child1 = ChildGuard(Some(
         std::process::Command::new(bin)
             .args(["--no-tray", "--no-usb"])
-            .env("OPENFLUX_DATA_DIR", &tmp)
-            .env("OPENFLUX_HOME_OVERRIDE", &tmp)
+            .env("KEYGLASS_DATA_DIR", &tmp)
+            .env("KEYGLASS_HOME_OVERRIDE", &tmp)
             .env(
-                "OPENFLUX_UPDATE_INDEX_URL",
+                "KEYGLASS_UPDATE_INDEX_URL",
                 format!("file://{}/no-index.json", tmp.display()),
             )
             .env("HOME", &tmp)
@@ -1397,7 +1397,7 @@ async fn binary_enrollment_persistence_and_tls_restart() {
             .env("APPDATA", tmp.join("AppData/Roaming"))
             .env("LOCALAPPDATA", tmp.join("AppData/Local"))
             .env_remove("XDG_DATA_HOME")
-            .env("OPENFLUX_API_ADDR", "127.0.0.1:0")
+            .env("KEYGLASS_API_ADDR", "127.0.0.1:0")
             .spawn()
             .unwrap(),
     ));
@@ -1469,14 +1469,14 @@ async fn binary_enrollment_persistence_and_tls_restart() {
     drop(child1);
     let _ = std::fs::remove_file(&keys_path);
 
-    // 3. A second openfluxd (--no-usb) on the same OPENFLUX_DATA_DIR accepts the token from the first run.
+    // 3. A second keyglassd (--no-usb) on the same KEYGLASS_DATA_DIR accepts the token from the first run.
     let child2 = ChildGuard(Some(
         std::process::Command::new(bin)
             .args(["--no-tray", "--no-usb"])
-            .env("OPENFLUX_DATA_DIR", &tmp)
-            .env("OPENFLUX_HOME_OVERRIDE", &tmp)
+            .env("KEYGLASS_DATA_DIR", &tmp)
+            .env("KEYGLASS_HOME_OVERRIDE", &tmp)
             .env(
-                "OPENFLUX_UPDATE_INDEX_URL",
+                "KEYGLASS_UPDATE_INDEX_URL",
                 format!("file://{}/no-index.json", tmp.display()),
             )
             .env("HOME", &tmp)
@@ -1484,7 +1484,7 @@ async fn binary_enrollment_persistence_and_tls_restart() {
             .env("APPDATA", tmp.join("AppData/Roaming"))
             .env("LOCALAPPDATA", tmp.join("AppData/Local"))
             .env_remove("XDG_DATA_HOME")
-            .env("OPENFLUX_API_ADDR", "127.0.0.1:0")
+            .env("KEYGLASS_API_ADDR", "127.0.0.1:0")
             .spawn()
             .unwrap(),
     ));
@@ -1627,11 +1627,11 @@ async fn actuation_only_edit_and_device_pull_provenance_and_maintenance_contract
 
     // 2c. Paired PUT {keymap, firmwareKeymapBlobHex} with nondefault actuation must hydrate GET actuationModes
     // and reject contradictory {keymap, firmwareKeymapBlobHex, actuationModes} with 422.
-    let mut nondef_blob = openfluxd::codecs::keymap::decode_keymap_blob(include_bytes!(
+    let mut nondef_blob = keyglassd::codecs::keymap::decode_keymap_blob(include_bytes!(
         "fixtures/default_keymap.bin"
     ))
     .unwrap();
-    let nd_word = openfluxd::codecs::keymap::encode_actuation_word(2, 1400, 300).unwrap();
+    let nd_word = keyglassd::codecs::keymap::encode_actuation_word(2, 1400, 300).unwrap();
     nondef_blob.keymaps[0].actuation_tables[0] = vec![nd_word; 85];
     let nd_hex: String = nondef_blob
         .to_bytes()
@@ -1686,7 +1686,7 @@ async fn actuation_only_edit_and_device_pull_provenance_and_maintenance_contract
     );
 
     // 3. Edit only Mode 0 (touched: true) while Mode 1 has touched: false -> Mode 1 table stays byte-identical.
-    let default_dec = openfluxd::codecs::keymap::decode_keymap_blob(include_bytes!(
+    let default_dec = keyglassd::codecs::keymap::decode_keymap_blob(include_bytes!(
         "fixtures/default_keymap.bin"
     ))
     .unwrap();
@@ -1719,10 +1719,10 @@ async fn actuation_only_edit_and_device_pull_provenance_and_maintenance_contract
         let last = snaps.last().unwrap();
         let hex = last["keymapBlobHex"].as_str().unwrap();
         let blob_bytes = ApiState::decode_hex_bytes(hex).unwrap();
-        let dec = openfluxd::codecs::keymap::decode_keymap_blob(&blob_bytes).unwrap();
+        let dec = keyglassd::codecs::keymap::decode_keymap_blob(&blob_bytes).unwrap();
         assert_eq!(
             dec.keymaps[0].actuation_tables[0][0],
-            openfluxd::codecs::keymap::encode_actuation_word(2, 2000, 200).unwrap()
+            keyglassd::codecs::keymap::encode_actuation_word(2, 2000, 200).unwrap()
         );
         assert_eq!(
             dec.keymaps[0].actuation_tables[1],
@@ -1791,7 +1791,7 @@ async fn actuation_only_edit_and_device_pull_provenance_and_maintenance_contract
     );
 
     // 7. Maintenance: a package is uploaded to /home/root, and flash-uf2 refuses images that touch LittleFS.
-    let dummy_ipk = tmp.join("openflux-display_test.ipk");
+    let dummy_ipk = tmp.join("keyglass-display_test.ipk");
     std::fs::write(&dummy_ipk, b"IPK_DATA").unwrap();
     let (c_ipk, b_ipk) = http_req(
         addr,
@@ -1807,7 +1807,7 @@ async fn actuation_only_edit_and_device_pull_provenance_and_maintenance_contract
         .lock()
         .unwrap()
         .iter()
-        .any(|c| c == "sideload_ipk:/home/root/openflux-display_test.ipk"));
+        .any(|c| c == "sideload_ipk:/home/root/keyglass-display_test.ipk"));
 
     // LittleFS UF2 overwrite guard (>= 0x10F00000) returns 400.
     let mut uf2_bad = vec![0u8; 512];
@@ -1853,7 +1853,7 @@ async fn concurrent_edit_during_blocked_pull_and_blocked_save_worker_barriers() 
             (true, true)
         }
         fn versions(&self) -> serde_json::Value {
-            serde_json::json!({"firmware": "openflux-firmware 1.0.0"})
+            serde_json::json!({"firmware": "keyglass-firmware 1.0.0"})
         }
         fn send_live_json(&self, _: &serde_json::Value) -> Result<(), String> {
             Ok(())
@@ -2036,7 +2036,7 @@ async fn concurrent_edit_during_blocked_pull_and_blocked_save_worker_barriers() 
     diff_km["keymaps"]["ansi"]["layers"][0]["keyActions"][0]["keyCode"] = serde_json::json!("KC_Z");
     let default_bytes = include_bytes!("fixtures/default_keymap.bin");
     assert!(
-        openfluxd::codecs::keymap::verify_keymap_matches_blob(&diff_km, default_bytes).is_err()
+        keyglassd::codecs::keymap::verify_keymap_matches_blob(&diff_km, default_bytes).is_err()
     );
 
     // D. Graceful worker shutdown during active save drains in-flight save & rejects new writes.
@@ -2086,7 +2086,7 @@ async fn concurrent_edit_during_blocked_pull_and_blocked_save_worker_barriers() 
 
 #[tokio::test]
 async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
-    let tmp = std::env::temp_dir().join(format!("openfluxd_bundle_media_{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("keyglassd_bundle_media_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(tmp.join("assets_a/key_icons")).unwrap();
     std::fs::create_dir_all(tmp.join("assets_b/key_icons")).unwrap();
@@ -2118,7 +2118,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
     {
         let mut ga = st_a.inner.lock().unwrap();
         ga.profiles
-            .push(openfluxd::api::state::ShortcutProfileState {
+            .push(keyglassd::api::state::ShortcutProfileState {
                 id: "studio_mix".into(),
                 name: "Studio Mix".into(),
                 theme_id: "default".into(),
@@ -2170,7 +2170,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
     )
     .await;
     assert_eq!(ca, 200);
-    let bundle_path = tmp.join("exported_bundle.openflux");
+    let bundle_path = tmp.join("exported_bundle.keyglass");
     let (ce, _) = http_req(
         addr_a,
         "POST",
@@ -2195,7 +2195,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         "POST",
         "/v1/config/export",
         &[("Authorization", "Bearer tok_a")],
-        Some(r#"{"outPath":"~/.local/share/openflux/export.openflux"}"#),
+        Some(r#"{"outPath":"~/.local/share/keyglass/export.keyglass"}"#),
     )
     .await;
     match prev_home {
@@ -2204,7 +2204,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
     }
     assert_eq!(ce_tilde, 200, "tilde export failed: {be_tilde}");
     assert!(fake_home
-        .join(".local/share/openflux/export.openflux")
+        .join(".local/share/keyglass/export.keyglass")
         .is_file());
 
     // 2. Importing A's bundle into a clean B brings the keymap JSON with its firmware blob, both media
@@ -2249,7 +2249,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             .firmware_keymap_blob
             .as_ref()
             .expect("ZIP import must install firmware_keymap_blob");
-        let dec_b = openfluxd::codecs::keymap::decode_keymap_blob(blob_b).unwrap();
+        let dec_b = keyglassd::codecs::keymap::decode_keymap_blob(blob_b).unwrap();
         assert_eq!(dec_b.keymaps[0].layers[0][0], 0x1000_0000);
         assert_eq!(dec_b.keymaps[0].macros.len(), 1);
         let prof = gb
@@ -2271,9 +2271,9 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         no_macro_km["keymaps"]["ansi"]["layers"][0]["keyActions"][0] =
             serde_json::json!({"type": 1, "macroId": 0});
         let blob_with_m =
-            openfluxd::codecs::keymap::encode_keymap_json_to_firmware_blob(&km_a, None, None)
+            keyglassd::codecs::keymap::encode_keymap_json_to_firmware_blob(&km_a, None, None)
                 .unwrap();
-        let blob_zip = tmp.join("blob_only_macro.openflux");
+        let blob_zip = tmp.join("blob_only_macro.keyglass");
         {
             let f = std::fs::File::create(&blob_zip).unwrap();
             let mut zw = zip::ZipWriter::new(f);
@@ -2312,7 +2312,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         )
         .await;
         assert_eq!(cp2, 200);
-        let dec2 = openfluxd::codecs::keymap::decode_keymap_blob(
+        let dec2 = keyglassd::codecs::keymap::decode_keymap_blob(
             st_b.inner
                 .lock()
                 .unwrap()
@@ -2331,7 +2331,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         let big = tmp.join("big.mp4");
         std::fs::File::create(&big)
             .unwrap()
-            .set_len(openfluxd::api::assets::MAX_BUNDLE_ENTRY_BYTES + 1)
+            .set_len(keyglassd::api::assets::MAX_BUNDLE_ENTRY_BYTES + 1)
             .unwrap();
         let mut th = app_a["defaultTheme"].clone();
         th["id"] = serde_json::json!("big");
@@ -2347,7 +2347,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         )
         .await;
         assert_eq!(cbig_p, 200);
-        let untouched_out = tmp.join("should_not_create.openflux");
+        let untouched_out = tmp.join("should_not_create.keyglass");
         let (ce_big, _) = http_req(
             addr_a,
             "POST",
@@ -2380,7 +2380,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         let prev_c_app = st_c.inner.lock().unwrap().appearance.clone();
 
         // A bundle with an updated key_icons/keep_me.png and media/clip.mp4.
-        let atomic_zip = tmp.join("atomic_asset_test.openflux");
+        let atomic_zip = tmp.join("atomic_asset_test.keyglass");
         {
             let f = std::fs::File::create(&atomic_zip).unwrap();
             let mut zw = zip::ZipWriter::new(f);
@@ -2426,7 +2426,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
 
         // 2e. Nested key_icons entries (key_icons/a/keep_me.png and key_icons/b/keep_me.png) are rejected
         //     before anything is staged.
-        let dup_zip = tmp.join("dup_icon_dest.openflux");
+        let dup_zip = tmp.join("dup_icon_dest.keyglass");
         {
             let f = std::fs::File::create(&dup_zip).unwrap();
             let mut zw = zip::ZipWriter::new(f);
@@ -2454,7 +2454,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         // On case-insensitive filesystems keep_me.png and KEEP_ME.png collide while staging, before
         // anything is committed.
         let is_case_insensitive = tmp.join("assets_c/key_icons/KEEP_ME.PNG").exists();
-        let alias_zip = tmp.join("alias_icon_dest.openflux");
+        let alias_zip = tmp.join("alias_icon_dest.keyglass");
         {
             let f = std::fs::File::create(&alias_zip).unwrap();
             let mut zw = zip::ZipWriter::new(f);
@@ -2499,11 +2499,11 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         let mut perms = std::fs::metadata(&fake_ff).unwrap().permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(&fake_ff, perms.clone()).unwrap();
-        let fake_probe = tmp.join("openflux-ffprobe");
+        let fake_probe = tmp.join("keyglass-ffprobe");
         std::fs::write(&fake_probe, "#!/bin/sh\necho 6.0\nexit 0\n").unwrap();
         std::fs::set_permissions(&fake_probe, perms).unwrap();
-        let prev_ff = std::env::var_os("OPENFLUX_HOST_FFMPEG");
-        std::env::set_var("OPENFLUX_HOST_FFMPEG", &fake_ff);
+        let prev_ff = std::env::var_os("KEYGLASS_HOST_FFMPEG");
+        std::env::set_var("KEYGLASS_HOST_FFMPEG", &fake_ff);
 
         let t0 = std::time::Instant::now();
         let imp_task = tokio::spawn(async move {
@@ -2558,8 +2558,8 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         );
 
         match prev_ff {
-            Some(v) => std::env::set_var("OPENFLUX_HOST_FFMPEG", v),
-            None => std::env::remove_var("OPENFLUX_HOST_FFMPEG"),
+            Some(v) => std::env::set_var("KEYGLASS_HOST_FFMPEG", v),
+            None => std::env::remove_var("KEYGLASS_HOST_FFMPEG"),
         }
     }
 
@@ -2637,7 +2637,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
                 .expect("missing profileSettingsHex on save");
             let ps_bytes = ApiState::decode_hex_bytes(ps_hex).unwrap();
             let ps_dec =
-                openfluxd::codecs::keymap::decode_profile_settings(&ps_bytes, true).unwrap();
+                keyglassd::codecs::keymap::decode_profile_settings(&ps_bytes, true).unwrap();
             assert_eq!(ps_dec.settings.len(), 2);
             assert_eq!(ps_dec.settings[1].actuation_mode_index, 1);
             assert_eq!(ps_dec.settings[1].default_layer_bitfield, 1 << 2);
@@ -2783,7 +2783,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             .unwrap();
             zw.finish().unwrap();
         }
-        let imp_zip_path = persist_dir.join("import_prof.openflux");
+        let imp_zip_path = persist_dir.join("import_prof.keyglass");
         std::fs::write(&imp_zip_path, &imp_zip_buf).unwrap();
         let (c_iz, b_iz) = http_req(
             addr_p2,
@@ -2815,7 +2815,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
                 .expect("imported profile must emit profileSettingsHex on save");
             let ps_bytes = ApiState::decode_hex_bytes(ps_hex).unwrap();
             let ps_dec =
-                openfluxd::codecs::keymap::decode_profile_settings(&ps_bytes, true).unwrap();
+                keyglassd::codecs::keymap::decode_profile_settings(&ps_bytes, true).unwrap();
             assert_eq!(ps_dec.settings.last().unwrap().actuation_mode_index, 2);
             assert_eq!(
                 ps_dec.settings.last().unwrap().default_layer_bitfield,
@@ -2825,10 +2825,10 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
 
         // Pull conflict/discard on dirty profiles, and reordered background profile hydration with paired PROFILE_SETTINGS.
         let sink_pull = RecordingDeviceSink::new((true, true), false);
-        let ps_ba = openfluxd::codecs::keymap::ProfileSettingsFile {
+        let ps_ba = keyglassd::codecs::keymap::ProfileSettingsFile {
             settings: vec![
-                openfluxd::codecs::keymap::ProfileSetting::from_layer(1, 1).unwrap(),
-                openfluxd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
+                keyglassd::codecs::keymap::ProfileSetting::from_layer(1, 1).unwrap(),
+                keyglassd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
             ],
             file_version: 0,
             file_type: 0,
@@ -2836,10 +2836,10 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         .to_transfer_bytes()
         .unwrap();
         let ps_ba_hex: String = ps_ba.iter().map(|b| format!("{b:02x}")).collect();
-        let ps_ab = openfluxd::codecs::keymap::ProfileSettingsFile {
+        let ps_ab = keyglassd::codecs::keymap::ProfileSettingsFile {
             settings: vec![
-                openfluxd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
-                openfluxd::codecs::keymap::ProfileSetting::from_layer(1, 1).unwrap(),
+                keyglassd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
+                keyglassd::codecs::keymap::ProfileSetting::from_layer(1, 1).unwrap(),
             ],
             file_version: 0,
             file_type: 0,
@@ -2856,7 +2856,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             ]
         }));
         let st_pull_unverified = ApiState::new(sink_pull.clone(), None);
-        openfluxd::api::worker::apply_device_pull(&st_pull_unverified, &*sink_pull, true).unwrap();
+        keyglassd::api::worker::apply_device_pull(&st_pull_unverified, &*sink_pull, true).unwrap();
         assert!(st_pull_unverified
             .inner
             .lock()
@@ -2872,7 +2872,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             ],
             "firmwareProfileSettingsHex": ps_ab_hex,
         }));
-        openfluxd::api::worker::apply_device_pull(&st_pull_unverified, &*sink_pull, true).unwrap();
+        keyglassd::api::worker::apply_device_pull(&st_pull_unverified, &*sink_pull, true).unwrap();
         assert!(st_pull_unverified
             .inner
             .lock()
@@ -2892,7 +2892,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         {
             let mut gp = st_pull.inner.lock().unwrap();
             gp.profiles = vec![
-                openfluxd::api::state::ShortcutProfileState {
+                keyglassd::api::state::ShortcutProfileState {
                     id: "p_a".into(),
                     name: "First".into(),
                     theme_id: "default".into(),
@@ -2903,7 +2903,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
                     shortcut_pack: None,
                     app_matcher: None,
                 },
-                openfluxd::api::state::ShortcutProfileState {
+                keyglassd::api::state::ShortcutProfileState {
                     id: "p_b".into(),
                     name: "Second".into(),
                     theme_id: "default".into(),
@@ -2916,7 +2916,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
                 },
             ];
             gp.desired_profile_index = 1; // p_b
-            gp.app_rules = vec![openfluxd::bridges::AppProfileRule {
+            gp.app_rules = vec![keyglassd::bridges::AppProfileRule {
                 matcher: "com.reordered.app".into(),
                 profile_index: 1, // p_b
                 language_code: Some(471),
@@ -2925,10 +2925,10 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         }
         // Without discardUnsaved, dirty profiles block pull.
         let err_p =
-            openfluxd::api::worker::apply_device_pull(&st_pull, &*sink_pull, false).unwrap_err();
+            keyglassd::api::worker::apply_device_pull(&st_pull, &*sink_pull, false).unwrap_err();
         assert!(err_p.contains("Conflict"), "{err_p}");
         // With discardUnsaved=true, reordered device list replaces profiles, clears profiles_dirty, and remaps desired_profile_index + app_rules by stable ID.
-        openfluxd::api::worker::apply_device_pull(&st_pull, &*sink_pull, true).unwrap();
+        keyglassd::api::worker::apply_device_pull(&st_pull, &*sink_pull, true).unwrap();
         {
             let gp = st_pull.inner.lock().unwrap();
             assert!(!gp.profiles_dirty);
@@ -3021,7 +3021,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             .unwrap();
             zw.finish().unwrap();
         }
-        let bad_zip_path = persist_dir.join("bad_prof.openflux");
+        let bad_zip_path = persist_dir.join("bad_prof.keyglass");
         std::fs::write(&bad_zip_path, &bad_zip_buf).unwrap();
         let (c_bad_zip, _) = http_req(
             addr_p2,
@@ -3076,7 +3076,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             .unwrap();
             zw.finish().unwrap();
         }
-        let swap_zip_path = persist_dir.join("swap_rules.openflux");
+        let swap_zip_path = persist_dir.join("swap_rules.keyglass");
         std::fs::write(&swap_zip_path, &swap_zip_buf).unwrap();
         let st_swap = ApiState::new(
             RecordingDeviceSink::new((true, true), false),
@@ -3085,7 +3085,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         {
             let mut gsw = st_swap.inner.lock().unwrap();
             gsw.profiles = vec![
-                openfluxd::api::state::ShortcutProfileState {
+                keyglassd::api::state::ShortcutProfileState {
                     id: "p_a".into(),
                     name: "A".into(),
                     theme_id: "default".into(),
@@ -3096,7 +3096,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
                     shortcut_pack: None,
                     app_matcher: None,
                 },
-                openfluxd::api::state::ShortcutProfileState {
+                keyglassd::api::state::ShortcutProfileState {
                     id: "p_b".into(),
                     name: "B".into(),
                     theme_id: "default".into(),
@@ -3148,7 +3148,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             std::io::Write::write_all(&mut zw, br#"[{"id":"p_c","name":"C"}]"#).unwrap();
             zw.finish().unwrap();
         }
-        let add_zip_path = persist_dir.join("conc_prof.openflux");
+        let add_zip_path = persist_dir.join("conc_prof.keyglass");
         std::fs::write(&add_zip_path, &add_zip_buf).unwrap();
         // Deterministic barrier pause between ZIP staging and commit lock -> concurrent PUT executes mid-flight -> both survive.
         let add_zip_body = serde_json::json!({"file": add_zip_path.to_string_lossy()}).to_string();
@@ -3275,7 +3275,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             std::io::Write::write_all(&mut zw, br#"[{"id":"p_b","name":"A"}]"#).unwrap();
             zw.finish().unwrap();
         }
-        let coll_zip_path = persist_dir.join("coll_prof.openflux");
+        let coll_zip_path = persist_dir.join("coll_prof.keyglass");
         std::fs::write(&coll_zip_path, &coll_zip_buf).unwrap();
         let (c_coll, b_coll) = http_req(
             addr_sw,
@@ -3310,7 +3310,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             .unwrap();
             zw.finish().unwrap();
         }
-        let dup_zip_path = persist_dir.join("dup_prof.openflux");
+        let dup_zip_path = persist_dir.join("dup_prof.keyglass");
         std::fs::write(&dup_zip_path, &dup_zip_buf).unwrap();
         let (c_dup, _) = http_req(
             addr_sw,
@@ -3402,10 +3402,10 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         // Case B: startup with persisted dirty draft [coding, default] (desired="default" at local 1) + versions_loaded=false
         // + valid device pull [default, coding]: pull refreshes committed_profile_ids=[default, coding] without clobbering dirty draft,
         // and immediately activates "default" at hardware slot 0.
-        let ps_dc = openfluxd::codecs::keymap::ProfileSettingsFile {
+        let ps_dc = keyglassd::codecs::keymap::ProfileSettingsFile {
             settings: vec![
-                openfluxd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
-                openfluxd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
+                keyglassd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
+                keyglassd::codecs::keymap::ProfileSetting::from_layer(0, 0).unwrap(),
             ],
             file_version: 0,
             file_type: 0,
@@ -3484,7 +3484,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
 
         // Save via the real USB worker -> the worker commits committed_profile_ids and invalidates applied_profile_index -> the next reconcile sends profile:1.
         let running_ro = Arc::new(std::sync::atomic::AtomicBool::new(true));
-        let worker_ro = openfluxd::api::worker::UsbWorkerHandle::spawn(
+        let worker_ro = keyglassd::api::worker::UsbWorkerHandle::spawn(
             st_ro2.clone(),
             sink_ro2.clone(),
             Box::new(StubBridge { lang: 471 }),
@@ -3605,7 +3605,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             ],
             "firmwareProfileSettingsHex": ps_dc_hex,
         }));
-        openfluxd::api::worker::apply_device_pull_bg(&st_oa, &*sink_oa);
+        keyglassd::api::worker::apply_device_pull_bg(&st_oa, &*sink_oa);
         {
             let goa = st_oa.inner.lock().unwrap();
             assert!(goa.committed_profile_ids.is_none());
@@ -3621,7 +3621,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         *sink_oa.pulled_snapshot.lock().unwrap() = Some(serde_json::json!({
             "appearance": {"selectedId": "default"}
         }));
-        openfluxd::api::worker::apply_device_pull_bg(&st_oa, &*sink_oa);
+        keyglassd::api::worker::apply_device_pull_bg(&st_oa, &*sink_oa);
         {
             let goa = st_oa.inner.lock().unwrap();
             assert!(
@@ -3656,7 +3656,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
                 "customThemes": [{"id": "theme_b", "name": "Theme B"}]
             });
             gr.profiles = vec![
-                openfluxd::api::state::ShortcutProfileState {
+                keyglassd::api::state::ShortcutProfileState {
                     id: "p_a".into(),
                     name: "A".into(),
                     theme_id: "default".into(),
@@ -3667,7 +3667,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
                     shortcut_pack: None,
                     app_matcher: None,
                 },
-                openfluxd::api::state::ShortcutProfileState {
+                keyglassd::api::state::ShortcutProfileState {
                     id: "p_b_unsaved".into(),
                     name: "B Unsaved".into(),
                     theme_id: "theme_b".into(),
@@ -3796,7 +3796,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
                 (true, true)
             }
             fn versions(&self) -> serde_json::Value {
-                openfluxd::api::state::empty_versions()
+                keyglassd::api::state::empty_versions()
             }
             fn pull_config_dir(&self) -> Result<serde_json::Value, String> {
                 Err("transient startup USB failure".into())
@@ -3857,7 +3857,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
         }
         *sink_rev.pulled_snapshot.lock().unwrap() =
             Some(serde_json::json!({"appearance": {"selectedId": "default"}}));
-        openfluxd::api::worker::apply_device_pull_bg(&st_rev1, &*sink_rev);
+        keyglassd::api::worker::apply_device_pull_bg(&st_rev1, &*sink_rev);
         let store_after: serde_json::Value = serde_json::from_slice(
             &std::fs::read(persist_dir.join("profiles_store.json")).unwrap(),
         )
@@ -3881,7 +3881,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             ],
             "firmwareProfileSettingsHex": ps_dc_hex,
         }));
-        openfluxd::api::worker::apply_device_pull_bg(&st_rev1, &*sink_rev);
+        keyglassd::api::worker::apply_device_pull_bg(&st_rev1, &*sink_rev);
         {
             let gr = st_rev1.inner.lock().unwrap();
             assert!(
@@ -3952,7 +3952,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             .lock()
             .unwrap()
             .app_rules
-            .push(openfluxd::bridges::AppProfileRule {
+            .push(keyglassd::bridges::AppProfileRule {
                 matcher: "vscode".into(),
                 profile_index: 1,
                 language_code: None,
@@ -4170,7 +4170,7 @@ async fn zip_export_import_nonblocking_media_import_and_save_media_upload() {
             assert_eq!(gp.pomo_expected_cmd_seq, cmd1);
             assert_eq!(gp.pomo_cmd_seq, cmd1 + 1);
         }
-        openfluxd::api::worker::reconcile_pomodoro_from_device(
+        keyglassd::api::worker::reconcile_pomodoro_from_device(
             &st_p_off,
             Some(&serde_json::json!({
                 "running": false,

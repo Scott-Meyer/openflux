@@ -8,7 +8,7 @@ use crate::api::state::ApiState;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use openflux_modules::{DiscoveredModule, HostRequirement};
+use keyglass_modules::{DiscoveredModule, HostRequirement};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Path as FsPath, PathBuf};

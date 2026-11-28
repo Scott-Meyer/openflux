@@ -3,7 +3,7 @@
 //! [`WaylandGpuPresenter::open`] returns an error when GPU EGL is unavailable (for example on a
 //! headless machine), so the caller can fall back to `WaylandPresenter` (SHM).
 
-use openflux_compositor::ParticleDot;
+use keyglass_compositor::ParticleDot;
 use std::ffi::{c_char, c_int, c_void, CString};
 use std::os::unix::io::{AsFd, AsRawFd};
 use wayland_client::protocol::{wl_callback, wl_compositor, wl_registry, wl_surface};
@@ -1899,7 +1899,7 @@ impl WaylandGpuPresenter {
             let compiled = match build_program(&self.gl, shader_path, VS_QUAD, &frag) {
                 Ok(prog) => Some(prog),
                 Err(e) => {
-                    eprintln!("[openflux-display] module shader compile error ({shader_path}): {e}");
+                    eprintln!("[keyglass-display] module shader compile error ({shader_path}): {e}");
                     None
                 }
             };
@@ -1916,7 +1916,7 @@ impl WaylandGpuPresenter {
 
     unsafe fn run_v2_custom_shader(
         &mut self,
-        cmd: &openflux_modules::ShaderPassCmd,
+        cmd: &keyglass_modules::ShaderPassCmd,
         scene_tex: u32,
         time_sec: f32,
         dt_sec: f32,
@@ -1960,7 +1960,7 @@ impl WaylandGpuPresenter {
         true
     }
 
-    /// Renders the complete OpenFlux v2 frame natively on Mali-G52 GLES 2.0:
+    /// Renders the complete Keyglass v2 frame natively on Mali-G52 GLES 2.0:
     /// 1. Background (`rkmpp` NV12 video, RGBA image, or custom module `background` GLSL shaders)
     /// 2. Arbitrary chained module `distortion` GLSL shaders + 3D water refraction over live video
     /// 3. Alpha-blended custom module `under_key` GLSL shaders
@@ -1981,9 +1981,9 @@ impl WaylandGpuPresenter {
         refract_px: f32,
         specular: f32,
         tint: [f32; 4],
-        background_shaders: &[openflux_modules::ShaderPassCmd],
-        distortion_shaders: &[openflux_modules::ShaderPassCmd],
-        under_key_shaders: &[openflux_modules::ShaderPassCmd],
+        background_shaders: &[keyglass_modules::ShaderPassCmd],
+        distortion_shaders: &[keyglass_modules::ShaderPassCmd],
+        under_key_shaders: &[keyglass_modules::ShaderPassCmd],
         glows: &[crate::v2_runtime::V2GlowDraw],
         particle_dots: &[ParticleDot],
         overlay_rgba: &[u8],

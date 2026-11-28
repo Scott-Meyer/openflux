@@ -2,7 +2,7 @@
 //! optional host installers) from a user-chosen folder.
 
 use crate::updates::jobs::now_rfc3339;
-use openflux_update::Component;
+use keyglass_update::Component;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -128,9 +128,9 @@ pub fn scan_dir(dir: &Path) -> LocalScan {
                     firmware = Some(cand);
                 }
             } else if lower.ends_with(".ipk") && !lower.contains("factory-restore") {
-                let comp = if lower.starts_with("openflux-bridge") {
+                let comp = if lower.starts_with("keyglass-bridge") {
                     Some(Component::Bridge)
-                } else if lower.starts_with("openflux-display") {
+                } else if lower.starts_with("keyglass-display") {
                     Some(Component::Display)
                 } else {
                     None
@@ -210,7 +210,7 @@ fn should_replace_artifact(current: Option<&LocalArtifact>, cand: &LocalArtifact
 }
 
 fn is_host_installer_for_platform(lower_name: &str) -> bool {
-    if !lower_name.contains("openflux") {
+    if !lower_name.contains("keyglass") {
         return false;
     }
     #[cfg(target_os = "windows")]
@@ -227,19 +227,19 @@ fn is_host_installer_for_platform(lower_name: &str) -> bool {
     }
 }
 
-/// Parses `<version>` from `openflux-bridge_<version>_<arch>.ipk` or `openflux-display_<version>_<arch>.ipk`.
+/// Parses `<version>` from `keyglass-bridge_<version>_<arch>.ipk` or `keyglass-display_<version>_<arch>.ipk`.
 pub fn infer_ipk_version(filename: &str, component: Component) -> Option<String> {
-    let prefix = format!("openflux-{}_", component.as_str());
+    let prefix = format!("keyglass-{}_", component.as_str());
     let rest = filename.strip_prefix(&prefix)?.strip_suffix(".ipk")?;
     let (ver, _arch) = rest.rsplit_once('_')?;
     (!ver.is_empty()).then(|| ver.to_string())
 }
 
-/// Parses `<version>` from `openflux-firmware-<version>.uf2` when present.
+/// Parses `<version>` from `keyglass-firmware-<version>.uf2` when present.
 pub fn infer_firmware_version(filename: &str) -> Option<String> {
     let rest = filename
-        .strip_prefix("openflux-firmware-")
-        .or_else(|| filename.strip_prefix("openflux_firmware_"))?
+        .strip_prefix("keyglass-firmware-")
+        .or_else(|| filename.strip_prefix("keyglass_firmware_"))?
         .strip_suffix(".uf2")?;
     (!rest.is_empty() && rest.chars().next().is_some_and(|c| c.is_ascii_digit()))
         .then(|| rest.to_string())
@@ -271,7 +271,7 @@ pub fn validate_local_artifact(
                 .and_then(|s| s.to_str())
                 .unwrap_or_default()
                 .to_ascii_lowercase();
-            let expected_prefix = format!("openflux-{}", component.as_str());
+            let expected_prefix = format!("keyglass-{}", component.as_str());
             if !name.starts_with(&expected_prefix)
                 || !name.ends_with(".ipk")
                 || name.contains("factory-restore")
@@ -334,25 +334,25 @@ mod tests {
 
     #[test]
     fn scans_repo_subdirs_and_infers_versions_excluding_factory_restore() {
-        let dir = std::env::temp_dir().join(format!("openflux_local_scan_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("keyglass_local_scan_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("build/firmware")).unwrap();
         std::fs::create_dir_all(dir.join("build/bridge")).unwrap();
         std::fs::create_dir_all(dir.join("build/display")).unwrap();
 
-        std::fs::write(dir.join("build/firmware/openflux_firmware.uf2"), b"UF2\n").unwrap();
+        std::fs::write(dir.join("build/firmware/keyglass_firmware.uf2"), b"UF2\n").unwrap();
         std::fs::write(
-            dir.join("build/bridge/openflux-bridge_1.0.2-dev_aarch64.ipk"),
+            dir.join("build/bridge/keyglass-bridge_1.0.2-dev_aarch64.ipk"),
             b"!<arch>\nfake",
         )
         .unwrap();
         std::fs::write(
-            dir.join("build/bridge/openflux-factory-restore_1.0.2_aarch64.ipk"),
+            dir.join("build/bridge/keyglass-factory-restore_1.0.2_aarch64.ipk"),
             b"!<arch>\nfake",
         )
         .unwrap();
         std::fs::write(
-            dir.join("build/display/openflux-display_1.0.2-dev_aarch64.ipk"),
+            dir.join("build/display/keyglass-display_1.0.2-dev_aarch64.ipk"),
             b"\x1f\x8bfake",
         )
         .unwrap();
@@ -362,12 +362,12 @@ mod tests {
         assert!(scan.error.is_none());
         assert_eq!(
             scan.firmware.as_ref().unwrap().name,
-            "openflux_firmware.uf2"
+            "keyglass_firmware.uf2"
         );
         assert_eq!(scan.firmware.as_ref().unwrap().version, None);
         assert_eq!(
             scan.bridge.as_ref().unwrap().name,
-            "openflux-bridge_1.0.2-dev_aarch64.ipk"
+            "keyglass-bridge_1.0.2-dev_aarch64.ipk"
         );
         assert_eq!(
             scan.bridge.as_ref().unwrap().version.as_deref(),

@@ -58,13 +58,13 @@ local function find_shortcuts_dir()
   local mdir = module.dir()
   local candidates = {
     mdir .. "/shortcuts",
-    "/home/root/openflux/shortcuts",
-    "/usr/lib/openflux/display/shortcuts",
+    "/home/root/keyglass/shortcuts",
+    "/usr/lib/keyglass/display/shortcuts",
   }
   local home = os.getenv("HOME")
   if home and #home > 0 then
-    table.insert(candidates, home .. "/.local/share/openflux/assets/shortcuts")
-    table.insert(candidates, home .. "/Applications/OpenFlux Studio.app/Contents/Resources/assets/shortcuts")
+    table.insert(candidates, home .. "/.local/share/keyglass/assets/shortcuts")
+    table.insert(candidates, home .. "/Applications/Keyglass Studio.app/Contents/Resources/assets/shortcuts")
   end
   table.insert(candidates, mdir .. "/../../assets/shortcuts")
   table.insert(candidates, mdir .. "/../assets/shortcuts")
@@ -258,10 +258,10 @@ local function load_all_packs(accent)
   end
 
   -- Also load any user-customized shortcut packs edited in Studio's Shortcuts tab!
-  local custom_paths = { "/home/root/openflux/v2/custom_shortcuts.json" }
+  local custom_paths = { "/home/root/keyglass/v2/custom_shortcuts.json" }
   local home = os.getenv("HOME")
   if home and #home > 0 then
-    table.insert(custom_paths, home .. "/.local/share/openflux/config/custom_shortcuts.json")
+    table.insert(custom_paths, home .. "/.local/share/keyglass/config/custom_shortcuts.json")
   end
   for _, cp in ipairs(custom_paths) do
     local raw = fs.read_text(cp)

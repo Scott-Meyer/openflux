@@ -1348,11 +1348,11 @@ function on_render(ctx, stage)
             local roots = {}
             local home = os.getenv("HOME")
             if home and #home > 0 then
-              table.insert(roots, home .. "/.local/share/openflux/v2/modules")
+              table.insert(roots, home .. "/.local/share/keyglass/v2/modules")
             end
             local localappdata = os.getenv("LOCALAPPDATA")
             if localappdata and #localappdata > 0 then
-              table.insert(roots, localappdata:gsub("\\", "/") .. "/openflux/v2/modules")
+              table.insert(roots, localappdata:gsub("\\", "/") .. "/keyglass/v2/modules")
             end
             for _, root in ipairs(roots) do
               local local_p = root .. "/local/" .. rest
@@ -1371,11 +1371,11 @@ function on_render(ctx, stage)
           local fname = string.sub(img_path, 9)
           local mdir = module.dir()
           if string.sub(mdir, 1, 5) == "/usr/" or string.sub(mdir, 1, 6) == "/home/" then
-            img_path = "/home/root/openflux/media/" .. fname
+            img_path = "/home/root/keyglass/media/" .. fname
           else
             local home = os.getenv("HOME")
             if home and #home > 0 then
-              img_path = home .. "/.local/share/openflux/media/" .. fname
+              img_path = home .. "/.local/share/keyglass/media/" .. fname
             end
           end
         end

@@ -1,8 +1,8 @@
-//! Press-refinement data: the keyboard maker's press-refinement coefficients. The OpenFlux
+//! Press-refinement data: the keyboard maker's press-refinement coefficients. The Keyglass
 //! firmware uses them to refine Hall readings; a build without press refinement only stores
 //! them.
 //!
-//! The coefficients belong to the keyboard maker, so OpenFlux never hosts or ships them. The
+//! The coefficients belong to the keyboard maker, so Keyglass never hosts or ships them. The
 //! user's own daemon reads them out of the maker's software, following the press-refinement source
 //! the signed index records ([`PressRefinementSource`], from `factory-reference.toml`):
 //!
@@ -21,7 +21,7 @@
 use super::factory::{self, Container, FactoryError, FactoryFile};
 use crate::api::state::DeviceSink;
 use crate::usb::press_refinement::{self as record, State, Status};
-pub use openflux_update::{PressRefinementSource, SourceLocation, SourceRange};
+pub use keyglass_update::{PressRefinementSource, SourceLocation, SourceRange};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -245,7 +245,7 @@ fn keep(
 /// The source member as a factory file, for the container reader.
 fn member_file(refinement: &PressRefinementSource) -> FactoryFile {
     FactoryFile {
-        component: openflux_update::Component::Firmware,
+        component: keyglass_update::Component::Firmware,
         member: refinement.member.clone(),
         version: refinement.description.clone(),
         size: refinement.member_size,
@@ -268,7 +268,7 @@ pub fn obtain_payload(
         });
     }
     let mut last = Error::NotAvailable(
-        "The release index lists no source of press-refinement data this OpenFlux can use".into(),
+        "The release index lists no source of press-refinement data this Keyglass can use".into(),
     );
     for src in &refinement.sources {
         let SourceLocation::Container { url, size, sha256 } = src else {
@@ -611,7 +611,7 @@ pub(crate) mod tests {
 
     fn temp_store(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
-            "openfluxd_press_refinement_{tag}_{}_{}",
+            "keyglassd_press_refinement_{tag}_{}_{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -898,12 +898,12 @@ pub(crate) mod tests {
     }
 
     /// The repository's press-refinement source against the real published software: a range
-    /// read from its first location, and the file at `OPENFLUX_PRESS_REFINEMENT_FILE` when set. Needs
+    /// read from its first location, and the file at `KEYGLASS_PRESS_REFINEMENT_FILE` when set. Needs
     /// the network, so it runs only on request (`cargo test -- --ignored real_press_refinement_source`).
     #[test]
     #[ignore]
     fn real_press_refinement_source() {
-        let file = openflux_update::factory::ReferenceFile::parse_toml(include_str!(
+        let file = keyglass_update::factory::ReferenceFile::parse_toml(include_str!(
             "../../../../factory-reference.toml"
         ))
         .unwrap();
@@ -912,7 +912,7 @@ pub(crate) mod tests {
         let got = obtain_payload(&refinement, None, &store).unwrap();
         assert!(!got.from_cache);
         assert_eq!(sha256_hex(&got.payload), refinement.payload_sha256);
-        if let Some(path) = std::env::var_os("OPENFLUX_PRESS_REFINEMENT_FILE") {
+        if let Some(path) = std::env::var_os("KEYGLASS_PRESS_REFINEMENT_FILE") {
             let local = payload_from_file(&refinement, Path::new(&path), &store).unwrap();
             assert_eq!(local.payload, got.payload);
         }

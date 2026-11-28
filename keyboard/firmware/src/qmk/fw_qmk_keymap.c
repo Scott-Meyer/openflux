@@ -1,5 +1,5 @@
 /*
- * OpenFlux default QMK keymap, CHORDAL_HOLD handedness, and QK_KB_* custom action handler.
+ * Keyglass default QMK keymap, CHORDAL_HOLD handedness, and QK_KB_* custom action handler.
  * Included by third_party/vial-qmk/quantum/keymap_introspection.c via KEYMAP_C.
  */
 
@@ -7,7 +7,7 @@
 
 extern void fw_qmk_emit_custom_action(uint16_t slot, bool pressed);
 
-enum openflux_custom_keycodes {
+enum keyglass_custom_keycodes {
     OF_BRI_UP = QK_KB_0,
     OF_BRI_DN,
     OF_PRF_NEXT,
@@ -42,7 +42,7 @@ const uint16_t PROGMEM keymaps[DYNAMIC_KEYMAP_LAYER_COUNT][MATRIX_ROWS][MATRIX_C
         { KC_LSFT, KC_Z,    KC_X,    KC_C,    KC_V,    KC_B,    KC_N,    KC_M,    KC_COMM, KC_DOT,  KC_SLSH, KC_RSFT, KC_UP,   KC_PGDN, XXXXX,   XXXXX   },
         { KC_LCTL, KC_LGUI, KC_LALT, OF_GLOBE, KC_SPC, KC_RALT, MO(1),   KC_RCTL, KC_LEFT, KC_DOWN, KC_RGHT, XXXXX,   XXXXX,   XXXXX,   XXXXX,   XXXXX   },
     },
-    /* Layer 1: FN (media + built-in OpenFlux actions QK_KB_0..13) */
+    /* Layer 1: FN (media + built-in Keyglass actions QK_KB_0..13) */
     [1] = {
         { _____, KC_BRID, KC_BRIU, KC_MCTL, KC_LPAD, _____,   _____,   KC_MPRV, KC_MPLY, KC_MNXT, KC_MUTE, KC_VOLD, KC_VOLU, _____, _____, _____ },
         { _____, OF_BRI_DN, OF_BRI_UP, OF_PRF_PREV, OF_PRF_NEXT, OF_ACT_PREV, OF_ACT_NEXT, OF_THM_PREV, OF_THM_NEXT, OF_POMO_TOGGLE, OF_POMO_RESET, _____, _____, _____, _____, _____ },

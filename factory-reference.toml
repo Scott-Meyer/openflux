@@ -1,6 +1,6 @@
 # The keyboard's factory software, used by "Reset to factory software".
 #
-# OpenFlux does not host these files. The daemon downloads each file from the factory software's official
+# Keyglass does not host these files. The daemon downloads each file from the factory software's official
 # Windows package (a ZIP container) with HTTP range requests and accepts it only if its size and SHA-256
 # match the values below. This file is embedded in the signed update index.
 
@@ -30,15 +30,15 @@ version = "1.4.28"
 size = 69240700
 sha256 = "9fcbbf1e00b1d4f4ad364464c3bf2d628561d8aadb00ba1082581a800825da3a"
 
-# The press-refinement source: where the user's own OpenFlux finds the keyboard maker's
-# press-refinement coefficients. OpenFlux never hosts or ships them. The daemon reads the member
+# The press-refinement source: where the user's own Keyglass finds the keyboard maker's
+# press-refinement coefficients. Keyglass never hosts or ships them. The daemon reads the member
 # below out of one of the `sources` (the maker's published Windows package, with HTTP range
 # requests, or a copy the user already has), places its UF2 blocks at their RP2040 addresses (one
 # contiguous image from image_base), and takes the payload from the image's ranges, in order. The
 # member, the image and the payload must each match their size and SHA-256, and a container
 # downloaded whole must match its own, or nothing is installed. The release workflow records this
 # table in the signed index next to the factory reference, so the sources can change without a new
-# OpenFlux release.
+# Keyglass release.
 
 [press_refinement_source]
 description = "Factory software 1.5.0.5"

@@ -76,7 +76,7 @@
         {
           "type": "toml",
           "path": "/Cargo.lock",
-          "jsonpath": "$.package[?(@.name.value==='openfluxd' || @.name.value==='openflux-studio' || @.name.value==='openflux-update')].version"
+          "jsonpath": "$.package[?(@.name.value==='keyglassd' || @.name.value==='keyglass-studio' || @.name.value==='keyglass-update')].version"
         },
         {
           "type": "toml",
@@ -133,7 +133,7 @@
         {
           "type": "toml",
           "path": "/Cargo.lock",
-          "jsonpath": "$.package[?(@.name.value==='openflux-bridge')].version"
+          "jsonpath": "$.package[?(@.name.value==='keyglass-bridge')].version"
         },
         {
           "type": "toml",
@@ -157,7 +157,7 @@
         {
           "type": "toml",
           "path": "/Cargo.lock",
-          "jsonpath": "$.package[?(@.name.value==='openflux-display')].version"
+          "jsonpath": "$.package[?(@.name.value==='keyglass-display')].version"
         },
         {
           "type": "toml",

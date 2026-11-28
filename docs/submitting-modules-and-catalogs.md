@@ -33,7 +33,7 @@ host_requirement = "none" # or "optional" / "required" if using [entrypoints].ho
 Run the local validator and profiler before publishing:
 
 ```bash
-fluxctl modules validate ~/.local/share/openflux/v2/modules/local/widget-my-tool
+fluxctl modules validate ~/.local/share/keyglass/v2/modules/local/widget-my-tool
 fluxctl perf --watch   # Check your module's per-frame Lua execution time (µs)
 ```
 
@@ -89,7 +89,7 @@ Open an issue or Pull Request on [`keyglass-dev/keyglass`](https://github.com/ke
 
 Users can install any module directly without any catalog by pasting `github:owner/repo`, `github:owner/repo//subdir`, an archive URL, or a local folder path under **Manage Modules → Lists & Direct Install**.
 
-- Keyglass records the exact origin in `.openflux-source.json` and checks it automatically on **Check for Updates**.
+- Keyglass records the exact origin in `.keyglass-source.json` and checks it automatically on **Check for Updates**.
 - If the user uninstalls a directly-installed module, Keyglass remembers its source under **Previously Removed Modules** so it can be re-installed in one click later (or forgotten with **Forget**).
 
 ---

@@ -1,8 +1,8 @@
 [package]
-name = "openfluxd"
+name = "keyglassd"
 version.workspace = true
 edition.workspace = true
-description = "OpenFlux background service: keyboard USB transport, local API, and system integrations"
+description = "Keyglass background service: keyboard USB transport, local API, and system integrations"
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
@@ -12,10 +12,10 @@ publish = false
 axum = { version = "0.7", features = ["ws", "json"] }
 base64 = "0.22"
 bytes = "1"
-openflux-bus = { path = "../../crates/openflux-bus" }
-openflux-compositor = { path = "../../crates/openflux-compositor" }
-openflux-modules = { path = "../../crates/openflux-modules", features = ["host-net"] }
-openflux-update = { path = "../../crates/openflux-update", default-features = false }
+keyglass-bus = { path = "../../crates/keyglass-bus" }
+keyglass-compositor = { path = "../../crates/keyglass-compositor" }
+keyglass-modules = { path = "../../crates/keyglass-modules", features = ["host-net"] }
+keyglass-update = { path = "../../crates/keyglass-update", default-features = false }
 getrandom = "0.2"
 http-body = "1"
 iana-time-zone = "0.1"
@@ -78,6 +78,6 @@ windows = { version = "0.62", features = [
 windows-future = "0.3"
 
 [dev-dependencies]
-openflux-update = { path = "../../crates/openflux-update", default-features = false, features = ["signing"] }
+keyglass-update = { path = "../../crates/keyglass-update", default-features = false, features = ["signing"] }
 futures-util = "0.3"
 tokio-tungstenite = "0.20"

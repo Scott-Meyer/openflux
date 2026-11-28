@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-# Builds the executables OpenFlux Studio bundles next to its main binary and
+# Builds the executables Keyglass Studio bundles next to its main binary and
 # names them the way Tauri's bundle.externalBin expects:
 # <name>-<target triple>[.exe].
 #
-#   openfluxd          daemon (Rust, package openfluxd); on Windows it also
+#   keyglassd          daemon (Rust, package keyglassd); on Windows it also
 #                      provides the tray icon, and on Linux it shows a zenity
 #                      notification icon when zenity is installed
-#   openflux-tray      macOS menu bar helper (Swift, host/macos-helpers)
-#   openflux-sensors   macOS system sensors helper (Swift, host/macos-helpers)
-#   openflux-ffmpeg    media import tool (build-ffmpeg.sh)
-#   openflux-ffprobe   media duration probe, from the same FFmpeg build
+#   keyglass-tray      macOS menu bar helper (Swift, host/macos-helpers)
+#   keyglass-sensors   macOS system sensors helper (Swift, host/macos-helpers)
+#   keyglass-ffmpeg    media import tool (build-ffmpeg.sh)
+#   keyglass-ffprobe   media duration probe, from the same FFmpeg build
 #
 # It also writes <out>/licenses/, installed with the app:
-#   openflux-ffmpeg-*                 the FFmpeg tools' license and build
+#   keyglass-ffmpeg-*                 the FFmpeg tools' license and build
 #                                     information
-#   openfluxd-rust-licenses.txt       license texts of the Rust crates in
-#   openflux-studio-rust-licenses.txt openfluxd and OpenFlux Studio, for the
+#   keyglassd-rust-licenses.txt       license texts of the Rust crates in
+#   keyglass-studio-rust-licenses.txt keyglassd and Keyglass Studio, for the
 #                                     target (scripts/licenses/rust-licenses.sh)
-#   openflux-studio-ui-npm-licenses.txt
+#   keyglass-studio-ui-npm-licenses.txt
 #                                     license texts of the npm packages in
 #                                     Studio's interface (npm-licenses.mjs)
 # The macOS helpers are Swift programs using only system frameworks.
@@ -27,10 +27,10 @@
 #
 # --target is a Rust target triple, or universal-apple-darwin for a macOS
 # build containing arm64 and x86_64. --ffmpeg-dir holds <triple>/ from
-# build-ffmpeg.sh (openflux-ffmpeg[.exe], openflux-ffprobe[.exe], the
+# build-ffmpeg.sh (keyglass-ffmpeg[.exe], keyglass-ffprobe[.exe], the
 # license and build information) for each architecture being built.
 #
-# openfluxd is built with the openflux-update `production-keys` feature,
+# keyglassd is built with the keyglass-update `production-keys` feature,
 # which refuses to build if the embedded trust anchors are development keys.
 # --development-keys leaves the feature off, for packaging tests only.
 #
@@ -43,7 +43,7 @@ set -euo pipefail
 die() { echo "build-sidecars: $*" >&2; exit 1; }
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-target="" ffmpeg_dir="" out="" features=(--features openflux-update/production-keys)
+target="" ffmpeg_dir="" out="" features=(--features keyglass-update/production-keys)
 while [ $# -gt 0 ]; do
     case "$1" in
         --target) target="$2"; shift 2 ;;
@@ -62,7 +62,7 @@ ffmpeg_dir="$(cd "$ffmpeg_dir" && pwd)"
 target_dir="${CARGO_TARGET_DIR:-${repo}/target}"
 
 # package:binary pairs built with cargo.
-rust_bins=(openfluxd:openfluxd fluxctl:fluxctl)
+rust_bins=(keyglassd:keyglassd fluxctl:fluxctl)
 
 cargo_build() {
     local triple="$1"; shift
@@ -73,7 +73,7 @@ cargo_build() {
     (cd "$repo" && cargo build --release --locked --target "$triple" "${features[@]}" "${args[@]}")
 }
 
-# copy_media_tool <openflux-ffmpeg|openflux-ffprobe> <triple> <dest>
+# copy_media_tool <keyglass-ffmpeg|keyglass-ffprobe> <triple> <dest>
 copy_media_tool() {
     local name="$1" triple="$2" dest="$3" src
     src="${ffmpeg_dir}/${triple}/${name}"
@@ -88,13 +88,13 @@ copy_media_tool() {
 copy_media_licenses() {
     local triple="$1" dir="${out}/licenses" f
     mkdir -p "$dir"
-    f="${ffmpeg_dir}/${triple}/openflux-ffmpeg-COPYING.GPLv2.txt"
-    [ -f "$f" ] || die "no openflux-ffmpeg-COPYING.GPLv2.txt for ${triple} in ${ffmpeg_dir}/${triple}"
+    f="${ffmpeg_dir}/${triple}/keyglass-ffmpeg-COPYING.GPLv2.txt"
+    [ -f "$f" ] || die "no keyglass-ffmpeg-COPYING.GPLv2.txt for ${triple} in ${ffmpeg_dir}/${triple}"
     cp "$f" "$dir/"
-    for f in "${ffmpeg_dir}"/*/openflux-ffmpeg-*.buildinfo.txt; do
+    for f in "${ffmpeg_dir}"/*/keyglass-ffmpeg-*.buildinfo.txt; do
         [ -f "$f" ] && cp "$f" "$dir/"
     done
-    compgen -G "${dir}/openflux-ffmpeg-*.buildinfo.txt" > /dev/null || die "no openflux-ffmpeg build information in ${ffmpeg_dir}"
+    compgen -G "${dir}/keyglass-ffmpeg-*.buildinfo.txt" > /dev/null || die "no keyglass-ffmpeg build information in ${ffmpeg_dir}"
 }
 
 # The license texts of the third-party code in the programs built for the
@@ -104,12 +104,12 @@ write_dependency_licenses() {
     for t in "$@"; do triples+=(--target "$t"); done
     mkdir -p "$dir"
     "${repo}/scripts/licenses/rust-licenses.sh" --manifest-path "${repo}/host/daemon/Cargo.toml" \
-        "${triples[@]}" -o "${dir}/openfluxd-rust-licenses.txt"
+        "${triples[@]}" -o "${dir}/keyglassd-rust-licenses.txt"
     "${repo}/scripts/licenses/rust-licenses.sh" --manifest-path "${repo}/host/studio/src-tauri/Cargo.toml" \
-        "${triples[@]}" -o "${dir}/openflux-studio-rust-licenses.txt"
+        "${triples[@]}" -o "${dir}/keyglass-studio-rust-licenses.txt"
     # vite: the production build includes its module preload polyfill.
     node "${repo}/scripts/licenses/npm-licenses.mjs" --package-dir "${repo}/host/studio" --bundled vite \
-        -o "${dir}/openflux-studio-ui-npm-licenses.txt"
+        -o "${dir}/keyglass-studio-ui-npm-licenses.txt"
 }
 
 case "$target" in
@@ -128,14 +128,14 @@ case "$target" in
                 BUILD_DIR="${helpers_build}/${triple}" \
                 SWIFTC="swiftc -target ${swift_arch}-apple-macos13.0"
         done
-        for name in openfluxd fluxctl openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe; do
+        for name in keyglassd fluxctl keyglass-tray keyglass-sensors keyglass-ffmpeg keyglass-ffprobe; do
             inputs=()
             for arch in "${arches[@]}"; do
                 triple="${arch}-apple-darwin"
                 case "$name" in
-                    openfluxd|fluxctl) inputs+=("${target_dir}/${triple}/release/${name}") ;;
-                    openflux-tray|openflux-sensors) inputs+=("${helpers_build}/${triple}/${name}") ;;
-                    openflux-ffmpeg|openflux-ffprobe)
+                    keyglassd|fluxctl) inputs+=("${target_dir}/${triple}/release/${name}") ;;
+                    keyglass-tray|keyglass-sensors) inputs+=("${helpers_build}/${triple}/${name}") ;;
+                    keyglass-ffmpeg|keyglass-ffprobe)
                         copy_media_tool "$name" "$triple" "${out}/.${name}-${triple}"
                         inputs+=("${out}/.${name}-${triple}") ;;
                 esac
@@ -151,7 +151,7 @@ case "$target" in
                 done
             fi
         done
-        rm -f "${out}"/.openflux-ff*
+        rm -f "${out}"/.keyglass-ff*
         copy_media_licenses "${arches[0]}-apple-darwin"
         triples=()
         for arch in "${arches[@]}"; do triples+=("${arch}-apple-darwin"); done
@@ -159,19 +159,19 @@ case "$target" in
         ;;
     *-pc-windows-msvc)
         cargo_build "$target" "${rust_bins[@]}"
-        cp "${target_dir}/${target}/release/openfluxd.exe" "${out}/openfluxd-${target}.exe"
+        cp "${target_dir}/${target}/release/keyglassd.exe" "${out}/keyglassd-${target}.exe"
         cp "${target_dir}/${target}/release/fluxctl.exe" "${out}/fluxctl-${target}.exe"
-        copy_media_tool openflux-ffmpeg "$target" "${out}/openflux-ffmpeg-${target}.exe"
-        copy_media_tool openflux-ffprobe "$target" "${out}/openflux-ffprobe-${target}.exe"
+        copy_media_tool keyglass-ffmpeg "$target" "${out}/keyglass-ffmpeg-${target}.exe"
+        copy_media_tool keyglass-ffprobe "$target" "${out}/keyglass-ffprobe-${target}.exe"
         copy_media_licenses "$target"
         write_dependency_licenses "$target"
         ;;
     *-unknown-linux-gnu)
         cargo_build "$target" "${rust_bins[@]}"
-        cp "${target_dir}/${target}/release/openfluxd" "${out}/openfluxd-${target}"
+        cp "${target_dir}/${target}/release/keyglassd" "${out}/keyglassd-${target}"
         cp "${target_dir}/${target}/release/fluxctl" "${out}/fluxctl-${target}"
-        copy_media_tool openflux-ffmpeg "$target" "${out}/openflux-ffmpeg-${target}"
-        copy_media_tool openflux-ffprobe "$target" "${out}/openflux-ffprobe-${target}"
+        copy_media_tool keyglass-ffmpeg "$target" "${out}/keyglass-ffmpeg-${target}"
+        copy_media_tool keyglass-ffprobe "$target" "${out}/keyglass-ffprobe-${target}"
         copy_media_licenses "$target"
         write_dependency_licenses "$target"
         ;;

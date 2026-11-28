@@ -1,8 +1,8 @@
-//! OpenFlux v2 host runtime and open localhost HTTP/WebSocket API.
+//! Keyglass v2 host runtime and open localhost HTTP/WebSocket API.
 //!
-//! Exposes the hierarchical pub/sub bus (`openflux-bus`), unified module management & disclosure
-//! inspection (`openflux-modules`), unrestricted host process execution, curated lists, secret-free
-//! presets, synthetic input simulation, and live GPU compositor previews (`openflux-compositor`).
+//! Exposes the hierarchical pub/sub bus (`keyglass-bus`), unified module management & disclosure
+//! inspection (`keyglass-modules`), unrestricted host process execution, curated lists, secret-free
+//! presets, synthetic input simulation, and live GPU compositor previews (`keyglass-compositor`).
 
 use crate::api::state::{default_data_dir, ApiState};
 use crate::usb::vial::{DeclaredActions, ModuleActionsMap, VialHidRelay, MODULE_ACTION_SLOT_COUNT, VIAL_RAW_EPSIZE};
@@ -14,13 +14,13 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use base64::Engine;
-use openflux_bus::{
+use keyglass_bus::{
     topics, AnalogKeyFrame, AnalogKeySample, Broker, FluxActionEvent, FrameLayout,
     HostConnectionState, KeyEvent, KeyEventKind, KeyboardGeometry, PublishOptions,
     SubscribeOptions, SurfaceImpulse, WireFrame,
 };
-use openflux_compositor::{Compositor, CompositorOptions};
-use openflux_modules::{
+use keyglass_compositor::{Compositor, CompositorOptions};
+use keyglass_modules::{
     inspect_module_dir, CuratedListSubscription, HostProcessManager, ModuleCategory, ModuleInstanceState, ModuleRegistry, ModuleRuntime, SetupPreset,
 };
 use serde::{Deserialize, Serialize};
@@ -152,8 +152,8 @@ pub struct ContextRulesFile {
 }
 
 struct StagedInstallTicket {
-    staged: openflux_modules::StagedModuleSource,
-    preview: openflux_modules::InstallPreview,
+    staged: keyglass_modules::StagedModuleSource,
+    preview: keyglass_modules::InstallPreview,
     created_at: std::time::Instant,
 }
 
@@ -201,10 +201,10 @@ fn is_studio_foreground_app(app_id: &str, process_name: &str) -> bool {
         .trim_end_matches(".exe")
         .trim_end_matches(".app")
         .to_string();
-    id == "org.openflux.studio"
+    id == "dev.keyglass.studio"
         || id.starts_with("org.keyglass.")
-        || proc_clean == "openflux-studio"
-        || proc_clean == "openflux studio"
+        || proc_clean == "keyglass-studio"
+        || proc_clean == "keyglass studio"
         || proc_clean == "keyglass studio"
         || proc_clean == "keyglass"
 }
@@ -277,9 +277,9 @@ pub struct V2State {
     vial_actions_path: PathBuf,
     staged_installs: Mutex<BTreeMap<String, StagedInstallTicket>>,
     last_context_sig: Mutex<String>,
-    profile_cmd_rx: Mutex<openflux_bus::Subscription>,
+    profile_cmd_rx: Mutex<keyglass_bus::Subscription>,
     /// Wakes action reconciliation when a module (re)declares its runtime actions.
-    declared_actions_rx: Mutex<openflux_bus::Subscription>,
+    declared_actions_rx: Mutex<keyglass_bus::Subscription>,
     recent_apps: Mutex<std::collections::VecDeque<RecentAppEntry>>,
     /// Scoped token accepted ONLY for `GET /v2/streamdeck/plugin-asset/*` so imported `.sdPlugin`
     /// HTML pages never receive the first-party desktop administrative bearer token.
@@ -290,14 +290,14 @@ pub struct V2State {
 /// dispatch, as before) for built-ins and keyboard-capable modules.
 fn action_dispatch_owner(
     entry: &crate::usb::vial::ActionSlotEntry,
-    discovered: &BTreeMap<String, openflux_modules::DiscoveredModule>,
+    discovered: &BTreeMap<String, keyglass_modules::DiscoveredModule>,
 ) -> Option<&'static str> {
     let dm = discovered.get(entry.module_id.as_str())?;
-    (dm.manifest.host_requirement == openflux_modules::HostRequirement::Required).then_some("host")
+    (dm.manifest.host_requirement == keyglass_modules::HostRequirement::Required).then_some("host")
 }
 
 fn resolve_bundled_modules_dir() -> PathBuf {
-    if let Ok(env_dir) = std::env::var("OPENFLUX_BUNDLED_MODULES_DIR") {
+    if let Ok(env_dir) = std::env::var("KEYGLASS_BUNDLED_MODULES_DIR") {
         if !env_dir.is_empty() {
             return PathBuf::from(env_dir);
         }
@@ -308,13 +308,13 @@ fn resolve_bundled_modules_dir() -> PathBuf {
             candidates.push(p.join("modules"));
             if let Some(pp) = p.parent() {
                 candidates.push(pp.join("Resources/modules"));
-                candidates.push(pp.join("lib/OpenFlux Studio/modules"));
-                candidates.push(pp.join("lib/openflux-studio/modules"));
+                candidates.push(pp.join("lib/Keyglass Studio/modules"));
+                candidates.push(pp.join("lib/keyglass-studio/modules"));
             }
         }
     }
     if let Ok(home) = std::env::var("HOME") {
-        candidates.push(PathBuf::from(&home).join("Applications/OpenFlux Studio.app/Contents/Resources/modules"));
+        candidates.push(PathBuf::from(&home).join("Applications/Keyglass Studio.app/Contents/Resources/modules"));
         candidates.push(PathBuf::from(&home).join("git/flux/modules"));
     }
     for c in candidates {
@@ -337,8 +337,8 @@ fn resolve_bundled_asset_path(rel_or_abs: &str) -> Option<PathBuf> {
             candidates.push(p.join(rel));
             if let Some(pp) = p.parent() {
                 candidates.push(pp.join("Resources").join(rel));
-                candidates.push(pp.join("lib/OpenFlux Studio").join(rel));
-                candidates.push(pp.join("lib/openflux-studio").join(rel));
+                candidates.push(pp.join("lib/Keyglass Studio").join(rel));
+                candidates.push(pp.join("lib/keyglass-studio").join(rel));
             }
         }
     }
@@ -349,7 +349,7 @@ fn resolve_bundled_asset_path(rel_or_abs: &str) -> Option<PathBuf> {
     if let Ok(home) = std::env::var("HOME") {
         candidates.push(
             PathBuf::from(&home)
-                .join("Applications/OpenFlux Studio.app/Contents/Resources")
+                .join("Applications/Keyglass Studio.app/Contents/Resources")
                 .join(rel),
         );
     }
@@ -421,7 +421,7 @@ impl V2State {
             &HostConnectionState {
                 connected: true,
                 host_asleep: false,
-                last_seen_ms: openflux_bus::now_unix_ms(),
+                last_seen_ms: keyglass_bus::now_unix_ms(),
                 host_platform: Some(std::env::consts::OS.to_string()),
             },
             PublishOptions::retained(),
@@ -605,7 +605,7 @@ impl V2State {
             .subscribe("profiles/command/#", SubscribeOptions::default())
             .expect("valid profile command sub");
         let declared_actions_rx = broker
-            .subscribe(&openflux_modules::declared_actions_topic("+"), SubscribeOptions::default())
+            .subscribe(&keyglass_modules::declared_actions_topic("+"), SubscribeOptions::default())
             .expect("valid declared actions sub");
         let streamdeck_asset_token = {
             let mut rnd = [0u8; 32];
@@ -649,7 +649,7 @@ impl V2State {
         // `widget-prusa-connect`, `host-volume-osd`, `analog-gamepad`) with ~0% idle CPU.
         let weak_lua = Arc::downgrade(&state);
         std::thread::Builder::new()
-            .name("openflux-v2-host-lua".into())
+            .name("keyglass-v2-host-lua".into())
             .spawn(move || {
                 let mut last_tick = std::time::Instant::now();
                 loop {
@@ -660,7 +660,7 @@ impl V2State {
                     let dt = last_tick.elapsed().as_secs_f32().clamp(0.005, 0.25);
                     last_tick = std::time::Instant::now();
                     if let Ok(mut hrt) = st.host_logic_runtime.try_lock() {
-                        let _ = hrt.step_frame(dt, openflux_bus::now_unix_ms());
+                        let _ = hrt.step_frame(dt, keyglass_bus::now_unix_ms());
                     };
                 }
             })
@@ -668,10 +668,10 @@ impl V2State {
 
         // Background watcher: detects direct edits to script.lua / module.toml / new local
         // folders / modules_state.json written by an AI agent or external editor and pushes
-        // live `system/modules/changed` events so OpenFlux Studio updates immediately.
+        // live `system/modules/changed` events so Keyglass Studio updates immediately.
         let weak = Arc::downgrade(&state);
         std::thread::Builder::new()
-            .name("openflux-v2-watch".into())
+            .name("keyglass-v2-watch".into())
             .spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_millis(350));
                 let Some(st) = weak.upgrade() else {
@@ -947,7 +947,7 @@ impl V2State {
     }
 
     fn process_profile_commands(&self) {
-        let msgs: Vec<openflux_bus::BusMessage> = self.profile_cmd_rx.lock().unwrap().drain();
+        let msgs: Vec<keyglass_bus::BusMessage> = self.profile_cmd_rx.lock().unwrap().drain();
         if msgs.is_empty() {
             return;
         }
@@ -1034,7 +1034,7 @@ impl V2State {
             app_id: app_id.trim().to_string(),
             process_name: process_name.trim().to_string(),
             window_title: window_title.trim().to_string(),
-            last_seen_ms: openflux_bus::now_unix_ms(),
+            last_seen_ms: keyglass_bus::now_unix_ms(),
         });
         while q.len() > 10 {
             q.pop_back();
@@ -1788,11 +1788,11 @@ impl V2State {
     /// Runtime actions currently declared (retained) by enabled `dynamic_actions` modules.
     /// Reconcile ignores declarations from modules that are disabled or don't opt in.
     pub fn declared_actions(&self) -> DeclaredActions {
-        let prefix = openflux_modules::declared_actions_topic("");
+        let prefix = keyglass_modules::declared_actions_topic("");
         let mut out = DeclaredActions::new();
         for msg in self
             .broker
-            .query_retained(&openflux_modules::declared_actions_topic("+"))
+            .query_retained(&keyglass_modules::declared_actions_topic("+"))
             .unwrap_or_default()
         {
             let Some(module_id) = msg.topic.strip_prefix(&prefix) else { continue };
@@ -1802,7 +1802,7 @@ impl V2State {
                 .and_then(|a| a.as_array())
                 .map(|arr| {
                     arr.iter()
-                        .filter_map(|a| serde_json::from_value::<openflux_modules::ModuleActionField>(a.clone()).ok())
+                        .filter_map(|a| serde_json::from_value::<keyglass_modules::ModuleActionField>(a.clone()).ok())
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
@@ -1828,7 +1828,7 @@ impl V2State {
                 "rev": rev,
                 "reason": reason,
                 "module_id": module_id,
-                "timestamp_ms": openflux_bus::now_unix_ms(),
+                "timestamp_ms": keyglass_bus::now_unix_ms(),
             }),
             PublishOptions::retained(),
         );
@@ -1895,7 +1895,7 @@ impl V2State {
             self.sync_all_with_reason("disk_changed", None);
             return;
         }
-        // Hot-reload check for host-logic / host-network Lua modules (30 Hz stepping runs on `openflux-v2-host-lua`)
+        // Hot-reload check for host-logic / host-network Lua modules (30 Hz stepping runs on `keyglass-v2-host-lua`)
         {
             let mut hrt = self.host_logic_runtime.lock().unwrap();
             let _ = hrt.check_hot_reload();
@@ -2022,7 +2022,7 @@ async fn bus_ws(
 }
 
 async fn handle_bus_ws(mut socket: WebSocket, broker: Broker) {
-    let mut subs: Vec<openflux_bus::Subscription> = Vec::new();
+    let mut subs: Vec<keyglass_bus::Subscription> = Vec::new();
     let mut tick = tokio::time::interval(std::time::Duration::from_millis(16));
 
     loop {
@@ -2067,7 +2067,7 @@ async fn handle_bus_ws(mut socket: WebSocket, broker: Broker) {
                                 let _ = socket.send(WsMessage::Text(serde_json::to_string(&pong).unwrap())).await;
                             }
                             Ok(frame) => {
-                                if let Err(e) = openflux_bus::apply_remote_frame(&broker, frame, "ws") {
+                                if let Err(e) = keyglass_bus::apply_remote_frame(&broker, frame, "ws") {
                                     let err = WireFrame::Error { message: e };
                                     let _ = socket.send(WsMessage::Text(serde_json::to_string(&err).unwrap())).await;
                                 }
@@ -2105,7 +2105,7 @@ async fn list_modules(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
             let host_status = if inst.enabled {
                 host_procs.status(&id, has_host)
             } else {
-                openflux_modules::HostProcessStatus::NotRequired
+                keyglass_modules::HostProcessStatus::NotRequired
             };
             let rt_healthy = rt_status.map(|s| s.healthy).unwrap_or(true);
             let host_healthy = !inst.enabled || host_status.is_healthy(dm.manifest.host_requirement);
@@ -2412,13 +2412,13 @@ async fn inspect_module_api(
     let state_clone = state.clone();
     let res = tokio::task::spawn_blocking(move || {
         let saved = state_clone.v2.registry.load_state();
-        let staged = openflux_modules::stage_module_source(
+        let staged = keyglass_modules::stage_module_source(
             &src,
             &saved.curated_lists,
             &state_clone.v2.registry.bundled_dir,
         )?;
         let preview = state_clone.v2.registry.preview_install(&staged.module_dir)?;
-        let token = format!("stg_{}", openflux_bus::now_unix_ms());
+        let token = format!("stg_{}", keyglass_bus::now_unix_ms());
         let mut map = state_clone.v2.staged_installs.lock().unwrap();
         // Prune expired inspection tickets (> 10 minutes old)
         map.retain(|_, t| t.created_at.elapsed() < std::time::Duration::from_secs(600));
@@ -2474,7 +2474,7 @@ async fn migrate_module_api(
         }
         let src = src_opt.unwrap();
         let saved = state_clone.v2.registry.load_state();
-        let staged = openflux_modules::stage_module_source(
+        let staged = keyglass_modules::stage_module_source(
             &src,
             &saved.curated_lists,
             &state_clone.v2.registry.bundled_dir,
@@ -2557,7 +2557,7 @@ async fn install_module_api(
         }
         let src = src_opt.unwrap();
         let saved = state_clone.v2.registry.load_state();
-        let staged = openflux_modules::stage_module_source(
+        let staged = keyglass_modules::stage_module_source(
             &src,
             &saved.curated_lists,
             &state_clone.v2.registry.bundled_dir,
@@ -2659,7 +2659,7 @@ async fn update_module_api(
     }
 }
 
-/// Lists video/image files in `~/.local/share/openflux/media` so Studio's `bg-media` picker can
+/// Lists video/image files in `~/.local/share/keyglass/media` so Studio's `bg-media` picker can
 /// offer one-click selection across all imported seamless loops and stills!
 #[derive(Deserialize)]
 struct ImportMediaBody {
@@ -2707,7 +2707,7 @@ struct MediaFileQuery {
     name: String,
 }
 
-/// Streams a media file (MP4/MOV/PNG/JPG) from `~/.local/share/openflux/media` or bundled
+/// Streams a media file (MP4/MOV/PNG/JPG) from `~/.local/share/keyglass/media` or bundled
 /// `modules/bg-media` with HTTP 206 byte-range support for silky 60 FPS WKWebView `<video>` playback!
 async fn serve_media_file_api(
     State(state): State<Arc<ApiState>>,
@@ -2800,7 +2800,7 @@ async fn serve_media_file_api(
 }
 
 async fn list_media_library_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
-    // `~/.local/share/openflux/media` (sibling of `v2/` inside the user data directory)
+    // `~/.local/share/keyglass/media` (sibling of `v2/` inside the user data directory)
     let media_dir = state
         .v2
         .registry
@@ -3035,7 +3035,7 @@ struct BrowseListQuery {
 async fn browse_curated_list(Query(q): Query<BrowseListQuery>) -> impl IntoResponse {
     let src = q.source;
     let res = tokio::task::spawn_blocking(move || {
-        openflux_modules::fetch_curated_list_document(&src)
+        keyglass_modules::fetch_curated_list_document(&src)
     })
     .await
     .map_err(|e| e.to_string())
@@ -3054,7 +3054,7 @@ struct ExportPresetBody {
     description: String,
 }
 fn default_preset_name() -> String {
-    "OpenFlux Setup".to_string()
+    "Keyglass Setup".to_string()
 }
 
 async fn export_preset_api(
@@ -3109,7 +3109,7 @@ async fn simulate_key(
     let Some(k) = state.v2.geometry.key(body.key_index) else {
         return err_resp(StatusCode::BAD_REQUEST, "key_index out of range");
     };
-    let now_ms = openflux_bus::now_unix_ms();
+    let now_ms = keyglass_bus::now_unix_ms();
     let ev = KeyEvent {
         key_index: body.key_index,
         kind: if body.release {
@@ -3167,7 +3167,7 @@ async fn simulate_impulse(
 /// Fires a dramatic multi-key ripple + particle + analog burst across the keyboard to showcase
 /// 3D water refraction, particle-to-particle collisions, keycap wall bounces, and lens refraction!
 async fn simulate_physics_burst(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
-    let now_ms = openflux_bus::now_unix_ms();
+    let now_ms = keyglass_bus::now_unix_ms();
     let burst_keys: [u16; 6] = [34, 37, 49, 52, 55, 67];
     let mut samples = Vec::new();
     for (i, &key_index) in burst_keys.iter().enumerate() {
@@ -3270,9 +3270,9 @@ async fn render_preview_frame(
     let comp = comp_guard.as_mut().unwrap();
     let steps = body.steps.clamp(1, 30);
     let dt_sec = (body.step_ms / 1000.0).clamp(0.001, 0.1);
-    let now_ms = openflux_bus::now_unix_ms();
+    let now_ms = keyglass_bus::now_unix_ms();
     let mut lua_ms = 0.0_f32;
-    let mut last_timings = openflux_compositor::FrameTimings::default();
+    let mut last_timings = keyglass_compositor::FrameTimings::default();
     let mut last_bg_name: Option<String> = None;
     let mut last_bg_dim: f32 = 0.0;
     let mut last_top_fade: f32 = 0.0;
@@ -3362,7 +3362,7 @@ async fn keyboard_upload_media(
     let Some(fname) = fname else {
         return err_resp(StatusCode::BAD_REQUEST, "invalid file name");
     };
-    let remote = format!("/home/root/openflux/media/{fname}");
+    let remote = format!("/home/root/keyglass/media/{fname}");
     let device = state.device.clone();
     let res = tokio::task::spawn_blocking(move || {
         let bytes = std::fs::read(&local).map_err(|e| format!("read {}: {e}", local.display()))?;
@@ -3424,8 +3424,8 @@ async fn keyboard_flash_uf2(
 }
 
 /// Pushes ONLY changed enabled v2 modules, shortcuts, prefs, media, and `modules_state.json`
-/// to `/home/root/openflux/v2/` on the connected Flux keyboard (differential SHA-256 sync),
-/// then reads back `/home/root/openflux/v2/modules_state.json` to verify on-device persistence.
+/// to `/home/root/keyglass/v2/` on the connected Flux keyboard (differential SHA-256 sync),
+/// then reads back `/home/root/keyglass/v2/modules_state.json` to verify on-device persistence.
 /// Keeps file persistence (`persisted_verified`) strictly distinct from renderer acknowledgment
 /// (`runtime_applied`) and publishes the same structured status to retained `keyboard/sync/status`.
 #[derive(Deserialize, Default)]
@@ -3450,7 +3450,7 @@ struct DeviceSyncMeta {
 }
 
 fn read_device_sync_meta(device: &dyn crate::api::state::DeviceSink) -> Option<DeviceSyncMeta> {
-    let raw = device.get_file("/home/root/openflux/v2/sync_meta.json").ok()?;
+    let raw = device.get_file("/home/root/keyglass/v2/sync_meta.json").ok()?;
     serde_json::from_slice(&raw).ok()
 }
 
@@ -3518,9 +3518,9 @@ async fn keyboard_adopt_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespo
 
     let res = tokio::task::spawn_blocking(move || -> Result<Value, String> {
         let remote_state_bytes = device
-            .get_file("/home/root/openflux/v2/modules_state.json")
+            .get_file("/home/root/keyglass/v2/modules_state.json")
             .map_err(|e| format!("failed to read modules_state.json from keyboard: {e}"))?;
-        let mut adopted: openflux_modules::ModulesStateFile =
+        let mut adopted: keyglass_modules::ModulesStateFile =
             serde_json::from_slice(&remote_state_bytes)
                 .map_err(|e| format!("invalid remote modules_state.json: {e}"))?;
 
@@ -3539,14 +3539,14 @@ async fn keyboard_adopt_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespo
             {
                 continue;
             }
-            let remote_toml = format!("/home/root/openflux/v2/modules/{mod_id}/module.toml");
+            let remote_toml = format!("/home/root/keyglass/v2/modules/{mod_id}/module.toml");
             let Ok(toml_bytes) = device.get_file(&remote_toml) else {
                 continue;
             };
             let dst_dir = installed_dir.join(mod_id);
             let _ = std::fs::create_dir_all(&dst_dir);
             let _ = std::fs::write(dst_dir.join("module.toml"), &toml_bytes);
-            let Ok(manifest) = openflux_modules::ModuleManifest::load_from_dir(&dst_dir) else {
+            let Ok(manifest) = keyglass_modules::ModuleManifest::load_from_dir(&dst_dir) else {
                 let _ = std::fs::remove_dir_all(&dst_dir);
                 continue;
             };
@@ -3560,7 +3560,7 @@ async fn keyboard_adopt_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespo
             if let Some(ep) = &manifest.entrypoints.host {
                 rel_files.push(ep.clone());
             }
-            rel_files.push(".openflux-source.json".into());
+            rel_files.push(".keyglass-source.json".into());
             for rel in rel_files {
                 if !std::path::Path::new(&rel)
                     .components()
@@ -3568,7 +3568,7 @@ async fn keyboard_adopt_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespo
                 {
                     continue;
                 }
-                if let Ok(b) = device.get_file(&format!("/home/root/openflux/v2/modules/{mod_id}/{rel}")) {
+                if let Ok(b) = device.get_file(&format!("/home/root/keyglass/v2/modules/{mod_id}/{rel}")) {
                     let target = dst_dir.join(&rel);
                     if let Some(p) = target.parent() {
                         let _ = std::fs::create_dir_all(p);
@@ -3578,12 +3578,12 @@ async fn keyboard_adopt_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespo
             }
             adopted_modules.push(mod_id.clone());
         }
-        // Rewrite `/home/root/openflux/media/<file>` paths cleanly to this computer's local media dir
+        // Rewrite `/home/root/keyglass/media/<file>` paths cleanly to this computer's local media dir
         // and pull missing media files from the keyboard!
         for inst in adopted.modules.values_mut() {
             for val in inst.config.values_mut() {
                 if let Some(s) = val.as_str() {
-                    if let Some(fname) = s.strip_prefix("/home/root/openflux/media/") {
+                    if let Some(fname) = s.strip_prefix("/home/root/keyglass/media/") {
                         let clean = std::path::Path::new(fname)
                             .file_name()
                             .and_then(|n| n.to_str())
@@ -3591,7 +3591,7 @@ async fn keyboard_adopt_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespo
                         if !clean.is_empty() && !clean.contains("..") {
                             let local_media = media_dir.join(clean);
                             if !local_media.is_file() {
-                                if let Ok(bytes) = device.get_file(&format!("/home/root/openflux/media/{clean}")) {
+                                if let Ok(bytes) = device.get_file(&format!("/home/root/keyglass/media/{clean}")) {
                                     let _ = std::fs::write(&local_media, bytes);
                                     adopted_media.push(clean.to_string());
                                 }
@@ -3609,7 +3609,7 @@ async fn keyboard_adopt_v2(State(state): State<Arc<ApiState>>) -> impl IntoRespo
 
         // Adopt display prefs (parallax, power, layer names) and module actions if present on keyboard
         for fname in ["display_prefs.json", "module_actions.json", "top_bar_attachments.json"] {
-            if let Ok(bytes) = device.get_file(&format!("/home/root/openflux/v2/{fname}")) {
+            if let Ok(bytes) = device.get_file(&format!("/home/root/keyglass/v2/{fname}")) {
                 if serde_json::from_slice::<Value>(&bytes).is_ok() {
                     let _ = std::fs::write(v2_dir.join(fname), bytes);
                 }
@@ -3715,7 +3715,7 @@ async fn keyboard_sync_v2(
                 let marker = DeviceSyncMeta {
                     host_id: host_id_meta,
                     host_name: Some(host_name_for_sync.clone()),
-                    synced_at_ms: openflux_bus::now_unix_ms(),
+                    synced_at_ms: keyglass_bus::now_unix_ms(),
                     state_sha256: report.expected_state_sha256.clone(),
                     enabled_modules: Vec::new(),
                     bg_media: None,
@@ -3744,7 +3744,7 @@ async fn keyboard_sync_v2(
                 "skipped_unchanged": report.skipped_unchanged,
                 "expected_state_sha256": report.expected_state_sha256,
                 "readback_state_sha256": report.readback_state_sha256,
-                "synced_at_ms": openflux_bus::now_unix_ms(),
+                "synced_at_ms": keyglass_bus::now_unix_ms(),
             });
             let _ = broker.publish(
                 "keyboard/sync/status",
@@ -3759,7 +3759,7 @@ async fn keyboard_sync_v2(
                 "persisted_verified": false,
                 "persisted_error": e,
                 "runtime_applied": null,
-                "synced_at_ms": openflux_bus::now_unix_ms(),
+                "synced_at_ms": keyglass_bus::now_unix_ms(),
             });
             let _ = broker.publish(
                 "keyboard/sync/status",
@@ -3792,8 +3792,8 @@ fn sha256_hex_bytes(bytes: &[u8]) -> String {
 
 fn sync_v2_to_device(
     device: &dyn crate::api::state::DeviceSink,
-    discovered: &BTreeMap<String, openflux_modules::DiscoveredModule>,
-    kb_state: &mut openflux_modules::ModulesStateFile,
+    discovered: &BTreeMap<String, keyglass_modules::DiscoveredModule>,
+    kb_state: &mut keyglass_modules::ModulesStateFile,
     kb_state_path: &std::path::Path,
     host_id_for_sync: &str,
 ) -> Result<KeyboardSyncReport, String> {
@@ -3844,7 +3844,7 @@ fn sync_v2_to_device(
             Ok(())
         }
 
-        // Large media assets (`/home/root/openflux/media/*`, e.g. 50 MB video loops and icon files)
+        // Large media assets (`/home/root/keyglass/media/*`, e.g. 50 MB video loops and icon files)
         // are treated as immutable by filename: checked via `stat_file` so we avoid streaming
         // multi-megabyte files back over USB just to hash them.
         fn put_media_if_missing(&mut self, remote: &str, local_path: &std::path::Path) -> Result<(), String> {
@@ -3868,11 +3868,11 @@ fn sync_v2_to_device(
     };
 
     // Single Source of Truth: sync ALL enabled modules (bundled, installed, AND local)
-    // to `/home/root/openflux/v2/modules/<id>/` (skipping host-only `host/` scripts,
+    // to `/home/root/keyglass/v2/modules/<id>/` (skipping host-only `host/` scripts,
     // `.git`, `.DS_Store`, `__pycache__`), uploading ONLY changed files!
     for (id, dm) in discovered {
         let is_enabled = kb_state.modules.get(id).map(|s| s.enabled).unwrap_or(false);
-        if !is_enabled && dm.tier == openflux_modules::ModuleTier::Bundled {
+        if !is_enabled && dm.tier == keyglass_modules::ModuleTier::Bundled {
             continue;
         }
         let mut stack = vec![dm.path.clone()];
@@ -3896,7 +3896,7 @@ fn sync_v2_to_device(
                 } else if p.is_file() {
                     if let Ok(rel) = p.strip_prefix(&dm.path) {
                         let rel_str = rel.to_string_lossy().replace('\\', "/");
-                        let remote = format!("/home/root/openflux/v2/modules/{id}/{rel_str}");
+                        let remote = format!("/home/root/keyglass/v2/modules/{id}/{rel_str}");
                         let bytes = std::fs::read(&p).map_err(|e| e.to_string())?;
                         acc.put_if_changed(&remote, &bytes)?;
                     }
@@ -3905,7 +3905,7 @@ fn sync_v2_to_device(
         }
     }
 
-    // Sync bundled shortcut JSON packs straight to `/home/root/openflux/shortcuts/`
+    // Sync bundled shortcut JSON packs straight to `/home/root/keyglass/shortcuts/`
     let shortcut_dirs = [
         kb_state_path.parent().and_then(|p| p.parent()).map(|p| p.join("assets/shortcuts")),
         crate::api::assets::bundled_assets_dir().map(|d| d.join("shortcuts")),
@@ -3918,7 +3918,7 @@ fn sync_v2_to_device(
                 let p = entry.path();
                 if p.is_file() && p.extension().and_then(|e| e.to_str()) == Some("json") {
                     if let Some(fname) = p.file_name().and_then(|n| n.to_str()) {
-                        let remote = format!("/home/root/openflux/shortcuts/{fname}");
+                        let remote = format!("/home/root/keyglass/shortcuts/{fname}");
                         if let Ok(bytes) = std::fs::read(&p) {
                             acc.put_if_changed(&remote, &bytes)?;
                         }
@@ -3931,18 +3931,18 @@ fn sync_v2_to_device(
     // Sync pure-v2 `display_prefs.json` (parallax + brightness + sleep timeout) to keyboard
     let prefs_local = kb_state_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("display_prefs.json");
     if let Ok(bytes) = std::fs::read(&prefs_local) {
-        acc.put_if_changed("/home/root/openflux/v2/display_prefs.json", &bytes)?;
+        acc.put_if_changed("/home/root/keyglass/v2/display_prefs.json", &bytes)?;
     }
 
-    // Sync `profiles.json` + per-host backup `/home/root/openflux/v2/hosts/<host_id>/profiles.json`
+    // Sync `profiles.json` + per-host backup `/home/root/keyglass/v2/hosts/<host_id>/profiles.json`
     let prof_local = kb_state_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
         .join("profiles.json");
     if let Ok(bytes) = std::fs::read(&prof_local) {
         for remote in [
-            "/home/root/openflux/v2/profiles.json".to_string(),
-            format!("/home/root/openflux/v2/hosts/{host_id_for_sync}/profiles.json"),
+            "/home/root/keyglass/v2/profiles.json".to_string(),
+            format!("/home/root/keyglass/v2/hosts/{host_id_for_sync}/profiles.json"),
         ] {
             acc.put_if_changed(&remote, &bytes)?;
         }
@@ -3964,7 +3964,7 @@ fn sync_v2_to_device(
                         .unwrap_or(fname);
                     let lp = media_dir.join(clean);
                     if lp.is_file() {
-                        let remote = format!("/home/root/openflux/media/{clean}");
+                        let remote = format!("/home/root/keyglass/media/{clean}");
                         acc.put_media_if_missing(&remote, &lp)?;
                     }
                 }
@@ -3975,7 +3975,7 @@ fn sync_v2_to_device(
     // Sync `module_actions.json` (64-slot QMK action registry) to keyboard for offline use
     let actions_local = kb_state_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("module_actions.json");
     if let Ok(bytes) = std::fs::read(&actions_local) {
-        acc.put_if_changed("/home/root/openflux/v2/module_actions.json", &bytes)?;
+        acc.put_if_changed("/home/root/keyglass/v2/module_actions.json", &bytes)?;
     }
 
     // Sync custom PNG keycap icons referenced by `keys-custom` (`by_key` / `by_action`)
@@ -3991,7 +3991,7 @@ fn sync_v2_to_device(
                             .unwrap_or(img_name);
                         let lp = media_dir.join(fname);
                         if lp.is_file() {
-                            let remote = format!("/home/root/openflux/media/{fname}");
+                            let remote = format!("/home/root/keyglass/media/{fname}");
                             acc.put_media_if_missing(&remote, &lp)?;
                         }
                     }
@@ -4001,7 +4001,7 @@ fn sync_v2_to_device(
     }
 
     // For ANY enabled module with `kind = "file"` settings pointing at a local file,
-    // auto-upload the file to `/home/root/openflux/media/` (skipping if already present)
+    // auto-upload the file to `/home/root/keyglass/media/` (skipping if already present)
     // and rewrite the keyboard copy of that setting to the remote filename.
     for (id, dm) in discovered {
         let Some(inst) = kb_state.modules.get_mut(id) else {
@@ -4011,7 +4011,7 @@ fn sync_v2_to_device(
             continue;
         }
         for field in &dm.manifest.settings {
-            if field.kind != openflux_modules::SettingKind::File {
+            if field.kind != keyglass_modules::SettingKind::File {
                 continue;
             }
             let Some(media_str) = inst
@@ -4025,7 +4025,7 @@ fn sync_v2_to_device(
             let resolved_lp = resolve_bundled_asset_path(&media_str);
             if let Some(lp) = resolved_lp.as_deref() {
                 if let Some(fname) = lp.file_name().and_then(|n| n.to_str()) {
-                    let remote_media = format!("/home/root/openflux/media/{fname}");
+                    let remote_media = format!("/home/root/keyglass/media/{fname}");
                     acc.put_media_if_missing(&remote_media, lp)?;
                     inst.config.insert(field.key.clone(), json!(fname));
                 }
@@ -4042,7 +4042,7 @@ fn sync_v2_to_device(
         let cs = cfg_dir.join("custom_shortcuts.json");
         if cs.is_file() {
             if let Ok(bytes) = std::fs::read(&cs) {
-                acc.put_if_changed("/home/root/openflux/v2/custom_shortcuts.json", &bytes)?;
+                acc.put_if_changed("/home/root/keyglass/v2/custom_shortcuts.json", &bytes)?;
             }
         }
     }
@@ -4050,7 +4050,7 @@ fn sync_v2_to_device(
     // Write `modules_state.json` atomically last and verify via direct readback.
     let state_bytes = serde_json::to_vec_pretty(kb_state).map_err(|e| e.to_string())?;
     let expected_state_sha256 = sha256_hex_bytes(&state_bytes);
-    let remote_state = "/home/root/openflux/v2/modules_state.json";
+    let remote_state = "/home/root/keyglass/v2/modules_state.json";
     acc.put_if_changed(remote_state, &state_bytes)?;
 
     // Write lightweight multi-computer `sync_meta.json` so plugging this keyboard into a second PC
@@ -4077,7 +4077,7 @@ fn sync_v2_to_device(
         bg_media,
     };
     if let Ok(meta_bytes) = serde_json::to_vec_pretty(&meta) {
-        let _ = acc.put_if_changed("/home/root/openflux/v2/sync_meta.json", &meta_bytes);
+        let _ = acc.put_if_changed("/home/root/keyglass/v2/sync_meta.json", &meta_bytes);
     }
 
     // Honest device readback check: confirms bytes actually persisted on the keyboard filesystem.
@@ -4131,9 +4131,9 @@ async fn ingest_media_stream(
         .to_ascii_lowercase();
     let is_jpeg = ctype.contains("jpeg") || ctype.contains("jpg");
     let codec = if is_jpeg {
-        openflux_bus::MediaCodec::Jpeg
+        keyglass_bus::MediaCodec::Jpeg
     } else {
-        openflux_bus::MediaCodec::H264AnnexB
+        keyglass_bus::MediaCodec::H264AnnexB
     };
 
     let mut data_stream = body.into_data_stream();
@@ -4191,7 +4191,7 @@ async fn ingest_media_stream(
             &name,
             codec,
             &[],
-            openflux_bus::FLAG_STREAM_CLOSE,
+            keyglass_bus::FLAG_STREAM_CLOSE,
         );
         let _ = state.v2.broker.publish(
             format!("modules/streams/{name}"),
@@ -4218,9 +4218,9 @@ async fn close_media_stream(
 ) -> impl IntoResponse {
     let _ = state.device.send_media_frame(
         &name,
-        openflux_bus::MediaCodec::H264AnnexB,
+        keyglass_bus::MediaCodec::H264AnnexB,
         &[],
-        openflux_bus::FLAG_STREAM_CLOSE,
+        keyglass_bus::FLAG_STREAM_CLOSE,
     );
     let _ = state.v2.broker.publish(
         format!("modules/streams/{name}"),
@@ -4348,7 +4348,7 @@ async fn vial_sync_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse 
         // 2. Sync module_actions.json to the Linux SoC so offline keyboard modules resolve slots.
         if let Err(e) = s
             .device
-            .put_file("/home/root/openflux/v2/module_actions.json", &map_bytes)
+            .put_file("/home/root/keyglass/v2/module_actions.json", &map_bytes)
         {
             warnings.push(format!("SoC module_actions.json sync failed: {e}"));
         } else {
@@ -4615,7 +4615,7 @@ async fn import_streamdeck_plugin_api(
             Ok(a) => a,
             Err(e) => return err_resp(StatusCode::BAD_REQUEST, format!("not a valid .streamDeckPlugin zip: {e}")),
         };
-        let tmp_extract = std::env::temp_dir().join(format!("keyglass-sd-{}", openflux_bus::now_unix_ms()));
+        let tmp_extract = std::env::temp_dir().join(format!("keyglass-sd-{}", keyglass_bus::now_unix_ms()));
         let _ = std::fs::create_dir_all(&tmp_extract);
         for i in 0..archive.len() {
             let Ok(mut entry) = archive.by_index(i) else { continue };
@@ -4677,7 +4677,7 @@ async fn import_streamdeck_plugin_api(
         dest
     };
 
-    // Copy any action PNG icons from the imported `.sdPlugin` into `~/.local/share/openflux/media/`
+    // Copy any action PNG icons from the imported `.sdPlugin` into `~/.local/share/keyglass/media/`
     let parsed = parse_sd_plugin_dir(&installed_dir);
     if let Some(ref pdoc) = parsed {
         let pid = pdoc["id"].as_str().unwrap_or("sd");
@@ -4749,7 +4749,7 @@ async fn put_streamdeck_buttons_api(
         json!({ "buttons": body.buttons }),
         PublishOptions::retained(),
     );
-    // Immediately upload any button PNG icons to `/home/root/openflux/media/` on the connected
+    // Immediately upload any button PNG icons to `/home/root/keyglass/media/` on the connected
     // keyboard so newly added Stream Deck keys show their real icon right away!
     let icon_files: Vec<String> = body
         .buttons
@@ -4767,7 +4767,7 @@ async fn put_streamdeck_buttons_api(
                     .unwrap_or(&fname);
                 let lp = media_dir.join(clean);
                 if lp.is_file() {
-                    let remote = format!("/home/root/openflux/media/{clean}");
+                    let remote = format!("/home/root/keyglass/media/{clean}");
                     if !dev.stat_file(&remote).unwrap_or(false) {
                         if let Ok(bytes) = std::fs::read(&lp) {
                             let _ = dev.put_file(&remote, &bytes);
@@ -5024,7 +5024,7 @@ window.addEventListener('load', function() {{
             if let Some(tok) = q.token.as_deref().filter(|t| !t.is_empty()) {
                 builder = builder.header(
                     "Set-Cookie",
-                    format!("openflux_sd_token={tok}; Path=/v2/streamdeck/plugin-asset/; HttpOnly; SameSite=Lax"),
+                    format!("keyglass_sd_token={tok}; Path=/v2/streamdeck/plugin-asset/; HttpOnly; SameSite=Lax"),
                 );
             }
             return builder
@@ -5227,9 +5227,9 @@ async fn get_keyboard_software_status(State(state): State<Arc<ApiState>>) -> imp
     let mode = if !has_bridge && !has_firmware {
         "offline"
     } else if is_v2
-        || bridge_ver.contains("openflux")
-        || display_ver.contains("openflux")
-        || fw_ver.contains("openflux")
+        || bridge_ver.contains("keyglass")
+        || display_ver.contains("keyglass")
+        || fw_ver.contains("keyglass")
     {
         "keyglass"
     } else {
@@ -5432,7 +5432,7 @@ async fn put_display_power(
 /// Authenticates EVERY `/v2/*` HTTP and WebSocket request:
 /// 1. Rejects cross-origin browser requests (`Origin` outside Studio's own localhost/tauri origins)
 ///    to block browser WebSocket keylogging and CSRF attacks.
-/// 2. Requires a valid daemon bearer token via `Authorization: Bearer <tok>`, `X-OpenFlux-Token`,
+/// 2. Requires a valid daemon bearer token via `Authorization: Bearer <tok>`, `X-Keyglass-Token`,
 ///    or `?token=<tok>` (for WebSocket clients).
 async fn v2_auth_middleware(
     State(state): State<Arc<ApiState>>,
@@ -5449,7 +5449,7 @@ async fn v2_auth_middleware(
         if !allowed {
             return (
                 StatusCode::FORBIDDEN,
-                Json(json!({ "error": "cross-origin browser access to OpenFlux v2 API is forbidden" })),
+                Json(json!({ "error": "cross-origin browser access to Keyglass v2 API is forbidden" })),
             )
                 .into_response();
         }
@@ -5462,7 +5462,7 @@ async fn v2_auth_middleware(
         .map(str::to_string)
         .or_else(|| {
             req.headers()
-                .get("x-openflux-token")
+                .get("x-keyglass-token")
                 .and_then(|v| v.to_str().ok())
                 .map(|t| format!("Bearer {}", t.trim()))
         })
@@ -5485,7 +5485,7 @@ async fn v2_auth_middleware(
                     .and_then(|c| {
                         c.split(';').find_map(|part| {
                             part.trim()
-                                .strip_prefix("openflux_sd_token=")
+                                .strip_prefix("keyglass_sd_token=")
                                 .filter(|v| !v.is_empty())
                                 .map(|v| format!("Bearer {v}"))
                         })
@@ -5565,7 +5565,7 @@ async fn v2_perf_api(State(state): State<Arc<ApiState>>) -> impl IntoResponse {
     }))
 }
 
-/// Mounts all OpenFlux v2 routes (authenticated localhost bus, module management, disclosure, lists, presets, GPU preview).
+/// Mounts all Keyglass v2 routes (authenticated localhost bus, module management, disclosure, lists, presets, GPU preview).
 pub fn router(state: Arc<ApiState>) -> Router {
     Router::new()
         .route("/v2/status", get(v2_status_api))
@@ -5645,7 +5645,7 @@ pub fn router(state: Arc<ApiState>) -> Router {
 mod sync_tests {
     use super::*;
     use crate::api::state::DeviceSink;
-    use openflux_modules::{ModuleInstanceState, ModuleRegistry};
+    use keyglass_modules::{ModuleInstanceState, ModuleRegistry};
 
     struct FakeKeyboardDevice {
         files: Mutex<BTreeMap<String, Vec<u8>>>,
@@ -5686,7 +5686,7 @@ mod sync_tests {
             Ok(())
         }
         fn get_file(&self, path: &str) -> Result<Vec<u8>, String> {
-            if self.rollback_state_on_readback && path == "/home/root/openflux/v2/modules_state.json" {
+            if self.rollback_state_on_readback && path == "/home/root/keyglass/v2/modules_state.json" {
                 return Ok(br#"{"modules":{}}"#.to_vec());
             }
             self.files
@@ -5712,7 +5712,7 @@ mod sync_tests {
     #[test]
     fn differential_sync_skips_unchanged_and_detects_state_rollback() {
         let tmp = std::env::temp_dir().join(format!(
-            "openflux-diff-sync-{}",
+            "keyglass-diff-sync-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -5749,7 +5749,7 @@ publishes = []
             state_path.clone(),
         );
         let discovered = reg.discover();
-        let mut kb_state = openflux_modules::ModulesStateFile::default();
+        let mut kb_state = keyglass_modules::ModulesStateFile::default();
         kb_state.modules.insert(
             "demo-mod".into(),
             ModuleInstanceState {
@@ -5761,7 +5761,7 @@ publishes = []
         // Pre-seed device with identical script.lua (even with NO host manifest yet!)
         let dev = FakeKeyboardDevice::new();
         dev.files.lock().unwrap().insert(
-            "/home/root/openflux/v2/modules/demo-mod/script.lua".into(),
+            "/home/root/keyglass/v2/modules/demo-mod/script.lua".into(),
             lua_bytes.to_vec(),
         );
 
@@ -5786,7 +5786,7 @@ publishes = []
 
         // 3. Out-of-band device edit / different keyboard with stale bytes is ALWAYS detected & rewritten!
         dev.files.lock().unwrap().insert(
-            "/home/root/openflux/v2/modules/demo-mod/script.lua".into(),
+            "/home/root/keyglass/v2/modules/demo-mod/script.lua".into(),
             b"-- stale bytes on another keyboard\n".to_vec(),
         );
         dev.put_calls.lock().unwrap().clear();
@@ -5824,7 +5824,7 @@ publishes = []
     #[test]
     fn profile_matching_prioritizes_exact_app_id_reports_conflicts_and_filters_studio_from_recent() {
         let tmp = std::env::temp_dir().join(format!(
-            "openflux-profile-match-{}",
+            "keyglass-profile-match-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -5907,7 +5907,7 @@ publishes = []
         let _ = v2.broker.publish(
             "host/app/active",
             json!({
-                "app_id": "org.openflux.studio",
+                "app_id": "dev.keyglass.studio",
                 "process_name": "Keyglass Studio",
                 "window_title": "Keyglass Studio"
             }),
@@ -5956,7 +5956,7 @@ publishes = []
     #[test]
     fn profile_overlay_stack_preserves_os_and_host_under_apps_and_pins() {
         let tmp = std::env::temp_dir().join(format!(
-            "openflux-profile-stack-{}",
+            "keyglass-profile-stack-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

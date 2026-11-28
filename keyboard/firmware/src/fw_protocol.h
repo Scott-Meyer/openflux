@@ -6,11 +6,11 @@
 #define FW_USB_VID         0x3761U
 #define FW_USB_PID         0x4015U
 #define FW_USB_PACKET_SIZE 64U
-/* Set by the build from OPENFLUX_FIRMWARE_VERSION in CMakeLists.txt. */
+/* Set by the build from KEYGLASS_FIRMWARE_VERSION in CMakeLists.txt. */
 #ifndef FW_PROJECT_VERSION
 #error "FW_PROJECT_VERSION must be defined by the build"
 #endif
-#define FW_VERSION_STR "openflux-firmware " FW_PROJECT_VERSION
+#define FW_VERSION_STR "keyglass-firmware " FW_PROJECT_VERSION
 
 #define FW_NUM_SENSORS   160U
 #define FW_NUM_BANKS     10U

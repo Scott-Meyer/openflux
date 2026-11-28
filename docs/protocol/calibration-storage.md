@@ -103,7 +103,7 @@ most once per keyframe attachment.
 
 `<layout>` and `<feel>` in the file name are single decimal digits. A file
 whose magic, version, layout, feel or checksum does not match is ignored.
-The reader also accepts earlier OpenFlux rest-reference records with a
+The reader also accepts earlier Keyglass rest-reference records with a
 rolling checksum over bytes 0 through 231 starting at zero, subject to the
 same layout and feel checks. Loading one does not rewrite it or associate it
 with another switch feel.
@@ -120,5 +120,5 @@ system intact:
   afterwards, and reports a failure if its SHA-256 changed.
 
 Because flashing leaves the file system untouched, a keyboard keeps its
-calibration when it is converted to OpenFlux, updated, or returned to its
+calibration when it is converted to Keyglass, updated, or returned to its
 factory software.

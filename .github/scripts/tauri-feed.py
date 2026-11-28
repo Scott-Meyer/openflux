@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Writes or preserves the Tauri updater feed (latest.json) for one channel.
 
-The feed points OpenFlux Studio's built-in updater at the newest host release
+The feed points Keyglass Studio's built-in updater at the newest host release
 of the channel that is not withdrawn: for "stable" the newest stable release,
 for "beta" the newest stable or beta release.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Checks that `openflux-release bundle`, which collects the keyboard software
+# Checks that `keyglass-release bundle`, which collects the keyboard software
 # for the host installers, refuses indexes it must not build from:
 #   - an index with no releases
 #   - an index whose keyboard releases are all betas
@@ -14,8 +14,8 @@ set -euo pipefail
 
 die() { echo "check-bundle-states: $*" >&2; exit 1; }
 
-cargo build --locked --release --manifest-path crates/openflux-update/Cargo.toml --bin openflux-release
-tool="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/openflux-update/Cargo.toml | jq -r .target_directory)/release/openflux-release"
+cargo build --locked --release --manifest-path crates/keyglass-update/Cargo.toml --bin keyglass-release
+tool="$(cargo metadata --format-version 1 --no-deps --manifest-path crates/keyglass-update/Cargo.toml | jq -r .target_directory)/release/keyglass-release"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -49,10 +49,10 @@ expect_refusal empty "${work}/empty-index.json"
 mkdir -p "${work}/beta" "${work}/beta-files"
 for c in firmware bridge display; do
     sed "/^\[components\.${c}\]/,/^\[/ s/^version = .*/version = \"1.1.0-beta.1\"/" compat.toml > "${work}/compat-${c}.toml"
-    printf 'test artifact for %s\n' "$c" > "${work}/beta-files/openflux-${c}-1.1.0-beta.1.bin"
-    "$tool" sign --key-env TEST_RELEASE_KEY "${work}/beta-files/openflux-${c}-1.1.0-beta.1.bin" 2> /dev/null
+    printf 'test artifact for %s\n' "$c" > "${work}/beta-files/keyglass-${c}-1.1.0-beta.1.bin"
+    "$tool" sign --key-env TEST_RELEASE_KEY "${work}/beta-files/keyglass-${c}-1.1.0-beta.1.bin" 2> /dev/null
     "$tool" manifest --component "$c" --version 1.1.0-beta.1 --channel beta --compat "${work}/compat-${c}.toml" \
-        --artifact "${work}/beta-files/openflux-${c}-1.1.0-beta.1.bin" \
+        --artifact "${work}/beta-files/keyglass-${c}-1.1.0-beta.1.bin" \
         --base-url "file://${work}/beta-files" --notes-url https://example.invalid/notes \
         -o "${work}/beta/${c}.json" 2> /dev/null
 done

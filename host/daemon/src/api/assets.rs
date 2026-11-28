@@ -37,15 +37,15 @@ pub fn bundled_assets_dir() -> Option<PathBuf> {
     let candidates = [
         dir.join("../Resources/assets"),
         dir.join("assets"),
-        dir.join("../lib/OpenFlux Studio/assets"),
-        dir.join("../lib/openflux-studio/assets"),
+        dir.join("../lib/Keyglass Studio/assets"),
+        dir.join("../lib/keyglass-studio/assets"),
     ];
     candidates.into_iter().find(|p| p.is_dir())
 }
 
 pub fn resolve_asset_roots(state: &ApiState) -> Vec<PathBuf> {
     let mut roots = Vec::new();
-    if let Ok(env_dir) = std::env::var("OPENFLUX_ASSET_DIR") {
+    if let Ok(env_dir) = std::env::var("KEYGLASS_ASSET_DIR") {
         if !env_dir.is_empty() {
             roots.push(PathBuf::from(env_dir));
         }
@@ -106,7 +106,7 @@ fn parse_font_family_from_filename(fname: &str) -> String {
     stem.split('-').next().unwrap_or(stem).to_string()
 }
 
-/// File name of a bundled media tool on this platform (`openflux-ffmpeg`, `openflux-ffprobe`).
+/// File name of a bundled media tool on this platform (`keyglass-ffmpeg`, `keyglass-ffprobe`).
 fn bundled_tool_name(stem: &str) -> String {
     if cfg!(windows) {
         format!("{stem}.exe")
@@ -126,14 +126,14 @@ fn env_tool(var: &str) -> Option<String> {
     std::env::var(var).ok().filter(|v| !v.is_empty())
 }
 
-/// The FFmpeg used for imports: `OPENFLUX_HOST_FFMPEG`, else the bundled `openflux-ffmpeg`.
+/// The FFmpeg used for imports: `KEYGLASS_HOST_FFMPEG`, else the bundled `keyglass-ffmpeg`.
 /// Development builds also accept an FFmpeg installed on the system; release builds use only
 /// the bundled one.
 pub(crate) fn find_ffmpeg() -> Option<String> {
-    if let Some(p) = env_tool("OPENFLUX_HOST_FFMPEG") {
+    if let Some(p) = env_tool("KEYGLASS_HOST_FFMPEG") {
         return Some(p);
     }
-    if let Some(p) = bundled_tool("openflux-ffmpeg") {
+    if let Some(p) = bundled_tool("keyglass-ffmpeg") {
         return Some(p.to_string_lossy().to_string());
     }
     if cfg!(debug_assertions) {
@@ -150,17 +150,17 @@ pub(crate) fn find_ffmpeg() -> Option<String> {
     None
 }
 
-/// The FFprobe used to read durations: `OPENFLUX_HOST_FFPROBE`, else `openflux-ffprobe` next to
+/// The FFprobe used to read durations: `KEYGLASS_HOST_FFPROBE`, else `keyglass-ffprobe` next to
 /// the FFmpeg in use, else the bundled one. A system FFprobe is never used.
 fn find_ffprobe(ff: &str) -> Option<String> {
-    if let Some(p) = env_tool("OPENFLUX_HOST_FFPROBE") {
+    if let Some(p) = env_tool("KEYGLASS_HOST_FFPROBE") {
         return Some(p);
     }
-    let sibling = Path::new(ff).with_file_name(bundled_tool_name("openflux-ffprobe"));
+    let sibling = Path::new(ff).with_file_name(bundled_tool_name("keyglass-ffprobe"));
     if sibling.is_file() {
         return Some(sibling.to_string_lossy().to_string());
     }
-    bundled_tool("openflux-ffprobe").map(|p| p.to_string_lossy().to_string())
+    bundled_tool("keyglass-ffprobe").map(|p| p.to_string_lossy().to_string())
 }
 
 fn hide_console_window(cmd: &mut Command) {
@@ -276,7 +276,7 @@ fn stream_sha256_prefix(path: &Path, max_bytes: u64) -> Result<(String, u64), St
     Ok((hex[..24].to_string(), total))
 }
 
-/// Theme presets offered in the catalog, each built on one of OpenFlux's default backgrounds
+/// Theme presets offered in the catalog, each built on one of Keyglass's default backgrounds
 /// (`assets/default_backgrounds`).
 pub fn builtin_theme_presets() -> Vec<serde_json::Value> {
     let preset = |id: &str,
@@ -1214,7 +1214,7 @@ pub fn plan_encodes(
     let target = (limits.target_bytes * 8.0 / 1000.0 / d.max(1.0)).min(MAX_VIDEO_KBPS);
     if target < floor.min_kbps {
         return Err(format!(
-            "This video plays for {d:.0}s. The keyboard holds {} MiB per video, which at the lowest quality OpenFlux uses ({}x{}) is about {:.0}s.",
+            "This video plays for {d:.0}s. The keyboard holds {} MiB per video, which at the lowest quality Keyglass uses ({}x{}) is about {:.0}s.",
             mib(limits.max_bytes),
             floor.width,
             floor.height,
@@ -1990,7 +1990,7 @@ fn fetch_and_transcode_aerial(
     }
     let seq = MEDIA_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let tmp_in = std::env::temp_dir().join(format!(
-        ".openflux_dl_{}_{}_{}.mov",
+        ".keyglass_dl_{}_{}_{}.mov",
         std::process::id(),
         seq,
         stem
@@ -2046,15 +2046,15 @@ type ProfileMerge = (
     Vec<String>,
 );
 
-/// File extension of an OpenFlux bundle (a ZIP of the configuration, keymap blob, icons and media).
-pub const BUNDLE_EXTENSION: &str = "openflux";
-pub const BUNDLE_EXTENSION_DOTTED: &str = ".openflux";
+/// File extension of an Keyglass bundle (a ZIP of the configuration, keymap blob, icons and media).
+pub const BUNDLE_EXTENSION: &str = "keyglass";
+pub const BUNDLE_EXTENSION_DOTTED: &str = ".keyglass";
 /// Largest single entry in a bundle: the keyboard's media limit.
 pub const MAX_BUNDLE_ENTRY_BYTES: u64 = MAX_KEYBOARD_MEDIA_BYTES;
 /// Largest total uncompressed size of a bundle.
 pub const MAX_BUNDLE_UNCOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
 
-/// `POST /v1/config/export` with `{"outPath"}`: writes an OpenFlux bundle.
+/// `POST /v1/config/export` with `{"outPath"}`: writes an Keyglass bundle.
 pub async fn export_bundle(
     State(state): State<Arc<ApiState>>,
     Json(body): Json<serde_json::Value>,
@@ -2234,7 +2234,7 @@ pub async fn export_bundle(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Finalize bundle failed: {e}")))?;
 
         Ok(serde_json::json!({
-            "message": format!("Exported OpenFlux bundle to {}", out_path.display()),
+            "message": format!("Exported Keyglass bundle to {}", out_path.display()),
             "outPath": out_path.to_string_lossy(),
         }))
     })
@@ -2254,7 +2254,7 @@ pub async fn export_bundle(
     }
 }
 
-/// Imports an OpenFlux bundle. Every entry is validated and every file staged before any state
+/// Imports an Keyglass bundle. Every entry is validated and every file staged before any state
 /// changes; then files and state are committed together.
 pub fn import_bundle_archive(
     state: &ApiState,
@@ -2265,7 +2265,7 @@ pub fn import_bundle_archive(
     let file = std::fs::File::open(path)
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Open bundle failed: {e}")))?;
     let mut za = zip::ZipArchive::new(BufReader::new(file))
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Corrupt OpenFlux bundle".into()))?;
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Corrupt Keyglass bundle".into()))?;
     let mut total_uncompressed: u64 = 0;
 
     let mut appearance_opt: Option<serde_json::Value> = None;
@@ -2291,7 +2291,7 @@ pub fn import_bundle_archive(
         let Some(enclosed) = f.enclosed_name().map(|p| p.to_path_buf()) else {
             return Err((
                 StatusCode::BAD_REQUEST,
-                "Unsafe path in OpenFlux bundle".into(),
+                "Unsafe path in Keyglass bundle".into(),
             ));
         };
         if f.size() > MAX_ENTRY_BYTES {
@@ -2960,7 +2960,7 @@ pub fn import_bundle_archive(
         }
     }
     if imported_names.is_empty() {
-        imported_names.push("OpenFlux bundle".into());
+        imported_names.push("Keyglass bundle".into());
     }
     let had_profile_or_rule_update = has_merged_profiles || has_app_rules;
     drop(g);
@@ -3012,7 +3012,7 @@ mod tests {
         assert_eq!(rows[4]["macKeyCode"], "KC_DELETE");
 
         // count_csv_rows counts the rows parse_shortcut_csv_str includes ("No" rows are skipped).
-        let td = std::env::temp_dir().join(format!("openfluxd_csv_cnt_{}", std::process::id()));
+        let td = std::env::temp_dir().join(format!("keyglassd_csv_cnt_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&td);
         let p_nl = td.join("nl.csv");
         let p_nonl = td.join("nonl.csv");
@@ -3063,7 +3063,7 @@ mod tests {
     #[test]
     fn whole_videos_are_transcoded_forward_and_loop_reversed_and_never_shorter() {
         let Some(ff) = find_ffmpeg() else { return };
-        let td = std::env::temp_dir().join(format!("openfluxd_vid_full_{}", std::process::id()));
+        let td = std::env::temp_dir().join(format!("keyglassd_vid_full_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&td);
         let odd_src = td.join("odd_src.mp4");
         synth(
@@ -3150,7 +3150,7 @@ mod tests {
     #[test]
     fn loop_reverse_plays_every_frame_forward_then_every_frame_backward_across_piece_joins() {
         let Some(ff) = find_ffmpeg() else { return };
-        let td = std::env::temp_dir().join(format!("openfluxd_vid_frames_{}", std::process::id()));
+        let td = std::env::temp_dir().join(format!("keyglassd_vid_frames_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&td);
         // 4.5 s at the loop-reverse frame rate (three reversal pieces): 108 frames, each with its
         // own luma, losslessly encoded.
@@ -3203,7 +3203,7 @@ mod tests {
     fn loop_reverse_works_in_a_directory_whose_path_has_an_apostrophe() {
         let Some(ff) = find_ffmpeg() else { return };
         let td = std::env::temp_dir().join(format!(
-            "openfluxd_vid_quote_{}/Artist's media",
+            "keyglassd_vid_quote_{}/Artist's media",
             std::process::id()
         ));
         let _ = std::fs::create_dir_all(&td);
@@ -3235,7 +3235,7 @@ mod tests {
     #[test]
     fn a_video_that_cant_fit_is_refused_and_nothing_is_written() {
         let Some(ff) = find_ffmpeg() else { return };
-        let td = std::env::temp_dir().join(format!("openfluxd_vid_refuse_{}", std::process::id()));
+        let td = std::env::temp_dir().join(format!("keyglassd_vid_refuse_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&td);
         let src = td.join("src.mp4");
         synth(
@@ -3323,20 +3323,20 @@ mod tests {
 
     #[test]
     fn durations_come_from_the_bundled_tools_or_are_unknown() {
-        let td = std::env::temp_dir().join(format!("openfluxd_probe_{}", std::process::id()));
+        let td = std::env::temp_dir().join(format!("keyglassd_probe_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&td);
         let clip = td.join("clip.mp4");
         std::fs::write(&clip, b"not a video").unwrap();
         // No FFprobe and an FFmpeg that can't run: the length is unknown, never assumed.
         assert_eq!(
-            probe_video_duration_with("/nonexistent/openflux-ffmpeg", None, &clip),
+            probe_video_duration_with("/nonexistent/keyglass-ffmpeg", None, &clip),
             None
         );
         // An FFprobe that fails falls back to FFmpeg, which can't run either.
         assert_eq!(
             probe_video_duration_with(
-                "/nonexistent/openflux-ffmpeg",
-                Some("/nonexistent/openflux-ffprobe"),
+                "/nonexistent/keyglass-ffmpeg",
+                Some("/nonexistent/keyglass-ffprobe"),
                 &clip
             ),
             None
@@ -3352,7 +3352,7 @@ mod tests {
         assert_eq!(stem, aerial_cache_stem(url, false));
         // An entry is reused only when it records this cache format.
         let td =
-            std::env::temp_dir().join(format!("openfluxd_aerial_cache_{}", std::process::id()));
+            std::env::temp_dir().join(format!("keyglassd_aerial_cache_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&td);
         let dst = td.join(format!("{stem}.mp4"));
         let meta = td.join(format!("{stem}.json"));
@@ -3371,7 +3371,7 @@ mod tests {
     #[tokio::test]
     async fn a_cached_local_import_made_under_other_rules_isnt_reused() {
         let Some(ff) = find_ffmpeg() else { return };
-        let td = std::env::temp_dir().join(format!("openfluxd_local_cache_{}", std::process::id()));
+        let td = std::env::temp_dir().join(format!("keyglassd_local_cache_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&td);
         let icons = td.join("assets/key_icons");
         std::fs::create_dir_all(&icons).unwrap();

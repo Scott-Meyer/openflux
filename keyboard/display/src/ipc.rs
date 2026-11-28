@@ -120,7 +120,7 @@ impl BridgeIpcClient {
         }
     }
 
-    pub fn send_bus_frame(&mut self, frame: &openflux_bus::WireFrame) {
+    pub fn send_bus_frame(&mut self, frame: &keyglass_bus::WireFrame) {
         self.ensure_connected();
         let Some(ref mut s) = self.stream else {
             return;

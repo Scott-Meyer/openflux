@@ -7,10 +7,10 @@
 //! `KC_FF_*` keycodes. Every token, app name and port in these tests is synthetic.
 
 use futures_util::{SinkExt, StreamExt};
-use openfluxd::api::build_router;
-use openfluxd::api::lifecycle_client::{request as https_request, HttpResponse};
-use openfluxd::api::state::{ApiState, DeviceSink, NoopDeviceSink};
-use openfluxd::api::third_party::{self, DiscoveryEnv, DiscoveryPlatform, DOCS_URL, ROOT_BANNER};
+use keyglassd::api::build_router;
+use keyglassd::api::lifecycle_client::{request as https_request, HttpResponse};
+use keyglassd::api::state::{ApiState, DeviceSink, NoopDeviceSink};
+use keyglassd::api::third_party::{self, DiscoveryEnv, DiscoveryPlatform, DOCS_URL, ROOT_BANNER};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,7 +26,7 @@ const SECRET: &str = "enrollment_test_secret";
 
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "openfluxd_tp_{tag}_{}_{}",
+        "keyglassd_tp_{tag}_{}_{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -280,7 +280,7 @@ fn cert_reaches_docs(cert_file: &Path, port: u16) -> HttpResponse {
 #[tokio::test]
 async fn discovery_files_lead_clients_to_the_tls_api_for_every_layout() {
     let tmp = temp_dir("discovery");
-    let bundle = openfluxd::api::tls::ensure_tls_bundle(&tmp.join("tls")).unwrap();
+    let bundle = keyglassd::api::tls::ensure_tls_bundle(&tmp.join("tls")).unwrap();
     let state = persistent_state(&tmp);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -288,7 +288,7 @@ async fn discovery_files_lead_clients_to_the_tls_api_for_every_layout() {
     let app = build_router(state.clone());
     let acc = bundle.acceptor.clone();
     let r = running.clone();
-    tokio::spawn(async move { openfluxd::api::tls::serve_tls_router(listener, acc, app, r).await });
+    tokio::spawn(async move { keyglassd::api::tls::serve_tls_router(listener, acc, app, r).await });
 
     // (name, platform, XDG_DATA_HOME ("ABS" for an absolute one under home), keys.json files, cert files)
     type Case = (
@@ -432,7 +432,7 @@ async fn docs_and_banner_answer_without_authentication() {
         (200, ROOT_BANNER.to_string())
     );
     assert_eq!(DOCS_URL, "https://github.com/FluxKeyboard/flux_api");
-    assert_eq!(ROOT_BANNER, "OpenFlux API, compatible with the Flux keyboard API: https://github.com/FluxKeyboard/flux_api");
+    assert_eq!(ROOT_BANNER, "Keyglass API, compatible with the Flux keyboard API: https://github.com/FluxKeyboard/flux_api");
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
@@ -1026,7 +1026,7 @@ async fn api_active_keeps_the_imported_value_and_starts_on_for_a_fresh_install()
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn third_party_tokens_cannot_use_openflux_routes() {
+async fn third_party_tokens_cannot_use_keyglass_routes() {
     let tmp = temp_dir("kinds");
     let addr = serve(persistent_state(&tmp)).await;
     let token = enroll_app(addr, "Scoped App").await;
@@ -1195,7 +1195,7 @@ async fn permission_flags_govern_their_routes_for_third_party_tokens_only() {
         .0,
         200
     );
-    // OpenFlux's own clients aren't limited by the flags.
+    // Keyglass's own clients aren't limited by the flags.
     assert_ne!(
         http(
             addr,
@@ -1524,7 +1524,7 @@ async fn keycodes_cross_the_boundary_under_their_external_names() {
         })
     );
 
-    // A .flux manifest is read with external names and stored with OpenFlux names.
+    // A .flux manifest is read with external names and stored with Keyglass names.
     let manifest = tmp.join("pack.flux");
     std::fs::write(
         &manifest,
@@ -1584,7 +1584,7 @@ async fn import_checks_that_the_content_matches_the_extension() {
         std::io::Write::write_all(&mut zw, b"{}").unwrap();
         zw.finish().unwrap();
     }
-    let json_as_bundle = tmp.join("manifest.openflux");
+    let json_as_bundle = tmp.join("manifest.keyglass");
     std::fs::write(&json_as_bundle, r#"{"profiles":[]}"#).unwrap();
     let (code, body) = http(
         addr,
@@ -1598,7 +1598,7 @@ async fn import_checks_that_the_content_matches_the_extension() {
         (code, json(&body)),
         (
             400,
-            serde_json::json!({"message": "This .flux file is an archive; OpenFlux bundles use the .openflux extension"})
+            serde_json::json!({"message": "This .flux file is an archive; Keyglass bundles use the .keyglass extension"})
         )
     );
     let (code, body) = http(
@@ -1613,7 +1613,7 @@ async fn import_checks_that_the_content_matches_the_extension() {
         (code, json(&body)),
         (
             400,
-            serde_json::json!({"message": "This .openflux file is not an OpenFlux bundle"})
+            serde_json::json!({"message": "This .keyglass file is not an Keyglass bundle"})
         )
     );
     let _ = std::fs::remove_dir_all(&tmp);
@@ -1845,7 +1845,7 @@ async fn open_sockets_follow_access_changes() {
 }
 
 #[tokio::test]
-async fn approved_pending_and_denied_apps_are_listed_for_openflux_clients() {
+async fn approved_pending_and_denied_apps_are_listed_for_keyglass_clients() {
     let tmp = temp_dir("listing");
     let addr = serve(persistent_state(&tmp)).await;
     enroll_app(addr, "Listed App").await;

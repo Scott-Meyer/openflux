@@ -322,7 +322,7 @@ impl WindowsBridge {
     #[cfg(target_os = "windows")]
     fn spawn_gpu_poller() -> Option<Poller<Option<GpuFigures>>> {
         Some(Poller::spawn(
-            "openflux-gpu",
+            "keyglass-gpu",
             GPU_POLL,
             crate::bridges::windows_gpu::WindowsGpuSampler::default,
             |s| s.sample(),
@@ -337,7 +337,7 @@ impl WindowsBridge {
     #[cfg(target_os = "windows")]
     fn spawn_media_poller() -> Option<Poller<MediaSnapshot>> {
         Some(Poller::spawn(
-            "openflux-media",
+            "keyglass-media",
             MEDIA_POLL,
             crate::bridges::smtc::SmtcState::default,
             |s| s.sample(),
@@ -556,7 +556,7 @@ mod tests {
                     Some(ActiveWindowInfo {
                         app_id: "Code.exe".into(),
                         process_name: "Code.exe".into(),
-                        window_title: "OpenFlux".into(),
+                        window_title: "Keyglass".into(),
                     }),
                     Some(471),
                     None,

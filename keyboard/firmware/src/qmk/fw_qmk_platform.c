@@ -87,7 +87,7 @@ static bool g_eeprom_suppress_dirty = false;
 
 static matrix_row_t g_matrix[MATRIX_ROWS];
 
-/* Dynamic XZ vial.json override (when uploaded by openfluxd). */
+/* Dynamic XZ vial.json override (when uploaded by keyglassd). */
 static uint8_t g_vial_def_buf[FW_QMK_MAX_VIAL_DEF_BYTES];
 static uint32_t g_vial_def_len = 0U;
 static uint8_t g_vial_uid[8] = VIAL_KEYBOARD_UID;

@@ -1,4 +1,4 @@
-//! OpenFlux function keys the computer acts on.
+//! Keyglass function keys the computer acts on.
 //!
 //! The firmware reports which `0x5000_00xx` function keys are held in a vendor-defined HID
 //! collection, usage page `0xFF00`, usage `0x01` (see `docs/protocol/usb.md`): a 4-byte
@@ -8,7 +8,7 @@
 //! goes down; `KC_OF_AUTO_PROFILE_LOCK` toggles the auto-profile lock.
 
 use crate::api::state::ApiState;
-use crate::codecs::keymap::OPENFLUX_KEYS;
+use crate::codecs::keymap::KEYGLASS_KEYS;
 use crate::usb::protocol::{FIRMWARE_PID, KEYBOARD_VID};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -27,9 +27,9 @@ const READ_TIMEOUT_MS: i32 = 250;
 /// How long the listener waits before looking for the keyboard again.
 const RETRY_INTERVAL: Duration = Duration::from_secs(2);
 
-/// The function code (`c` of `0x5000_0000 | c`) of an OpenFlux key name.
+/// The function code (`c` of `0x5000_0000 | c`) of an Keyglass key name.
 pub fn function_code(name: &str) -> Option<u32> {
-    OPENFLUX_KEYS
+    KEYGLASS_KEYS
         .iter()
         .find(|(n, _)| *n == name)
         .map(|(_, w)| w & 0xFF)
@@ -148,7 +148,7 @@ pub fn listen(
 /// Why the function-key collection couldn't be opened.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenError {
-    /// No OpenFlux firmware is connected.
+    /// No Keyglass firmware is connected.
     NoKeyboard,
     /// The firmware is connected but its function keys can't be read; the text says why.
     Unavailable(String),
@@ -159,7 +159,7 @@ pub enum OpenError {
 /// read, it says so once and keeps trying.
 pub fn spawn(state: Arc<ApiState>, running: Arc<AtomicBool>) -> std::thread::JoinHandle<()> {
     std::thread::Builder::new()
-        .name("openflux-function-keys".into())
+        .name("keyglass-function-keys".into())
         .spawn(move || run(&state, &running))
         .expect("function-key listener thread")
 }
@@ -172,12 +172,12 @@ fn run(state: &ApiState, running: &AtomicBool) {
         match open(&mut api) {
             Ok(mut device) => {
                 if !reported_listening {
-                    eprintln!("openfluxd: listening for OpenFlux function keys");
+                    eprintln!("keyglassd: listening for Keyglass function keys");
                     reported_listening = true;
                 }
                 let mut on_press = |code: u32| match on_function_pressed(state, code) {
                     FunctionAction::AutoProfileLock { locked } => eprintln!(
-                        "openfluxd: the Auto-Profile Lock key {} automatic profile switching",
+                        "keyglassd: the Auto-Profile Lock key {} automatic profile switching",
                         if locked { "locked" } else { "unlocked" }
                     ),
                     FunctionAction::None => {}
@@ -191,7 +191,7 @@ fn run(state: &ApiState, running: &AtomicBool) {
             Err(OpenError::NoKeyboard) => {}
             Err(OpenError::Unavailable(why)) => {
                 if !reported_unavailable {
-                    eprintln!("openfluxd: OpenFlux function keys can't be read: {why}");
+                    eprintln!("keyglassd: Keyglass function keys can't be read: {why}");
                     reported_unavailable = true;
                 }
             }

@@ -1,10 +1,10 @@
 //! Vial Raw HID (`0xFF60:0x61`) relay and dynamic `vial.json` / `module_actions.json` builder.
 //!
-//! Keeps `openfluxd` as the sole USB/HID owner on the host so Studio's embedded `vialite` tab
+//! Keeps `keyglassd` as the sole USB/HID owner on the host so Studio's embedded `vialite` tab
 //! works identically in macOS WKWebView (no WebHID), Windows WebView2, and Linux WebKitGTK.
 
 use crate::usb::protocol::{FIRMWARE_PID, KEYBOARD_VID};
-use openflux_modules::{ModuleManifest, ModuleRegistry};
+use keyglass_modules::{ModuleManifest, ModuleRegistry};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -16,7 +16,7 @@ pub const VIAL_USAGE: u16 = 0x61;
 pub const VIAL_RAW_EPSIZE: usize = 32;
 pub const VIAL_KEYCODE_BASE: u16 = 0x7E00;
 /// Action slots; a slot's keycode is always `0x7E00 + slot`.
-/// - `0..13`  (`0x7E00..0x7E0D`, QK_KB): 14 built-in OpenFlux actions
+/// - `0..13`  (`0x7E00..0x7E0D`, QK_KB): 14 built-in Keyglass actions
 /// - `14..38` (`0x7E0E..0x7E26`, QK_KB): 25 sticky module action slots
 /// - `39..63` (`0x7E27..0x7E3F`, QK_KB): 25 fixed Hall-effect Analog Gamepad keycodes (`GP_*`)
 /// - `64..94` (`0x7E40..0x7E5E`, QK_USER_0..30): 31 more module action slots (any firmware 2.x).
@@ -88,7 +88,7 @@ impl VialHidRelay {
             inner: Mutex::new(RelayInner {
                 api: None,
                 dev: None,
-                product_name: "OpenFlux Keyboard".to_string(),
+                product_name: "Keyglass Keyboard".to_string(),
             }),
         }
     }
@@ -127,7 +127,7 @@ impl VialHidRelay {
             .product_string()
             .map(|s| s.to_string())
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "OpenFlux Keyboard".to_string());
+            .unwrap_or_else(|| "Keyglass Keyboard".to_string());
         let dev = info
             .open_device(api)
             .map_err(|e| format!("Failed to open Vial Raw HID: {e}"))?;
@@ -140,7 +140,7 @@ impl VialHidRelay {
         let Ok(mut inner) = self.inner.lock() else {
             return VialStatus {
                 connected: false,
-                product_name: "OpenFlux Keyboard".to_string(),
+                product_name: "Keyglass Keyboard".to_string(),
                 vendor_id: KEYBOARD_VID,
                 product_id: FIRMWARE_PID,
             };
@@ -266,23 +266,23 @@ pub struct UnassignedAction {
 }
 
 /// Runtime actions declared by enabled `dynamic_actions` modules, keyed by module id.
-pub type DeclaredActions = BTreeMap<String, Vec<openflux_modules::ModuleActionField>>;
+pub type DeclaredActions = BTreeMap<String, Vec<keyglass_modules::ModuleActionField>>;
 
 const BUILTINS: [(&str, &str, &str, &str); VIAL_BUILTIN_SLOTS] = [
-    ("openflux.brightness_up", "Screen\nBri+", "OF_BRI+", "Increase keyboard display brightness"),
-    ("openflux.brightness_down", "Screen\nBri-", "OF_BRI-", "Decrease keyboard display brightness"),
-    ("openflux.profile_next", "Profile\nNext", "KG_PRF+", "Switch to next Keyglass profile"),
-    ("openflux.profile_prev", "Profile\nPrev", "KG_PRF-", "Switch to previous Keyglass profile"),
-    ("openflux.actuation_next", "Act\nNext", "OF_ACT+", "Cycle to next actuation mode"),
-    ("openflux.actuation_prev", "Act\nPrev", "OF_ACT-", "Cycle to previous actuation mode"),
-    ("openflux.platform_linux", "Linux", "OF_LNX", "Switch platform mode to Linux"),
-    ("openflux.platform_macos", "macOS", "OF_MAC", "Switch platform mode to macOS"),
-    ("openflux.platform_windows", "Windows", "OF_WIN", "Switch platform mode to Windows"),
-    ("openflux.auto_profile_lock", "Profile\nLock", "OF_LOCK", "Toggle automatic profile switching lock"),
+    ("keyglass.brightness_up", "Screen\nBri+", "OF_BRI+", "Increase keyboard display brightness"),
+    ("keyglass.brightness_down", "Screen\nBri-", "OF_BRI-", "Decrease keyboard display brightness"),
+    ("keyglass.profile_next", "Profile\nNext", "KG_PRF+", "Switch to next Keyglass profile"),
+    ("keyglass.profile_prev", "Profile\nPrev", "KG_PRF-", "Switch to previous Keyglass profile"),
+    ("keyglass.actuation_next", "Act\nNext", "OF_ACT+", "Cycle to next actuation mode"),
+    ("keyglass.actuation_prev", "Act\nPrev", "OF_ACT-", "Cycle to previous actuation mode"),
+    ("keyglass.platform_linux", "Linux", "OF_LNX", "Switch platform mode to Linux"),
+    ("keyglass.platform_macos", "macOS", "OF_MAC", "Switch platform mode to macOS"),
+    ("keyglass.platform_windows", "Windows", "OF_WIN", "Switch platform mode to Windows"),
+    ("keyglass.auto_profile_lock", "Profile\nLock", "OF_LOCK", "Toggle automatic profile switching lock"),
     ("widget-pomodoro.toggle", "Pomo\nStart", "OF_POMO", "Start or pause Pomodoro timer"),
     ("widget-pomodoro.reset", "Pomo\nReset", "OF_PRST", "Reset Pomodoro timer"),
-    ("openflux.theme_next", "Theme\nNext", "OF_THM+", "Switch to next display theme"),
-    ("openflux.theme_prev", "Theme\nPrev", "OF_THM-", "Switch to previous display theme"),
+    ("keyglass.theme_next", "Theme\nNext", "OF_THM+", "Switch to next display theme"),
+    ("keyglass.theme_prev", "Theme\nPrev", "OF_THM-", "Switch to previous display theme"),
 ];
 
 const GAMEPAD_SLOTS: [(&str, &str, &str, &str); VIAL_GAMEPAD_SLOT_COUNT] = [
@@ -333,14 +333,14 @@ fn placeholder_entry(action_id: &str, module_id: &str, slot: u16) -> ActionSlotE
     }
 }
 
-fn validate_action(act: &openflux_modules::ModuleActionField) -> Result<(), String> {
+fn validate_action(act: &keyglass_modules::ModuleActionField) -> Result<(), String> {
     if act.id.is_empty()
         || act.id.len() > 64
         || !act.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         return Err(format!("action id {:?} must be 1-64 chars of A-Z, a-z, 0-9, '-' or '_'", act.id));
     }
-    openflux_bus::validate_topic(&act.topic).map_err(|e| format!("action topic {:?}: {e}", act.topic))
+    keyglass_bus::validate_topic(&act.topic).map_err(|e| format!("action topic {:?}: {e}", act.topic))
 }
 
 fn make_short_name(module_id: &str, action_id: &str) -> String {
@@ -422,14 +422,14 @@ impl ModuleActionsMap {
                 topic = Some("modules/widget-pomodoro/command".to_string());
                 payload = json!({ "action": "reset" });
                 icon = Some("refresh".to_string());
-            } else if *id == "openflux.brightness_up" || *id == "openflux.brightness_down" {
+            } else if *id == "keyglass.brightness_up" || *id == "keyglass.brightness_down" {
                 icon = Some("brightness".to_string());
             }
             self.entries.insert(
                 slot,
                 ActionSlotEntry {
                     action_id: (*id).to_string(),
-                    module_id: "openflux".to_string(),
+                    module_id: "keyglass".to_string(),
                     keycode: VIAL_KEYCODE_BASE + slot,
                     name: (*name).to_string(),
                     short_name: (*short_name).to_string(),
@@ -458,7 +458,7 @@ impl ModuleActionsMap {
         let gamepad_enabled = enabled_manifests.iter().any(|m| m.id == "analog-gamepad");
 
         // Every enabled action that should hold a slot, in declaration order.
-        let mut wanted: Vec<(&ModuleManifest, &openflux_modules::ModuleActionField, String)> = Vec::new();
+        let mut wanted: Vec<(&ModuleManifest, &keyglass_modules::ModuleActionField, String)> = Vec::new();
         for manifest in enabled_manifests {
             let declared = declared.get(&manifest.id).filter(|_| manifest.dynamic_actions);
             for act in manifest.actions.iter().chain(declared.into_iter().flatten()) {
@@ -785,7 +785,7 @@ pub fn wrap_xz_uncompressed(data: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openflux_modules::{ModuleActionField, ModuleCategory};
+    use keyglass_modules::{ModuleActionField, ModuleCategory};
 
     fn fake_manifest(id: &str, actions: Vec<(&str, &str)>) -> ModuleManifest {
         ModuleManifest {
@@ -802,7 +802,7 @@ mod tests {
             discord_url: None,
             changelog: None,
             changelog_url: None,
-            maturity: openflux_modules::ModuleMaturity::Stable,
+            maturity: keyglass_modules::ModuleMaturity::Stable,
             deprecated: false,
             deprecation_message: None,
             moved_to: None,

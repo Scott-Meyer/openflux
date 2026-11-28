@@ -1,24 +1,24 @@
 #!/bin/sh
-# Verifies staged downloaded factory packages, removes OpenFlux device packages, and installs factory packages
-# while keeping an out-of-package OpenFlux rescue bridge armed until factory install completes.
+# Verifies staged downloaded factory packages, removes Keyglass device packages, and installs factory packages
+# while keeping an out-of-package Keyglass rescue bridge armed until factory install completes.
 set -e
 
-ROOT="${OPENFLUX_SYSROOT:-}"
+ROOT="${KEYGLASS_SYSROOT:-}"
 PREFLIGHT_ONLY=0
 if [ "${1:-}" = "--preflight-only" ]; then
     PREFLIGHT_ONLY=1
     shift
 fi
-RESTORE_DIR="${1:-${ROOT}/home/root/.openflux/factory-restore}"
+RESTORE_DIR="${1:-${ROOT}/home/root/.keyglass/factory-restore}"
 RESTORE_MANIFEST="${RESTORE_DIR}/manifest.sha256"
 OS_BOOT_LAUNCHER="${ROOT}/usr/bin/flux-weston-autolaunch.sh"
-RECOVERY_INIT="${ROOT}/etc/init.d/S05openflux-recovery"
-RESCUE_DIR="${ROOT}/home/root/.openflux/rescue"
+RECOVERY_INIT="${ROOT}/etc/init.d/S05keyglass-recovery"
+RESCUE_DIR="${ROOT}/home/root/.keyglass/rescue"
 RESCUE_ARMED="${RESCUE_DIR}/armed"
 GADGET_PATH="/sys/kernel/config/usb_gadget/g1"
 
 flush_fs() {
-    [ "${OPENFLUX_SKIP_SYNC:-0}" = "1" ] && return 0
+    [ "${KEYGLASS_SKIP_SYNC:-0}" = "1" ] && return 0
     sync
 }
 
@@ -53,7 +53,7 @@ else
     exit 1
 fi
 
-# Read-only preflight before stopping services or removing working OpenFlux packages.
+# Read-only preflight before stopping services or removing working Keyglass packages.
 if [ ! -d "$RESTORE_DIR" ] || [ ! -s "$RESTORE_MANIFEST" ]; then
     echo "ERROR: restore directory or manifest.sha256 missing in ${RESTORE_DIR}" >&2
     exit 1
@@ -190,7 +190,7 @@ stop_factory_services() {
         "${ROOT}/usr/bin/garfunkel"; do
         pkill -TERM -f "$pat" 2>/dev/null || true
     done
-    sleep "${OPENFLUX_STOP_SLEEP:-2}"
+    sleep "${KEYGLASS_STOP_SLEEP:-2}"
     for pat in \
         "$OS_BOOT_LAUNCHER" \
         "${ROOT}/usr/lib/garfield/garfield" \
@@ -222,22 +222,22 @@ case "$mode" in
     *) exit 0 ;;
 esac
 
-ROOT="${OPENFLUX_SYSROOT:-}"
-RESCUE_DIR="${ROOT}/home/root/.openflux/rescue"
+ROOT="${KEYGLASS_SYSROOT:-}"
+RESCUE_DIR="${ROOT}/home/root/.keyglass/rescue"
 RESCUE_ARMED="${RESCUE_DIR}/armed"
 OS_BOOT_LAUNCHER="${ROOT}/usr/bin/flux-weston-autolaunch.sh"
-LOG_DIR="${ROOT}/home/root/openflux/logs"
+LOG_DIR="${ROOT}/home/root/keyglass/logs"
 
 if [ ! -f "$RESCUE_ARMED" ] || [ ! -d "$RESCUE_DIR" ]; then
-    rm -f "${ROOT}/etc/init.d/S05openflux-recovery"
-    if [ "$mode" = "start-and-exec" ] && [ -x "${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh" ]; then
-        exec "${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh"
+    rm -f "${ROOT}/etc/init.d/S05keyglass-recovery"
+    if [ "$mode" = "start-and-exec" ] && [ -x "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" ]; then
+        exec "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh"
     fi
     exit 0
 fi
 
 flush_fs() {
-    [ "${OPENFLUX_SKIP_SYNC:-0}" = "1" ] && return 0
+    [ "${KEYGLASS_SKIP_SYNC:-0}" = "1" ] && return 0
     sync
 }
 
@@ -255,7 +255,7 @@ atomic_copy() {
 }
 
 mkdir -p "$LOG_DIR" 2>/dev/null || true
-echo "$(date '+%Y-%m-%d %H:%M:%S') - S05openflux-recovery triggered; reinstating OpenFlux" >> "${LOG_DIR}/autolaunch.log"
+echo "$(date '+%Y-%m-%d %H:%M:%S') - S05keyglass-recovery triggered; reinstating Keyglass" >> "${LOG_DIR}/autolaunch.log"
 
 for pat in \
     "$OS_BOOT_LAUNCHER" \
@@ -265,7 +265,7 @@ for pat in \
     "${ROOT}/usr/bin/garfunkel"; do
     pkill -TERM -f "$pat" 2>/dev/null || true
 done
-sleep "${OPENFLUX_STOP_SLEEP:-1}"
+sleep "${KEYGLASS_STOP_SLEEP:-1}"
 for pat in \
     "$OS_BOOT_LAUNCHER" \
     "${ROOT}/usr/lib/garfield/garfield" \
@@ -276,43 +276,43 @@ for pat in \
 done
 
 ok=1
-if [ -f "${RESCUE_DIR}/openflux-bridge" ]; then
-    atomic_copy "${RESCUE_DIR}/openflux-bridge" "${ROOT}/usr/lib/openflux/bridge/openflux-bridge" 1 || ok=0
+if [ -f "${RESCUE_DIR}/keyglass-bridge" ]; then
+    atomic_copy "${RESCUE_DIR}/keyglass-bridge" "${ROOT}/usr/lib/keyglass/bridge/keyglass-bridge" 1 || ok=0
 fi
-if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/openflux-display" ]; then
-    atomic_copy "${RESCUE_DIR}/openflux-display" "${ROOT}/usr/lib/openflux/display/openflux-display" 1 || ok=0
+if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/keyglass-display" ]; then
+    atomic_copy "${RESCUE_DIR}/keyglass-display" "${ROOT}/usr/lib/keyglass/display/keyglass-display" 1 || ok=0
 fi
 if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/bridge.version" ]; then
-    atomic_copy "${RESCUE_DIR}/bridge.version" "${ROOT}/home/root/.openflux/versions/bridge" 0 || ok=0
+    atomic_copy "${RESCUE_DIR}/bridge.version" "${ROOT}/home/root/.keyglass/versions/bridge" 0 || ok=0
 fi
 if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/display.version" ]; then
-    atomic_copy "${RESCUE_DIR}/display.version" "${ROOT}/home/root/.openflux/versions/display" 0 || ok=0
+    atomic_copy "${RESCUE_DIR}/display.version" "${ROOT}/home/root/.keyglass/versions/display" 0 || ok=0
 fi
-if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/openflux-autolaunch.sh" ]; then
-    atomic_copy "${RESCUE_DIR}/openflux-autolaunch.sh" "${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh" 1 || ok=0
+if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/keyglass-autolaunch.sh" ]; then
+    atomic_copy "${RESCUE_DIR}/keyglass-autolaunch.sh" "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" 1 || ok=0
 fi
 if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/restore-factory.sh" ]; then
-    atomic_copy "${RESCUE_DIR}/restore-factory.sh" "${ROOT}/usr/lib/openflux/bridge/restore-factory.sh" 1 || ok=0
+    atomic_copy "${RESCUE_DIR}/restore-factory.sh" "${ROOT}/usr/lib/keyglass/bridge/restore-factory.sh" 1 || ok=0
 fi
 if [ "$ok" -ne 1 ] || ! flush_fs; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - ERROR: S05openflux-recovery payload copy/flush failed; preserving armed marker" >> "${LOG_DIR}/autolaunch.log"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - ERROR: S05keyglass-recovery payload copy/flush failed; preserving armed marker" >> "${LOG_DIR}/autolaunch.log"
     exit 1
 fi
 
-if [ -f "${RESCUE_DIR}/openflux-autolaunch.sh" ]; then
-    atomic_copy "${RESCUE_DIR}/openflux-autolaunch.sh" "$OS_BOOT_LAUNCHER" 1 && flush_fs || ok=0
+if [ -f "${RESCUE_DIR}/keyglass-autolaunch.sh" ]; then
+    atomic_copy "${RESCUE_DIR}/keyglass-autolaunch.sh" "$OS_BOOT_LAUNCHER" 1 && flush_fs || ok=0
 elif [ -f "${RESCUE_DIR}/os-autolaunch.sh" ]; then
     atomic_copy "${RESCUE_DIR}/os-autolaunch.sh" "$OS_BOOT_LAUNCHER" 1 && flush_fs || ok=0
 fi
 if [ "$ok" -ne 1 ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - ERROR: S05openflux-recovery launcher copy/flush failed; preserving armed marker" >> "${LOG_DIR}/autolaunch.log"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - ERROR: S05keyglass-recovery launcher copy/flush failed; preserving armed marker" >> "${LOG_DIR}/autolaunch.log"
     exit 1
 fi
 
-rm -f "$RESCUE_ARMED" "${ROOT}/etc/init.d/S05openflux-recovery" \
-      "${ROOT}/tmp/openflux_updating_bridge" "${ROOT}/tmp/openflux_updating_display" \
+rm -f "$RESCUE_ARMED" "${ROOT}/etc/init.d/S05keyglass-recovery" \
+      "${ROOT}/tmp/keyglass_updating_bridge" "${ROOT}/tmp/keyglass_updating_display" \
       "${ROOT}/tmp/updating_garfield" "${ROOT}/tmp/updating_garfunkel" \
-      "${ROOT}/tmp/openflux_bridge_ready" "${ROOT}/tmp/openflux_display_active"
+      "${ROOT}/tmp/keyglass_bridge_ready" "${ROOT}/tmp/keyglass_display_active"
 flush_fs || true
 if [ "$mode" = "start-and-exec" ] && [ -x "$OS_BOOT_LAUNCHER" ]; then
     exec "$OS_BOOT_LAUNCHER"
@@ -324,39 +324,39 @@ EOF
 
     cat > "${OS_BOOT_LAUNCHER}.tmp" <<'EOF'
 #!/bin/sh
-ROOT="${OPENFLUX_SYSROOT:-}"
-RECOVERY_INIT="${ROOT}/etc/init.d/S05openflux-recovery"
-RESCUE_ARMED="${ROOT}/home/root/.openflux/rescue/armed"
+ROOT="${KEYGLASS_SYSROOT:-}"
+RECOVERY_INIT="${ROOT}/etc/init.d/S05keyglass-recovery"
+RESCUE_ARMED="${ROOT}/home/root/.keyglass/rescue/armed"
 
 if [ -f "$RESCUE_ARMED" ] && [ -x "$RECOVERY_INIT" ]; then
     exec "$RECOVERY_INIT" start-and-exec
 fi
 
-if [ -x "${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh" ]; then
-    exec "${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh"
+if [ -x "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" ]; then
+    exec "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh"
 fi
 EOF
     chmod +x "${OS_BOOT_LAUNCHER}.tmp"
     mv -f "${OS_BOOT_LAUNCHER}.tmp" "$OS_BOOT_LAUNCHER"
 }
 
-stage_openflux_rescue() {
-    [ -s "${ROOT}/usr/lib/openflux/bridge/openflux-bridge" ] || {
-        echo "ERROR: missing installed openflux-bridge binary; aborting rescue stage" >&2
+stage_keyglass_rescue() {
+    [ -s "${ROOT}/usr/lib/keyglass/bridge/keyglass-bridge" ] || {
+        echo "ERROR: missing installed keyglass-bridge binary; aborting rescue stage" >&2
         exit 1
     }
-    [ -s "${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh" ] || {
-        echo "ERROR: missing installed openflux-autolaunch.sh; aborting rescue stage" >&2
+    [ -s "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" ] || {
+        echo "ERROR: missing installed keyglass-autolaunch.sh; aborting rescue stage" >&2
         exit 1
     }
     rm -rf "$RESCUE_DIR"
     mkdir -p "$RESCUE_DIR"
-    cp -p "${ROOT}/usr/lib/openflux/bridge/openflux-bridge" "${RESCUE_DIR}/openflux-bridge"
-    cp -p "${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh" "${RESCUE_DIR}/openflux-autolaunch.sh"
-    [ -f "${ROOT}/usr/lib/openflux/bridge/restore-factory.sh" ] && cp -p "${ROOT}/usr/lib/openflux/bridge/restore-factory.sh" "${RESCUE_DIR}/restore-factory.sh"
-    [ -f "${ROOT}/usr/lib/openflux/display/openflux-display" ] && cp -p "${ROOT}/usr/lib/openflux/display/openflux-display" "${RESCUE_DIR}/openflux-display"
-    [ -f "${ROOT}/home/root/.openflux/versions/bridge" ] && cp -p "${ROOT}/home/root/.openflux/versions/bridge" "${RESCUE_DIR}/bridge.version"
-    [ -f "${ROOT}/home/root/.openflux/versions/display" ] && cp -p "${ROOT}/home/root/.openflux/versions/display" "${RESCUE_DIR}/display.version"
+    cp -p "${ROOT}/usr/lib/keyglass/bridge/keyglass-bridge" "${RESCUE_DIR}/keyglass-bridge"
+    cp -p "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" "${RESCUE_DIR}/keyglass-autolaunch.sh"
+    [ -f "${ROOT}/usr/lib/keyglass/bridge/restore-factory.sh" ] && cp -p "${ROOT}/usr/lib/keyglass/bridge/restore-factory.sh" "${RESCUE_DIR}/restore-factory.sh"
+    [ -f "${ROOT}/usr/lib/keyglass/display/keyglass-display" ] && cp -p "${ROOT}/usr/lib/keyglass/display/keyglass-display" "${RESCUE_DIR}/keyglass-display"
+    [ -f "${ROOT}/home/root/.keyglass/versions/bridge" ] && cp -p "${ROOT}/home/root/.keyglass/versions/bridge" "${RESCUE_DIR}/bridge.version"
+    [ -f "${ROOT}/home/root/.keyglass/versions/display" ] && cp -p "${ROOT}/home/root/.keyglass/versions/display" "${RESCUE_DIR}/display.version"
     [ -f "$OS_BOOT_LAUNCHER" ] && cp -p "$OS_BOOT_LAUNCHER" "${RESCUE_DIR}/os-autolaunch.sh"
     # Flush complete rescue snapshot before writing armed marker or boot hooks.
     flush_fs
@@ -365,34 +365,34 @@ stage_openflux_rescue() {
     flush_fs
 }
 
-reinstate_openflux_rescue() {
+reinstate_keyglass_rescue() {
     stop_factory_services
     ok=1
-    mkdir -p "${ROOT}/usr/lib/openflux/bridge" "${ROOT}/usr/lib/openflux/display" "${ROOT}/usr/bin" "${ROOT}/home/root/.openflux/versions" "${ROOT}/home/root/openflux/logs" || ok=0
-    if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/openflux-bridge" ]; then
-        atomic_copy "${RESCUE_DIR}/openflux-bridge" "${ROOT}/usr/lib/openflux/bridge/openflux-bridge" 1 || ok=0
+    mkdir -p "${ROOT}/usr/lib/keyglass/bridge" "${ROOT}/usr/lib/keyglass/display" "${ROOT}/usr/bin" "${ROOT}/home/root/.keyglass/versions" "${ROOT}/home/root/keyglass/logs" || ok=0
+    if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/keyglass-bridge" ]; then
+        atomic_copy "${RESCUE_DIR}/keyglass-bridge" "${ROOT}/usr/lib/keyglass/bridge/keyglass-bridge" 1 || ok=0
     fi
-    if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/openflux-display" ]; then
-        atomic_copy "${RESCUE_DIR}/openflux-display" "${ROOT}/usr/lib/openflux/display/openflux-display" 1 || ok=0
+    if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/keyglass-display" ]; then
+        atomic_copy "${RESCUE_DIR}/keyglass-display" "${ROOT}/usr/lib/keyglass/display/keyglass-display" 1 || ok=0
     fi
     if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/bridge.version" ]; then
-        atomic_copy "${RESCUE_DIR}/bridge.version" "${ROOT}/home/root/.openflux/versions/bridge" 0 || ok=0
+        atomic_copy "${RESCUE_DIR}/bridge.version" "${ROOT}/home/root/.keyglass/versions/bridge" 0 || ok=0
     fi
     if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/display.version" ]; then
-        atomic_copy "${RESCUE_DIR}/display.version" "${ROOT}/home/root/.openflux/versions/display" 0 || ok=0
+        atomic_copy "${RESCUE_DIR}/display.version" "${ROOT}/home/root/.keyglass/versions/display" 0 || ok=0
     fi
-    if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/openflux-autolaunch.sh" ]; then
-        atomic_copy "${RESCUE_DIR}/openflux-autolaunch.sh" "${ROOT}/usr/lib/openflux/bridge/openflux-autolaunch.sh" 1 || ok=0
+    if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/keyglass-autolaunch.sh" ]; then
+        atomic_copy "${RESCUE_DIR}/keyglass-autolaunch.sh" "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" 1 || ok=0
     fi
     if [ "$ok" -eq 1 ] && [ -f "${RESCUE_DIR}/restore-factory.sh" ]; then
-        atomic_copy "${RESCUE_DIR}/restore-factory.sh" "${ROOT}/usr/lib/openflux/bridge/restore-factory.sh" 1 || ok=0
+        atomic_copy "${RESCUE_DIR}/restore-factory.sh" "${ROOT}/usr/lib/keyglass/bridge/restore-factory.sh" 1 || ok=0
     fi
     if [ "$ok" -ne 1 ] || ! flush_fs; then
         echo "ERROR: rescue payload copy/flush failed; keeping rescue armed marker" >&2
         return 1
     fi
-    if [ -f "${RESCUE_DIR}/openflux-autolaunch.sh" ]; then
-        atomic_copy "${RESCUE_DIR}/openflux-autolaunch.sh" "$OS_BOOT_LAUNCHER" 1 && flush_fs || ok=0
+    if [ -f "${RESCUE_DIR}/keyglass-autolaunch.sh" ]; then
+        atomic_copy "${RESCUE_DIR}/keyglass-autolaunch.sh" "$OS_BOOT_LAUNCHER" 1 && flush_fs || ok=0
     elif [ -f "${RESCUE_DIR}/os-autolaunch.sh" ]; then
         atomic_copy "${RESCUE_DIR}/os-autolaunch.sh" "$OS_BOOT_LAUNCHER" 1 && flush_fs || ok=0
     fi
@@ -401,54 +401,54 @@ reinstate_openflux_rescue() {
         return 1
     fi
     rm -f "$RESCUE_ARMED" "$RECOVERY_INIT" \
-          "${ROOT}/tmp/openflux_updating_bridge" "${ROOT}/tmp/openflux_updating_display" \
+          "${ROOT}/tmp/keyglass_updating_bridge" "${ROOT}/tmp/keyglass_updating_display" \
           "${ROOT}/tmp/updating_garfield" "${ROOT}/tmp/updating_garfunkel" \
-          "${ROOT}/tmp/openflux_bridge_ready" "${ROOT}/tmp/openflux_display_active"
+          "${ROOT}/tmp/keyglass_bridge_ready" "${ROOT}/tmp/keyglass_display_active"
     flush_fs || true
     if [ -x "$OS_BOOT_LAUNCHER" ]; then
-        nohup "$OS_BOOT_LAUNCHER" </dev/null > "${ROOT}/home/root/openflux/logs/autolaunch.log" 2>&1 &
+        nohup "$OS_BOOT_LAUNCHER" </dev/null > "${ROOT}/home/root/keyglass/logs/autolaunch.log" 2>&1 &
     fi
     return 0
 }
 
-stage_openflux_rescue
+stage_keyglass_rescue
 
 mkdir -p "${ROOT}/tmp"
-touch "${ROOT}/tmp/openflux_updating_bridge" "${ROOT}/tmp/openflux_updating_display"
-pkill -TERM -f "${ROOT}/usr/lib/openflux/display/openflux-display" 2>/dev/null || true
-pkill -TERM -f "${ROOT}/usr/lib/openflux/bridge/openflux-bridge" 2>/dev/null || true
+touch "${ROOT}/tmp/keyglass_updating_bridge" "${ROOT}/tmp/keyglass_updating_display"
+pkill -TERM -f "${ROOT}/usr/lib/keyglass/display/keyglass-display" 2>/dev/null || true
+pkill -TERM -f "${ROOT}/usr/lib/keyglass/bridge/keyglass-bridge" 2>/dev/null || true
 pkill -TERM -f "$OS_BOOT_LAUNCHER" 2>/dev/null || true
-sleep "${OPENFLUX_STOP_SLEEP:-2}"
-pkill -KILL -f "${ROOT}/usr/lib/openflux/display/openflux-display" 2>/dev/null || true
-pkill -KILL -f "${ROOT}/usr/lib/openflux/bridge/openflux-bridge" 2>/dev/null || true
+sleep "${KEYGLASS_STOP_SLEEP:-2}"
+pkill -KILL -f "${ROOT}/usr/lib/keyglass/display/keyglass-display" 2>/dev/null || true
+pkill -KILL -f "${ROOT}/usr/lib/keyglass/bridge/keyglass-bridge" 2>/dev/null || true
 
-# Tear down OpenFlux FunctionFS gadget cleanly before factory restore (only on real device root).
+# Tear down Keyglass FunctionFS gadget cleanly before factory restore (only on real device root).
 if [ -z "$ROOT" ]; then
     if [ -d "$GADGET_PATH" ]; then
         printf "\n" > "${GADGET_PATH}/UDC" 2>/dev/null || true
-        rm -f "${GADGET_PATH}/configs/c.1/ffs.openflux" "${GADGET_PATH}/os_desc/c.1" 2>/dev/null || true
+        rm -f "${GADGET_PATH}/configs/c.1/ffs.keyglass" "${GADGET_PATH}/os_desc/c.1" 2>/dev/null || true
         rmdir "${GADGET_PATH}/configs/c.1/strings/0x409" "${GADGET_PATH}/configs/c.1" \
-              "${GADGET_PATH}/functions/ffs.openflux" "${GADGET_PATH}/strings/0x409" \
+              "${GADGET_PATH}/functions/ffs.keyglass" "${GADGET_PATH}/strings/0x409" \
               "$GADGET_PATH" 2>/dev/null || true
     fi
-    umount -l "/dev/ffs-openflux" 2>/dev/null || true
+    umount -l "/dev/ffs-keyglass" 2>/dev/null || true
 fi
 
-opkg remove openflux-display openflux-bridge 2>/dev/null || true
+opkg remove keyglass-display keyglass-bridge 2>/dev/null || true
 
 if ! opkg install --force-downgrade --force-reinstall "$BRIDGE_IPK" "$DISPLAY_IPK"; then
-    echo "ERROR: factory package install failed; reinstating rescued OpenFlux bridge" >&2
-    reinstate_openflux_rescue || true
+    echo "ERROR: factory package install failed; reinstating rescued Keyglass bridge" >&2
+    reinstate_keyglass_rescue || true
     exit 1
 fi
 
 # Always install & flush the verified factory boot launcher from the checksum-verified bridge IPK before disarming rescue.
 if ! flush_fs || ! extract_factory_launcher_from_ipk "$BRIDGE_IPK" "$OS_BOOT_LAUNCHER" || ! flush_fs; then
-    echo "ERROR: failed to install/flush factory boot launcher from bridge IPK; reinstating rescued OpenFlux bridge" >&2
-    reinstate_openflux_rescue || true
+    echo "ERROR: failed to install/flush factory boot launcher from bridge IPK; reinstating rescued Keyglass bridge" >&2
+    reinstate_keyglass_rescue || true
     exit 1
 fi
-# The OpenFlux launcher keeps the OS time service from starting at boot; put its init script back.
+# The Keyglass launcher keeps the OS time service from starting at boot; put its init script back.
 if [ -f "${ROOT}/etc/init.d/disabled_S49chrony" ] && [ ! -e "${ROOT}/etc/init.d/S49chrony" ]; then
     mv "${ROOT}/etc/init.d/disabled_S49chrony" "${ROOT}/etc/init.d/S49chrony" || true
 fi
@@ -456,8 +456,8 @@ rm -f "$RESCUE_ARMED" "$RECOVERY_INIT"
 rm -rf "$RESCUE_DIR"
 flush_fs || true
 
-rm -f "${ROOT}/tmp/openflux_updating_bridge" "${ROOT}/tmp/openflux_updating_display" \
-      "${ROOT}/tmp/openflux_bridge_ready" "${ROOT}/tmp/openflux_display_active"
+rm -f "${ROOT}/tmp/keyglass_updating_bridge" "${ROOT}/tmp/keyglass_updating_display" \
+      "${ROOT}/tmp/keyglass_bridge_ready" "${ROOT}/tmp/keyglass_display_active"
 
 if [ -x "$OS_BOOT_LAUNCHER" ]; then
     mkdir -p "${ROOT}/home/root/flux/logs"

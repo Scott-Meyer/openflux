@@ -6,7 +6,7 @@ the USB keyboard. A small **ARM Linux computer** drives the 1920×1080 display
 under the keycaps. Both sit behind a USB hub inside the keyboard, so the
 computer it is plugged into sees two USB devices.
 
-OpenFlux is the software for all of it: firmware for the key scanner, two
+Keyglass is the software for all of it: firmware for the key scanner, two
 programs for the keyboard's computer, and the desktop software that
 configures the keyboard and feeds it live information.
 
@@ -14,8 +14,8 @@ configures the keyboard and feeds it live information.
 flowchart LR
     subgraph computer["Computer"]
         apps["Third-party apps"]
-        studio["OpenFlux Studio"]
-        daemon["openfluxd"]
+        studio["Keyglass Studio"]
+        daemon["keyglassd"]
         os["Operating system"]
     end
     subgraph keyboard["Keyboard"]
@@ -44,23 +44,23 @@ flowchart LR
 ```
 
 Typing goes from the firmware straight to the operating system. Everything
-else goes through `openfluxd`, which owns the USB connection to both keyboard
+else goes through `keyglassd`, which owns the USB connection to both keyboard
 parts; Studio and third-party apps talk only to it.
 
 ## Components
 
 | Component | Runs on | Released as | Source |
 |---|---|---|---|
-| **firmware** | the RP2040 key scanner | `openflux-firmware-X.Y.Z.uf2` | `keyboard/firmware` (C, Pico SDK) |
-| **bridge** | the keyboard's computer | `openflux-bridge_X.Y.Z_aarch64.ipk` | `keyboard/bridge` (Rust) |
-| **display** | the keyboard's computer | `openflux-display_X.Y.Z_aarch64.ipk` | `keyboard/display` (Rust) |
+| **firmware** | the RP2040 key scanner | `keyglass-firmware-X.Y.Z.uf2` | `keyboard/firmware` (C, Pico SDK) |
+| **bridge** | the keyboard's computer | `keyglass-bridge_X.Y.Z_aarch64.ipk` | `keyboard/bridge` (Rust) |
+| **display** | the keyboard's computer | `keyglass-display_X.Y.Z_aarch64.ipk` | `keyboard/display` (Rust) |
 | **host** | the computer the keyboard is plugged into | installers for macOS, Windows and Linux | `host/` (Rust, TypeScript, Swift) |
 
 Each component has its own version and release; `compat.toml` records which
 versions work together ([compatibility.md](compatibility.md)). The bridge
 and display are `.ipk` files, the opkg package format of the keyboard's
-Linux operating system. That operating system is not part of OpenFlux;
-OpenFlux installs its programs on it and starts them at boot.
+Linux operating system. That operating system is not part of Keyglass;
+Keyglass installs its programs on it and starts them at boot.
 
 ### Firmware
 
@@ -107,23 +107,23 @@ state and live data from the bridge.
 
 | Program | Role |
 |---|---|
-| `openfluxd` | The daemon. Runs per user from login. Owns the USB connection to both keyboard devices, keeps the configuration, samples system load, media playback, the active application and the input language, fetches weather, and serves the local API. |
-| OpenFlux Studio | The desktop app, built with Tauri. Edits themes, keymaps, profiles, the Mosaic and actuation, shows a live preview, and installs updates. It talks only to `openfluxd`. |
-| `openflux-tray`, `openflux-sensors` | macOS helpers for the menu bar icon and system sensors. On Windows and Linux the daemon does both itself. |
-| `openflux-ffmpeg`, `openflux-ffprobe` | Convert imported videos to a format the keyboard plays, and read their durations. |
+| `keyglassd` | The daemon. Runs per user from login. Owns the USB connection to both keyboard devices, keeps the configuration, samples system load, media playback, the active application and the input language, fetches weather, and serves the local API. |
+| Keyglass Studio | The desktop app, built with Tauri. Edits themes, keymaps, profiles, the Mosaic and actuation, shows a live preview, and installs updates. It talks only to `keyglassd`. |
+| `keyglass-tray`, `keyglass-sensors` | macOS helpers for the menu bar icon and system sensors. On Windows and Linux the daemon does both itself. |
+| `keyglass-ffmpeg`, `keyglass-ffprobe` | Convert imported videos to a format the keyboard plays, and read their durations. |
 
 Studio's preview is drawn on the computer by the display's own renderer
-(the `openflux-display` crate in `keyboard/display`), so what Studio shows is
+(the `keyglass-display` crate in `keyboard/display`), so what Studio shows is
 what the keyboard draws.
 
 The daemon's API listens only on the loopback interface, over HTTPS with a
-self-signed certificate. OpenFlux's own clients enroll with a secret in the
+self-signed certificate. Keyglass's own clients enroll with a secret in the
 user's data directory. The same server implements the
 [third-party app API](third-party-api.md), so existing apps that customize
 the keyboard keep working.
 
-The daemon stores its data in `~/.local/share/openflux` on macOS and Linux and
-in `%LOCALAPPDATA%\openflux` on Windows.
+The daemon stores its data in `~/.local/share/keyglass` on macOS and Linux and
+in `%LOCALAPPDATA%\keyglass` on Windows.
 
 ## Data flow
 
@@ -152,7 +152,7 @@ the active theme. The bridge passes it on to the display
 
 **Weather.** While a Mosaic layout has a weather tile, the daemon looks up the
 tile's city, its forecast and its air quality with
-[Open-Meteo](https://open-meteo.com/). Without a weather tile, OpenFlux
+[Open-Meteo](https://open-meteo.com/). Without a weather tile, Keyglass
 makes no weather requests.
 
 **Profiles.** Each profile pairs a theme, shortcut contexts (the key labels
@@ -174,12 +174,12 @@ how it chooses what to offer and in which order to install it, and
 
 | Path | Contents |
 |---|---|
-| `/usr/lib/openflux/bridge/`, `/usr/lib/openflux/display/` | the installed programs and their resources |
-| `/home/root/openflux/config/` | configuration written by the host |
-| `/home/root/openflux/media/` | backgrounds and key icons |
-| `/home/root/openflux/logs/` | logs, and state the display publishes for the host |
-| `/home/root/.openflux/` | installed versions and update rollback state |
-| `/tmp/openflux_bridge.sock` | the bridge's display socket |
+| `/usr/lib/keyglass/bridge/`, `/usr/lib/keyglass/display/` | the installed programs and their resources |
+| `/home/root/keyglass/config/` | configuration written by the host |
+| `/home/root/keyglass/media/` | backgrounds and key icons |
+| `/home/root/keyglass/logs/` | logs, and state the display publishes for the host |
+| `/home/root/.keyglass/` | installed versions and update rollback state |
+| `/tmp/keyglass_bridge.sock` | the bridge's display socket |
 
 ## Protocol and format specifications
 

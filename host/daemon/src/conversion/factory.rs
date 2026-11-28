@@ -1,7 +1,7 @@
 //! The factory reference: the keyboard's factory software, for resetting a keyboard to it.
 //!
 //! The signed index records where the factory software is published (a ZIP64 container), which
-//! members of it hold the firmware, bridge and display, and the size and SHA-256 of each. OpenFlux
+//! members of it hold the firmware, bridge and display, and the size and SHA-256 of each. Keyglass
 //! doesn't host these files. The daemon reads only the members it needs, with HTTP range
 //! requests (the central directory, then each member), and downloads the whole container when the
 //! server doesn't support ranges. Every file is checked against the signed index before use.
@@ -13,10 +13,10 @@ use std::time::Duration;
 
 /// `User-Agent` of the daemon's requests for factory files.
 pub fn user_agent() -> String {
-    format!("OpenFlux/{} (openfluxd)", env!("CARGO_PKG_VERSION"))
+    format!("Keyglass/{} (keyglassd)", env!("CARGO_PKG_VERSION"))
 }
 
-pub use openflux_update::{FactoryFile, FactoryReference};
+pub use keyglass_update::{FactoryFile, FactoryReference};
 
 /// A factory file's name without its path in the container.
 pub fn file_name(file: &FactoryFile) -> &str {
@@ -220,7 +220,7 @@ fn extract<R: Read + Seek>(
 pub fn verify_file(path: &Path, file: &FactoryFile) -> Result<(), FactoryError> {
     let f = std::fs::File::open(path)
         .map_err(|e| FactoryError::Storage(format!("read {}: {e}", path.display())))?;
-    let (sha, size) = openflux_update::trust::sha256_hex(std::io::BufReader::new(f))
+    let (sha, size) = keyglass_update::trust::sha256_hex(std::io::BufReader::new(f))
         .map_err(|e| FactoryError::Storage(e.to_string()))?;
     if size != file.size || sha != file.sha256 {
         return Err(FactoryError::Verification(format!(

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests check-keyboard-ipk.sh on packages built from small AArch64 test
 # programs: a glibc package may carry a fully static helper (the display's
-# openflux-ffmpeg), a static package may not carry a dynamic executable,
+# keyglass-ffmpeg), a static package may not carry a dynamic executable,
 # libraries outside the keyboard OS's set and too-new glibc symbols are
 # refused, and required (non-empty) files and the presence of executables
 # are checked.
@@ -45,7 +45,7 @@ package() {
         mkdir -p "$(dirname "$dest")"
         cp "$src" "$dest"
     done
-    mkdir -p "stage-${name}/data/home/root/.openflux"
+    mkdir -p "stage-${name}/data/home/root/.keyglass"
     SOURCE_DATE_EPOCH=1700000000 python3 "${repo}/scripts/build_ipk.py" \
         --control-dir "stage-${name}/control" --data-dir "stage-${name}/data" -o "${name}.ipk" > /dev/null
 }
@@ -61,31 +61,31 @@ expect() {
 }
 
 printf 'LGPL\n' > license.txt
-D=/usr/lib/openflux/display
-package display openflux-display 1.0.0 dynamic:$D/openflux-display static:$D/openflux-ffmpeg license.txt:$D/licenses/FFMPEG-LGPL-2.1.txt
-expect pass "glibc package with a fully static helper" display.ipk openflux-display 1.0.0 glibc \
-    --require $D/openflux-ffmpeg --require $D/licenses/FFMPEG-LGPL-2.1.txt
-expect fail "a required file is missing" display.ipk openflux-display 1.0.0 glibc --require $D/licenses/FFMPEG-NOTICE.txt
+D=/usr/lib/keyglass/display
+package display keyglass-display 1.0.0 dynamic:$D/keyglass-display static:$D/keyglass-ffmpeg license.txt:$D/licenses/FFMPEG-LGPL-2.1.txt
+expect pass "glibc package with a fully static helper" display.ipk keyglass-display 1.0.0 glibc \
+    --require $D/keyglass-ffmpeg --require $D/licenses/FFMPEG-LGPL-2.1.txt
+expect fail "a required file is missing" display.ipk keyglass-display 1.0.0 glibc --require $D/licenses/FFMPEG-NOTICE.txt
 : > empty.txt
-package display-empty openflux-display 1.0.0 dynamic:$D/openflux-display empty.txt:$D/licenses/openflux-display-rust-licenses.txt
-expect fail "a required file is empty" display-empty.ipk openflux-display 1.0.0 glibc \
-    --require $D/licenses/openflux-display-rust-licenses.txt
-expect fail "the control version differs" display.ipk openflux-display 1.0.1 glibc
-expect fail "the control package name differs" display.ipk openflux-bridge 1.0.0 glibc
-GLIBC_MAX=2.16 expect fail "a glibc symbol newer than the keyboard's" display.ipk openflux-display 1.0.0 glibc
+package display-empty keyglass-display 1.0.0 dynamic:$D/keyglass-display empty.txt:$D/licenses/keyglass-display-rust-licenses.txt
+expect fail "a required file is empty" display-empty.ipk keyglass-display 1.0.0 glibc \
+    --require $D/licenses/keyglass-display-rust-licenses.txt
+expect fail "the control version differs" display.ipk keyglass-display 1.0.1 glibc
+expect fail "the control package name differs" display.ipk keyglass-bridge 1.0.0 glibc
+GLIBC_MAX=2.16 expect fail "a glibc symbol newer than the keyboard's" display.ipk keyglass-display 1.0.0 glibc
 
-package bridge openflux-bridge 1.0.0 static:/usr/lib/openflux/bridge/openflux-bridge
-expect pass "static package with a static executable" bridge.ipk openflux-bridge 1.0.0 static
-package bridge-dynamic openflux-bridge 1.0.0 dynamic:/usr/lib/openflux/bridge/openflux-bridge
-expect fail "static package with a dynamic executable" bridge-dynamic.ipk openflux-bridge 1.0.0 static
+package bridge keyglass-bridge 1.0.0 static:/usr/lib/keyglass/bridge/keyglass-bridge
+expect pass "static package with a static executable" bridge.ipk keyglass-bridge 1.0.0 static
+package bridge-dynamic keyglass-bridge 1.0.0 dynamic:/usr/lib/keyglass/bridge/keyglass-bridge
+expect fail "static package with a dynamic executable" bridge-dynamic.ipk keyglass-bridge 1.0.0 static
 
-package foreign openflux-display 1.0.0 usesfoo:$D/openflux-display libfoo.so:$D/libfoo.so
-expect fail "a library the keyboard OS does not provide" foreign.ipk openflux-display 1.0.0 glibc
+package foreign keyglass-display 1.0.0 usesfoo:$D/keyglass-display libfoo.so:$D/libfoo.so
+expect fail "a library the keyboard OS does not provide" foreign.ipk keyglass-display 1.0.0 glibc
 
-package restore openflux-factory-restore 1.0.0
-expect pass "a package without executables, with --no-executables" restore.ipk openflux-factory-restore 1.0.0 static --no-executables
-expect fail "a package without executables" restore.ipk openflux-factory-restore 1.0.0 static
-expect fail "executables where none are expected" bridge.ipk openflux-bridge 1.0.0 static --no-executables
+package restore keyglass-factory-restore 1.0.0
+expect pass "a package without executables, with --no-executables" restore.ipk keyglass-factory-restore 1.0.0 static --no-executables
+expect fail "a package without executables" restore.ipk keyglass-factory-restore 1.0.0 static
+expect fail "executables where none are expected" bridge.ipk keyglass-bridge 1.0.0 static --no-executables
 
 if [ "$fails" -gt 0 ]; then
     echo "test-check-keyboard-ipk: ${fails} failures" >&2

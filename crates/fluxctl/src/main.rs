@@ -1,6 +1,6 @@
-//! `fluxctl`: 100% CLI parity with OpenFlux Studio for humans and AI coding agents.
+//! `fluxctl`: 100% CLI parity with Keyglass Studio for humans and AI coding agents.
 //!
-//! When `openfluxd` (the running app daemon) is reachable—auto-discovered from
+//! When `keyglassd` (the running app daemon) is reachable—auto-discovered from
 //! `<data_dir>/config/keys.json` or `--daemon`—`fluxctl` operates live against it so Studio
 //! updates instantaneously as an AI or script creates, edits, enables, configures, reloads,
 //! inspects logs, or streams bus events. When offline (or with `--offline`), it works directly
@@ -8,13 +8,13 @@
 
 use base64::Engine;
 use clap::{Parser, Subcommand, ValueEnum};
-use openflux_bus::{
+use keyglass_bus::{
     topics, AnalogKeyFrame, AnalogKeySample, Broker, FrameLayout, HostConnectionState, KeyEvent,
     KeyEventKind, KeyboardGeometry, MediaNowPlaying, PublishOptions, SurfaceImpulse, SystemMetrics,
     WeatherState,
 };
-use openflux_compositor::{Compositor, CompositorOptions};
-use openflux_modules::{
+use keyglass_compositor::{Compositor, CompositorOptions};
+use keyglass_modules::{
     inspect_module_dir, CuratedListDocument, CuratedListSubscription, ModuleCategory,
     ModuleInstanceState, ModuleRegistry, ModuleRuntime, SetupPreset,
 };
@@ -23,25 +23,25 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 #[derive(Parser)]
-#[command(name = "fluxctl", version, about = "OpenFlux v2 command-line interface")]
+#[command(name = "fluxctl", version, about = "Keyglass v2 command-line interface")]
 struct Cli {
     /// Emit machine-readable JSON output for scripts and AI coding agents.
     #[arg(long, global = true)]
     json: bool,
 
     /// Base data directory for installed/local modules and state.
-    #[arg(long, global = true, env = "OPENFLUX_DATA_DIR")]
+    #[arg(long, global = true, env = "KEYGLASS_DATA_DIR")]
     data_dir: Option<PathBuf>,
 
     /// Bundled curated default modules directory.
-    #[arg(long, global = true, env = "OPENFLUX_BUNDLED_MODULES_DIR")]
+    #[arg(long, global = true, env = "KEYGLASS_BUNDLED_MODULES_DIR")]
     bundled_dir: Option<PathBuf>,
 
-    /// Optional openfluxd base URL (auto-discovered from keys.json when omitted).
-    #[arg(long, global = true, env = "OPENFLUX_DAEMON_URL")]
+    /// Optional keyglassd base URL (auto-discovered from keys.json when omitted).
+    #[arg(long, global = true, env = "KEYGLASS_DAEMON_URL")]
     daemon: Option<String>,
 
-    /// Force local/offline filesystem mode even if openfluxd is running.
+    /// Force local/offline filesystem mode even if keyglassd is running.
     #[arg(long, global = true)]
     offline: bool,
 
@@ -82,7 +82,7 @@ enum Commands {
         cmd: PresetCmd,
     },
 
-    /// Interact with the hierarchical pub/sub bus on a running openfluxd daemon.
+    /// Interact with the hierarchical pub/sub bus on a running keyglassd daemon.
     Bus {
         #[command(subcommand)]
         cmd: BusCmd,
@@ -258,13 +258,13 @@ enum VialCmd {
 enum KeyboardCmd {
     /// Push enabled v2 modules, modules_state.json, and referenced background media to the connected keyboard.
     Sync,
-    /// Upload a video or image straight to `/home/root/openflux/media/` on the connected keyboard.
+    /// Upload a video or image straight to `/home/root/keyglass/media/` on the connected keyboard.
     UploadMedia {
         path: PathBuf,
         #[arg(long)]
         name: Option<String>,
     },
-    /// Sideload a local `.ipk` package (`openflux-bridge` or `openflux-display`) to the connected keyboard.
+    /// Sideload a local `.ipk` package (`keyglass-bridge` or `keyglass-display`) to the connected keyboard.
     Sideload { ipk: PathBuf },
     /// Flash a local RP2040 `.uf2` firmware image to the connected keyboard.
     FlashUf2 { uf2: PathBuf },
@@ -376,7 +376,7 @@ enum ModulesCmd {
         #[arg(long, value_name = "FILE")]
         import: Option<PathBuf>,
     },
-    /// Hot-reload a module inside the running openfluxd daemon immediately.
+    /// Hot-reload a module inside the running keyglassd daemon immediately.
     Reload { id: String },
     /// Trigger a declared action button on a module (publishes its bus event).
     Action { id: String, action_id: String },
@@ -410,7 +410,7 @@ enum PresetCmd {
     /// Export the current enabled modules, slots, and non-secret settings to a JSON preset file.
     Export {
         out: PathBuf,
-        #[arg(long, default_value = "My OpenFlux Setup")]
+        #[arg(long, default_value = "My Keyglass Setup")]
         name: String,
         #[arg(long, default_value = "")]
         description: String,
@@ -429,19 +429,19 @@ enum PresetCmd {
 
 #[derive(Subcommand)]
 enum BusCmd {
-    /// Publish a JSON payload to a topic on openfluxd.
+    /// Publish a JSON payload to a topic on keyglassd.
     Pub {
         topic: String,
         payload: String,
         #[arg(long)]
         retain: bool,
     },
-    /// Query retained messages matching an MQTT wildcard pattern on openfluxd.
+    /// Query retained messages matching an MQTT wildcard pattern on keyglassd.
     Get {
         #[arg(default_value = "#")]
         pattern: String,
     },
-    /// Stream live bus events matching an MQTT wildcard pattern from the running openfluxd daemon.
+    /// Stream live bus events matching an MQTT wildcard pattern from the running keyglassd daemon.
     Sub {
         #[arg(default_value = "#")]
         pattern: String,
@@ -456,7 +456,7 @@ enum BusCmd {
 
 #[derive(Subcommand)]
 enum SimulateCmd {
-    /// Send a synthetic key press/release + analog depth/velocity sample to openfluxd.
+    /// Send a synthetic key press/release + analog depth/velocity sample to keyglassd.
     Key {
         key_index: u16,
         #[arg(long, default_value_t = 2200)]
@@ -508,7 +508,7 @@ enum PreviewCmd {
         #[arg(long)]
         no_legends: bool,
     },
-    /// Capture the live rendered frame directly from the running openfluxd app compositor.
+    /// Capture the live rendered frame directly from the running keyglassd app compositor.
     Capture {
         #[arg(long, short)]
         out: PathBuf,
@@ -535,9 +535,9 @@ enum PreviewCmd {
 
 fn default_data_dir() -> PathBuf {
     if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".local/share/openflux")
+        PathBuf::from(home).join(".local/share/keyglass")
     } else {
-        PathBuf::from(".openflux")
+        PathBuf::from(".keyglass")
     }
 }
 
@@ -554,7 +554,7 @@ fn resolve_bundled_dir(cli_dir: Option<&PathBuf>) -> PathBuf {
     if let Ok(home) = std::env::var("HOME") {
         candidates.push(
             PathBuf::from(&home)
-                .join("Applications/OpenFlux Studio.app/Contents/Resources/modules"),
+                .join("Applications/Keyglass Studio.app/Contents/Resources/modules"),
         );
         candidates.push(PathBuf::from(&home).join("git/flux/modules"));
     }
@@ -576,11 +576,11 @@ fn load_bundled_font() -> Option<Vec<u8>> {
     if let Ok(home) = std::env::var("HOME") {
         candidates.push(
             PathBuf::from(&home)
-                .join("Applications/OpenFlux Studio.app/Contents/Resources/assets/bundled_fonts/Montserrat-Medium.ttf"),
+                .join("Applications/Keyglass Studio.app/Contents/Resources/assets/bundled_fonts/Montserrat-Medium.ttf"),
         );
         candidates.push(
             PathBuf::from(&home)
-                .join("Applications/OpenFlux Studio.app/Contents/Resources/assets/bundled_fonts/Montserrat-VariableFont_wght.ttf"),
+                .join("Applications/Keyglass Studio.app/Contents/Resources/assets/bundled_fonts/Montserrat-VariableFont_wght.ttf"),
         );
     }
     candidates.push(PathBuf::from("/System/Library/Fonts/Helvetica.ttc"));
@@ -617,13 +617,13 @@ fn parse_setting_value(raw: &str) -> Value {
 }
 
 fn load_daemon_token() -> Option<String> {
-    if let Ok(t) = std::env::var("OPENFLUX_BUS_TOKEN") {
+    if let Ok(t) = std::env::var("KEYGLASS_BUS_TOKEN") {
         let trimmed = t.trim().to_string();
         if !trimmed.is_empty() {
             return Some(trimmed);
         }
     }
-    let data = std::env::var("OPENFLUX_DATA_DIR")
+    let data = std::env::var("KEYGLASS_DATA_DIR")
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
@@ -649,7 +649,7 @@ fn daemon_client(timeout_ms: u64) -> Result<reqwest::blocking::Client, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Auto-discovers a live v2-capable `openfluxd` daemon from `--daemon` or `<data_dir>/config/keys.json`.
+/// Auto-discovers a live v2-capable `keyglassd` daemon from `--daemon` or `<data_dir>/config/keys.json`.
 fn detect_live_daemon(cli: &Cli) -> Option<String> {
     if cli.offline {
         return None;
@@ -688,7 +688,7 @@ fn detect_live_daemon(cli: &Cli) -> Option<String> {
 
 fn require_live_daemon(cli: &Cli) -> Result<String, String> {
     detect_live_daemon(cli).ok_or_else(|| {
-        "no running v2 openfluxd daemon found (start openfluxd or pass --daemon URL)".to_string()
+        "no running v2 keyglassd daemon found (start keyglassd or pass --daemon URL)".to_string()
     })
 }
 
@@ -732,7 +732,7 @@ fn run(cli: Cli) -> Result<(), String> {
     match &cli.command {
         Commands::Perf { watch } => {
             let base = live_daemon
-                .ok_or_else(|| "openfluxd is not running; start KeyGlass to inspect live performance".to_string())?;
+                .ok_or_else(|| "keyglassd is not running; start KeyGlass to inspect live performance".to_string())?;
             loop {
                 let val = daemon_json(reqwest::Method::GET, &format!("{base}/v2/perf"), None, 3000)?;
                 if cli.json {
@@ -757,7 +757,7 @@ fn run(cli: Cli) -> Result<(), String> {
                 val["mode"] = json!("live_daemon");
                 val["daemon_url"] = json!(base);
                 let human = format!(
-                    "OpenFlux v2 CLI (CONNECTED to live openfluxd at {base})\n  Daemon PID:        {}\n  Modules rev:       {}\n  Latest bus seq:    {}\n  Discovered:        {} ({} enabled)\n  Local modules:     {}\n  GPU Compositor:    {}",
+                    "Keyglass v2 CLI (CONNECTED to live keyglassd at {base})\n  Daemon PID:        {}\n  Modules rev:       {}\n  Latest bus seq:    {}\n  Discovered:        {} ({} enabled)\n  Local modules:     {}\n  GPU Compositor:    {}",
                     val["pid"],
                     val["modules_rev"],
                     val["latest_bus_seq"],
@@ -799,7 +799,7 @@ fn run(cli: Cli) -> Result<(), String> {
                 cli.json,
                 &val,
                 &format!(
-                    "OpenFlux v2 CLI (offline mode — no v2 openfluxd detected)\n  Bundled modules:   {}\n  Installed modules: {}\n  Local modules:     {}\n  Discovered:        {} ({} enabled)\n  GPU Compositor:    {}",
+                    "Keyglass v2 CLI (offline mode — no v2 keyglassd detected)\n  Bundled modules:   {}\n  Installed modules: {}\n  Local modules:     {}\n  Discovered:        {} ({} enabled)\n  GPU Compositor:    {}",
                     reg.bundled_dir.display(),
                     reg.installed_dir.display(),
                     reg.local_dir.display(),
@@ -864,7 +864,7 @@ fn handle_vial(cli: &Cli, cmd: &VialCmd) -> Result<(), String> {
             let mut summary = format!(
                 "Vial Raw HID: {} ({})",
                 if connected { "CONNECTED" } else { "disconnected" },
-                val["product_name"].as_str().unwrap_or("OpenFlux")
+                val["product_name"].as_str().unwrap_or("Keyglass")
             );
             if connected {
                 let mut id_req = [0u8; 32];
@@ -888,7 +888,7 @@ fn handle_vial(cli: &Cli, cmd: &VialCmd) -> Result<(), String> {
                 None,
                 5_000,
             )?;
-            let mut lines = vec!["OpenFlux QMK/Vial Custom Action Slots (QK_KB_n):".to_string()];
+            let mut lines = vec!["Keyglass QMK/Vial Custom Action Slots (QK_KB_n):".to_string()];
             if let Some(entries) = val["entries"].as_object() {
                 let mut sorted: Vec<(u16, &Value)> = entries
                     .iter()
@@ -1073,7 +1073,7 @@ fn handle_vial(cli: &Cli, cmd: &VialCmd) -> Result<(), String> {
                 }
             }
             let doc = json!({
-                "format": "openflux-vial-setup-v1",
+                "format": "keyglass-vial-setup-v1",
                 "layers": layers,
                 "tap_dances": tap_dances,
             });
@@ -1900,10 +1900,10 @@ fn handle_modules(
         }
         ModulesCmd::Validate { path } => {
             let report = inspect_module_dir(path)?;
-            let dm = openflux_modules::DiscoveredModule {
-                manifest: openflux_modules::ModuleManifest::load_from_dir(path)
+            let dm = keyglass_modules::DiscoveredModule {
+                manifest: keyglass_modules::ModuleManifest::load_from_dir(path)
                     .map_err(|e| e.to_string())?,
-                tier: openflux_modules::ModuleTier::Local,
+                tier: keyglass_modules::ModuleTier::Local,
                 path: path.clone(),
             };
             let broker = Broker::new("validate");
@@ -2602,7 +2602,7 @@ fn seed_preview_broker(broker: &Broker, geom: &KeyboardGeometry) {
         &HostConnectionState {
             connected: true,
             host_asleep: false,
-            last_seen_ms: openflux_bus::now_unix_ms(),
+            last_seen_ms: keyglass_bus::now_unix_ms(),
             host_platform: Some(std::env::consts::OS.to_string()),
         },
         PublishOptions::retained(),
@@ -2654,19 +2654,19 @@ fn seed_preview_broker(broker: &Broker, geom: &KeyboardGeometry) {
             sunset: "4:41 PM".into(),
             utc_offset_sec: Some(-25200),
             hourly: vec![
-                openflux_bus::WeatherHourly {
+                keyglass_bus::WeatherHourly {
                     hour: "3PM".into(),
                     temp: 58.0,
                     condition: "Partly Cloudy".into(),
                     is_day: true,
                 },
-                openflux_bus::WeatherHourly {
+                keyglass_bus::WeatherHourly {
                     hour: "4PM".into(),
                     temp: 55.0,
                     condition: "Clear".into(),
                     is_day: true,
                 },
-                openflux_bus::WeatherHourly {
+                keyglass_bus::WeatherHourly {
                     hour: "5PM".into(),
                     temp: 49.0,
                     condition: "Clear".into(),
@@ -2857,7 +2857,7 @@ fn handle_preview(cli: &Cli, reg: &ModuleRegistry, cmd: &PreviewCmd) -> Result<(
                 cli.json,
                 &val,
                 &format!(
-                    "OpenFlux v2 Stress Benchmark ({} frames @ {}x{}, GPU: {})\n  Active Stack: 3D Water Ripple + Colliding/SDF Particles + Analog Depth Glow + Idle Pet + 4 Widgets + Aurora Shader\n  Peak active particles: {}\n  Sustained FPS: {:.1} fps (avg {:.2} ms/frame)\n  Frame time:    p50={:.2} ms | p95={:.2} ms | max={:.2} ms\n  Breakdown p50: Lua={:.2} ms | Physics={:.2} ms | Canvas2D={:.2} ms | GPU={:.2} ms",
+                    "Keyglass v2 Stress Benchmark ({} frames @ {}x{}, GPU: {})\n  Active Stack: 3D Water Ripple + Colliding/SDF Particles + Analog Depth Glow + Idle Pet + 4 Widgets + Aurora Shader\n  Peak active particles: {}\n  Sustained FPS: {:.1} fps (avg {:.2} ms/frame)\n  Frame time:    p50={:.2} ms | p95={:.2} ms | max={:.2} ms\n  Breakdown p50: Lua={:.2} ms | Physics={:.2} ms | Canvas2D={:.2} ms | GPU={:.2} ms",
                     frames,
                     width,
                     height,
@@ -2966,7 +2966,7 @@ fn handle_preview(cli: &Cli, reg: &ModuleRegistry, cmd: &PreviewCmd) -> Result<(
             )?;
 
             let dt_sec = (*step_ms / 1000.0).max(0.001);
-            let mut last_timings = openflux_compositor::FrameTimings::default();
+            let mut last_timings = keyglass_compositor::FrameTimings::default();
             for f in 0..*frames {
                 let sim_ms = (f as f32 * *step_ms) as u64;
                 inject_scenario_events(&broker, &geom, scenario, f, sim_ms);
@@ -3205,7 +3205,7 @@ fn format_perf_report(val: &Value) -> String {
         host["bus_latest_seq"].as_u64().unwrap_or(0),
     ));
     if kb.is_null() {
-        out.push_str("  Keyboard display/perf: waiting for keyboard (requires openflux-display >= 2.3.12)\n");
+        out.push_str("  Keyboard display/perf: waiting for keyboard (requires keyglass-display >= 2.3.12)\n");
         return out;
     }
     let iv = &kb["interval_ms"];
@@ -3400,7 +3400,7 @@ fn run_mcp_stdio_server(cli: &Cli) -> Result<(), String> {
 
 fn handle_mcp_tool_call(cli: &Cli, name: &str, args: &Value) -> Result<Value, String> {
     let base = detect_live_daemon(cli)
-        .ok_or_else(|| "openfluxd is not running; start KeyGlass first".to_string())?;
+        .ok_or_else(|| "keyglassd is not running; start KeyGlass first".to_string())?;
     match name {
         "keyglass_status" => {
             let st = daemon_json(reqwest::Method::GET, &format!("{base}/v2/status"), None, 3000)?;

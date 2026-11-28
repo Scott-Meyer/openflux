@@ -1,4 +1,4 @@
-# Keyglass (OpenFlux) interface registry.
+# Keyglass (Keyglass) interface registry.
 #
 # Every boundary between independently released components is a named
 # interface with a MAJOR.MINOR version. A minor bump only adds; a major bump
@@ -6,7 +6,7 @@
 # engine reads these declarations from each release and only proposes updates
 # that keep every component working. docs/compatibility.md explains the model.
 #
-# `openflux-release compat --compat compat.toml` checks this file.
+# `keyglass-release compat --compat compat.toml` checks this file.
 
 schema = 1
 
@@ -28,7 +28,7 @@ summary = "Bridge to firmware serial link carrying key state, 1000 Hz analog tra
 [interfaces.display-ipc]
 version = "2.0"
 kind = "protocol"
-summary = "Bridge to pure-v2 display compositor channels (/tmp/openflux_bridge.sock + /tmp/openflux_v2.sock)."
+summary = "Bridge to pure-v2 display compositor channels (/tmp/keyglass_bridge.sock + /tmp/keyglass_v2.sock)."
 
 [interfaces.keymap]
 version = "2.1"

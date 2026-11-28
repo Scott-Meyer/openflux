@@ -352,7 +352,7 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
       setShowCreateLocal(false);
       await onUpdated();
       setStatusMsg(
-        `Created local module "${cleanId}" in ~/.local/share/openflux/v2/modules/local/${cleanId} — edits hot-reload automatically!`,
+        `Created local module "${cleanId}" in ~/.local/share/keyglass/v2/modules/local/${cleanId} — edits hot-reload automatically!`,
       );
     } catch (err) {
       setStatusMsg(err instanceof Error ? err.message : String(err));
@@ -538,7 +538,7 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
         <div className="kg-calm-card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <strong>Create a New Local Module</strong>
           <div className="kg-muted" style={{ fontSize: 12 }}>
-            Scaffolds a hot-reloading module under <code>~/.local/share/openflux/v2/modules/local/&lt;id&gt;/</code>.
+            Scaffolds a hot-reloading module under <code>~/.local/share/keyglass/v2/modules/local/&lt;id&gt;/</code>.
             Or open any existing module and click <strong>Fork to Local</strong> to customize it.
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -924,7 +924,7 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
               <br />• <strong>Customize any existing module:</strong> Open the module and click{" "}
               <strong>Fork to Local</strong> (or run <code>fluxctl modules fork &lt;id&gt; &lt;new-id&gt;</code>).
               <br />• <strong>Fast edit loop:</strong> Edit files in{" "}
-              <code>~/.local/share/openflux/v2/modules/local/</code> — Keyglass auto-reloads on save,{" "}
+              <code>~/.local/share/keyglass/v2/modules/local/</code> — Keyglass auto-reloads on save,{" "}
               <code>fluxctl perf --watch</code> profiles Lua µs hotspots, and <code>fluxctl mcp</code> connects AI
               coding tools directly to your live keyboard.
             </div>

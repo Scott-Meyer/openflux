@@ -1,5 +1,5 @@
 //! Minimal preview lifecycle stub (v1 software `DisplayPreview` has been removed;
-//! OpenFlux v2 live preview is rendered directly by `openflux-compositor` via `GET /v2/preview/frame.png`).
+//! Keyglass v2 live preview is rendered directly by `keyglass-compositor` via `GET /v2/preview/frame.png`).
 
 use std::process::Child;
 use std::sync::atomic::AtomicU64;
@@ -12,7 +12,7 @@ impl PreviewBackend {
         _child_slot: Arc<Mutex<Option<Child>>>,
         _cancel: Option<(&Arc<AtomicU64>, u64)>,
     ) -> Result<Self, String> {
-        Err("v1 preview has been removed; use OpenFlux v2 /v2/preview/frame.png".into())
+        Err("v1 preview has been removed; use Keyglass v2 /v2/preview/frame.png".into())
     }
 
     pub fn set_config_json(

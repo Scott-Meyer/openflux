@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""End-to-end tests of the OpenFlux keyboard stack, written as user stories.
+"""End-to-end tests of the Keyglass keyboard stack, written as user stories.
 
 Each test exercises the real compiled components together end-to-end
-(RP2040 firmware core <-> UART <-> openflux-bridge <-> openflux-display Wayland/Weston <-> tools/openflux-dev).
+(RP2040 firmware core <-> UART <-> keyglass-bridge <-> keyglass-display Wayland/Weston <-> tools/keyglass-dev).
 """
 
 import concurrent.futures
@@ -17,46 +17,46 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools/openflux-dev"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools/keyglass-dev"))
 
-from flux_stack_harness import OpenFluxKeyboardE2ECluster  # noqa: E402
+from flux_stack_harness import KeyglassKeyboardE2ECluster  # noqa: E402
 from keymap_codec import FirmwareKeymapBlob, KeymapSection, encode_actuation_word, encode_keycode  # noqa: E402
 from profile_settings import ProfileSetting  # noqa: E402
 
 
-EXPECTED_VERSION = os.environ.get("OPENFLUX_TEST_VERSION", "1.0.0")
+EXPECTED_VERSION = os.environ.get("KEYGLASS_TEST_VERSION", "1.0.0")
 
 
-class OpenFluxProductUxTests(unittest.TestCase):
+class KeyglassProductUxTests(unittest.TestCase):
     def test_01_user_queries_all_versions_and_pushes_custom_theme(self) -> None:
         """UX: Host connects over USB, inspects all component versions, and pushes a new background theme."""
-        with OpenFluxKeyboardE2ECluster() as kb:
+        with KeyglassKeyboardE2ECluster() as kb:
             versions = kb.user_queries_versions()
-            self.assertEqual(versions["firmware"], f"openflux-firmware {EXPECTED_VERSION}")
-            self.assertEqual(versions["bridge"], f"openflux-bridge {EXPECTED_VERSION}")
-            self.assertEqual(versions["display"], f"openflux-display {EXPECTED_VERSION}")
+            self.assertEqual(versions["firmware"], f"keyglass-firmware {EXPECTED_VERSION}")
+            self.assertEqual(versions["bridge"], f"keyglass-bridge {EXPECTED_VERSION}")
+            self.assertEqual(versions["display"], f"keyglass-display {EXPECTED_VERSION}")
             self.assertEqual(versions["os"], "0.0.9")
 
-            # Push a solid-blue PPM background + verify PUT -> LIST -> GET -> DELETE inside OPENFLUX_SYSROOT
+            # Push a solid-blue PPM background + verify PUT -> LIST -> GET -> DELETE inside KEYGLASS_SYSROOT
             ppm_header = b"P6\n16 9\n255\n"
             blue_ppm = ppm_header + (b"\x00\x00\xff" * (16 * 9))
-            kb.user_pushes_file("/home/root/openflux/media/temp_check.ppm", blue_ppm)
-            self.assertIn("temp_check.ppm", kb.user_lists_dir("/home/root/openflux/media"))
-            self.assertEqual(kb.user_pulls_file("/home/root/openflux/media/temp_check.ppm"), blue_ppm)
-            kb.user_deletes_file("/home/root/openflux/media/temp_check.ppm")
+            kb.user_pushes_file("/home/root/keyglass/media/temp_check.ppm", blue_ppm)
+            self.assertIn("temp_check.ppm", kb.user_lists_dir("/home/root/keyglass/media"))
+            self.assertEqual(kb.user_pulls_file("/home/root/keyglass/media/temp_check.ppm"), blue_ppm)
+            kb.user_deletes_file("/home/root/keyglass/media/temp_check.ppm")
             self.assertFalse((kb.media_dir / "temp_check.ppm").exists())
 
-            kb.user_pushes_file("/home/root/openflux/media/ocean.ppm", blue_ppm)
+            kb.user_pushes_file("/home/root/keyglass/media/ocean.ppm", blue_ppm)
             self.assertEqual((kb.media_dir / "ocean.ppm").read_bytes(), blue_ppm)
 
             # Verify multi-16KiB upload (>80 KiB) & exact 16 KiB transfer + ZLP boundary over USB
             large_blob = bytes((i % 251 for i in range(80 * 1024 + 123)))
-            kb.user_pushes_file("/home/root/openflux/media/large.bin", large_blob)
-            self.assertEqual(kb.user_pulls_file("/home/root/openflux/media/large.bin"), large_blob)
-            path_part = b"/home/root/openflux/media/exact16k.bin\x00"
+            kb.user_pushes_file("/home/root/keyglass/media/large.bin", large_blob)
+            self.assertEqual(kb.user_pulls_file("/home/root/keyglass/media/large.bin"), large_blob)
+            path_part = b"/home/root/keyglass/media/exact16k.bin\x00"
             exact_data = b"Z" * (31 * 512 - len(path_part))
-            kb.user_pushes_file("/home/root/openflux/media/exact16k.bin", exact_data)
-            self.assertEqual(kb.user_pulls_file("/home/root/openflux/media/exact16k.bin"), exact_data)
+            kb.user_pushes_file("/home/root/keyglass/media/exact16k.bin", exact_data)
+            self.assertEqual(kb.user_pulls_file("/home/root/keyglass/media/exact16k.bin"), exact_data)
 
             # Packet-aligned 1024-byte truncated transfer must NAK cleanly and leave subsequent query working
             bad_hdr = bytearray(512)
@@ -67,13 +67,13 @@ class OpenFluxProductUxTests(unittest.TestCase):
             self.assertEqual(kb.bridge_usb.ep1_sock.recv(512), b"")
             with self.assertRaises(RuntimeError):
                 kb.bridge_usb.transact(250)
-            self.assertEqual(kb.user_queries_versions()["bridge"], f"openflux-bridge {EXPECTED_VERSION}")
+            self.assertEqual(kb.user_queries_versions()["bridge"], f"keyglass-bridge {EXPECTED_VERSION}")
 
             before_ppm = kb.read_live_display_ppm()
-            app_cfg = json.loads(kb.user_pulls_file("/home/root/openflux/config/appearance.json"))
+            app_cfg = json.loads(kb.user_pulls_file("/home/root/keyglass/config/appearance.json"))
             app_cfg["defaultTheme"]["backgroundImagePath"] = "ocean.ppm"
             app_cfg["defaultTheme"]["backgroundImageDimming"] = 0.0
-            kb.user_pushes_file("/home/root/openflux/config/appearance.json", json.dumps(app_cfg).encode())
+            kb.user_pushes_file("/home/root/keyglass/config/appearance.json", json.dumps(app_cfg).encode())
 
             hdr = b"P6\n1920 1080\n255\n"
             off = len(hdr) + (1070 * 1920 + 1910) * 3
@@ -86,7 +86,7 @@ class OpenFluxProductUxTests(unittest.TestCase):
 
     def test_02_user_flashes_rapid_trigger_keymap_and_types_end_to_end(self) -> None:
         """UX: User flashes a 2-layer rapid-trigger keymap, reboots firmware, presses Fn+Key, and gets expected HID + layer switch."""
-        with OpenFluxKeyboardE2ECluster() as kb:
+        with KeyglassKeyboardE2ECluster() as kb:
             base = [encode_keycode("hid", code=0x04)] * 85
             base[16] = encode_keycode("layer_switch", code=1, switch_type=1)
             fn_layer = [encode_keycode("hid", code=0x05)] + [encode_keycode("none")] * 84
@@ -204,7 +204,7 @@ class OpenFluxProductUxTests(unittest.TestCase):
 
     def test_03_host_bridges_switch_profile_language_and_stream_live_data(self) -> None:
         """UX: Host bridge commands switch firmware profile/language and stream media+CPU to display."""
-        with OpenFluxKeyboardE2ECluster() as kb:
+        with KeyglassKeyboardE2ECluster() as kb:
             def tile_region(ppm_bytes: bytes, x0: int, x1: int, y0: int = 30, y1: int = 190) -> bytes:
                 hdr_len = len(b"P6\n1920 1080\n255\n")
                 out = bytearray()
@@ -241,7 +241,7 @@ class OpenFluxProductUxTests(unittest.TestCase):
 
     def test_04_uart_handoff_marker_and_clean_service_shutdown(self) -> None:
         """UX: Display advertises active marker so Bridge owns UART cleanly, and SIGTERM tears down both cleanly."""
-        with OpenFluxKeyboardE2ECluster() as kb:
+        with KeyglassKeyboardE2ECluster() as kb:
             self.assertTrue(kb.display_marker.exists())
             d_rc, b_rc = kb.shutdown_display_and_bridge()
             self.assertEqual(d_rc, 0)
@@ -250,7 +250,7 @@ class OpenFluxProductUxTests(unittest.TestCase):
 
     def test_05_partial_startup_failure_and_hung_child_leave_no_survivors(self) -> None:
         """UX/Ops: Startup readiness failure and SIGTERM-ignoring children must both clean up cleanly."""
-        cluster = OpenFluxKeyboardE2ECluster()
+        cluster = KeyglassKeyboardE2ECluster()
         orig_wait = cluster._wait_for
         started_pids: list[int] = []
 
@@ -270,7 +270,7 @@ class OpenFluxProductUxTests(unittest.TestCase):
             with self.assertRaises(ProcessLookupError):
                 os.kill(pid, 0)
 
-        c2 = OpenFluxKeyboardE2ECluster()
+        c2 = KeyglassKeyboardE2ECluster()
         hung = subprocess.Popen(
             [sys.executable, "-c", "import signal, sys, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); sys.stdout.write('READY\\n'); sys.stdout.flush(); time.sleep(30)"],
             stdout=subprocess.PIPE,

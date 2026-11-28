@@ -1,8 +1,8 @@
 /**
  * Native Vial / VIA Raw HID (`0xFF60:0x61`) protocol client & QMK keycode codec.
  *
- * Talks directly through `openfluxd`'s authenticated `/v2/vial/xfer` endpoint — no Vialite iframe,
- * no unrelated RGB/Backlight menus, 100% cohesive native OpenFlux Studio experience.
+ * Talks directly through `keyglassd`'s authenticated `/v2/vial/xfer` endpoint — no Vialite iframe,
+ * no unrelated RGB/Backlight menus, 100% cohesive native Keyglass Studio experience.
  */
 import { v2Client } from "./v2Client";
 

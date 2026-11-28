@@ -1,7 +1,7 @@
 import type React from "react";
 import { useState } from "react";
-import type { ActuationMode, OpenFluxConfig, PerKeyActuationOverride, PreviewKeyRect } from "../types/openflux";
-import { ANSI_ROW_COUNTS, formatKeyActionLabel, humanKeyName, ISO_ROW_COUNTS } from "../types/openflux";
+import type { ActuationMode, KeyglassConfig, PerKeyActuationOverride, PreviewKeyRect } from "../types/keyglass";
+import { ANSI_ROW_COUNTS, formatKeyActionLabel, humanKeyName, ISO_ROW_COUNTS } from "../types/keyglass";
 import {
   releaseAfterActuationMove,
   releasePointOf,
@@ -13,14 +13,14 @@ import { NameForm, useConfigEdits } from "./ConfigEditDialog";
 import { addActuationMode, deleteActuationMode, maxActuationModes, renameActuationMode } from "./layerModeEdits";
 
 interface ActuationPanelProps {
-  config: OpenFluxConfig;
+  config: KeyglassConfig;
   previewRects?: PreviewKeyRect[];
   selectedKeyIndex: number | null;
   keymapBlocked?: boolean;
   onSelectKey: (keyIdx: number) => void;
   onChangeActuation: (modes: ActuationMode[]) => void;
   /** Applies a mode edit, which can change the modes and the profiles that use them together. */
-  onApplyConfigEdit?: (patch: Partial<OpenFluxConfig>) => void;
+  onApplyConfigEdit?: (patch: Partial<KeyglassConfig>) => void;
 }
 
 export const ActuationPanel: React.FC<ActuationPanelProps> = ({

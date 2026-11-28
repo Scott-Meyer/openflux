@@ -1,7 +1,7 @@
-# Contributing to OpenFlux
+# Contributing to Keyglass
 
 Thank you for helping. This page explains how to build and test each part
-of OpenFlux, how to write commits, and how releases are made.
+of Keyglass, how to write commits, and how releases are made.
 
 [docs/architecture.md](docs/architecture.md) is the best place to start
 reading about how the parts fit together.
@@ -10,16 +10,16 @@ reading about how the parts fit together.
 
 | Path | Contents |
 |---|---|
-| `host/daemon` | `openfluxd`, the background service (Rust) |
-| `host/studio` | OpenFlux Studio: the interface in `src/` (React, TypeScript), the Tauri app in `src-tauri/` |
+| `host/daemon` | `keyglassd`, the background service (Rust) |
+| `host/studio` | Keyglass Studio: the interface in `src/` (React, TypeScript), the Tauri app in `src-tauri/` |
 | `host/macos-helpers` | menu bar and sensor helpers for macOS (Swift) |
 | `host/packaging` | installers and service definitions for each operating system |
 | `keyboard/firmware` | RP2040 key scanner firmware (C, Pico SDK) |
 | `keyboard/bridge` | the keyboard computer's USB, serial and display service (Rust) |
-| `keyboard/display` | the keyboard's display app, and the `openflux-display` crate that draws Studio's preview (Rust) |
-| `crates/openflux-update` | release metadata, update trust and compatibility planning, and the `openflux-release` tool |
-| `tools/openflux-dev` | `openflux-dev`, a command-line client for the keyboard's USB commands, for diagnostics (Python) |
-| `tests/e2e` | end-to-end tests that run the firmware core, bridge, display and `openflux-dev` together on Linux |
+| `keyboard/display` | the keyboard's display app, and the `keyglass-display` crate that draws Studio's preview (Rust) |
+| `crates/keyglass-update` | release metadata, update trust and compatibility planning, and the `keyglass-release` tool |
+| `tools/keyglass-dev` | `keyglass-dev`, a command-line client for the keyboard's USB commands, for diagnostics (Python) |
+| `tests/e2e` | end-to-end tests that run the firmware core, bridge, display and `keyglass-dev` together on Linux |
 | `scripts/build_ipk.py` | the `.ipk` packager the keyboard Makefiles use |
 | `assets` | default configuration, fonts, icons and backgrounds |
 | `docs` | documentation and protocol specifications |
@@ -29,11 +29,11 @@ reading about how the parts fit together.
 
 - Rust, at the version in `rust-toolchain.toml` (rustup installs it
   automatically);
-- Node.js 22 and npm, for OpenFlux Studio;
+- Node.js 22 and npm, for Keyglass Studio;
 - `make` and a C compiler, for the firmware tests: on macOS the Xcode
   Command Line Tools (`xcode-select --install`), which also provide `swiftc`
   for the macOS helpers; on Debian and Ubuntu `build-essential`;
-- Python 3, for `openflux-dev` and the end-to-end tests;
+- Python 3, for `keyglass-dev` and the end-to-end tests;
 - Docker, for the firmware image and the keyboard packages;
 - on Linux, the WebKitGTK and system libraries Tauri needs. On Debian and
   Ubuntu, as CI installs them:
@@ -52,7 +52,7 @@ reading about how the parts fit together.
 
 The commands below run from the repository root.
 [CI](.github/workflows/ci.yml) runs the same builds, tests and checks on
-every pull request, except the end-to-end and `openflux-dev` tests.
+every pull request, except the end-to-end and `keyglass-dev` tests.
 
 ### Host
 
@@ -81,19 +81,19 @@ Studio that finds no daemon running starts one itself.
 
 ```sh
 # terminal 1
-cargo run -p openfluxd
+cargo run -p keyglassd
 
 # terminal 2
 npm --prefix host/studio run tauri dev
 ```
 
-If OpenFlux is installed, its daemon is already running. There is one
-daemon per data directory: a second `openfluxd` prints `another openfluxd is
+If Keyglass is installed, its daemon is already running. There is one
+daemon per data directory: a second `keyglassd` prints `another keyglassd is
 already running` and exits, and Studio connects to whichever daemon owns the
 data directory. Either stop the installed daemon first:
 
 ```sh
-cargo run -p openfluxd -- --request-stop
+cargo run -p keyglassd -- --request-stop
 ```
 
 It stays stopped until your next login, or until a Studio starts it. Or give
@@ -102,10 +102,10 @@ installed daemon with `--no-usb`:
 
 ```sh
 # both terminals
-export OPENFLUX_DATA_DIR="$PWD/build/dev-data"
+export KEYGLASS_DATA_DIR="$PWD/build/dev-data"
 
 # terminal 1
-cargo run -p openfluxd -- --no-usb
+cargo run -p keyglassd -- --no-usb
 
 # terminal 2
 npm --prefix host/studio run tauri dev
@@ -116,10 +116,10 @@ A daemon with its own data directory uses a free port when the default one
 
 **FFmpeg.** Video imports need FFmpeg. A debug build (`cargo run`) uses one
 installed in `/opt/homebrew/bin`, `/usr/local/bin` or `/usr/bin`;
-`OPENFLUX_HOST_FFMPEG` and `OPENFLUX_HOST_FFPROBE` name others. Without
+`KEYGLASS_HOST_FFMPEG` and `KEYGLASS_HOST_FFPROBE` name others. Without
 FFmpeg, importing a video that needs converting fails with a message.
-`host/packaging/ffmpeg/build-ffmpeg.sh` builds the `openflux-ffmpeg` and
-`openflux-ffprobe` the installers carry.
+`host/packaging/ffmpeg/build-ffmpeg.sh` builds the `keyglass-ffmpeg` and
+`keyglass-ffprobe` the installers carry.
 
 **macOS helpers.** On macOS the menu bar icon, the active application, the
 input language, media and system sensors come from two helpers. Build them
@@ -127,9 +127,9 @@ and point the daemon at them:
 
 ```sh
 make -C host/macos-helpers BUILD_DIR="$PWD/build/macos-helpers"
-OPENFLUX_TRAY_BIN="$PWD/build/macos-helpers/openflux-tray" \
-OPENFLUX_MACOS_SENSORS_BIN="$PWD/build/macos-helpers/openflux-sensors" \
-  cargo run -p openfluxd
+KEYGLASS_TRAY_BIN="$PWD/build/macos-helpers/keyglass-tray" \
+KEYGLASS_MACOS_SENSORS_BIN="$PWD/build/macos-helpers/keyglass-sensors" \
+  cargo run -p keyglassd
 ```
 
 The daemon also finds them next to its own executable, where the installers
@@ -137,18 +137,18 @@ put them.
 
 ### Update library
 
-`crates/openflux-update` is part of the workspace. Its tests don't need
+`crates/keyglass-update` is part of the workspace. Its tests don't need
 Studio's interface to be built:
 
 ```sh
-cargo test -p openflux-update --locked
-cargo run -p openflux-update --bin openflux-release -- compat --compat compat.toml
+cargo test -p keyglass-update --locked
+cargo run -p keyglass-update --bin keyglass-release -- compat --compat compat.toml
 ```
 
 The second command checks `compat.toml`; run it whenever you change an
 interface between components (see
 [docs/compatibility.md](docs/compatibility.md#for-contributors)). The
-crate's [README](crates/openflux-update/README.md) describes the library and
+crate's [README](crates/keyglass-update/README.md) describes the library and
 the tool.
 
 ### Firmware
@@ -161,11 +161,11 @@ make -C keyboard/firmware test
 ```
 
 The RP2040 image is built in a container, into
-`build/firmware/openflux_firmware.uf2`:
+`build/firmware/keyglass_firmware.uf2`:
 
 ```sh
-docker build -t openflux-firmware-build -f keyboard/firmware/Dockerfile.build keyboard/firmware
-docker run --rm -v "$PWD:/work" -w /work openflux-firmware-build \
+docker build -t keyglass-firmware-build -f keyboard/firmware/Dockerfile.build keyboard/firmware
+docker run --rm -v "$PWD:/work" -w /work keyglass-firmware-build \
   sh -c "cmake -S keyboard/firmware -B build/firmware -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build/firmware"
 ```
 
@@ -174,29 +174,29 @@ docker run --rm -v "$PWD:/work" -w /work openflux-firmware-build \
 Tests run on your computer:
 
 ```sh
-cargo test -p openflux-bridge
-cargo test -p openflux-display
+cargo test -p keyglass-bridge
+cargo test -p keyglass-display
 ```
 
 The keyboard binaries and packages are built for aarch64 Linux in the
 component's container, `keyboard/<component>/Dockerfile.build`, as the
 release workflow builds them. This writes
-`build/out/openflux-bridge_1.0.0_aarch64.ipk`:
+`build/out/keyglass-bridge_1.0.0_aarch64.ipk`:
 
 ```sh
-docker build -t openflux-bridge-build -f keyboard/bridge/Dockerfile.build keyboard/bridge
-docker run --rm -v "$PWD:/work" -w /work openflux-bridge-build \
+docker build -t keyglass-bridge-build -f keyboard/bridge/Dockerfile.build keyboard/bridge
+docker run --rm -v "$PWD:/work" -w /work keyglass-bridge-build \
   make -C keyboard/bridge ipk VERSION=1.0.0 OUT_DIR=/work/build/out
 ```
 
 Replace `bridge` with `display` for the display package. The display's
 container also builds the keyboard's FFmpeg, which the package includes as
-`openflux-ffmpeg`. With your own aarch64 cross toolchain, run the same `make`
+`keyglass-ffmpeg`. With your own aarch64 cross toolchain, run the same `make`
 commands directly; the Makefiles say what they expect.
 
 ### Loading a build onto a keyboard
 
-On a keyboard that runs OpenFlux, Studio's **Device** page installs files
+On a keyboard that runs Keyglass, Studio's **Device** page installs files
 you built:
 
 - **Install Key Scanner Firmware from File…** takes the `.uf2`;
@@ -211,32 +211,32 @@ won't change the parts of the keyboard that depend on it.
 ### End-to-end tests
 
 `tests/e2e` runs the firmware core, a native bridge and display, and
-`openflux-dev` together, without a keyboard. It needs Linux with Weston
+`keyglass-dev` together, without a keyboard. It needs Linux with Weston
 installed:
 
 ```sh
-cargo build --release -p openflux-bridge -p openflux-display
-OPENFLUX_TEST_BRIDGE_BIN="$PWD/target/release/openflux-bridge" \
-OPENFLUX_TEST_DISPLAY_BIN="$PWD/target/release/openflux-display" \
+cargo build --release -p keyglass-bridge -p keyglass-display
+KEYGLASS_TEST_BRIDGE_BIN="$PWD/target/release/keyglass-bridge" \
+KEYGLASS_TEST_DISPLAY_BIN="$PWD/target/release/keyglass-display" \
   python3 tests/e2e/test_product_ux.py
 ```
 
-### openflux-dev
+### keyglass-dev
 
-`tools/openflux-dev` talks to a connected keyboard over its USB commands,
+`tools/keyglass-dev` talks to a connected keyboard over its USB commands,
 for diagnostics. It needs libusb 1.0 (`brew install libusb`, or
 `libusb-1.0-0` on Debian and Ubuntu) and runs on macOS and Linux, alongside
 a running daemon:
 
 ```sh
-python3 tools/openflux-dev/openflux_dev.py versions
-python3 tools/openflux-dev/openflux_dev.py --help
+python3 tools/keyglass-dev/keyglass_dev.py versions
+python3 tools/keyglass-dev/keyglass_dev.py --help
 ```
 
 Its own tests need no keyboard:
 
 ```sh
-python3 -m unittest discover -s tools/openflux-dev/tests
+python3 -m unittest discover -s tools/keyglass-dev/tests
 ```
 
 ### Formatting and checks
@@ -333,9 +333,9 @@ to change version numbers; release-please does that.
 
 ## License of contributions
 
-OpenFlux is licensed under either of the MIT License or the Apache License,
+Keyglass is licensed under either of the MIT License or the Apache License,
 Version 2.0, at your option. Unless you explicitly state otherwise, any
-contribution you intentionally submit for inclusion in OpenFlux is licensed
+contribution you intentionally submit for inclusion in Keyglass is licensed
 the same way, as defined in the Apache License, Version 2.0, without any
 additional terms or conditions. No contributor license agreement or
 sign-off is required.

@@ -16,4 +16,4 @@ Classic v1 dynamic shortcut icons (Copy, Paste, Cut, Undo, Save, Find, plus acti
 
 ## Installing & Customizing
 
-- Ships built into **Keyglass Studio**. Toggle it under **Manage Modules**, or click **Fork to Local** to customize its code under `~/.local/share/openflux/v2/modules/local/`.
+- Ships built into **Keyglass Studio**. Toggle it under **Manage Modules**, or click **Fork to Local** to customize its code under `~/.local/share/keyglass/v2/modules/local/`.

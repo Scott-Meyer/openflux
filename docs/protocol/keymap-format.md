@@ -35,7 +35,7 @@ bottom. Every per-key list in either form uses this order.
   "selectedFrameLayoutType": "ansi",
   "keymaps": {
     "ansi": {
-      "name": "OpenFlux ANSI",
+      "name": "Keyglass ANSI",
       "frameLayoutType": "ansi",
       "defaultLayer": 0,
       "layers": [
@@ -56,7 +56,7 @@ of:
 
 | `type` | Fields | Meaning |
 |---|---|---|
-| 0 | `keyCode`, `modifiers` (bitmask or `null`) | send a key, a consumer control or an OpenFlux function |
+| 0 | `keyCode`, `modifiers` (bitmask or `null`) | send a key, a consumer control or an Keyglass function |
 | 1 | `macroId` | play the macro with that index |
 | 2 | `layerControlType` (`momentaryLayer`, `toggleLayer`, `switchToLayer`), `targetLayer` | change layers |
 
@@ -72,9 +72,9 @@ punctuation, `KC_F1` to `KC_F24`, editing and navigation keys such as
 `KC_NONUS_HASH`, `KC_APPLICATION` and `KC_MENU`, `KC_INTERNATIONAL_1` to `_9`,
 `KC_LANGUAGE_1` to `_9`, and the eight modifiers `KC_LEFT_CTRL` …
 `KC_RIGHT_GUI`), the consumer controls below, `KC_TRANSPARENT`, `KC_NO`, and
-the OpenFlux functions below. QMK's short and older names (`KC_INS`,
+the Keyglass functions below. QMK's short and older names (`KC_INS`,
 `KC_PSCR`, `KC_P1`, `KC_INT1`, `KC_LNG1`, `KC_LANG1`, `KC_LCTL`, `KC_MUTE`, …)
-are accepted too; documents OpenFlux writes use the full names. The tables,
+are accepted too; documents Keyglass writes use the full names. The tables,
 with every alias and the word of every name, are in
 `host/daemon/src/codecs/keycodes.rs` and
 `host/daemon/tests/fixtures/keycodes.json`.
@@ -151,7 +151,7 @@ The top four bits of a key code select its kind:
 | `0x1` | macro | bits 0–15: macro index |
 | `0x2` | layer key | bits 24–27: 1 momentary, 2 toggle, 3 switch to; bits 0–7: target layer |
 | `0x4` | consumer control | bits 0–15: HID Consumer Page usage (page `0x0C`), sent as is in the consumer report |
-| `0x5` | OpenFlux function | bits 0–7: function, below |
+| `0x5` | Keyglass function | bits 0–7: function, below |
 | `0xF` | none | exactly `0xF0000000` |
 
 A word of 0 also does nothing.
@@ -211,7 +211,7 @@ Each newly pressed key is looked up from the highest active layer down,
 falling through only on `KC_TRANSPARENT`. The active layers are the profile's
 default layer and the layers that layer keys have turned on. Keyboard keys and
 modifiers are sent in the keyboard report, consumer controls in the consumer
-report (see [usb.md](usb.md)). OpenFlux functions are handled where they
+report (see [usb.md](usb.md)). Keyglass functions are handled where they
 belong:
 
 - profile, actuation-mode and platform keys by the firmware, which reports

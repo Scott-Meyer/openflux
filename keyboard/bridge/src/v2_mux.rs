@@ -1,14 +1,14 @@
-//! OpenFlux v2 Full-Duplex Priority-Multiplexed USB & Display Socket Router (`OFV2`).
+//! Keyglass v2 Full-Duplex Priority-Multiplexed USB & Display Socket Router (`OFV2`).
 //!
 //! Replaces v1's synchronous `transact()` / SimpleHDLC / `live_json` / `CMD_POLL_BUS_FRAMES`
 //! pipeline with:
 //! - Binary `MuxFrame` stream on USB bulk endpoints (`EP_OUT` / `EP_IN`) after `OFV2` handshake.
-//! - Binary `MuxFrame` Unix socket (`/tmp/openflux_v2.sock`) directly to `openflux-display`
+//! - Binary `MuxFrame` Unix socket (`/tmp/keyglass_v2.sock`) directly to `keyglass-display`
 //!   so `CH_BUS` (P0) and `CH_MEDIA` (P1 live H.264/JPEG) cross with `< 0.2 ms` latency and zero disk I/O.
 //! - Chunked `CH_BULK_REQ` / `CH_BULK_RSP` (P2) file, clock, soc-stats, and sideload RPCs.
 
 use base64::Engine;
-use openflux_bus::{
+use keyglass_bus::{
     BulkRpcRequest, BulkRpcResponse, MuxChannel, MuxDecoder, MuxFrame, V2_UPGRADE_ACK,
     V2_UPGRADE_MAGIC,
 };
@@ -19,7 +19,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
-pub const V2_MUX_SOCK_PATH: &str = "/tmp/openflux_v2.sock";
+pub const V2_MUX_SOCK_PATH: &str = "/tmp/keyglass_v2.sock";
 const V2_MAX_FILE_BYTES: u64 = 128 * 1024 * 1024;
 const V2_MAX_CONCURRENT_PUTS: usize = 8;
 
@@ -69,7 +69,7 @@ impl Drop for V2BridgeMux {
     }
 }
 
-/// Confines all OFV2 bridge file operations strictly to `/home/root/openflux/` (or a direct
+/// Confines all OFV2 bridge file operations strictly to `/home/root/keyglass/` (or a direct
 /// `.ipk` package basename under `/home/root/` when `allow_ipk_root == true`).
 /// Prevents any caller from reading, writing, or deleting arbitrary root filesystem paths.
 fn validate_bridge_path(raw: &str, allow_ipk_root: bool) -> Result<PathBuf, String> {
@@ -85,13 +85,13 @@ fn validate_bridge_path(raw: &str, allow_ipk_root: bool) -> Result<PathBuf, Stri
             return Err(format!("path traversal rejected: {raw}"));
         }
     }
-    if raw == "/home/root/openflux" || raw.starts_with("/home/root/openflux/") {
-        ensure_no_symlink_escape(p, Path::new("/home/root/openflux"))?;
+    if raw == "/home/root/keyglass" || raw.starts_with("/home/root/keyglass/") {
+        ensure_no_symlink_escape(p, Path::new("/home/root/keyglass"))?;
         return Ok(p.to_path_buf());
     }
     // Allow host USB install-confirmation to inspect/disarm the bridge rollback sentinel.
-    if raw == "/home/root/.openflux/rollback/bridge"
-        || raw == "/home/root/.openflux/rollback/bridge/armed"
+    if raw == "/home/root/.keyglass/rollback/bridge"
+        || raw == "/home/root/.keyglass/rollback/bridge/armed"
     {
         return Ok(p.to_path_buf());
     }
@@ -107,7 +107,7 @@ fn validate_bridge_path(raw: &str, allow_ipk_root: bool) -> Result<PathBuf, Stri
             }
         }
     }
-    Err(format!("path outside /home/root/openflux/ rejected: {raw}"))
+    Err(format!("path outside /home/root/keyglass/ rejected: {raw}"))
 }
 
 /// Walks up to the deepest existing ancestor of `target` and verifies its canonical path stays
@@ -193,7 +193,7 @@ impl V2BridgeMux {
     }
 
     /// Resets v2 session cleanly on USB disconnect; drops display v2 socket clients so
-    /// `openflux-display` immediately detects disconnect and runs `BrokerMirror::on_disconnect()` LWT!
+    /// `keyglass-display` immediately detects disconnect and runs `BrokerMirror::on_disconnect()` LWT!
     pub fn on_usb_disconnect(&mut self) {
         if self.active {
             self.active = false;
@@ -214,7 +214,7 @@ impl V2BridgeMux {
                 self.usb_decoder.clear();
                 self.tx_bus.clear();
                 self.tx_bulk.clear();
-                // Bounce any pre-existing display v2 clients so openflux-display immediately
+                // Bounce any pre-existing display v2 clients so keyglass-display immediately
                 // reconnects and sends a fresh `PeerBusFrame::Subscribe` now that OFV2 is active!
                 self.clients.clear();
                 self.tx_bus.push_back(V2_UPGRADE_ACK.to_vec());
@@ -274,7 +274,7 @@ impl V2BridgeMux {
         }
     }
 
-    /// Reads outgoing `CH_BUS` frames pushed by `openflux-display` and queues them at Priority 0!
+    /// Reads outgoing `CH_BUS` frames pushed by `keyglass-display` and queues them at Priority 0!
     pub fn read_display_client_by_fd(&mut self, fd: RawFd) {
         let Some(idx) = self.clients.iter().position(|c| c.stream.as_raw_fd() == fd) else {
             return;
@@ -334,11 +334,11 @@ impl V2BridgeMux {
         };
         match req {
             BulkRpcRequest::GetVersions => {
-                let display_ver = std::fs::read_to_string("/home/root/.openflux/versions/display")
-                    .or_else(|_| std::fs::read_to_string("/usr/lib/openflux/display/version.txt"))
-                    .or_else(|_| std::fs::read_to_string("/tmp/openflux_display_version.txt"))
+                let display_ver = std::fs::read_to_string("/home/root/.keyglass/versions/display")
+                    .or_else(|_| std::fs::read_to_string("/usr/lib/keyglass/display/version.txt"))
+                    .or_else(|_| std::fs::read_to_string("/tmp/keyglass_display_version.txt"))
                     .unwrap_or_else(|_| "2.0.0".into());
-                let os_ver = std::fs::read_to_string("/etc/openflux-os-version")
+                let os_ver = std::fs::read_to_string("/etc/keyglass-os-version")
                     .or_else(|_| std::fs::read_to_string("/etc/os-release"))
                     .unwrap_or_default();
                 BulkRpcResponse::Ok {
@@ -351,7 +351,7 @@ impl V2BridgeMux {
                 }
             }
             BulkRpcRequest::GetSocStats => {
-                for p in ["/tmp/openflux_soc_stats.json", "/run/openflux_soc_stats.json"] {
+                for p in ["/tmp/keyglass_soc_stats.json", "/run/keyglass_soc_stats.json"] {
                     if let Ok(text) = std::fs::read_to_string(p) {
                         if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
                             return BulkRpcResponse::Ok { data: val };

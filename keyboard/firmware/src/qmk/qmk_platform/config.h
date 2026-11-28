@@ -1,6 +1,6 @@
 #pragma once
 
-/* OpenFlux QMK + Vial configuration (compiled inside Pico SDK / host test shell). */
+/* Keyglass QMK + Vial configuration (compiled inside Pico SDK / host test shell). */
 
 #define MATRIX_ROWS 6
 #define MATRIX_COLS 16

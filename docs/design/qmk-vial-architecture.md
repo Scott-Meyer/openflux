@@ -10,8 +10,8 @@ Typing stays 100% on the RP2040 microcontroller—independent of the Linux displ
          ▼
   Real vial-qmk (quantum/ + vial.c) inside Pico SDK shell
     ├── USB IF 0 (HID) ──────────────► OS typing (unchanged)
-    ├── USB IF 5 (Vial Raw HID) ◄────► vial.rocks / vial-gui / openfluxd ◄──► Studio tab (vialite)
-    ├── USB IF 4 (Vendor HID) ───────► openfluxd (OS-side module actions)
+    ├── USB IF 5 (Vial Raw HID) ◄────► vial.rocks / vial-gui / keyglassd ◄──► Studio tab (vialite)
+    ├── USB IF 4 (Vendor HID) ───────► keyglassd (OS-side module actions)
     └── UART1 HDLC ──────────────────► Linux display (real mods/layers, key faces, keyboard module actions)
 ```
 
@@ -22,7 +22,7 @@ Typing stays 100% on the RP2040 microcontroller—independent of the Linux displ
 Keep the working RP2040 hardware shell untouched:
 - Hall-effect sensing (`fw_depth.c`, `fw_refine.c`, `fw_rest.c`, `fw_thermal.c`, `fw_rapid.c`, `fw_keyframe.c`)
 - Factory LittleFS calibration partition at `0x00F00000`
-- TinyUSB interfaces `IF 0` (NKRO/Boot/Consumer), `IF 1` (WinUSB bulk commands for `openfluxd`), `IF 2/3` (CDC logs), `IF 4` (Vendor HID)
+- TinyUSB interfaces `IF 0` (NKRO/Boot/Consumer), `IF 1` (WinUSB bulk commands for `keyglassd`), `IF 2/3` (CDC logs), `IF 4` (Vendor HID)
 - UART1 HDLC link and Linux SoC power/reset GPIOs
 
 Replace only the ~200-line post-scan keycode resolver in `fw_scanner.c` by compiling vendored `vial-qmk` (`quantum/`, `tmk_core/common/`, `via.c`, `dynamic_keymap.c`, `qmk_settings.c`, `vial.c`) behind a small Pico SDK platform shim:
@@ -44,7 +44,7 @@ Replace only the ~200-line post-scan keycode resolver in `fw_scanner.c` by compi
 
 **Clean split of ownership:**
 - **QMK/Vial owns keymaps** (standard 16-bit QMK/Vial format in LittleFS).
-- **OpenFlux owns actuation, profiles, and display.** No custom 32-bit keymap format or two-way keymap sync between Studio and Vial.
+- **Keyglass owns actuation, profiles, and display.** No custom 32-bit keymap format or two-way keymap sync between Studio and Vial.
 
 *Why not a full ChibiOS `vial-qmk` port?* Porting TinyUSB's WinUSB bulk interface (`IF 1`), MS OS 2.0 descriptors, LittleFS calibration protection, UART1 HDLC, and RAM-resident ADC muxing onto ChibiOS adds heavy low-level churn for no benefit over keeping Pico SDK and linking `vial-qmk`'s C core directly.
 
@@ -63,16 +63,16 @@ Vial already supports this natively through `customKeycodes` in `vial.json`:
    name = "Pomo\nToggle"
    title = "Start or pause Pomodoro timer"
    ```
-2. **`openfluxd` maintains a stable slot map (`slot -> action_id`):**
+2. **`keyglassd` maintains a stable slot map (`slot -> action_id`):**
    - Built-in Flux functions (brightness, profile/theme/actuation cycling, etc.) occupy the first slots; module actions get persistent slots after them so enabling/removing modules never shifts existing bindings.
-   - Whenever modules change, `openfluxd` generates the tiny XZ-compressed `vial.json` (~1–2 KB) with `"customKeycodes"` populated from those names/tooltips, uploads it to RP2040 LittleFS (via a new `IF 1` command, RAM-buffered and debounced), **and** writes `module_actions.json` (`slot -> action_id`) to `/home/root/openflux/config/` on the Linux SoC so offline keyboard modules stay in sync.
+   - Whenever modules change, `keyglassd` generates the tiny XZ-compressed `vial.json` (~1–2 KB) with `"customKeycodes"` populated from those names/tooltips, uploads it to RP2040 LittleFS (via a new `IF 1` command, RAM-buffered and debounced), **and** writes `module_actions.json` (`slot -> action_id`) to `/home/root/keyglass/config/` on the Linux SoC so offline keyboard modules stay in sync.
    - **Cache busting:** Mix a hash of the active `vial.json` into the low bytes of `VIAL_KEYBOARD_UID` so external `vial-gui` / `vial.rocks` (which cache definitions by UID) always pick up newly added module actions.
 3. **Every Vial UI shows them automatically:**
    - When `vialite`, `vial.rocks`, or `vial-gui` connects, it reads `vial.json` from the keyboard and lists all declared actions under the **User** tab—ready to place on any key, layer, combo, or tap dance with zero custom UI code. *(Note: QMK's 16-bit `MT`/`LT` tap slots only take basic 8-bit keycodes; for "tap = module action, hold = Shift/Layer", use Tap Dance.)*
 4. **Firmware stays dumb about modules:**
    - In `process_record_user()`, any `QK_KB_*` custom keycode returns `false` (no OS keystroke) and emits `{ slot, pressed }` on both:
-     - **UART1 → `openflux-display`:** resolves `slot -> action_id` from `module_actions.json` on the keyboard and publishes on the keyboard bus (works even with no PC daemon running).
-     - **USB Vendor HID `IF 4` → `openfluxd`:** upgrade `IF 4` (`wMaxPacketSize >= 16`) with Report ID 3 (legacy 4-byte mask) and Report ID 4 (generic action event `{ slot, pressed }`), resolved and published on the host bus (no macOS Input Monitoring permissions needed).
+     - **UART1 → `keyglass-display`:** resolves `slot -> action_id` from `module_actions.json` on the keyboard and publishes on the keyboard bus (works even with no PC daemon running).
+     - **USB Vendor HID `IF 4` → `keyglassd`:** upgrade `IF 4` (`wMaxPacketSize >= 16`) with Report ID 3 (legacy 4-byte mask) and Report ID 4 (generic action event `{ slot, pressed }`), resolved and published on the host bus (no macOS Input Monitoring permissions needed).
 
 *(Verify exact `QK_KB` / `QK_USER` slot range against the pinned `vial-qmk` commit and `vialite` during bring-up; modern QMK uses 32 `QK_KB` + 32 `QK_USER` slots.)*
 
@@ -83,7 +83,7 @@ Vial already supports this natively through `customKeycodes` in `vial.json`:
 Today `modules/keys-renderer/script.lua` guesses Shift/Ctrl from physical key positions on Layer 0, which breaks with home-row mods and one-shot modifiers.
 
 - **Active state in `MSG_UPDATE`:** Pack QMK's actual `get_mods()`, `get_oneshot_mods()`, `get_oneshot_layer()`, `is_caps_word_on()`, `layer_state`, and `default_layer_state` into the 34 unused zero bytes of the existing 139-byte UART `MSG_UPDATE` frame.
-- **Effective resolved key faces on change:** When active layers, modifiers/overrides, or the keymap change, send QMK's *effective* resolved keycode per key (handling stacked layers, `KC_TRANSPARENT`, and Key Overrides), coalesced behind `MSG_UPDATE`, so keycap legends always match the keyboard—even after editing in external `vial.rocks` without `openfluxd`.
+- **Effective resolved key faces on change:** When active layers, modifiers/overrides, or the keymap change, send QMK's *effective* resolved keycode per key (handling stacked layers, `KC_TRANSPARENT`, and Key Overrides), coalesced behind `MSG_UPDATE`, so keycap legends always match the keyboard—even after editing in external `vial.rocks` without `keyglassd`.
 
 ---
 
@@ -91,7 +91,7 @@ Today `modules/keys-renderer/script.lua` guesses Shift/Ctrl from physical key po
 
 Embed **`tcyeee/vialite`** (React + TypeScript + Vite—the same stack as `host/studio`) as a top-level Studio tab.
 
-- **Tauri / macOS WebView transport:** Tauri on macOS uses WKWebView, which lacks WebHID (`navigator.hid`). Since `openfluxd` already owns USB/HID natively in Rust, replace `vialite`'s thin WebHID layer with a 32-byte Vial packet relay through `openfluxd`.
+- **Tauri / macOS WebView transport:** Tauri on macOS uses WKWebView, which lacks WebHID (`navigator.hid`). Since `keyglassd` already owns USB/HID natively in Rust, replace `vialite`'s thin WebHID layer with a 32-byte Vial packet relay through `keyglassd`.
 - **Result:** Works identically on macOS, Windows, and Linux with no HID contention, gives UI support for layers, mod-tap, combos, tap dance, macros, QMK settings, and `.vil` import/export—and external `vial.rocks` (Chrome) or `vial-gui` also work directly via USB `IF 5` (including Key Overrides, which `vialite` does not yet have a tab for).
 - **Keep per-key display styling:** `KeymapStylemapEditor.tsx` currently handles both keybindings and per-key screen styling (`theme.stylemaps`: icons, colors, custom legend overrides). Remove only the keybinding/macro half and keep the per-key display styling editor in Studio.
 - When modules change in Studio, tell the Vial tab to reload `vial.json` so newly declared actions appear immediately.
@@ -103,7 +103,7 @@ Embed **`tcyeee/vialite`** (React + TypeScript + Vite—the same stack as `host/
 1. **Firmware QMK + Vial bring-up:** Vendor `vial-qmk`, wire the Pico SDK platform shim + `IF 5` Vial Raw HID + debounced per-layout LittleFS EEPROM + rapid-trigger guard on dual-role keys. Verify typing, home-row mods, and live editing from `vial.rocks` / `vial-gui`.
 2. **Display state over UART:** Populate `MSG_UPDATE` with QMK's real mod/layer state, send effective resolved keycodes on layer/mod/keymap change, and update `keys-renderer/script.lua` to stop guessing modifiers from Layer 0.
 3. **Dynamic module actions:** Add `[[actions]]` to `module.toml`, stable slot mapping + XZ `vial.json` upload (with UID hash cache-busting) to RP2040 LittleFS + `module_actions.json` sync to Linux SoC, and `process_record_user()` forwarding over UART + `IF 4` Vendor HID (Report ID 3/4).
-4. **Embedded Studio UI:** Add `openfluxd` 32-byte Vial HID relay, mount `tcyeee/vialite` in a Studio top tab, and strip `KeymapStylemapEditor.tsx` down to per-key display styling (`theme.stylemaps`).
+4. **Embedded Studio UI:** Add `keyglassd` 32-byte Vial HID relay, mount `tcyeee/vialite` in a Studio top tab, and strip `KeymapStylemapEditor.tsx` down to per-key display styling (`theme.stylemaps`).
 
 ---
 

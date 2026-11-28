@@ -3,7 +3,7 @@
 //!
 //! Packs come from three places, looked up in this order by id:
 //!
-//! - files in a `shortcuts` directory of an asset root, either OpenFlux pack documents (`.json`)
+//! - files in a `shortcuts` directory of an asset root, either Keyglass pack documents (`.json`)
 //!   or spreadsheet exports (`.csv`, see [`crate::api::assets::parse_shortcut_csv_str`]);
 //! - the packs built into the daemon (`assets/shortcuts/*.json`), so a fresh install has a
 //!   library;
@@ -261,7 +261,7 @@ pub fn parse_combo(text: &str) -> Result<Vec<Stroke>, String> {
             return Err(format!("“{part}” has no key besides its modifiers"));
         }
         let key =
-            key_name(key_tok).ok_or_else(|| format!("“{key_tok}” isn't a key OpenFlux knows"))?;
+            key_name(key_tok).ok_or_else(|| format!("“{key_tok}” isn't a key Keyglass knows"))?;
         strokes.push(Stroke { mods, key });
     }
     if strokes.is_empty() {
@@ -1291,7 +1291,7 @@ mod tests {
 
     #[test]
     fn a_file_pack_shadows_a_built_in_one_and_spreadsheets_get_ids() {
-        let root = std::env::temp_dir().join(format!("openflux_sc_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("keyglass_sc_{}", std::process::id()));
         std::fs::create_dir_all(root.join("shortcuts")).unwrap();
         std::fs::write(
             root.join("shortcuts/vscode.json"),
