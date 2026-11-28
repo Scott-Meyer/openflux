@@ -1,15 +1,16 @@
 # Unified Keyglass v2 Release Pipeline (macOS + Windows + Keyboard)
 #
-# Triggered by pushing a clean SemVer tag (`v2.0.0-beta.1`, `v2.0.0`, ...) or manually via
-# workflow_dispatch. Builds a single verified combination of:
-#   - Keyboard: RP2040 firmware (.uf2), RK3566 bridge (.ipk), RK3566 display (.ipk)
-#   - Desktop:  macOS universal (.dmg + .app.tar.gz), Windows x64 (-setup.exe)
+# Triggered by pushing a clean SemVer tag (`v2.0.0-beta.1`, `v2.0.0`, ...) or via workflow_dispatch.
+# Builds ONE verified, signed combination of:
+#   - Keyboard: RP2040 keyglass-firmware (.uf2), RK3566 keyglass-bridge (.ipk), keyglass-display (.ipk)
+#   - Desktop:  macOS universal (.dmg + .app.tar.gz, Apple-signed & notarized), Windows x64 (-setup.exe)
 #     (Linux desktop builds are intentionally omitted until hardware-tested.)
 #
-# Immutable release artifacts live on GitHub Releases; Desktop bundles the exact keyboard
-# packages built in the same workflow run (never curling a cached CDN).
+# Immutable installers and packages live on GitHub Releases; Desktop bundles the exact signed
+# keyboard packages built in this same run (never curling a cached CDN). GitHub Pages hosts the
+# signed keyboard index (`index.json`) and Tauri auto-updater feeds (`updates/<channel>/latest.json`).
 
-name: Release Keyglass (macOS + Windows + Keyboard)
+name: Release Keyglass
 
 on:
   push:
@@ -23,33 +24,60 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
+      channel: ${{ steps.meta.outputs.channel }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
+      source_date_epoch: ${{ steps.meta.outputs.source_date_epoch }}
+      pages_url: ${{ steps.meta.outputs.pages_url }}
+      release_url: ${{ steps.meta.outputs.release_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Validate version alignment across Cargo, CMake, package.json, and compat.toml
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate tag & version alignment across Cargo, CMake, package.json, and compat.toml
         id: meta
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          PAGES_OVERRIDE: ${{ vars.KEYGLASS_PAGES_URL }}
         run: |
-          TAG="${{ inputs.tag || github.ref_name }}"
+          TAG="${INPUT_TAG:-${GITHUB_REF_NAME}}"
           VER="${TAG#v}"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${VER}" >> "$GITHUB_OUTPUT"
           if [[ "$VER" == *-* ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            CHANNEL="beta"
+            PRE="true"
           else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            CHANNEL="stable"
+            PRE="false"
           fi
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          PAGES_URL="${PAGES_OVERRIDE:-https://${OWNER,,}.github.io/${REPO}}"
+          PAGES_URL="${PAGES_URL%/}"
+          EPOCH="$(git log -1 --format=%ct)"
+          {
+            echo "tag=${TAG}"
+            echo "version=${VER}"
+            echo "channel=${CHANNEL}"
+            echo "prerelease=${PRE}"
+            echo "source_date_epoch=${EPOCH}"
+            echo "pages_url=${PAGES_URL}"
+            echo "release_url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          } >> "$GITHUB_OUTPUT"
           cargo test --locked -p keyglass-update --test compat
           WS_VER="$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version = "\([^"]*\)"/\1/p;}' Cargo.toml | head -n 1)"
           if [ "$WS_VER" != "$VER" ]; then
@@ -62,6 +90,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Run RP2040 host unit tests (ASan + UBSan)
         run: make -C keyboard/firmware test
       - name: Build RP2040 keyglass-firmware UF2
@@ -71,7 +101,7 @@ jobs:
           docker run --rm --network none -v "$PWD:/work" -w /work keyglass-firmware-build \
             sh -c "cmake -S keyboard/firmware -B /tmp/fw-build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build /tmp/fw-build && cp /tmp/fw-build/keyglass_firmware.uf2 /work/keyglass-firmware-${VER}.uf2"
           .github/scripts/firmware-licenses.sh keyglass-firmware-build "keyglass-firmware-licenses.txt"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: keyboard-firmware
           path: |
@@ -83,107 +113,446 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Build ARM64 keyglass-bridge and keyglass-display IPKs
         run: |
           VER="${{ needs.validate.outputs.version }}"
           KEYGLASS_V2_VERSION="$VER" ./scripts/v2-build-keyboard.sh bridge
           KEYGLASS_V2_VERSION="$VER" ./scripts/v2-build-keyboard.sh display
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: keyboard-linux-pkgs
           path: |
             .work/v2-keyboard-builds/keyglass-bridge_${{ needs.validate.outputs.version }}_aarch64.ipk
             .work/v2-keyboard-builds/keyglass-display_${{ needs.validate.outputs.version }}_aarch64.ipk
 
-  desktop:
-    needs: [validate, keyboard-firmware, keyboard-linux-pkgs]
+  ffmpeg:
+    needs: validate
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
-          - os: macos-latest
-            platform: macos
-            target: universal-apple-darwin
-          - os: windows-latest
-            platform: windows
-            target: x86_64-pc-windows-msvc
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
     runs-on: ${{ matrix.os }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: cache
+        with:
+          path: build/ffmpeg-out/${{ matrix.target }}
+          key: keyglass-ffmpeg-tools-${{ matrix.target }}-${{ matrix.os }}-${{ hashFiles('host/packaging/ffmpeg/build-ffmpeg.sh') }}
+      - name: Tools (macOS)
+        if: runner.os == 'macOS' && steps.cache.outputs.cache-hit != 'true'
+        run: brew install nasm
+      - name: Tools (Windows)
+        if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            git make diffutils
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-pkgconf
+      - name: Build (macOS)
+        if: runner.os == 'macOS' && steps.cache.outputs.cache-hit != 'true'
+        run: host/packaging/ffmpeg/build-ffmpeg.sh --target "${{ matrix.target }}" --out "build/ffmpeg-out/${{ matrix.target }}" --work build/ffmpeg
+      - name: Build (Windows)
+        if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: host/packaging/ffmpeg/build-ffmpeg.sh --target "${{ matrix.target }}" --out "build/ffmpeg-out/${{ matrix.target }}" --work build/ffmpeg
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: build/ffmpeg-out/${{ matrix.target }}
+
+  # Signs the exact keyboard packages built in this run so Desktop installers bundle a verified,
+  # offline-capable keyboard set with zero reliance on a cached CDN!
+  keyboard-bundle:
+    needs: [validate, keyboard-firmware, keyboard-linux-pkgs]
+    runs-on: ubuntu-24.04
+    environment: release-signing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: keyboard-firmware
+          path: build/kb-in
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: keyboard-linux-pkgs
+          path: build/kb-in
+      - name: Build keyglass-release & stage signed offline keyboard bundle
+        env:
+          KEYGLASS_RELEASE_KEY: ${{ secrets.KEYGLASS_RELEASE_KEY }}
+          KEYGLASS_RELEASE_KEY_PASSWORD: ${{ secrets.KEYGLASS_RELEASE_KEY_PASSWORD }}
+          VER: ${{ needs.validate.outputs.version }}
+          CH: ${{ needs.validate.outputs.channel }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          EPOCH: ${{ needs.validate.outputs.source_date_epoch }}
+          PAGES_URL: ${{ needs.validate.outputs.pages_url }}
+          NOTES_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.validate.outputs.tag }}
+        run: |
+          cargo build --locked --release -p keyglass-update --bin keyglass-release --features production-keys
+          TOOL="$PWD/target/release/keyglass-release"
+          mkdir -p build/staged build/releases build/site build/keyboard-bundle
+          for comp in firmware bridge display; do
+            d="build/staged/${comp}"
+            mkdir -p "${d}/artifacts" "${d}/source"
+            cp compat.toml "${d}/compat.toml"
+            case "$comp" in
+              firmware)
+                cp "build/kb-in/keyglass-firmware-${VER}.uf2" "${d}/artifacts/"
+                cp "build/kb-in/keyglass-firmware-licenses.txt" "${d}/source/"
+                ;;
+              bridge)
+                cp "build/kb-in/keyglass-bridge_${VER}_aarch64.ipk" "${d}/artifacts/"
+                ;;
+              display)
+                cp "build/kb-in/keyglass-display_${VER}_aarch64.ipk" "${d}/artifacts/"
+                ;;
+            esac
+            jq -n \
+              --arg component "$comp" \
+              --arg version "$VER" \
+              --arg channel "$CH" \
+              --arg tag "$TAG" \
+              --arg source_date_epoch "$EPOCH" \
+              --arg notes_url "$NOTES_URL" \
+              '{component:$component, version:$version, channel:$channel, tag:$tag, source_date_epoch:($source_date_epoch|tonumber), notes_url:$notes_url}' \
+              > "${d}/meta.json"
+          done
+          .github/scripts/stage-releases.sh \
+            --tool "$TOOL" \
+            --staged build/staged \
+            --pages-url "$PAGES_URL" \
+            --active-pubkey host/packaging/keys/active-release.pub \
+            --releases-out build/releases \
+            --site-out build/site
+          .github/scripts/build-index.sh \
+            --tool "$TOOL" \
+            --pages-url "$PAGES_URL" \
+            --releases build/releases \
+            --keys host/packaging/keys \
+            --factory factory-reference.toml \
+            --recorded-sequence 0 \
+            --expires-days 365 \
+            -o build/site
+          "$TOOL" bundle \
+            --index build/site \
+            --channel "$CH" \
+            --out build/keyboard-bundle
+          ls -la build/keyboard-bundle
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: keyboard-bundle
+          path: build/keyboard-bundle
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: staged-keyboard
+          path: build/staged
+
+  macos:
+    needs: [validate, ffmpeg, keyboard-bundle]
+    runs-on: macos-latest
+    environment: release-build
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+      PAGES_URL: ${{ needs.validate.outputs.pages_url }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: host/studio/package-lock.json
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - name: Install Rust targets (macOS universal)
-        if: matrix.platform == 'macos'
-        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
-      - name: Download same-run keyboard packages
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          name: ffmpeg-aarch64-apple-darwin
+          path: build/ffmpeg-out/aarch64-apple-darwin
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ffmpeg-x86_64-apple-darwin
+          path: build/ffmpeg-out/x86_64-apple-darwin
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: keyboard-bundle
           path: build/keyboard-bundle
-          merge-multiple: true
-      - name: Build Studio frontend
+      - name: Configure Apple Developer ID signing & notarization
+        id: signing
         run: |
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "sign=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Apple Developer ID secrets missing; building ad-hoc signed app."
+            echo "sign=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$APPLE_API_KEY_ID" ] && [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_PRIVATE_KEY" ]; then
+            key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+            printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$key"
+            {
+              echo "APPLE_API_KEY=$APPLE_API_KEY_ID"
+              echo "APPLE_API_KEY_PATH=$key"
+            } >> "$GITHUB_ENV"
+            echo "notarize=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "notarize=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Toolchains & sidecars
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
           npm ci --prefix host/studio
-          npm run build --prefix host/studio
-      - name: Build sidecars (keyglassd, fluxctl, helpers, ffmpeg)
+          scripts/licenses/install-cargo-about.sh
+          host/packaging/scripts/build-sidecars.sh --target universal-apple-darwin --ffmpeg-dir build/ffmpeg-out --out build/sidecars
+          host/packaging/scripts/tauri-release-config.sh --os macos --version "$VERSION" \
+            --sidecars build/sidecars --keyboard-bundle build/keyboard-bundle \
+            --pages-url "$PAGES_URL" -o "$RUNNER_TEMP/tauri.release.json"
+      - name: Build & sign universal macOS bundle
+        env:
+          SIGN: ${{ steps.signing.outputs.sign }}
         run: |
-          host/packaging/scripts/build-sidecars.sh \
-            --target "${{ matrix.target }}" \
-            --out build/sidecars
-      - name: Generate Tauri release config overlay
+          if [ "$SIGN" != true ]; then
+            unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD
+            export APPLE_SIGNING_IDENTITY=-
+          fi
+          cd host/studio
+          npm exec -- tauri build --target universal-apple-darwin --config "$RUNNER_TEMP/tauri.release.json" --bundles app,dmg
+      - name: Notarize & staple DMG
+        if: steps.signing.outputs.notarize == 'true' && steps.signing.outputs.sign == 'true'
         run: |
-          mkdir -p build/keyboard-bundle/licenses
-          host/packaging/scripts/tauri-release-config.sh \
-            --version "${{ needs.validate.outputs.version }}" \
-            --platform "${{ matrix.platform }}" \
-            --sidecars build/sidecars \
-            --keyboard build/keyboard-bundle \
-            --licenses build/sidecars/licenses \
-            --out build/tauri.release.conf.json
-      - name: Build Tauri installers
+          dmg="$(find target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' | head -n 1)"
+          xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --wait
+          xcrun stapler staple "$dmg"
+      - name: Collect & verify macOS installers
         run: |
-          npx --prefix host/studio tauri build \
-            --target "${{ matrix.target }}" \
-            --config "$PWD/build/tauri.release.conf.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+          bundle=target/universal-apple-darwin/release/bundle
+          mkdir -p dist
+          cp "$(find "$bundle/dmg" -name '*.dmg' | head -n 1)" "dist/keyglass-studio_${VERSION}_universal.dmg"
+          app="$(find "$bundle/macos" -maxdepth 1 -name '*.app' | head -n 1)"
+          COPYFILE_DISABLE=1 tar -czf "dist/keyglass-studio_${VERSION}_universal.app.tar.gz" -C "$(dirname "$app")" "$(basename "$app")"
+          .github/scripts/check-host-installer.sh "dist/keyglass-studio_${VERSION}_universal.dmg"
+          .github/scripts/check-host-installer.sh "dist/keyglass-studio_${VERSION}_universal.app.tar.gz"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: desktop-${{ matrix.platform }}
-          path: |
-            target/**/release/bundle/dmg/*.dmg
-            target/**/release/bundle/macos/*.app.tar.gz
-            target/**/release/bundle/nsis/*-setup.exe
+          name: desktop-macos
+          path: dist
 
-  publish:
-    needs: [validate, keyboard-firmware, keyboard-linux-pkgs, desktop]
-    runs-on: ubuntu-latest
+  windows:
+    needs: [validate, ffmpeg, keyboard-bundle]
+    runs-on: windows-latest
+    environment: release-build
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+      PAGES_URL: ${{ needs.validate.outputs.pages_url }}
+      TARGET: x86_64-pc-windows-msvc
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+      SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+      SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+      SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          path: dist-release
-          merge-multiple: true
-      - name: Generate SHA256SUMS cleanly outside target dir
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: host/studio/package-lock.json
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ffmpeg-x86_64-pc-windows-msvc
+          path: build/ffmpeg-out/x86_64-pc-windows-msvc
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: keyboard-bundle
+          path: build/keyboard-bundle
+      - name: Toolchains, sidecars & Windows NSIS build
         run: |
-          (cd dist-release && find . -maxdepth 3 -type f ! -name 'SHA256SUMS' -exec sha256sum {} + | sort -k2) > /tmp/SHA256SUMS
-          mv /tmp/SHA256SUMS dist-release/SHA256SUMS
-          cat dist-release/SHA256SUMS
-      - name: Publish unified GitHub Release
+          npm ci --prefix host/studio
+          scripts/licenses/install-cargo-about.sh
+          host/packaging/scripts/build-sidecars.sh --target "$TARGET" --ffmpeg-dir build/ffmpeg-out --out build/sidecars
+          host/packaging/scripts/tauri-release-config.sh --os windows --version "$VERSION" \
+            --sidecars build/sidecars --keyboard-bundle build/keyboard-bundle \
+            --pages-url "$PAGES_URL" -o "$RUNNER_TEMP/tauri.release.json"
+          cd host/studio
+          npm exec -- tauri build --target "$TARGET" --config "$RUNNER_TEMP/tauri.release.json"
+      - name: Collect & verify Windows installer
+        run: |
+          mkdir -p dist
+          setup="$(find "target/${TARGET}/release/bundle/nsis" -name '*-setup.exe' | head -n 1)"
+          cp "$setup" "dist/keyglass-studio_${VERSION}_x64-setup.exe"
+          .github/scripts/check-host-installer.sh "dist/keyglass-studio_${VERSION}_x64-setup.exe"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-windows
+          path: dist
+
+  publish:
+    needs: [validate, keyboard-firmware, keyboard-linux-pkgs, keyboard-bundle, macos, windows]
+    runs-on: ubuntu-24.04
+    environment: release-signing
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      deployments: read
+    outputs:
+      sequence: ${{ steps.index.outputs.sequence }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: staged-keyboard
+          path: build/staged
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: desktop-macos
+          path: dist-release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: desktop-windows
+          path: dist-release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: keyboard-firmware
+          path: dist-release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: keyboard-linux-pkgs
+          path: dist-release
+      - name: Generate SHA256SUMS & publish unified GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          PRE: ${{ needs.validate.outputs.prerelease }}
         run: |
-          TAG="${{ needs.validate.outputs.tag }}"
-          PRE="${{ needs.validate.outputs.prerelease }}"
+          (cd dist-release && find . -maxdepth 1 -type f ! -name 'SHA256SUMS' -exec sha256sum {} + | sed 's|\./||' | sort -k2) > /tmp/SHA256SUMS
+          mv /tmp/SHA256SUMS dist-release/SHA256SUMS
+          cat dist-release/SHA256SUMS
           FLAGS=""
-          if [ "$PRE" = "true" ]; then
-            FLAGS="--prerelease"
+          [ "$PRE" = "true" ] && FLAGS="--prerelease"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist-release/* --clobber
+          else
+            gh release create "$TAG" dist-release/* --title "Keyglass ${TAG}" --generate-notes $FLAGS
           fi
-          gh release create "$TAG" dist-release/* \
-            --title "Keyglass ${TAG}" \
-            --generate-notes \
-            $FLAGS
+      - name: Sign & build GitHub Pages update index + Tauri updater feeds
+        id: index
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEYGLASS_RELEASE_KEY: ${{ secrets.KEYGLASS_RELEASE_KEY }}
+          KEYGLASS_RELEASE_KEY_PASSWORD: ${{ secrets.KEYGLASS_RELEASE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VER: ${{ needs.validate.outputs.version }}
+          CH: ${{ needs.validate.outputs.channel }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          EPOCH: ${{ needs.validate.outputs.source_date_epoch }}
+          PAGES_URL: ${{ needs.validate.outputs.pages_url }}
+          RELEASE_URL: ${{ needs.validate.outputs.release_url }}
+          NOTES_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.validate.outputs.tag }}
+        run: |
+          cargo build --locked --release -p keyglass-update --bin keyglass-release --features production-keys
+          TOOL="$PWD/target/release/keyglass-release"
+          mkdir -p build/staged/host/artifacts build/releases build/site
+          cp compat.toml build/staged/host/compat.toml
+          cp "dist-release/keyglass-studio_${VER}_universal.dmg" \
+             "dist-release/keyglass-studio_${VER}_universal.app.tar.gz" \
+             "dist-release/keyglass-studio_${VER}_x64-setup.exe" \
+             build/staged/host/artifacts/
+          jq -n \
+            --arg component host \
+            --arg version "$VER" \
+            --arg channel "$CH" \
+            --arg tag "$TAG" \
+            --arg source_date_epoch "$EPOCH" \
+            --arg release_url "$RELEASE_URL" \
+            --arg notes_url "$NOTES_URL" \
+            '{component:$component, version:$version, channel:$channel, tag:$tag, source_date_epoch:($source_date_epoch|tonumber), release_url:$release_url, notes_url:$notes_url}' \
+            > build/staged/host/meta.json
+
+          RECORDED="$(gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=update-index&per_page=100" --jq '[.[].payload.sequence? // 0 | tonumber? // 0] | max // 0' || echo 0)"
+          .github/scripts/stage-releases.sh \
+            --tool "$TOOL" \
+            --staged build/staged \
+            --pages-url "$PAGES_URL" \
+            --active-pubkey host/packaging/keys/active-release.pub \
+            --releases-out build/releases \
+            --site-out build/site
+          .github/scripts/build-index.sh \
+            --tool "$TOOL" \
+            --pages-url "$PAGES_URL" \
+            --releases build/releases \
+            --keys host/packaging/keys \
+            --factory factory-reference.toml \
+            --recorded-sequence "$RECORDED" \
+            --expires-days 365 \
+            -o build/site
+          for feed in stable beta; do
+            .github/scripts/tauri-feed.py \
+              --index build/site/index.json \
+              --feed "$feed" \
+              --pages-url "$PAGES_URL" \
+              --site build/site \
+              --work build/feed-downloads \
+              --staged-host build/staged/host \
+              -o "build/site/updates/${feed}/latest.json"
+          done
+          .github/scripts/write-site-manifest.sh build/site
+          touch build/site/.nojekyll
+          SEQ="$(jq -er '.sequence' build/site/index.json)"
+          echo "sequence=${SEQ}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: build/site
+
+  deploy-pages:
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+      deployments: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+      - name: Record published index sequence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SEQ: ${{ needs.publish.outputs.sequence }}
+        run: |
+          jq -n --arg ref "$GITHUB_SHA" --argjson seq "$SEQ" \
+            '{ref: $ref, environment: "update-index", auto_merge: false, required_contexts: [], payload: {sequence: $seq}}' \
+            | gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments" --input - >/dev/null
