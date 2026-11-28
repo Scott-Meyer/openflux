@@ -844,32 +844,44 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn get_file(&self, path: &str) -> Result<Vec<u8>, String> {
-        let Some(m) = self.active_mux() else {
-            return Err("OFV2 USB bridge not connected".into());
-        };
-        m.get_file(path)
+        if let Some(m) = self.active_mux() {
+            return m.get_file(path);
+        }
+        // Fallback to stock/v1 USB bridge so Stock -> Keyglass conversion backup & rescue staging
+        // work natively on a stock Flux keyboard before OFV2 is installed!
+        let client = self.client()?;
+        client.get_file(path).map_err(|e| e.to_string())
     }
 
     fn put_file(&self, path: &str, data: &[u8]) -> Result<(), String> {
-        let Some(m) = self.active_mux() else {
-            return Err("OFV2 USB bridge not connected".into());
-        };
-        m.put_file(path, data)
+        if let Some(m) = self.active_mux() {
+            return m.put_file(path, data);
+        }
+        let client = self.client()?;
+        client.put_file(path, data).map_err(|e| e.to_string())
     }
 
     fn stat_file(&self, path: &str) -> Result<bool, String> {
-        let Some(m) = self.active_mux() else {
-            return Err("OFV2 USB bridge not connected".into());
-        };
-        m.stat_file(path)
+        if let Some(m) = self.active_mux() {
+            return m.stat_file(path);
+        }
+        let client = self.client()?;
+        client.stat_file(path).map_err(|e| e.to_string())
     }
 
     fn list_files(&self, dir: &str) -> Result<Vec<(String, u64)>, String> {
-        let Some(m) = self.active_mux() else {
-            return Err("OFV2 USB bridge not connected".into());
-        };
-        let names = m.list_files(dir)?;
-        Ok(names.into_iter().map(|n| (n, 0)).collect())
+        if let Some(m) = self.active_mux() {
+            let names = m.list_files(dir)?;
+            return Ok(names.into_iter().map(|n| (n, 0)).collect());
+        }
+        let client = self.client()?;
+        let raw = client.get_file_list(dir).map_err(|e| e.to_string())?;
+        Ok(raw
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(|name| (name.to_string(), 0))
+            .collect())
     }
 
     fn read_firmware_keymap(&self) -> Result<Vec<u8>, String> {

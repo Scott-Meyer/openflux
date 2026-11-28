@@ -1,0 +1,189 @@
+# Unified Keyglass v2 Release Pipeline (macOS + Windows + Keyboard)
+#
+# Triggered by pushing a clean SemVer tag (`v2.0.0-beta.1`, `v2.0.0`, ...) or manually via
+# workflow_dispatch. Builds a single verified combination of:
+#   - Keyboard: RP2040 firmware (.uf2), RK3566 bridge (.ipk), RK3566 display (.ipk)
+#   - Desktop:  macOS universal (.dmg + .app.tar.gz), Windows x64 (-setup.exe)
+#     (Linux desktop builds are intentionally omitted until hardware-tested.)
+#
+# Immutable release artifacts live on GitHub Releases; Desktop bundles the exact keyboard
+# packages built in the same workflow run (never curling a cached CDN).
+
+name: Release Keyglass (macOS + Windows + Keyboard)
+
+on:
+  push:
+    tags:
+      - "v2.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. v2.0.0-beta.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate version alignment across Cargo, CMake, package.json, and compat.toml
+        id: meta
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VER="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          if [[ "$VER" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          cargo test --locked -p keyglass-update --test compat
+          WS_VER="$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version = "\([^"]*\)"/\1/p;}' Cargo.toml | head -n 1)"
+          if [ "$WS_VER" != "$VER" ]; then
+            echo "Tag version (${VER}) does not match Cargo.toml workspace version (${WS_VER})" >&2
+            exit 1
+          fi
+
+  keyboard-firmware:
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run RP2040 host unit tests (ASan + UBSan)
+        run: make -C keyboard/firmware test
+      - name: Build RP2040 keyglass-firmware UF2
+        run: |
+          VER="${{ needs.validate.outputs.version }}"
+          docker build -t keyglass-firmware-build -f keyboard/firmware/Dockerfile.build keyboard/firmware
+          docker run --rm --network none -v "$PWD:/work" -w /work keyglass-firmware-build \
+            sh -c "cmake -S keyboard/firmware -B /tmp/fw-build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build /tmp/fw-build && cp /tmp/fw-build/keyglass_firmware.uf2 /work/keyglass-firmware-${VER}.uf2"
+          .github/scripts/firmware-licenses.sh keyglass-firmware-build "keyglass-firmware-licenses.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: keyboard-firmware
+          path: |
+            keyglass-firmware-${{ needs.validate.outputs.version }}.uf2
+            keyglass-firmware-licenses.txt
+
+  keyboard-linux-pkgs:
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build ARM64 keyglass-bridge and keyglass-display IPKs
+        run: |
+          VER="${{ needs.validate.outputs.version }}"
+          KEYGLASS_V2_VERSION="$VER" ./scripts/v2-build-keyboard.sh bridge
+          KEYGLASS_V2_VERSION="$VER" ./scripts/v2-build-keyboard.sh display
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: keyboard-linux-pkgs
+          path: |
+            .work/v2-keyboard-builds/keyglass-bridge_${{ needs.validate.outputs.version }}_aarch64.ipk
+            .work/v2-keyboard-builds/keyglass-display_${{ needs.validate.outputs.version }}_aarch64.ipk
+
+  desktop:
+    needs: [validate, keyboard-firmware, keyboard-linux-pkgs]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+            target: universal-apple-darwin
+          - os: windows-latest
+            platform: windows
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: host/studio/package-lock.json
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Install Rust targets (macOS universal)
+        if: matrix.platform == 'macos'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Download same-run keyboard packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: build/keyboard-bundle
+          merge-multiple: true
+      - name: Build Studio frontend
+        run: |
+          npm ci --prefix host/studio
+          npm run build --prefix host/studio
+      - name: Build sidecars (keyglassd, fluxctl, helpers, ffmpeg)
+        run: |
+          host/packaging/scripts/build-sidecars.sh \
+            --target "${{ matrix.target }}" \
+            --out build/sidecars
+      - name: Generate Tauri release config overlay
+        run: |
+          mkdir -p build/keyboard-bundle/licenses
+          host/packaging/scripts/tauri-release-config.sh \
+            --version "${{ needs.validate.outputs.version }}" \
+            --platform "${{ matrix.platform }}" \
+            --sidecars build/sidecars \
+            --keyboard build/keyboard-bundle \
+            --licenses build/sidecars/licenses \
+            --out build/tauri.release.conf.json
+      - name: Build Tauri installers
+        run: |
+          npx --prefix host/studio tauri build \
+            --target "${{ matrix.target }}" \
+            --config "$PWD/build/tauri.release.conf.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: |
+            target/**/release/bundle/dmg/*.dmg
+            target/**/release/bundle/macos/*.app.tar.gz
+            target/**/release/bundle/nsis/*-setup.exe
+
+  publish:
+    needs: [validate, keyboard-firmware, keyboard-linux-pkgs, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: dist-release
+          merge-multiple: true
+      - name: Generate SHA256SUMS cleanly outside target dir
+        run: |
+          (cd dist-release && find . -maxdepth 3 -type f ! -name 'SHA256SUMS' -exec sha256sum {} + | sort -k2) > /tmp/SHA256SUMS
+          mv /tmp/SHA256SUMS dist-release/SHA256SUMS
+          cat dist-release/SHA256SUMS
+      - name: Publish unified GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ needs.validate.outputs.tag }}"
+          PRE="${{ needs.validate.outputs.prerelease }}"
+          FLAGS=""
+          if [ "$PRE" = "true" ]; then
+            FLAGS="--prerelease"
+          fi
+          gh release create "$TAG" dist-release/* \
+            --title "Keyglass ${TAG}" \
+            --generate-notes \
+            $FLAGS

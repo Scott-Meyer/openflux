@@ -1,5 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { DaemonClient, SocStatsSample } from "../api/daemonClient";
+import {
+  COMPONENT_LABELS,
+  createUpdatesClient,
+  type Job,
+  type UpdateChannel,
+  type UpdatesStatus,
+} from "../api/updates";
 import type { DeviceStatus, SettingsConfig } from "../types/keyglass";
 import { ParallaxDiagram } from "./ParallaxDiagram";
 import { PressRefinementRow } from "./PressRefinementRow";
@@ -54,6 +61,88 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
   const [switchingSw, setSwitchingSw] = useState(false);
   const [perfData, setPerfData] = useState<Record<string, any> | null>(null);
   const [copiedPerfMsg, setCopiedPerfMsg] = useState<string | null>(null);
+  const updatesClient = useMemo(() => createUpdatesClient(), []);
+  const [updatesStatus, setUpdatesStatus] = useState<UpdatesStatus | null>(null);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [activeJob, setActiveJob] = useState<Job | null>(null);
+
+  const refreshUpdates = useCallback(async (forceCheck = false) => {
+    setCheckingUpdates(true);
+    try {
+      const st = forceCheck ? await updatesClient.checkUpdates() : await updatesClient.getUpdates();
+      setUpdatesStatus(st);
+    } catch {
+      // ignore in browser preview / non-tauri tests
+    } finally {
+      setCheckingUpdates(false);
+    }
+  }, [updatesClient]);
+
+  useEffect(() => {
+    void refreshUpdates(false);
+  }, [refreshUpdates]);
+
+  const pollJobUntilDone = useCallback(
+    async (jobId: string): Promise<Job> => {
+      for (let i = 0; i < 240; i++) {
+        const j = await updatesClient.getJob(jobId);
+        setActiveJob(j);
+        if (j.state === "succeeded" || j.state === "failed") {
+          return j;
+        }
+        await new Promise((r) => window.setTimeout(r, 750));
+      }
+      throw new Error("Timed out waiting for keyboard update job to finish.");
+    },
+    [updatesClient],
+  );
+
+  const handleRunStockToKeyglassConversion = async () => {
+    const ok = window.confirm(
+      "Convert this Stock Flux keyboard to Keyglass?\n\n" +
+        "Keyglass will back up your stock calibration & keymap, then install signed Keyglass firmware, bridge, and display packages.\n" +
+        "Factory Hall-effect calibration is preserved and you can return to Stock at any time.",
+    );
+    if (!ok) return;
+    setSwitchingSw(true);
+    setLog("Starting Stock → Keyglass conversion (backing up keyboard & installing signed packages)...");
+    try {
+      const started = await updatesClient.startConversion("convert");
+      const done = await pollJobUntilDone(started.jobId);
+      if (done.state !== "succeeded") {
+        setLog(`Conversion failed: ${done.error?.message ?? done.step?.label ?? done.state}`);
+        return;
+      }
+      setLog("Conversion complete! Your keyboard is now running Keyglass.");
+      await refreshUpdates(false);
+    } catch (e) {
+      setLog(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSwitchingSw(false);
+    }
+  };
+
+  const handleApplyKeyboardUpdates = async () => {
+    const plan = updatesStatus?.keyboard?.plan;
+    if (!plan || plan.steps.length === 0) return;
+    setSwitchingSw(true);
+    setLog(`Installing ${plan.steps.length} keyboard software update(s)...`);
+    try {
+      const expected = plan.steps.map((s) => ({ component: s.component, to: s.to }));
+      const started = await updatesClient.applyUpdates(undefined, expected);
+      const done = await pollJobUntilDone(started.jobId);
+      if (done.state === "succeeded") {
+        setLog("Keyboard software updated and verified.");
+      } else {
+        setLog(`Update failed: ${done.error?.message ?? done.step?.label ?? done.state}`);
+      }
+      await refreshUpdates(false);
+    } catch (e) {
+      setLog(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSwitchingSw(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -498,29 +587,89 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
 
             <button
               type="button"
+              className="btn-primary"
+              disabled={switchingSw || checkingUpdates}
+              onClick={() => void refreshUpdates(true)}
+            >
+              {checkingUpdates ? "Checking Updates…" : "Check for Software Updates"}
+            </button>
+
+            {updatesStatus && (
+              <div
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  fontSize: 12,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <div>
+                    <strong>Keyglass Studio:</strong> v{updatesStatus.host.installed}
+                    {updatesStatus.host.state === "updateAvailable" && updatesStatus.host.latest
+                      ? ` → v${updatesStatus.host.latest} available`
+                      : " (up to date)"}
+                  </div>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <span className="muted">Channel:</span>
+                    <select
+                      value={updatesStatus.channel}
+                      onChange={async (e) => {
+                        const ch = e.target.value as UpdateChannel;
+                        try {
+                          const next = await updatesClient.putUpdateSettings({ channel: ch });
+                          setUpdatesStatus(next);
+                        } catch (err) {
+                          setLog(err instanceof Error ? err.message : String(err));
+                        }
+                      }}
+                    >
+                      <option value="stable">Stable</option>
+                      <option value="beta">Beta</option>
+                    </select>
+                  </label>
+                </div>
+                {updatesStatus.keyboard?.plan && updatesStatus.keyboard.plan.steps.length > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ color: "#7dd3fc" }}>
+                      Keyboard update ready:{" "}
+                      {updatesStatus.keyboard.plan.steps
+                        .map((s) => `${COMPONENT_LABELS[s.component]} → v${s.to}`)
+                        .join(", ")}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={switchingSw}
+                      onClick={() => void handleApplyKeyboardUpdates()}
+                    >
+                      Update Keyboard Software
+                    </button>
+                  </div>
+                )}
+                {activeJob && (
+                  <div className="muted" style={{ fontSize: 11 }}>
+                    Job ({activeJob.state}):{" "}
+                    {activeJob.step
+                      ? `${activeJob.step.label} (${activeJob.step.index}/${activeJob.step.count})`
+                      : activeJob.kind}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
               className="btn-secondary"
               disabled={switchingSw}
-              onClick={async () => {
-                const ok = window.confirm(
-                  "Switch a Stock keyboard to Keyglass?\n\nThis installs Keyglass packages cleanly (factory Hall-effect calibration is preserved; stock profiles & settings are NOT migrated).",
-                );
-                if (!ok) return;
-                setSwitchingSw(true);
-                try {
-                  const pkg = await client.pickFile("Select Keyglass Keyboard Package (.ipk or .uf2)", ["ipk", "uf2"]);
-                  if (!pkg?.trim()) return;
-                  const res = pkg.toLowerCase().endsWith(".uf2")
-                    ? await client.flashFirmwareUf2(pkg.trim())
-                    : await client.sideloadIpk(pkg.trim());
-                  setLog(res.message);
-                } catch (e) {
-                  setLog(String(e));
-                } finally {
-                  setSwitchingSw(false);
-                }
-              }}
+              onClick={() => void handleRunStockToKeyglassConversion()}
             >
-              Switch Stock → Keyglass… (Current: {swMode === "keyglass" ? "Keyglass" : swMode === "stock" ? "Stock" : "Offline"})
+              Convert Stock Keyboard → Keyglass… (Current: {swMode === "keyglass" ? "Keyglass" : swMode === "stock" ? "Stock" : "Offline"})
             </button>
 
             <button
