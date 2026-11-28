@@ -527,6 +527,9 @@ fn main() {
                 let (ww, wh) = v2.wave_dims();
                 let has_bg_media = live_stream_active || rkmpp_stream.is_some() || v2_img_loaded;
                 let t_gpu = std::time::Instant::now();
+                let pending_keys = v2
+                    .pending_keys_upload
+                    .map(|h| (h, v2.keys_canvas.rgba.as_slice()));
                 if let Err(e) = gpu.render_v2_and_swap(
                     cached_suspended,
                     has_bg_media,
@@ -553,6 +556,8 @@ fn main() {
                     &v2.overlay_rgba,
                     v2.overlay_dirty,
                     v2.overlay_dirty_band,
+                    v2.active_keys_hash,
+                    pending_keys,
                     &stream_overlay_rects,
                 ) {
                     log_diag(&format!("render_v2_and_swap error: {e}"));

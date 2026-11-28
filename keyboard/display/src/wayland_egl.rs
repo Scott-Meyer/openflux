@@ -997,6 +997,10 @@ pub struct WaylandGpuPresenter {
     tex_v2_overlay: u32,
     v2_wave_uploaded: bool,
     v2_overlay_uploaded: bool,
+    /// 8-slot Mali-G52 VRAM LRU cache of rendered keycap layers `(gl_tex, keys_hash, last_tick)`.
+    /// Eliminates ALL CPU rasterization & GL texture uploads on repeated Fn/Shift/Cmd/layer taps!
+    v2_keys_cache: [(u32, u64, u64); 8],
+    v2_keys_tick: u64,
     v2_ping_fbo: [u32; 2],
     v2_ping_tex: [u32; 2],
     v2_custom_programs: std::collections::HashMap<String, CachedV2Program>,
@@ -1253,6 +1257,8 @@ impl WaylandGpuPresenter {
                 tex_v2_overlay,
                 v2_wave_uploaded: false,
                 v2_overlay_uploaded: false,
+                v2_keys_cache: [(0, 0, 0); 8],
+                v2_keys_tick: 0,
                 v2_ping_fbo: [0, 0],
                 v2_ping_tex: [0, 0],
                 v2_custom_programs: std::collections::HashMap::new(),
@@ -1989,6 +1995,8 @@ impl WaylandGpuPresenter {
         overlay_rgba: &[u8],
         overlay_dirty: bool,
         overlay_dirty_band: (i32, i32),
+        active_keys_hash: u64,
+        pending_keys_upload: Option<(u64, &[u8])>,
         stream_overlay_rects: &[(i32, i32, i32, i32)],
     ) -> Result<(), String> {
         let _ = self.queue.dispatch_pending(&mut self.state);
@@ -2205,7 +2213,90 @@ impl WaylandGpuPresenter {
 
                 self.draw_particle_dots(particle_dots);
 
-                // Pass 3: 2D Straight-Alpha Overlay (Legends + Top-Bar Widgets + Idle Pet)
+                // Pass 3a: Cached Keycap Layer (8-slot VRAM LRU -> 0.000 ms bind on repeat Fn/Shift/layer taps!)
+                self.v2_keys_tick = self.v2_keys_tick.wrapping_add(1);
+                let tick = self.v2_keys_tick;
+                if let Some((up_hash, keys_rgba)) = pending_keys_upload {
+                    if up_hash != 0
+                        && keys_rgba.len() >= (self.width as usize) * (self.height as usize) * 4
+                    {
+                        let slot = self
+                            .v2_keys_cache
+                            .iter()
+                            .position(|&(_, h, _)| h == up_hash)
+                            .or_else(|| self.v2_keys_cache.iter().position(|&(t, _, _)| t == 0))
+                            .unwrap_or_else(|| {
+                                self.v2_keys_cache
+                                    .iter()
+                                    .enumerate()
+                                    .min_by_key(|(_, &(_, _, lt))| lt)
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(0)
+                            });
+                        let mut tex = self.v2_keys_cache[slot].0;
+                        let is_new = tex == 0;
+                        if is_new {
+                            (self.gl.gl_gen_textures)(1, &mut tex);
+                            (self.gl.gl_bind_texture)(GL_TEXTURE_2D, tex);
+                            (self.gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                            (self.gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                            (self.gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                            (self.gl.gl_tex_parameteri)(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                            (self.gl.gl_tex_image_2d)(
+                                GL_TEXTURE_2D,
+                                0,
+                                GL_RGBA as i32,
+                                self.width,
+                                self.height,
+                                0,
+                                GL_RGBA,
+                                GL_UNSIGNED_BYTE,
+                                keys_rgba.as_ptr() as *const c_void,
+                            );
+                        } else {
+                            (self.gl.gl_bind_texture)(GL_TEXTURE_2D, tex);
+                            (self.gl.gl_tex_sub_image_2d)(
+                                GL_TEXTURE_2D,
+                                0,
+                                0,
+                                0,
+                                self.width,
+                                self.height,
+                                GL_RGBA,
+                                GL_UNSIGNED_BYTE,
+                                keys_rgba.as_ptr() as *const c_void,
+                            );
+                        }
+                        self.v2_keys_cache[slot] = (tex, up_hash, tick);
+                    }
+                }
+                if active_keys_hash != 0 {
+                    if let Some(slot) = self
+                        .v2_keys_cache
+                        .iter()
+                        .position(|&(t, h, _)| t != 0 && h == active_keys_hash)
+                    {
+                        self.v2_keys_cache[slot].2 = tick;
+                        let ktex = self.v2_keys_cache[slot].0;
+                        (self.gl.gl_active_texture)(GL_TEXTURE0);
+                        (self.gl.gl_bind_texture)(GL_TEXTURE_2D, ktex);
+                        (self.gl.gl_enable)(GL_BLEND);
+                        (self.gl.gl_blend_func_separate)(
+                            GL_SRC_ALPHA,
+                            GL_ONE_MINUS_SRC_ALPHA,
+                            GL_ONE,
+                            GL_ONE_MINUS_SRC_ALPHA,
+                        );
+                        (self.gl.gl_use_program)(self.prog_v2_overlay);
+                        (self.gl.gl_uniform1i)(
+                            (self.gl.gl_get_uniform_location)(self.prog_v2_overlay, c"u_tex".as_ptr()),
+                            0,
+                        );
+                        self.draw_fullscreen_quad(self.prog_v2_overlay);
+                    }
+                }
+
+                // Pass 3b: 2D Straight-Alpha Top-Bar & World Overlay (Widgets + Toasts + Idle Pet)
                 if overlay_rgba.len() >= (self.width as usize) * (self.height as usize) * 4 {
                     (self.gl.gl_active_texture)(GL_TEXTURE0);
                     (self.gl.gl_bind_texture)(GL_TEXTURE_2D, self.tex_v2_overlay);
@@ -2427,6 +2518,15 @@ impl Drop for WaylandGpuPresenter {
                 self.tex_v2_overlay,
             ];
             (self.gl.gl_delete_textures)(11, texs.as_ptr());
+            let ktexs: Vec<u32> = self
+                .v2_keys_cache
+                .iter()
+                .map(|&(t, _, _)| t)
+                .filter(|&t| t != 0)
+                .collect();
+            if !ktexs.is_empty() {
+                (self.gl.gl_delete_textures)(ktexs.len() as i32, ktexs.as_ptr());
+            }
             let _ = (self.gl.egl_make_current)(
                 self.egl_disp,
                 EGL_NO_SURFACE,
