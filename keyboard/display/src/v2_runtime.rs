@@ -27,6 +27,7 @@ use std::time::SystemTime;
 struct OverlayRasterReq {
     under_key_draws: Vec<keyglass_modules::DrawCommand>,
     tile_draws: Vec<keyglass_modules::DrawCommand>,
+    tiles_hash: u64,
     world_overlay_draws: Vec<keyglass_modules::DrawCommand>,
     has_custom_keys_renderer: bool,
     has_custom_dock: bool,
@@ -66,6 +67,12 @@ impl OverlayRasterWorker {
                     DISPLAY_HEIGHT_PX,
                     font_bytes.as_deref(),
                 );
+                // Cache the top-bar strip (`y = 0..266`, Clock/Weather/System/Prusa) separately so
+                // rapid Fn / Shift / layer taps NEVER re-rasterize all 4 top-bar widgets on CPU!
+                const TOP_BAR_H: usize = 266;
+                let top_bar_bytes = (DISPLAY_WIDTH_PX as usize) * TOP_BAR_H * 4;
+                let mut cached_top_bar: Vec<u8> = Vec::new();
+                let mut cached_top_hash: u64 = 0;
                 loop {
                     let req = {
                         let (mtx, cv) = &*req_bg;
@@ -85,19 +92,34 @@ impl OverlayRasterWorker {
                             canvas.rgba = spare;
                         }
                     }
-                    canvas.clear();
+                    let can_reuse_top = !cached_top_bar.is_empty()
+                        && cached_top_hash == req.tiles_hash
+                        && req.has_custom_keys_renderer
+                        && req.has_custom_dock;
+                    if can_reuse_top {
+                        canvas.rgba[..top_bar_bytes].copy_from_slice(&cached_top_bar);
+                        canvas.rgba[top_bar_bytes..].fill(0);
+                    } else {
+                        canvas.clear();
+                        if !req.tile_draws.is_empty() {
+                            canvas.execute(&req.tile_draws);
+                        }
+                        if req.has_custom_keys_renderer && !req.has_custom_dock {
+                            canvas.draw_top_bar_dividers(&req.geometry);
+                        }
+                        if req.has_custom_keys_renderer && req.has_custom_dock {
+                            if cached_top_bar.len() != top_bar_bytes {
+                                cached_top_bar.resize(top_bar_bytes, 0);
+                            }
+                            cached_top_bar.copy_from_slice(&canvas.rgba[..top_bar_bytes]);
+                            cached_top_hash = req.tiles_hash;
+                        }
+                    }
                     if !req.under_key_draws.is_empty() {
                         canvas.execute(&req.under_key_draws);
                     }
-                    if req.has_custom_keys_renderer {
-                        if !req.has_custom_dock {
-                            canvas.draw_top_bar_dividers(&req.geometry);
-                        }
-                    } else {
+                    if !req.has_custom_keys_renderer {
                         canvas.blit_cached_default_key_legends(&req.geometry, DEFAULT_ANSI_LABELS);
-                    }
-                    if !req.tile_draws.is_empty() {
-                        canvas.execute(&req.tile_draws);
                     }
                     if !req.world_overlay_draws.is_empty() {
                         canvas.execute(&req.world_overlay_draws);
@@ -196,6 +218,9 @@ pub struct KeyboardV2Display {
     pub pending_brightness_steps: Vec<i8>,
     prefs_path: PathBuf,
     resolved_keys_cache_path: PathBuf,
+    /// Debounced resolved-keys cache payload written off-thread after 2.5s of stability
+    /// (never stalls the display render thread with synchronous eMMC writes on Fn/layer taps!).
+    pending_resolved_cache: Option<(std::time::Instant, String)>,
     pub dt_sec: f32,
     pub background_shaders: Vec<keyglass_modules::ShaderPassCmd>,
     pub distortion_shaders: Vec<keyglass_modules::ShaderPassCmd>,
@@ -410,6 +435,7 @@ impl KeyboardV2Display {
             pending_brightness_steps: Vec::new(),
             prefs_path,
             resolved_keys_cache_path,
+            pending_resolved_cache: None,
             dt_sec: 0.016,
             background_shaders: Vec::new(),
             distortion_shaders: Vec::new(),
@@ -856,8 +882,10 @@ impl KeyboardV2Display {
             &state,
             PublishOptions::retained(),
         );
+        // Never synchronously write eMMC flash on every momentary Fn press/release!
+        // Stage for debounced background persistence after 2.5s of layer stability.
         if let Ok(txt) = serde_json::to_string(&state) {
-            let _ = std::fs::write(&self.resolved_keys_cache_path, txt);
+            self.pending_resolved_cache = Some((std::time::Instant::now(), txt));
         }
     }
 
@@ -1129,6 +1157,18 @@ impl KeyboardV2Display {
             }
         }
         self.poll_power_and_host_state();
+        if let Some((at, _)) = &self.pending_resolved_cache {
+            if at.elapsed() >= std::time::Duration::from_millis(2500) {
+                if let Some((_, txt)) = self.pending_resolved_cache.take() {
+                    let path = self.resolved_keys_cache_path.clone();
+                    let _ = std::thread::Builder::new()
+                        .name("kg-resolved-cache".into())
+                        .spawn(move || {
+                            let _ = std::fs::write(path, txt);
+                        });
+                }
+            }
+        }
         let dt = dt_sec.clamp(0.001, 0.06);
         self.time_sec += dt;
         let t_lua = std::time::Instant::now();
@@ -1223,6 +1263,7 @@ impl KeyboardV2Display {
             self.overlay_worker.submit(OverlayRasterReq {
                 under_key_draws: active_under,
                 tile_draws: scene.tile_draws,
+                tiles_hash: tiles_hash,
                 world_overlay_draws: scene.world_overlay_draws,
                 has_custom_keys_renderer: scene.has_custom_keys_renderer,
                 has_custom_dock: scene.has_custom_dock,

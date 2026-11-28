@@ -885,7 +885,7 @@ int main(void) {
             last_qmk_state = cur_qmk_state;
             last_uart_ms = now_ms;
         }
-        if (resolved_dirty && (now_ms - last_resolved_tx_ms) >= 20U) {
+        if (resolved_dirty && (now_ms - last_resolved_tx_ms) >= 2U) {
             size_t rlen = fw_runtime_build_msg_resolved_keys(&g_rt, io.resolved, sizeof(io.resolved));
             if (rlen > 0U) {
                 uart_send_hdlc(io.resolved, rlen);
