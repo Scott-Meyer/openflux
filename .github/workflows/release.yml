@@ -156,7 +156,7 @@ jobs:
         run: brew install nasm
       - name: Tools (Windows)
         if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
-        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        uses: msys2/setup-msys2@3c51bf698df1e37b2261f53cb67797b97761185c # v2.34.0
         with:
           msystem: UCRT64
           update: false
@@ -570,7 +570,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
       - name: Record published index sequence
         env:
           GH_TOKEN: ${{ github.token }}
