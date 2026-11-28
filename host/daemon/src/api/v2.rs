@@ -561,11 +561,10 @@ impl V2State {
                 }
             }
             if state_file.curated_lists.is_empty() {
-                let official_path = registry.bundled_dir.join("official-list.json");
                 state_file.curated_lists.push(CuratedListSubscription {
                     id: "official".into(),
-                    name: "Keyglass Bundled Catalog".into(),
-                    source: official_path.to_string_lossy().into_owned(),
+                    name: "Keyglass Official Modules".into(),
+                    source: "https://keyglass-dev.github.io/keyglass-registry/catalog.json".into(),
                     official: true,
                 });
             }
