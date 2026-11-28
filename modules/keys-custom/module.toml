@@ -15,7 +15,6 @@ license = "MIT OR Apache-2.0"
 homepage = "https://github.com/keyglass-dev/keyglass/tree/main/modules/keys-custom"
 repository = "https://github.com/keyglass-dev/keyglass"
 support_url = "https://github.com/keyglass-dev/keyglass/issues"
-discord_url = "https://discord.gg/keyglass"
 changelog = "v3.0.0: Custom Legends rules. A rules list (keys, conditions, look) on top of the per-key and per-action overrides. Overrides now edit the face instead of replacing it, so binding markers like L2 stay; background and border now draw (as an inset backdrop and outline)."
 
 maturity = "stable"

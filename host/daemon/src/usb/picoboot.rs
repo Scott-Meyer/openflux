@@ -408,6 +408,11 @@ pub fn flash_uf2_live(
     let expected_sha = format!("{:x}", Sha256::digest(&plan.image));
     let ctx = rusb::Context::new().map_err(|e| format!("libusb init: {e}"))?;
 
+    // Snapshot any pre-existing RPI-RP2 volumes BEFORE rebooting the keyboard into BOOTSEL so
+    // the Windows mass-storage fallback NEVER flashes an unrelated Raspberry Pi Pico!
+    #[cfg(target_os = "windows")]
+    let pre_existing_rp2 = snapshot_windows_rp2_volumes();
+
     // The keyboard firmware (3761:4015) is rebooted into its boot loader and flashed at the same USB
     // bus and port path, so any other RP2040 in BOOTSEL mode is never touched.
     let (fw_bus, fw_ports) = enter_bootloader()?;
@@ -476,7 +481,7 @@ pub fn flash_uf2_live(
         Err(picoboot_err) => {
             #[cfg(target_os = "windows")]
             {
-                flash_uf2_via_windows_rp2_volume(uf2_bytes, &picoboot_err)?
+                flash_uf2_via_windows_rp2_volume(uf2_bytes, &picoboot_err, &pre_existing_rp2)?
             }
             #[cfg(not(target_os = "windows"))]
             {
@@ -512,32 +517,52 @@ pub fn flash_uf2_live(
 }
 
 #[cfg(target_os = "windows")]
+fn snapshot_windows_rp2_volumes() -> std::collections::HashSet<char> {
+    let mut found = std::collections::HashSet::new();
+    for letter in b'D'..=b'Z' {
+        let ch = letter as char;
+        let info_path = std::path::PathBuf::from(format!("{ch}:\\INFO_UF2.TXT"));
+        if let Ok(txt) = std::fs::read_to_string(&info_path) {
+            if txt.contains("RP2040") || txt.contains("RPI-RP2") {
+                found.insert(ch);
+            }
+        }
+    }
+    found
+}
+
+#[cfg(target_os = "windows")]
 fn flash_uf2_via_windows_rp2_volume(
     uf2_bytes: &[u8],
     picoboot_err: &str,
+    pre_existing: &std::collections::HashSet<char>,
 ) -> Result<String, String> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while std::time::Instant::now() < deadline {
-        for letter in b'D'..=b'Z' {
-            let root = format!("{}:\\", letter as char);
-            let info_path = std::path::Path::new(&root).join("INFO_UF2.TXT");
-            if let Ok(txt) = std::fs::read_to_string(&info_path) {
-                if txt.contains("RP2040") || txt.contains("RPI-RP2") {
-                    let dst = std::path::Path::new(&root).join("keyglass-firmware.uf2");
-                    std::fs::write(&dst, uf2_bytes).map_err(|e| {
-                        format!(
-                            "PICOBOOT unavailable ({picoboot_err}); failed writing UF2 to {}: {e}",
-                            dst.display()
-                        )
-                    })?;
-                    return Ok("uf2-mass-storage".to_string());
-                }
-            }
+        let now_vols = snapshot_windows_rp2_volumes();
+        let newly_mounted: Vec<char> = now_vols
+            .into_iter()
+            .filter(|ch| !pre_existing.contains(ch))
+            .collect();
+        if newly_mounted.len() > 1 {
+            return Err(format!(
+                "Multiple new RPI-RP2 drives mounted ({newly_mounted:?}); unplug other RP2040 boards before flashing"
+            ));
+        }
+        if let Some(&ch) = newly_mounted.first() {
+            let dst = std::path::PathBuf::from(format!("{ch}:\\keyglass-firmware.uf2"));
+            std::fs::write(&dst, uf2_bytes).map_err(|e| {
+                format!(
+                    "PICOBOOT unavailable ({picoboot_err}); failed writing UF2 to {}: {e}",
+                    dst.display()
+                )
+            })?;
+            return Ok("uf2-mass-storage".to_string());
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
     Err(format!(
-        "PICOBOOT unavailable ({picoboot_err}) and no RPI-RP2 drive mounted on Windows"
+        "PICOBOOT unavailable ({picoboot_err}) and no newly mounted RPI-RP2 drive appeared on Windows"
     ))
 }
 

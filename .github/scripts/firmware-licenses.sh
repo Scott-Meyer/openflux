@@ -24,4 +24,12 @@ for entry in "littlefs:/opt/littlefs/LICENSE.md" \
     [ -s "$text" ] || die "${name}: ${path} is empty in ${image}"
     { printf '%s\n\n' "$name"; cat "$text"; printf '\n\n'; } >> "$out"
 done
+# Also include QMK / Vial GPL license text statically linked from third_party/vial-qmk
+repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+for qmk_lic in "${repo_root}/third_party/vial-qmk/LICENSE" "${repo_root}/third_party/vial-qmk/COPYING"; do
+    if [ -s "$qmk_lic" ]; then
+        { printf 'QMK / Vial Firmware (GPL-2.0-or-later / GPL-3.0-or-later)\n\n'; cat "$qmk_lic"; printf '\n\n'; } >> "$out"
+        break
+    fi
+done
 echo "firmware-licenses: wrote ${out}"

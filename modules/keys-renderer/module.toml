@@ -15,7 +15,6 @@ license = "MIT OR Apache-2.0"
 homepage = "https://github.com/keyglass-dev/keyglass/tree/main/modules/keys-renderer"
 repository = "https://github.com/keyglass-dev/keyglass"
 support_url = "https://github.com/keyglass-dev/keyglass/issues"
-discord_url = "https://discord.gg/keyglass"
 changelog = "v2.1.0: Detail stays centered or inset from the keycap edge: clock-sweep cooldown (curtain via cd_style), recharge ring (edge bar via progress_style), inset corner slots (rule.corners) with a bigger status dot, and a fading centered glow (rule.glow)."
 
 maturity = "stable"

@@ -18,7 +18,7 @@ component and are included in every release artifact that ships it.
 
 QMK / Vial Firmware (vial-qmk)
   Used by: keyboard RP2040 firmware (keymap, Vial protocol, Hall-effect scanner & analog gamepad)
-  License: GPL-2.0-or-later
+  License: GPL-2.0-or-later and GPL-3.0-or-later (e.g. tmk_core/protocol/usb_util.c)
 
 littlefs
   Used by: keyboard firmware, firmware unit tests

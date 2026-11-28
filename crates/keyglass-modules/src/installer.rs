@@ -368,13 +368,32 @@ fn stage_git_source(spec: &str, list_id: Option<String>) -> Result<StagedModuleS
         (without_ref.to_string(), None)
     };
 
+    // Reject option-like URLs/refs (e.g. `--upload-pack=...`) BEFORE spawning git!
+    let url_ok = repo_url.starts_with("https://")
+        || repo_url.starts_with("http://")
+        || repo_url.starts_with("ssh://")
+        || repo_url.starts_with("git@")
+        || (!repo_url.starts_with('-') && Path::new(&repo_url).exists());
+    if !url_ok || repo_url.contains('\0') {
+        return Err(format!("rejected unsafe git repository URL: {repo_url:?}"));
+    }
+    if let Some(ref br) = git_ref {
+        if br.is_empty()
+            || br.starts_with('-')
+            || br.contains('\0')
+            || br.chars().any(|c| c.is_whitespace())
+        {
+            return Err(format!("rejected unsafe git ref: {br:?}"));
+        }
+    }
+
     let tmp = make_temp_stage_dir("git")?;
     let mut cmd = Command::new("git");
     cmd.args(["clone", "--depth", "1"]);
     if let Some(ref br) = git_ref {
         cmd.args(["--branch", br]);
     }
-    cmd.arg(&repo_url).arg(&tmp);
+    cmd.arg("--").arg(&repo_url).arg(&tmp);
     let out = cmd.output().map_err(|e| format!("failed to run git: {e}"))?;
     if !out.status.success() {
         let _ = std::fs::remove_dir_all(&tmp);

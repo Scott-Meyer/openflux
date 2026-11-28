@@ -27,7 +27,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/fx-water-ripple-3d",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
       "maturity": "stable",
@@ -37,7 +37,7 @@
       "replaced_by": null,
       "preview": "preview.gif",
       "source": "github:keyglass-dev/keyglass-modules//fx-water-ripple-3d",
-      "sha256": "0095bcd21b7df5bf61a3322da45a2b43175c9f2b622ddce2ca44700f1432b688"
+      "sha256": "e2a026e04cc51f0a3235bbeab8410c1b159a57e179c641eee6da29aac7def410"
     },
     {
       "id": "fx-analog-depth-glow",
@@ -61,7 +61,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/fx-analog-depth-glow",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
       "maturity": "beta",
@@ -71,7 +71,7 @@
       "replaced_by": null,
       "preview": "preview.gif",
       "source": "github:keyglass-dev/keyglass-modules//fx-analog-depth-glow",
-      "sha256": "badb466088115c510c02d77268f3f991918265f0ccec205693b0e191a9823db0"
+      "sha256": "e2bedae910c11c1da5564122296320965a39cbe8e677aa38a11e2ca06f99679a"
     },
     {
       "id": "bg-aurora-shader",
@@ -93,7 +93,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/bg-aurora-shader",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
       "maturity": "beta",
@@ -103,7 +103,7 @@
       "replaced_by": null,
       "preview": "preview.png",
       "source": "github:keyglass-dev/keyglass-modules//bg-aurora-shader",
-      "sha256": "6948f392faaeb6243849e9602dd2bfac71661e53a37c2915de9df585dfce9d65"
+      "sha256": "d3b950566c08f3a05e17db1b70099f53cdaf893cbb267c5f2bd9e0c42ca47200"
     },
     {
       "id": "fx-classic-ripple",
@@ -125,7 +125,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/fx-classic-ripple",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
       "maturity": "stable",
@@ -135,7 +135,7 @@
       "replaced_by": null,
       "preview": "preview.gif",
       "source": "github:keyglass-dev/keyglass-modules//fx-classic-ripple",
-      "sha256": "c7da52865d623bb537cf9d6e599f0666b48f0c8f188c441e830ba60158f52669"
+      "sha256": "e9f863dbf02476f58db2b8d188bdeaa57fa09cccd1222f83a3a71baa8c0786fb"
     },
     {
       "id": "fx-classic-rings",
@@ -157,7 +157,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/fx-classic-rings",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
       "maturity": "stable",
@@ -167,7 +167,7 @@
       "replaced_by": null,
       "preview": "preview.gif",
       "source": "github:keyglass-dev/keyglass-modules//fx-classic-rings",
-      "sha256": "44f983719aeba0dac8f635a6102eddd1fbe526ed6150872eff8d16714e8e0539"
+      "sha256": "6aca20186543c1880fbcb386eb1ba9ef7e866b19612b8d7dd823a94016432e48"
     },
     {
       "id": "fx-classic-glow",
@@ -189,7 +189,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/fx-classic-glow",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
       "maturity": "stable",
@@ -199,7 +199,7 @@
       "replaced_by": null,
       "preview": "preview.gif",
       "source": "github:keyglass-dev/keyglass-modules//fx-classic-glow",
-      "sha256": "0426fd8598fbd00adf0909ffbdbf17a736eff1daabaa18e65d1d5578c83141c0"
+      "sha256": "b557946213d32724aa5328923dc2b95f9777099d7ee43ca852c6caf268f92446"
     },
     {
       "id": "companion-idle-pet",
@@ -222,7 +222,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/companion-idle-pet",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
       "maturity": "beta",
@@ -232,7 +232,7 @@
       "replaced_by": null,
       "preview": "preview.gif",
       "source": "github:keyglass-dev/keyglass-modules//companion-idle-pet",
-      "sha256": "e55dbb1469ccd800b8eb9c93be07cf45885c49a16e5a2420beaace797a9bba35"
+      "sha256": "c094c4433875d729bb063cce619352aadd7ac833f4bdb78eb77c1d82e53cc610"
     },
     {
       "id": "bg-stream",
@@ -256,7 +256,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/bg-stream",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
       "maturity": "beta",
@@ -266,7 +266,7 @@
       "replaced_by": null,
       "preview": null,
       "source": "github:keyglass-dev/keyglass-modules//bg-stream",
-      "sha256": "946e2a125cc69ecc4ed9f24b05cc87b9efb28614924822f8355693915023d10e"
+      "sha256": "4def77458b83f4de7314469b75231598983fef92c8dfbb43784e907581ab50e2"
     },
     {
       "id": "mqtt-bridge",
@@ -291,7 +291,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/mqtt-bridge",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "v0.3.0: Pure Lua: the MQTT client runs in Keyglass itself (host network permission), no Python, so it works on any Mac or Windows PC. v0.2.0: Uses the keycap renderer's built-in glow (needs keys-renderer with rule.glow). v0.1.3: The glow is small and centered on the icon instead of filling the key. v0.1.2: Active keys get a soft back glow that fades in and out (and breathes while a press awaits confirmation) instead of an LED dot and border. v0.1.1: Home Assistant entity ids follow the button id (event.<node>_<id>) via default_entity_id. v0.1.0: First release.",
       "changelog_url": null,
       "maturity": "alpha",
@@ -301,7 +301,7 @@
       "replaced_by": null,
       "preview": null,
       "source": "github:keyglass-dev/keyglass-modules//mqtt-bridge",
-      "sha256": "80613f0786d8904a9aa6ab1b6a3cecae700fbc4464d803bfa8955271e8f2897f"
+      "sha256": "b0f3b2c585b92b68f5ad0d5ced0c9a769670f85051d598145b094d2db239761e"
     },
     {
       "id": "widget-media",
@@ -323,7 +323,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/widget-media",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
       "maturity": "stable",
@@ -333,7 +333,7 @@
       "replaced_by": null,
       "preview": "preview.png",
       "source": "github:keyglass-dev/keyglass-modules//widget-media",
-      "sha256": "6f9ca731d80b08da870df54b84540b27f124781f9d9f6f1d3c32599b03e9b806"
+      "sha256": "88d2a865f684763c70f4285d70d157595098754c0a55ca81b3835756b4a25ed0"
     },
     {
       "id": "widget-pomodoro",
@@ -356,7 +356,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/widget-pomodoro",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "v2.0.1: Sharper session progress pill and verified registry update flow.",
       "changelog_url": null,
       "maturity": "stable",
@@ -366,7 +366,7 @@
       "replaced_by": null,
       "preview": "preview.png",
       "source": "github:keyglass-dev/keyglass-modules//widget-pomodoro",
-      "sha256": "37f7125457d951ba91415b9054e304b1ff04c1fa8a53265f798cf6d78eba0bc5"
+      "sha256": "877d06bb8d782a82db50788ddbbf848fe2e0deacd17f62011748d8c40c61761d"
     },
     {
       "id": "widget-prusa-connect",
@@ -390,7 +390,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/widget-prusa-connect",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
       "maturity": "beta",
@@ -400,7 +400,7 @@
       "replaced_by": null,
       "preview": "preview.png",
       "source": "github:keyglass-dev/keyglass-modules//widget-prusa-connect",
-      "sha256": "80330d0deceedf2ea386953b4137179fbe39f677d8bc7afe0bc34f21b82565f9"
+      "sha256": "aaa9d6a5a44e3673bb598e1ab23dee4ab58e7efb77729ef929fad27382452ac6"
     },
     {
       "id": "streamdeck-bridge",
@@ -424,7 +424,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/streamdeck-bridge",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "v2.1.0: Declares its buttons as bindable key actions itself (dynamic_actions), instead of Keyglass special-casing Stream Deck. Needs a Keyglass build with dynamic_actions support.",
       "changelog_url": null,
       "maturity": "beta",
@@ -434,7 +434,7 @@
       "replaced_by": null,
       "preview": null,
       "source": "github:keyglass-dev/keyglass-modules//streamdeck-bridge",
-      "sha256": "a0ba256b50937c88aeaabceed19445bca685881201612a80a0da7d40f02d01bd"
+      "sha256": "a69d9dc26e3dd72b6c7261b518ac051b251176f65877196c5b7bb9c60cb4c43a"
     },
     {
       "id": "widget-system-load",
@@ -459,7 +459,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/widget-system-load",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
       "maturity": "stable",
@@ -469,7 +469,7 @@
       "replaced_by": null,
       "preview": "preview.png",
       "source": "github:keyglass-dev/keyglass-modules//widget-system-load",
-      "sha256": "de55f7fcc5e615d686d3a7847363f8c5033fac5be23af911c460cdeeb2a5fa99"
+      "sha256": "0f949b90ce6f35eee9605b16620fb7a59218a7e729cb7d5f387137145e2ec911"
     },
     {
       "id": "host-volume-osd",
@@ -493,7 +493,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/host-volume-osd",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "3.0.0: Converted to a pure sandboxed Lua module subscribing to native host/audio/volume (zero Python dependency on macOS and Windows).",
       "changelog_url": null,
       "maturity": "stable",
@@ -503,7 +503,7 @@
       "replaced_by": null,
       "preview": null,
       "source": "github:keyglass-dev/keyglass-modules//host-volume-osd",
-      "sha256": "2f42313bfd751f41d411e8c47da008b4edcc96fc0f04ce03648d7c255d301b1f"
+      "sha256": "3a3710ea520649f0adec1241b2b4d8aae1f12829297ab6e55076b396704bdba5"
     },
     {
       "id": "widget-weather",
@@ -525,7 +525,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/widget-weather",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Initial standalone Keyglass v2 release.",
       "changelog_url": null,
       "maturity": "stable",
@@ -535,7 +535,7 @@
       "replaced_by": null,
       "preview": "preview.png",
       "source": "github:keyglass-dev/keyglass-modules//widget-weather",
-      "sha256": "28862eaf8d0292e67d9ad9a343365bd484285aa2a80e6747b82db71a223981e1"
+      "sha256": "4fd36a45cf390760c6d3ebe8b61e95c125feea868a3e076f78cb604f5dd3c458"
     },
     {
       "id": "wow-key-faces",
@@ -556,7 +556,7 @@
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/wow-key-faces",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
-      "discord_url": "https://discord.gg/keyglass",
+      "discord_url": null,
       "changelog": "Import existing Myslot bindings as app-scoped, modifier-aware key faces.",
       "changelog_url": null,
       "maturity": "alpha",
@@ -566,7 +566,7 @@
       "replaced_by": null,
       "preview": null,
       "source": "github:keyglass-dev/keyglass-modules//wow-key-faces",
-      "sha256": "158e45c42e13447ec454fd7401d9e541a6e998c69a25f56c8412b7fd95dcc13c"
+      "sha256": "ea30aae555d40d1090c28b8482a75ff37fc2d7b4cf4d9efc7b9571ddb7442d96"
     }
   ]
 }

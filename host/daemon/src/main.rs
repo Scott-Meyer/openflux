@@ -697,14 +697,16 @@ impl DeviceSink for UsbDeviceSink {
                             obj.get("display")
                                 .and_then(|x| x.as_str())
                                 .map(|s| s.trim().to_string())
-                        })
-                        .unwrap_or_else(|| "2.1.0".into());
-                    let canon_disp = if raw_disp.starts_with("keyglass-display ") {
-                        raw_disp
-                    } else {
-                        format!("keyglass-display {raw_disp}")
-                    };
-                    obj.insert("display".into(), serde_json::json!(canon_disp));
+                                .filter(|s| !s.is_empty())
+                        });
+                    if let Some(disp) = raw_disp {
+                        let canon_disp = if disp.starts_with("keyglass-display ") {
+                            disp
+                        } else {
+                            format!("keyglass-display {disp}")
+                        };
+                        obj.insert("display".into(), serde_json::json!(canon_disp));
+                    }
                 }
                 return v;
             }

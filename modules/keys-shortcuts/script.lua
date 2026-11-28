@@ -78,7 +78,7 @@ local function find_shortcuts_dir()
 end
 
 local EXTRA_APP_ALIASES = {
-  ["macos-terminal.json"] = "flightdeck,iterm,terminal,ghostty,warp,kitty,alacritty",
+  ["macos-terminal.json"] = "iterm,terminal,ghostty,warp,kitty,alacritty",
   ["vscode.json"] = "cursor,code,visual studio code",
   ["chrome.json"] = "chrome,google chrome,arc,brave",
   ["slack.json"] = "slack,com.tinyspeck.slackmacgap",

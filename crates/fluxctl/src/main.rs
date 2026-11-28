@@ -534,6 +534,17 @@ enum PreviewCmd {
 }
 
 fn default_data_dir() -> PathBuf {
+    if let Ok(override_dir) = std::env::var("KEYGLASS_DATA_DIR") {
+        if !override_dir.trim().is_empty() {
+            return PathBuf::from(override_dir.trim());
+        }
+    }
+    #[cfg(target_os = "windows")]
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        if !local_app_data.trim().is_empty() {
+            return PathBuf::from(local_app_data).join("keyglass");
+        }
+    }
     if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home).join(".local/share/keyglass")
     } else {
@@ -549,14 +560,17 @@ fn resolve_bundled_dir(cli_dir: Option<&PathBuf>) -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(p) = exe.parent() {
             candidates.push(p.join("modules"));
+            if let Some(pp) = p.parent() {
+                candidates.push(pp.join("Resources/modules"));
+            }
         }
     }
+    candidates.push(PathBuf::from("/Applications/Keyglass Studio.app/Contents/Resources/modules"));
     if let Ok(home) = std::env::var("HOME") {
         candidates.push(
             PathBuf::from(&home)
                 .join("Applications/Keyglass Studio.app/Contents/Resources/modules"),
         );
-        candidates.push(PathBuf::from(&home).join("git/flux/modules"));
     }
     for c in candidates {
         if c.is_dir() {

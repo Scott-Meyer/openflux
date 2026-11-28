@@ -313,9 +313,9 @@ fn resolve_bundled_modules_dir() -> PathBuf {
             }
         }
     }
+    candidates.push(PathBuf::from("/Applications/Keyglass Studio.app/Contents/Resources/modules"));
     if let Ok(home) = std::env::var("HOME") {
         candidates.push(PathBuf::from(&home).join("Applications/Keyglass Studio.app/Contents/Resources/modules"));
-        candidates.push(PathBuf::from(&home).join("git/flux/modules"));
     }
     for c in candidates {
         if c.is_dir() {

@@ -355,7 +355,29 @@ impl ModuleRegistry {
         let manifest =
             ModuleManifest::load_from_dir(&staged.module_dir).map_err(|e| e.to_string())?;
         let dest = safe_child_dir(&self.installed_dir, &manifest.id)?;
-        copy_dir_atomic(&staged.module_dir, &dest)?;
+        // Preserve user runtime data (`data/`) inside the module directory across updates
+        // so updating stateful modules (like `wow-key-faces` imported layouts) never wipes user data!
+        let existing_data = dest.join("data");
+        let preserved_data = if existing_data.is_dir() {
+            let tmp_data = self
+                .installed_dir
+                .join(format!(".{}.data-preserve-{}", manifest.id, std::process::id()));
+            let _ = std::fs::remove_dir_all(&tmp_data);
+            if std::fs::rename(&existing_data, &tmp_data).is_ok() {
+                Some(tmp_data)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let copy_res = copy_dir_atomic(&staged.module_dir, &dest);
+        if let Some(tmp_data) = preserved_data {
+            let restore_target = dest.join("data");
+            let _ = std::fs::remove_dir_all(&restore_target);
+            let _ = std::fs::rename(&tmp_data, &restore_target);
+        }
+        copy_res?;
         let origin = origin_from_staged(staged, &manifest);
         let _ = origin.save(&dest);
         // Clear any previously-removed tombstone now that this module is installed again
@@ -525,6 +547,11 @@ impl ModuleRegistry {
                 let rel_s = rel.to_string_lossy().replace('\\', "/");
                 if rel_s.starts_with(".git/")
                     || rel_s.contains("/.git/")
+                    || rel_s.starts_with("data/")
+                    || rel_s.contains("/data/")
+                    || rel_s.starts_with("__pycache__/")
+                    || rel_s.contains("/__pycache__/")
+                    || rel_s.ends_with(".pyc")
                     || rel_s.ends_with(".DS_Store")
                     || rel_s == ".keyglass-source.json"
                 {
@@ -548,23 +575,53 @@ impl ModuleRegistry {
 
     /// Checks every installed module against subscribed registries (Taps) AND recorded direct
     /// upstream sources, reporting ONLY real version or content changes (`has_update == true`).
+    /// Compares two SemVer-ish version strings numerically (`10.0.0 > 9.0.0`, prerelease < final).
+    fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+        fn parse_parts(s: &str) -> (Vec<u64>, bool, String) {
+            let clean = s.trim().trim_start_matches('v');
+            let (core, pre) = match clean.split_once('-') {
+                Some((c, p)) => (c, Some(p.to_string())),
+                None => (clean, None),
+            };
+            let nums: Vec<u64> = core
+                .split('.')
+                .map(|p| p.parse::<u64>().unwrap_or(0))
+                .collect();
+            (nums, pre.is_none(), pre.unwrap_or_default())
+        }
+        let (an, afinal, apre) = parse_parts(a);
+        let (bn, bfinal, bpre) = parse_parts(b);
+        let len = an.len().max(bn.len());
+        for i in 0..len {
+            let av = *an.get(i).unwrap_or(&0);
+            let bv = *bn.get(i).unwrap_or(&0);
+            match av.cmp(&bv) {
+                std::cmp::Ordering::Equal => continue,
+                ord => return ord,
+            }
+        }
+        match afinal.cmp(&bfinal) {
+            std::cmp::Ordering::Equal => apre.cmp(&bpre),
+            ord => ord,
+        }
+    }
+
     pub fn check_available_updates(&self) -> Vec<ModuleUpdateInfo> {
         let state = self.load_state();
         let discovered = self.discover();
-        // Index all subscribed catalog entries by module id — prefer live/custom lists over
-        // static bundled snapshots (`official-list.json`) so newly published updates are never
-        // shadowed by an older bundled copy inside the app bundle!
-        let mut catalog_by_id: BTreeMap<String, (String, CuratedListEntry)> = BTreeMap::new();
+        // Keep per-list entries so a third-party Tap can NEVER hijack updates for another Tap's
+        // module or a Core Built-In sharing the same bare ID!
+        let mut catalog_by_id: BTreeMap<String, Vec<(String, String, CuratedListEntry)>> =
+            BTreeMap::new();
         for sub in &state.curated_lists {
             let is_bundled_fallback = sub.id == "official" && sub.source.ends_with("official-list.json");
             if let Ok(doc) = crate::installer::fetch_curated_list_document(&sub.source) {
                 for entry in doc.entries {
-                    let replace = match catalog_by_id.get(&entry.id) {
-                        None => true,
-                        Some((_, prev)) => !is_bundled_fallback || prev.version < entry.version,
-                    };
-                    if replace {
-                        catalog_by_id.insert(entry.id.clone(), (sub.name.clone(), entry));
+                    let list = catalog_by_id.entry(entry.id.clone()).or_default();
+                    if !is_bundled_fallback {
+                        list.insert(0, (sub.id.clone(), sub.name.clone(), entry));
+                    } else {
+                        list.push((sub.id.clone(), sub.name.clone(), entry));
                     }
                 }
             }
@@ -572,6 +629,10 @@ impl ModuleRegistry {
 
         let mut results = Vec::new();
         for (id, dm) in &discovered {
+            // Never let external catalogs propose updates for bundled Core Built-Ins!
+            if dm.tier == ModuleTier::Bundled {
+                continue;
+            }
             // Check installed modules (or local forks that also have an installed base)
             let inst_path = self.installed_dir.join(id);
             if !inst_path.is_dir() {
@@ -583,14 +644,26 @@ impl ModuleRegistry {
             let current_sha = Self::compute_dir_sha256(&inst_path);
             let origin = ModuleOrigin::load(&inst_path);
 
-            // 1. Check matching catalog entry from subscribed registries/taps first
-            if let Some((list_name, entry)) = catalog_by_id.get(id) {
-                let version_diff = entry.version != inst_manifest.version;
+            // 1. Check ONLY the catalog entry matching this module's recorded list/source provenance!
+            let matching_entry = catalog_by_id.get(id).and_then(|cands| {
+                cands.iter().find(|(lid, _, e)| match origin.as_ref() {
+                    Some(o) => {
+                        o.list_id.as_deref() == Some(lid.as_str())
+                            || o.source == e.source
+                            || (o.list_id.is_none() && lid == "official")
+                    }
+                    None => lid == "official",
+                })
+            });
+            if let Some((_, list_name, entry)) = matching_entry {
+                let version_newer =
+                    Self::compare_versions(&entry.version, &inst_manifest.version)
+                        == std::cmp::Ordering::Greater;
                 let sha_diff = entry
                     .sha256
                     .as_deref()
                     .is_some_and(|s| !s.is_empty() && s != current_sha);
-                let has_update = version_diff || sha_diff;
+                let has_update = version_newer || (entry.version == inst_manifest.version && sha_diff);
                 let deprecated = entry.deprecated
                     || inst_manifest.deprecated
                     || matches!(

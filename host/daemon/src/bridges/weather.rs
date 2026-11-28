@@ -38,7 +38,7 @@ pub struct WeatherSnapshot {
 }
 
 /// The city a weather module shows until one is chosen, as in `assets/default_config.json`.
-pub const DEFAULT_WEATHER_CITY: &str = "Denver";
+pub const DEFAULT_WEATHER_CITY: &str = "";
 
 #[derive(Clone, Default)]
 struct SharedWeatherState {

@@ -2397,7 +2397,9 @@ pub fn reconcile_tick_with_state(
                     "photoshop.json".into()
                 } else if fg_l.contains("terminal")
                     || fg_l.contains("iterm")
-                    || fg_l.contains("flightdeck")
+                    || fg_l.contains("ghostty")
+                    || fg_l.contains("warp")
+                    || fg_l.contains("wezterm")
                 {
                     "macos-terminal.json".into()
                 } else if platform_code == 2 {
