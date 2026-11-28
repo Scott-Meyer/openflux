@@ -42,6 +42,7 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
   const [readme, setReadme] = useState<string | null>(null);
   const [mediaFiles, setMediaFiles] = useState<MediaLibraryFile[]>([]);
   const [boundByActionId, setBoundByActionId] = useState<Record<string, { keyIndex: number; layer: number }>>({});
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [busyOp, setBusyOp] = useState<string | null>(null);
   const [availUpdate, setAvailUpdate] = useState<ModuleUpdateInfo | null>(null);
@@ -114,6 +115,35 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
       alive = false;
     };
   }, [mod.id, mod.manifest.actions, previewTick]);
+
+  // Surface live runtime status errors published on `modules/<id>/status` (e.g. MQTT or Local Network failures)
+  useEffect(() => {
+    let alive = true;
+    const shortId = mod.id.replace(/^widget-/, "");
+    const topics = Array.from(new Set([`modules/${mod.id}/status`, `modules/${shortId}/status`]));
+    const poll = () => {
+      void Promise.all(topics.map((t) => v2Client.getBusRetained(t).catch(() => ({ messages: [] }))))
+        .then((results) => {
+          if (!alive) return;
+          let found: string | null = null;
+          for (const res of results) {
+            const p = res.messages?.[0]?.payload as { last_error?: unknown; connected?: unknown } | undefined;
+            if (p && typeof p.last_error === "string" && p.last_error.trim().length > 0 && p.connected !== true) {
+              found = p.last_error.trim();
+              break;
+            }
+          }
+          setStatusError(found);
+        })
+        .catch(() => {});
+    };
+    poll();
+    const id = window.setInterval(poll, 3000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [mod.id]);
 
   useEffect(() => {
     if (!showLogs) return;
@@ -493,6 +523,12 @@ export const ModuleView: React.FC<ModuleViewProps> = ({
       {!mod.healthy && mod.last_error && (
         <div className="kg-error-banner">
           <strong>Module Error:</strong> {mod.last_error}
+        </div>
+      )}
+
+      {statusError && (
+        <div className="kg-error-banner">
+          <strong>Connection / Runtime Notice:</strong> {statusError}
         </div>
       )}
 

@@ -70,6 +70,8 @@ cat > "$APP_STAGE/Contents/Info.plist" <<'PLIST'
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Keyglass Studio connects to local-network devices (such as MQTT smart-home brokers, 3D printers, and cameras) configured by your modules.</string>
 </dict>
 </plist>
 PLIST

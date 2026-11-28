@@ -348,9 +348,22 @@ pub fn install_net_table(
                     }
                 }
                 let Some(sock) = connected_sock else {
-                    let msg = last_err
-                        .map(|e| e.to_string())
-                        .unwrap_or_else(|| "connection failed".into());
+                    let msg = match last_err {
+                        Some(e) => {
+                            #[cfg(target_os = "macos")]
+                            let base = if e.raw_os_error() == Some(65) {
+                                format!(
+                                    "{e} — macOS blocked Local Network access; enable Keyglass Studio in System Settings → Privacy & Security → Local Network"
+                                )
+                            } else {
+                                e.to_string()
+                            };
+                            #[cfg(not(target_os = "macos"))]
+                            let base = e.to_string();
+                            base
+                        }
+                        None => "connection failed".into(),
+                    };
                     return lua_err_pair(lua, &msg);
                 };
                 let _ = sock.set_nodelay(true);
