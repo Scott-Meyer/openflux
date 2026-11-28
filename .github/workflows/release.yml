@@ -418,7 +418,7 @@ jobs:
           .github/scripts/check-host-installer.sh "dist/keyglass-studio_${VERSION}_x64-setup.exe"
       - name: Sign Windows installer (SignPath, when configured)
         if: env.SIGNPATH_API_TOKEN != '' && env.SIGNPATH_ORGANIZATION_ID != '' && env.SIGNPATH_PROJECT_SLUG != '' && env.SIGNPATH_SIGNING_POLICY_SLUG != ''
-        uses: signpath/github-action-submit-signing-request@67f9c42e8032b8d9a396f49e845c96150ec0d1a0 # v1.1.0
+        uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
