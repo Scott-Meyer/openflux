@@ -22,7 +22,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 keyglass-bus = { path = "../../crates/keyglass-bus" }
 keyglass-compositor = { path = "../../crates/keyglass-compositor", default-features = false }
 keyglass-modules = { path = "../../crates/keyglass-modules" }
-resvg = { version = "0.45", default-features = false }
+resvg = { version = "0.50", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
