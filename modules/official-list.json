@@ -271,7 +271,7 @@
     {
       "id": "mqtt-bridge",
       "name": "MQTT Buttons & Status",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "description": "Bind MQTT buttons to any key on any layer, show live MQTT state on the keycaps and a top-bar tile, and appear in Home Assistant as a device with one event entity per button",
       "author": "Keyglass",
       "license": "MIT OR Apache-2.0",
@@ -286,13 +286,13 @@
         "smart-home"
       ],
       "host_requirement": "required",
-      "runs_host_process": true,
+      "runs_host_process": false,
       "slot_capable": true,
       "homepage": "https://github.com/keyglass-dev/keyglass-modules/tree/main/mqtt-bridge",
       "repository": "https://github.com/keyglass-dev/keyglass-modules",
       "support_url": "https://github.com/keyglass-dev/keyglass-modules/issues",
       "discord_url": "https://discord.gg/keyglass",
-      "changelog": "v0.2.0: Uses the keycap renderer's built-in glow (needs keys-renderer with rule.glow). v0.1.3: The glow is small and centered on the icon instead of filling the key. v0.1.2: Active keys get a soft back glow that fades in and out (and breathes while a press awaits confirmation) instead of an LED dot and border. v0.1.1: Home Assistant entity ids follow the button id (event.<node>_<id>) via default_entity_id. v0.1.0: First release.",
+      "changelog": "v0.3.0: Pure Lua: the MQTT client runs in Keyglass itself (host network permission), no Python, so it works on any Mac or Windows PC. v0.2.0: Uses the keycap renderer's built-in glow (needs keys-renderer with rule.glow). v0.1.3: The glow is small and centered on the icon instead of filling the key. v0.1.2: Active keys get a soft back glow that fades in and out (and breathes while a press awaits confirmation) instead of an LED dot and border. v0.1.1: Home Assistant entity ids follow the button id (event.<node>_<id>) via default_entity_id. v0.1.0: First release.",
       "changelog_url": null,
       "maturity": "alpha",
       "deprecated": false,
@@ -301,7 +301,7 @@
       "replaced_by": null,
       "preview": null,
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/mqtt-bridge",
-      "sha256": "21d0d3c5511b50879fa92dd638324522629cbb2d881126c90d7523096ca8dd4e"
+      "sha256": "80613f0786d8904a9aa6ab1b6a3cecae700fbc4464d803bfa8955271e8f2897f"
     },
     {
       "id": "widget-media",
@@ -400,7 +400,7 @@
       "replaced_by": null,
       "preview": "preview.png",
       "source": "/Users/scott.meyer/git/keyglass/keyglass-modules/widget-prusa-connect",
-      "sha256": "cd835b829779aebe751adbd67763310dc28f5d6414afbd03ac21e11dc41e6322"
+      "sha256": "80330d0deceedf2ea386953b4137179fbe39f677d8bc7afe0bc34f21b82565f9"
     },
     {
       "id": "streamdeck-bridge",
