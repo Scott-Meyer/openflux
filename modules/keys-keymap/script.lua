@@ -236,8 +236,10 @@ local function rule_from_qmk_keycode(ki, kc, src_layer, lower_default, os_name)
     -- Special macOS Opt+[ / Opt+] smart quotes
     if os_name == "macos" and (mods & 0x0F) == 4 and base == 0x2F then return { key = ki, label = "“", color = col } end
     if os_name == "macos" and (mods & 0x0F) == 4 and base == 0x30 then return { key = ki, label = "‘", color = col } end
-    -- Special Cmd+Ctrl+Shift+4 screenshot
+    -- Special Cmd+Ctrl+Shift+4 screenshot & OS Lock Screen shortcuts (Ctrl+Cmd+Q on macOS, Win+L on Windows)
     if os_name == "macos" and (mods & 0x0F) == 11 and base == 0x21 then return { key = ki, label = "Shot", icon = "cam", color = col } end
+    if os_name == "macos" and (mods & 0x0F) == 9 and base == 0x14 then return { key = ki, label = "Lock", icon = "power", color = col } end
+    if os_name == "windows" and (mods & 0x0F) == 8 and base == 0x0F then return { key = ki, label = "Lock", icon = "power", color = col } end
     local pfx = mod_prefix_str(mods, os_name)
     if base >= 0x04 and base <= 0x1D then
       return { key = ki, label = pfx .. string.char(65 + (base - 0x04)), color = col }
