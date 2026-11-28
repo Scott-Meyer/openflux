@@ -430,6 +430,28 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
               What’s new: {pendingDisclosure.changelog}
             </div>
           )}
+          <div
+            style={{
+              marginTop: 8,
+              padding: "8px 10px",
+              borderRadius: 8,
+              background: "rgba(251, 191, 36, 0.08)",
+              border: "1px solid rgba(251, 191, 36, 0.35)",
+              fontSize: 12,
+              lineHeight: 1.45,
+            }}
+          >
+            <strong style={{ color: "#fbbf24" }}>Only install modules you trust or that the community has reviewed.</strong>{" "}
+            Modules run on your keyboard and/or computer — a malicious module with keyboard input, host, or network
+            permissions could potentially log keystrokes or send data off your device.
+          </div>
+          {pendingDisclosure.disclosure.warnings && pendingDisclosure.disclosure.warnings.length > 0 && (
+            <ul style={{ margin: "8px 0 6px 18px", padding: 0, fontSize: 12, color: "#fde68a" }}>
+              {pendingDisclosure.disclosure.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          )}
           <div className="kg-muted" style={{ margin: "6px 0" }}>
             Host execution:{" "}
             <strong>
@@ -804,7 +826,11 @@ export const ModuleStoreView: React.FC<ModuleStoreViewProps> = ({
             </div>
             <div className="kg-muted" style={{ fontSize: 12, marginBottom: 8 }}>
               Keyglass tracks updates directly from this location and remembers it under{" "}
-              <strong>Previously Removed Modules</strong> if you uninstall it later.
+              <strong>Previously Removed Modules</strong> if you uninstall it later.{" "}
+              <strong style={{ color: "#fbbf24" }}>
+                Only install third-party modules or lists you trust or that the community has reviewed
+              </strong>{" "}
+              — modules run on your keyboard and computer and a malicious one could log keystrokes or exfiltrate data.
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <input

@@ -68,9 +68,10 @@ check_macos_tree() {
     [ -n "$app" ] || die "no .app bundle in ${installer}"
     (cd "$app" && find . -print) | sed 's|^\./||' > "${work}/list"
     nonempty_files "$app" > "${work}/nonempty"
-    for bin in openfluxd openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe; do
+    for bin in openfluxd fluxctl openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe; do
         require "${work}/list" "$bin" "^Contents/MacOS/${bin}$"
     done
+    require "${work}/list" "bundled core modules" '^Contents/Resources/modules/keys-renderer/module\.toml$'
     require "${work}/list" "LaunchAgent" '^Contents/Library/LaunchAgents/org\.openflux\.openfluxd\.plist$'
     require_licenses "${work}/nonempty" '^Contents/Resources/'
     require "${work}/list" "keyboard index" '^Contents/Resources/keyboard/index\.json$'
@@ -94,9 +95,10 @@ check_linux_tree() {
     local root="$1"
     (cd "$root" && find . -print) | sed 's|^\./||' > "${work}/list"
     nonempty_files "$root" > "${work}/nonempty"
-    for bin in openfluxd openflux-ffmpeg openflux-ffprobe; do
+    for bin in openfluxd fluxctl openflux-ffmpeg openflux-ffprobe; do
         require "${work}/list" "$bin" "^usr/bin/${bin}$"
     done
+    require "${work}/list" "bundled core modules" '/modules/keys-renderer/module\.toml$'
     require_licenses "${work}/nonempty" '/'
     require "${work}/list" "keyboard index" '/keyboard/index\.json$'
     require "${work}/list" "keyboard index signature" '/keyboard/index\.json\.sig$'
@@ -125,9 +127,10 @@ case "$installer" in
         # Paths of the entries with a non-zero Size.
         awk '/^Path = / { path = substr($0, 8) } /^Size = / { if (substr($0, 8) + 0 > 0) print path }' "${work}/7z" |
             tr '\134' '/' > "${work}/nonempty"
-        for bin in openflux-studio openfluxd openflux-ffmpeg openflux-ffprobe; do
+        for bin in openflux-studio openfluxd fluxctl openflux-ffmpeg openflux-ffprobe; do
             require "${work}/list" "${bin}.exe" "(^|/)${bin}\\.exe$"
         done
+        require "${work}/list" "bundled core modules" '(^|/)modules/keys-renderer/module\.toml$'
         require_licenses "${work}/nonempty" '(^|/)'
         require "${work}/list" "keyboard index" '(^|/)keyboard/index\.json$'
         require "${work}/list" "keyboard index signature" '(^|/)keyboard/index\.json\.sig$'

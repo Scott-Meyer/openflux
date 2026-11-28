@@ -16,10 +16,10 @@ exclude = [
 ]
 
 [workspace.package]
-version = "1.1.1"
+version = "2.0.0-beta.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/Scott-Meyer/openflux"
+repository = "https://github.com/keyglass-dev/keyglass"
 rust-version = "1.90"
 
 [profile.release]

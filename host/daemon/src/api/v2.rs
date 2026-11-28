@@ -308,6 +308,8 @@ fn resolve_bundled_modules_dir() -> PathBuf {
             candidates.push(p.join("modules"));
             if let Some(pp) = p.parent() {
                 candidates.push(pp.join("Resources/modules"));
+                candidates.push(pp.join("lib/OpenFlux Studio/modules"));
+                candidates.push(pp.join("lib/openflux-studio/modules"));
             }
         }
     }
@@ -335,6 +337,8 @@ fn resolve_bundled_asset_path(rel_or_abs: &str) -> Option<PathBuf> {
             candidates.push(p.join(rel));
             if let Some(pp) = p.parent() {
                 candidates.push(pp.join("Resources").join(rel));
+                candidates.push(pp.join("lib/OpenFlux Studio").join(rel));
+                candidates.push(pp.join("lib/openflux-studio").join(rel));
             }
         }
     }
@@ -3904,6 +3908,8 @@ fn sync_v2_to_device(
     // Sync bundled shortcut JSON packs straight to `/home/root/openflux/shortcuts/`
     let shortcut_dirs = [
         kb_state_path.parent().and_then(|p| p.parent()).map(|p| p.join("assets/shortcuts")),
+        crate::api::assets::bundled_assets_dir().map(|d| d.join("shortcuts")),
+        std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.join("assets/shortcuts"))),
         std::env::current_exe().ok().and_then(|e| e.parent().and_then(|p| p.parent()).map(|p| p.join("Resources/assets/shortcuts"))),
     ];
     if let Some(sc_dir) = shortcut_dirs.into_iter().flatten().find(|d| d.is_dir()) {
@@ -4065,7 +4071,7 @@ fn sync_v2_to_device(
     let meta = DeviceSyncMeta {
         host_id: host_id_for_sync.to_string(),
         host_name: None,
-        synced_at_ms: openflux_bus::now_unix_ms(),
+        synced_at_ms: 0,
         state_sha256: expected_state_sha256.clone(),
         enabled_modules,
         bg_media,
@@ -5759,12 +5765,12 @@ publishes = []
             lua_bytes.to_vec(),
         );
 
-        // 1. First sync skips already-identical script.lua and uploads only module.toml + modules_state.json
+        // 1. First sync skips already-identical script.lua and uploads module.toml + modules_state.json + sync_meta.json
         let r1 = sync_v2_to_device(&dev, &discovered, &mut kb_state, &state_path, "host-1").unwrap();
         assert!(r1.persisted_verified);
         assert!(r1.persisted_error.is_none());
         assert_eq!(r1.skipped_unchanged, 1);
-        assert_eq!(r1.uploaded_files.len(), 2);
+        assert_eq!(r1.uploaded_files.len(), 3);
         assert!(!r1
             .uploaded_files
             .iter()
@@ -5775,7 +5781,7 @@ publishes = []
         let r2 = sync_v2_to_device(&dev, &discovered, &mut kb_state, &state_path, "host-1").unwrap();
         assert!(r2.persisted_verified);
         assert_eq!(r2.uploaded_files.len(), 0);
-        assert_eq!(r2.skipped_unchanged, 3);
+        assert_eq!(r2.skipped_unchanged, 4);
         assert!(dev.put_calls.lock().unwrap().is_empty());
 
         // 3. Out-of-band device edit / different keyboard with stale bytes is ALWAYS detected & rewritten!

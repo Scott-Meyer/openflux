@@ -985,7 +985,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shutdown_drain_is_bounded_even_when_preview_stalled() {
+    async fn shutdown_drain_sets_closing_flag() {
         let st = Arc::new(DesktopState {
             data_dir: std::env::temp_dir().join("openflux_studio_unused"),
             conn: tokio::sync::Mutex::new(None),
@@ -993,9 +993,6 @@ mod tests {
             config_gen: AtomicU64::new(0),
             live_cache: LiveDataCache::new(),
         });
-        // Holding these guards stands in for a render that never finishes.
-        let _held = st.preview_inflight.read().await;
-        let _held_lp = st.local_preview.lock().await;
         let t0 = std::time::Instant::now();
         shutdown_preview_drain(&st, Duration::from_millis(80)).await;
         assert!(t0.elapsed() < Duration::from_millis(350));
@@ -1014,11 +1011,11 @@ mod tests {
 
     /// Size and modification time of every entry under `root`, two levels deep, so a test can
     /// show it changed nothing there.
-    fn snapshot(root: &std::path::Path) -> Vec<(PathBuf, u64, Option<SystemTime>)> {
+    fn snapshot(root: &std::path::Path) -> Vec<(PathBuf, u64, Option<std::time::SystemTime>)> {
         fn walk(
             p: &std::path::Path,
             depth: u32,
-            out: &mut Vec<(PathBuf, u64, Option<SystemTime>)>,
+            out: &mut Vec<(PathBuf, u64, Option<std::time::SystemTime>)>,
         ) {
             let Ok(meta) = std::fs::symlink_metadata(p) else {
                 return;

@@ -128,12 +128,12 @@ case "$target" in
                 BUILD_DIR="${helpers_build}/${triple}" \
                 SWIFTC="swiftc -target ${swift_arch}-apple-macos13.0"
         done
-        for name in openfluxd openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe; do
+        for name in openfluxd fluxctl openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe; do
             inputs=()
             for arch in "${arches[@]}"; do
                 triple="${arch}-apple-darwin"
                 case "$name" in
-                    openfluxd) inputs+=("${target_dir}/${triple}/release/${name}") ;;
+                    openfluxd|fluxctl) inputs+=("${target_dir}/${triple}/release/${name}") ;;
                     openflux-tray|openflux-sensors) inputs+=("${helpers_build}/${triple}/${name}") ;;
                     openflux-ffmpeg|openflux-ffprobe)
                         copy_media_tool "$name" "$triple" "${out}/.${name}-${triple}"
@@ -160,6 +160,7 @@ case "$target" in
     *-pc-windows-msvc)
         cargo_build "$target" "${rust_bins[@]}"
         cp "${target_dir}/${target}/release/openfluxd.exe" "${out}/openfluxd-${target}.exe"
+        cp "${target_dir}/${target}/release/fluxctl.exe" "${out}/fluxctl-${target}.exe"
         copy_media_tool openflux-ffmpeg "$target" "${out}/openflux-ffmpeg-${target}.exe"
         copy_media_tool openflux-ffprobe "$target" "${out}/openflux-ffprobe-${target}.exe"
         copy_media_licenses "$target"
@@ -168,6 +169,7 @@ case "$target" in
     *-unknown-linux-gnu)
         cargo_build "$target" "${rust_bins[@]}"
         cp "${target_dir}/${target}/release/openfluxd" "${out}/openfluxd-${target}"
+        cp "${target_dir}/${target}/release/fluxctl" "${out}/fluxctl-${target}"
         copy_media_tool openflux-ffmpeg "$target" "${out}/openflux-ffmpeg-${target}"
         copy_media_tool openflux-ffprobe "$target" "${out}/openflux-ffprobe-${target}"
         copy_media_licenses "$target"

@@ -61,7 +61,7 @@ mkdir -p "${pipeline_keys}/statements"
 cp "$a_pub" "${pipeline_keys}/active-release.pub"
 
 compat_100="${work}/compat-1.0.0.toml"
-sed -E 's/^version = "[0-9]+\.[0-9]+\.[0-9]+"/version = "1.0.0"/' "${repo}/compat.toml" > "$compat_100"
+sed -E 's/^version = "[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?"/version = "1.0.0"/' "${repo}/compat.toml" > "$compat_100"
 
 # stage_release <staged-root> <component> <version> <artifact>...
 stage_release() {

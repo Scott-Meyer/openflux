@@ -688,9 +688,6 @@ sXJiKrPC+MOlUBLYQEqaFsvPIoxj3j1z
             data_dir: dir.to_path_buf(),
             conn: tokio::sync::Mutex::new(None),
             closing: std::sync::atomic::AtomicBool::new(false),
-            preview_inflight: tokio::sync::RwLock::new(()),
-            preview_gen: std::sync::atomic::AtomicU64::new(0),
-            local_preview: tokio::sync::Mutex::new(None),
             config_gen: std::sync::atomic::AtomicU64::new(0),
             live_cache: crate::LiveDataCache::new(),
         }

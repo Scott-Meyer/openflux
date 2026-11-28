@@ -683,13 +683,13 @@
       "mac": "Option+0"
     },
     {
-      "name": "Insert – (Option+-)",
+      "name": "Insert En Dash – (Option+Minus)",
       "context": "Unicode Symbols",
       "label": "–",
       "mac": "Option+-"
     },
     {
-      "name": "Insert ≠ (Option+=)",
+      "name": "Insert Not Equal ≠ (Option+Equal)",
       "context": "Unicode Symbols",
       "label": "≠",
       "mac": "Option+="
@@ -755,19 +755,19 @@
       "mac": "Option+P"
     },
     {
-      "name": "Insert “ (Option+[)",
+      "name": "Insert Left Double Quote “ (Option+LBracket)",
       "context": "Unicode Symbols",
       "label": "“",
       "mac": "Option+["
     },
     {
-      "name": "Insert ‘ (Option+])",
+      "name": "Insert Left Single Quote ‘ (Option+RBracket)",
       "context": "Unicode Symbols",
       "label": "‘",
       "mac": "Option+]"
     },
     {
-      "name": "Insert « (Option+\\)",
+      "name": "Insert Left Guillemet « (Option+Backslash)",
       "context": "Unicode Symbols",
       "label": "«",
       "mac": "Option+\\"
@@ -827,13 +827,13 @@
       "mac": "Option+L"
     },
     {
-      "name": "Insert … (Option+;)",
+      "name": "Insert Ellipsis … (Option+Semicolon)",
       "context": "Unicode Symbols",
       "label": "…",
       "mac": "Option+;"
     },
     {
-      "name": "Insert æ (Option+')",
+      "name": "Insert Ligature ae æ (Option+Quote)",
       "context": "Unicode Symbols",
       "label": "æ",
       "mac": "Option+'"
@@ -881,25 +881,25 @@
       "mac": "Option+M"
     },
     {
-      "name": "Insert ≤ (Option+,)",
+      "name": "Insert Less Or Equal ≤ (Option+Comma)",
       "context": "Unicode Symbols",
       "label": "≤",
       "mac": "Option+,"
     },
     {
-      "name": "Insert ≥ (Option+.)",
+      "name": "Insert Greater Or Equal ≥ (Option+Period)",
       "context": "Unicode Symbols",
       "label": "≥",
       "mac": "Option+."
     },
     {
-      "name": "Insert ÷ (Option+/)",
+      "name": "Insert Division ÷ (Option+Slash)",
       "context": "Unicode Symbols",
       "label": "÷",
       "mac": "Option+/"
     },
     {
-      "name": "Insert ` (Option+`)",
+      "name": "Insert Grave Accent ` (Option+Backtick)",
       "context": "Unicode Symbols",
       "label": "`",
       "mac": "Option+`"
@@ -965,13 +965,13 @@
       "mac": "Shift+Option+0"
     },
     {
-      "name": "Insert — (Shift+Option+-)",
+      "name": "Insert Em Dash — (Shift+Option+Minus)",
       "context": "Unicode Symbols",
       "label": "—",
       "mac": "Shift+Option+-"
     },
     {
-      "name": "Insert ± (Shift+Option+=)",
+      "name": "Insert Plus Minus ± (Shift+Option+Equal)",
       "context": "Unicode Symbols",
       "label": "±",
       "mac": "Shift+Option+="
@@ -1037,19 +1037,19 @@
       "mac": "Shift+Option+P"
     },
     {
-      "name": "Insert ” (Shift+Option+[)",
+      "name": "Insert Right Double Quote ” (Shift+Option+LBracket)",
       "context": "Unicode Symbols",
       "label": "”",
       "mac": "Shift+Option+["
     },
     {
-      "name": "Insert ’ (Shift+Option+])",
+      "name": "Insert Right Single Quote ’ (Shift+Option+RBracket)",
       "context": "Unicode Symbols",
       "label": "’",
       "mac": "Shift+Option+]"
     },
     {
-      "name": "Insert » (Shift+Option+\\)",
+      "name": "Insert Right Guillemet » (Shift+Option+Backslash)",
       "context": "Unicode Symbols",
       "label": "»",
       "mac": "Shift+Option+\\"
@@ -1109,13 +1109,13 @@
       "mac": "Shift+Option+L"
     },
     {
-      "name": "Insert Ú (Shift+Option+;)",
+      "name": "Insert U Acute Ú (Shift+Option+Semicolon)",
       "context": "Unicode Symbols",
       "label": "Ú",
       "mac": "Shift+Option+;"
     },
     {
-      "name": "Insert Æ (Shift+Option+')",
+      "name": "Insert Ligature AE Æ (Shift+Option+Quote)",
       "context": "Unicode Symbols",
       "label": "Æ",
       "mac": "Shift+Option+'"
@@ -1163,19 +1163,19 @@
       "mac": "Shift+Option+M"
     },
     {
-      "name": "Insert ¯ (Shift+Option+,)",
+      "name": "Insert Macron ¯ (Shift+Option+Comma)",
       "context": "Unicode Symbols",
       "label": "¯",
       "mac": "Shift+Option+,"
     },
     {
-      "name": "Insert ˘ (Shift+Option+.)",
+      "name": "Insert Breve ˘ (Shift+Option+Period)",
       "context": "Unicode Symbols",
       "label": "˘",
       "mac": "Shift+Option+."
     },
     {
-      "name": "Insert ¿ (Shift+Option+/)",
+      "name": "Insert Inverted Question ¿ (Shift+Option+Slash)",
       "context": "Unicode Symbols",
       "label": "¿",
       "mac": "Shift+Option+/"

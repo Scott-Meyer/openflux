@@ -1,6 +1,6 @@
 [package]
 name = "openflux-bridge"
-version = "2.3.1"
+version = "2.0.0-beta.1"
 edition.workspace = true
 description = "OpenFlux keyboard bridge: USB gadget, key-scanner UART link, and display IPC"
 license.workspace = true

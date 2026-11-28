@@ -14,7 +14,7 @@ use tauri::{AppHandle, Manager, Runtime, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 /// Feed used when the configuration names none.
-pub const DEFAULT_FEED: &str = "https://scott-meyer.github.io/openflux/updates/stable/latest.json";
+pub const DEFAULT_FEED: &str = "https://keyglass-dev.github.io/keyglass/updates/stable/latest.json";
 
 #[derive(Default)]
 pub struct HostUpdateState {
@@ -228,7 +228,7 @@ mod tests {
     fn the_beta_feed_sits_next_to_the_configured_stable_feed() {
         assert_eq!(
             feed_url(DEFAULT_FEED, "beta"),
-            "https://scott-meyer.github.io/openflux/updates/beta/latest.json"
+            "https://keyglass-dev.github.io/keyglass/updates/beta/latest.json"
         );
         assert_eq!(feed_url(DEFAULT_FEED, "stable"), DEFAULT_FEED);
         assert_eq!(

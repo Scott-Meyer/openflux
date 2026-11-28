@@ -820,6 +820,7 @@ mod tests {
             ui: Default::default(),
             entrypoints: Default::default(),
             channels: Default::default(),
+            permissions: Default::default(),
             settings: vec![],
             dynamic_actions: false,
             actions: actions

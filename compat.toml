@@ -51,23 +51,23 @@ kind = "data"
 summary = "Keyglass v2 modular runtime state, display_prefs.json (parallax, power, attachments), and profile overrides."
 
 [components.host]
-version = "2.0.0-alpha.1"
+version = "2.0.0-beta.1"
 provides = []
 requires = { bridge-usb = ">=2.0, <3.0", firmware-usb = ">=1.0, <2.0", keymap = ">=2.0, <3.0", profile-settings = ">=2.0, <3.0", calibration-lfs = ">=1.0, <2.0", config = ">=2.0, <3.0" }
 
 [components.firmware]
-version = "2.1.2"
+version = "2.0.0-beta.1"
 provides = ["firmware-usb", "uart", "keymap", "profile-settings", "calibration-lfs"]
 update-transport = ["firmware-usb"]
 
 [components.bridge]
-version = "2.3.0"
+version = "2.0.0-beta.1"
 provides = ["bridge-usb", "display-ipc"]
 requires = { uart = ">=2.0, <3.0" }
 update-transport = ["bridge-usb"]
 
 [components.display]
-version = "2.3.14"
+version = "2.0.0-beta.1"
 provides = ["config"]
 requires = { display-ipc = ">=2.0, <3.0" }
 update-transport = ["bridge-usb"]

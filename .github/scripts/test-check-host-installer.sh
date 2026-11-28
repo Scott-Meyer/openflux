@@ -41,12 +41,13 @@ licenses_into() {
 app_archive() {
     local variant="$1" root="${work}/app-${1}" c b
     c="${root}/OpenFlux Studio.app/Contents"
-    mkdir -p "${c}/MacOS" "${c}/Resources/keyboard" "${c}/Library/LaunchAgents"
-    for b in openflux-studio openfluxd openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe; do
+    mkdir -p "${c}/MacOS" "${c}/Resources/keyboard" "${c}/Resources/modules/keys-renderer" "${c}/Library/LaunchAgents"
+    for b in openflux-studio openfluxd fluxctl openflux-tray openflux-sensors openflux-ffmpeg openflux-ffprobe; do
         printf '%s\n' "$tool_script" > "${c}/MacOS/${b}"
         chmod 0755 "${c}/MacOS/${b}"
     done
     : > "${c}/Library/LaunchAgents/org.openflux.openfluxd.plist"
+    printf 'id = "keys-renderer"\n' > "${c}/Resources/modules/keys-renderer/module.toml"
     printf '{}\n' > "${c}/Resources/keyboard/index.json"
     printf 'sig\n' > "${c}/Resources/keyboard/index.json.sig"
     licenses_into "${c}/Resources" "$variant"
@@ -56,16 +57,18 @@ app_archive() {
 deb() {
     local variant="$1" root="${work}/deb-${1}" b
     mkdir -p "${root}/DEBIAN" "${root}/usr/bin" "${root}/usr/lib/OpenFlux Studio/keyboard" \
+        "${root}/usr/lib/OpenFlux Studio/modules/keys-renderer" \
         "${root}/usr/lib/udev/rules.d" "${root}/usr/lib/systemd/user"
     printf 'Package: openflux-studio\nVersion: 1.0.0\nArchitecture: amd64\nMaintainer: test\nDescription: test\n' \
         > "${root}/DEBIAN/control"
     for s in postinst prerm postrm; do printf '#!/bin/sh\n' > "${root}/DEBIAN/${s}"; chmod 0755 "${root}/DEBIAN/${s}"; done
-    for b in openflux-studio openfluxd openflux-ffmpeg openflux-ffprobe; do
+    for b in openflux-studio openfluxd fluxctl openflux-ffmpeg openflux-ffprobe; do
         printf '%s\n' "$tool_script" > "${root}/usr/bin/${b}"
         chmod 0755 "${root}/usr/bin/${b}"
     done
     printf '{}\n' > "${root}/usr/lib/OpenFlux Studio/keyboard/index.json"
     printf 'sig\n' > "${root}/usr/lib/OpenFlux Studio/keyboard/index.json.sig"
+    printf 'id = "keys-renderer"\n' > "${root}/usr/lib/OpenFlux Studio/modules/keys-renderer/module.toml"
     : > "${root}/usr/lib/udev/rules.d/70-openflux.rules"
     : > "${root}/usr/lib/systemd/user/openfluxd.service"
     licenses_into "${root}/usr/lib/OpenFlux Studio" "$variant"
@@ -74,10 +77,11 @@ deb() {
 
 nsis() {
     local variant="$1" root="${work}/nsis-${1}" b
-    mkdir -p "${root}/keyboard"
-    for b in openflux-studio openfluxd openflux-ffmpeg openflux-ffprobe; do printf 'MZ\n' > "${root}/${b}.exe"; done
+    mkdir -p "${root}/keyboard" "${root}/modules/keys-renderer"
+    for b in openflux-studio openfluxd fluxctl openflux-ffmpeg openflux-ffprobe; do printf 'MZ\n' > "${root}/${b}.exe"; done
     printf '{}\n' > "${root}/keyboard/index.json"
     printf 'sig\n' > "${root}/keyboard/index.json.sig"
+    printf 'id = "keys-renderer"\n' > "${root}/modules/keys-renderer/module.toml"
     licenses_into "$root" "$variant"
     cat > "${work}/${variant}.nsi" <<EOF
 Unicode true
