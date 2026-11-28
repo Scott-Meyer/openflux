@@ -175,7 +175,25 @@ if [ -f "$ARMED_FILE" ]; then
 fi
 
 FIRST_CONV=0
-if [ ! -f "${ROOT}/usr/lib/keyglass/bridge/keyglass-bridge" ]; then
+PRIOR_BRIDGE="${ROOT}/usr/lib/keyglass/bridge/keyglass-bridge"
+PRIOR_LAUNCHER="${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh"
+if [ ! -f "$PRIOR_BRIDGE" ]; then
+    # Check if an earlier renamed bridge binary already exists on-device to use as rollback snapshot
+    for cand in "${ROOT}"/usr/lib/*/bridge/*-bridge; do
+        if [ -f "$cand" ]; then
+            PRIOR_BRIDGE="$cand"
+            cand_dir="$(dirname "$cand")"
+            for lc in "$cand_dir"/*-autolaunch.sh; do
+                if [ -f "$lc" ]; then
+                    PRIOR_LAUNCHER="$lc"
+                    break
+                fi
+            done
+            break
+        fi
+    done
+fi
+if [ ! -f "$PRIOR_BRIDGE" ]; then
     FIRST_CONV=1
     # First conversion requires a verified staged Keyglass rescue pair before modifying any state.
     if [ ! -s "$STAGED_RESCUE_BRIDGE" ] || [ ! -s "$STAGED_RESCUE_LAUNCHER" ] || [ ! -s "$STAGED_RESCUE_MANIFEST" ]; then
@@ -203,9 +221,9 @@ rm -rf "$ROLLBACK_DIR"
 mkdir -p "$ROLLBACK_DIR"
 
 if [ "$FIRST_CONV" -eq 0 ]; then
-    cp -p "${ROOT}/usr/lib/keyglass/bridge/keyglass-bridge" "${ROLLBACK_DIR}/keyglass-bridge"
-    if [ -f "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" ]; then
-        cp -p "${ROOT}/usr/lib/keyglass/bridge/keyglass-autolaunch.sh" "${ROLLBACK_DIR}/keyglass-autolaunch.sh"
+    cp -p "$PRIOR_BRIDGE" "${ROLLBACK_DIR}/keyglass-bridge"
+    if [ -f "$PRIOR_LAUNCHER" ]; then
+        cp -p "$PRIOR_LAUNCHER" "${ROLLBACK_DIR}/keyglass-autolaunch.sh"
     fi
     if [ -f "${ROOT}/home/root/.keyglass/versions/bridge" ]; then
         cp -p "${ROOT}/home/root/.keyglass/versions/bridge" "${ROLLBACK_DIR}/bridge.version"
