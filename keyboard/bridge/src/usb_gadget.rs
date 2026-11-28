@@ -261,17 +261,40 @@ fn make_link(target: &str, link: &str) {
 pub fn bridge_setup_gadget(mount_point: &str) -> Result<(), String> {
     use std::ffi::CString;
     let _ = write_str(&format!("{GADGET_PATH}/UDC"), "\n");
+    if let Ok(rd) = std::fs::read_dir(format!("{GADGET_PATH}/configs/c.1")) {
+        for e in rd.flatten() {
+            if e.file_name().to_string_lossy().starts_with("ffs.") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
     for fn_name in [FFS_FUNCTION_NAME, FACTORY_FFS_FUNCTION_NAME] {
         let _ = std::fs::remove_file(format!("{GADGET_PATH}/configs/c.1/{fn_name}"));
     }
     let _ = std::fs::remove_file(format!("{GADGET_PATH}/os_desc/c.1"));
     let _ = std::fs::remove_dir(format!("{GADGET_PATH}/configs/c.1/strings/0x409"));
     let _ = std::fs::remove_dir(format!("{GADGET_PATH}/configs/c.1"));
+    if let Ok(rd) = std::fs::read_dir(format!("{GADGET_PATH}/functions")) {
+        for e in rd.flatten() {
+            if e.file_name().to_string_lossy().starts_with("ffs.") {
+                let _ = std::fs::remove_dir(e.path());
+            }
+        }
+    }
     for fn_name in [FFS_FUNCTION_NAME, FACTORY_FFS_FUNCTION_NAME] {
         let _ = std::fs::remove_dir(format!("{GADGET_PATH}/functions/{fn_name}"));
     }
     let _ = std::fs::remove_dir(format!("{GADGET_PATH}/strings/0x409"));
     let _ = std::fs::remove_dir(GADGET_PATH);
+    if let Ok(rd) = std::fs::read_dir("/dev") {
+        for e in rd.flatten() {
+            if e.file_name().to_string_lossy().starts_with("ffs-") {
+                if let Ok(cm) = CString::new(e.path().to_string_lossy().as_ref()) {
+                    unsafe { libc::umount2(cm.as_ptr(), libc::MNT_DETACH) };
+                }
+            }
+        }
+    }
     for mnt in [mount_point, FACTORY_BRIDGE_FFS_MOUNT] {
         if let Ok(cm) = CString::new(mnt) {
             unsafe { libc::umount2(cm.as_ptr(), libc::MNT_DETACH) };
