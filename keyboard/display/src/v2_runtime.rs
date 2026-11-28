@@ -34,23 +34,74 @@ struct OverlayRasterReq {
     geometry: KeyboardGeometry,
 }
 
-/// Coalescing off-thread 2D overlay rasterizer with zero-alloc ping-pong buffer swap.
-/// Keeps the 60 FPS Mali-G52 video + water-refraction render thread completely non-blocking even
-/// when spamming Shift or rapidly switching layers/shortcuts!
+struct OverlayRasterResult {
+    rgba: Vec<u8>,
+    /// Dirty vertical strip `(y_start, height)` in pixels for fast partial `glTexSubImage2D`!
+    dirty_y: i32,
+    dirty_h: i32,
+}
+
+/// Coalescing off-thread 2D overlay rasterizer with zero-alloc ping-pong buffer swap,
+/// top-bar band caching, dirty-row-band tracking, and bounded same-frame wait for instant
+/// Fn / Shift / layer switches!
 struct OverlayRasterWorker {
-    req_slot: Arc<(Mutex<Option<OverlayRasterReq>>, Condvar)>,
-    ready_slot: Arc<Mutex<Option<Vec<u8>>>>,
+    req_slot: Arc<(Mutex<Option<(u64, OverlayRasterReq)>>, Condvar)>,
+    ready_slot: Arc<(Mutex<Option<(u64, OverlayRasterResult)>>, Condvar)>,
     spare_slot: Arc<Mutex<Option<Vec<u8>>>>,
+    next_seq: u64,
     stop: Arc<AtomicBool>,
     join: Option<std::thread::JoinHandle<()>>,
 }
 
+fn draw_cmds_y_bounds(cmds: &[keyglass_modules::DrawCommand]) -> Option<(usize, usize)> {
+    use keyglass_modules::DrawCommand;
+    let mut y_min = usize::MAX;
+    let mut y_max = 0usize;
+    let mut include = |y0: f32, y1: f32| {
+        let a = (y0.floor() as isize - 6).clamp(0, DISPLAY_HEIGHT_PX as isize) as usize;
+        let b = (y1.ceil() as isize + 6).clamp(0, DISPLAY_HEIGHT_PX as isize) as usize;
+        if a < y_min {
+            y_min = a;
+        }
+        if b > y_max {
+            y_max = b;
+        }
+    };
+    for c in cmds {
+        match c {
+            DrawCommand::Rect { y, h, .. }
+            | DrawCommand::RoundRect { y, h, .. }
+            | DrawCommand::Image { y, h, .. } => include(*y, *y + *h),
+            DrawCommand::Circle { cy, r, .. } => include(*cy - *r, *cy + *r),
+            DrawCommand::Ellipse { cy, ry, .. } => include(*cy - *ry, *cy + *ry),
+            DrawCommand::Arc { cy, r, width, .. } => {
+                let pad = *r + *width + 2.0;
+                include(*cy - pad, *cy + pad);
+            }
+            DrawCommand::Pie { cy, r, .. } => include(*cy - *r, *cy + *r),
+            DrawCommand::Line { y1, y2, width, .. } => {
+                let lo = y1.min(*y2) - *width;
+                let hi = y1.max(*y2) + *width;
+                include(lo, hi);
+            }
+            DrawCommand::Text { y, size, .. } => include(*y - *size * 1.4, *y + *size * 1.4),
+            DrawCommand::Clip { .. } | DrawCommand::ClearClip => {}
+        }
+    }
+    if y_min < y_max {
+        Some((y_min, y_max))
+    } else {
+        None
+    }
+}
+
 impl OverlayRasterWorker {
     fn spawn(font_bytes: Option<Vec<u8>>) -> Self {
-        let req_slot: Arc<(Mutex<Option<OverlayRasterReq>>, Condvar)> =
+        let req_slot: Arc<(Mutex<Option<(u64, OverlayRasterReq)>>, Condvar)> =
             Arc::new((Mutex::new(None), Condvar::new()));
         let px_bytes = (DISPLAY_WIDTH_PX * DISPLAY_HEIGHT_PX * 4) as usize;
-        let ready_slot: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
+        let ready_slot: Arc<(Mutex<Option<(u64, OverlayRasterResult)>>, Condvar)> =
+            Arc::new((Mutex::new(None), Condvar::new()));
         let spare_slot: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(Some(vec![0u8; px_bytes])));
         let stop = Arc::new(AtomicBool::new(false));
 
@@ -67,14 +118,18 @@ impl OverlayRasterWorker {
                     DISPLAY_HEIGHT_PX,
                     font_bytes.as_deref(),
                 );
-                // Cache the top-bar strip (`y = 0..266`, Clock/Weather/System/Prusa) separately so
-                // rapid Fn / Shift / layer taps NEVER re-rasterize all 4 top-bar widgets on CPU!
+                // Cache the top-bar strip (`y = 0..266`, Clock/Weather/System/Prusa) separately
+                // and track the exact dirty vertical row band (`dirty_y..dirty_y+dirty_h`) so
+                // rapid Fn / Shift taps NEVER re-rasterize top-bar widgets or upload all 8.3 MB!
                 const TOP_BAR_H: usize = 266;
-                let top_bar_bytes = (DISPLAY_WIDTH_PX as usize) * TOP_BAR_H * 4;
+                let row_bytes = (DISPLAY_WIDTH_PX as usize) * 4;
+                let top_bar_bytes = row_bytes * TOP_BAR_H;
                 let mut cached_top_bar: Vec<u8> = Vec::new();
                 let mut cached_top_hash: u64 = 0;
+                let mut prev_keys_band: (usize, usize) = (TOP_BAR_H, DISPLAY_HEIGHT_PX as usize);
+                let mut first_frame = true;
                 loop {
-                    let req = {
+                    let (seq, req) = {
                         let (mtx, cv) = &*req_bg;
                         let mut g = mtx.lock().unwrap();
                         loop {
@@ -92,14 +147,31 @@ impl OverlayRasterWorker {
                             canvas.rgba = spare;
                         }
                     }
-                    let can_reuse_top = !cached_top_bar.is_empty()
+                    let can_reuse_top = !first_frame
+                        && !cached_top_bar.is_empty()
                         && cached_top_hash == req.tiles_hash
                         && req.has_custom_keys_renderer
-                        && req.has_custom_dock;
-                    if can_reuse_top {
+                        && req.has_custom_dock
+                        && req.world_overlay_draws.is_empty();
+                    let (dirty_y, dirty_h) = if can_reuse_top {
                         canvas.rgba[..top_bar_bytes].copy_from_slice(&cached_top_bar);
                         canvas.rgba[top_bar_bytes..].fill(0);
+                        if !req.under_key_draws.is_empty() {
+                            canvas.execute(&req.under_key_draws);
+                        }
+                        let cur_band = draw_cmds_y_bounds(&req.under_key_draws)
+                            .map(|(a, b)| (a.max(TOP_BAR_H), b.max(TOP_BAR_H)))
+                            .unwrap_or((TOP_BAR_H, TOP_BAR_H));
+                        let y0 = prev_keys_band.0.min(cur_band.0).max(TOP_BAR_H);
+                        let y1 = prev_keys_band.1.max(cur_band.1).min(DISPLAY_HEIGHT_PX as usize);
+                        prev_keys_band = cur_band;
+                        if y1 > y0 {
+                            (y0 as i32, (y1 - y0) as i32)
+                        } else {
+                            (TOP_BAR_H as i32, 1)
+                        }
                     } else {
+                        first_frame = false;
                         canvas.clear();
                         if !req.tile_draws.is_empty() {
                             canvas.execute(&req.tile_draws);
@@ -114,16 +186,20 @@ impl OverlayRasterWorker {
                             cached_top_bar.copy_from_slice(&canvas.rgba[..top_bar_bytes]);
                             cached_top_hash = req.tiles_hash;
                         }
-                    }
-                    if !req.under_key_draws.is_empty() {
-                        canvas.execute(&req.under_key_draws);
-                    }
-                    if !req.has_custom_keys_renderer {
-                        canvas.blit_cached_default_key_legends(&req.geometry, DEFAULT_ANSI_LABELS);
-                    }
-                    if !req.world_overlay_draws.is_empty() {
-                        canvas.execute(&req.world_overlay_draws);
-                    }
+                        if !req.under_key_draws.is_empty() {
+                            canvas.execute(&req.under_key_draws);
+                        }
+                        if !req.has_custom_keys_renderer {
+                            canvas.blit_cached_default_key_legends(&req.geometry, DEFAULT_ANSI_LABELS);
+                        }
+                        if !req.world_overlay_draws.is_empty() {
+                            canvas.execute(&req.world_overlay_draws);
+                        }
+                        prev_keys_band = draw_cmds_y_bounds(&req.under_key_draws)
+                            .map(|(a, b)| (a.max(TOP_BAR_H), b.max(TOP_BAR_H)))
+                            .unwrap_or((TOP_BAR_H, DISPLAY_HEIGHT_PX as usize));
+                        (0, DISPLAY_HEIGHT_PX as i32)
+                    };
                     let mut out_buf = spare_bg
                         .lock()
                         .unwrap()
@@ -131,9 +207,18 @@ impl OverlayRasterWorker {
                         .filter(|v| v.len() == canvas.rgba.len())
                         .unwrap_or_else(|| vec![0u8; canvas.rgba.len()]);
                     std::mem::swap(&mut canvas.rgba, &mut out_buf);
-                    let prev_ready = ready_bg.lock().unwrap().replace(out_buf);
-                    if let Some(recycled) = prev_ready {
-                        *spare_bg.lock().unwrap() = Some(recycled);
+                    let (rmtx, rcv) = &*ready_bg;
+                    let prev_ready = rmtx.lock().unwrap().replace((
+                        seq,
+                        OverlayRasterResult {
+                            rgba: out_buf,
+                            dirty_y,
+                            dirty_h,
+                        },
+                    ));
+                    rcv.notify_all();
+                    if let Some((_, recycled)) = prev_ready {
+                        *spare_bg.lock().unwrap() = Some(recycled.rgba);
                     }
                 }
             })
@@ -143,24 +228,53 @@ impl OverlayRasterWorker {
             req_slot,
             ready_slot,
             spare_slot,
+            next_seq: 0,
             stop,
             join,
         }
     }
 
-    fn submit(&self, req: OverlayRasterReq) {
+    fn submit(&mut self, req: OverlayRasterReq) -> u64 {
+        self.next_seq = self.next_seq.wrapping_add(1);
+        let seq = self.next_seq;
         let (mtx, cv) = &*self.req_slot;
-        *mtx.lock().unwrap() = Some(req);
+        *mtx.lock().unwrap() = Some((seq, req));
         cv.notify_one();
+        seq
     }
 
-    fn take_ready(&self, front_buf: &mut Vec<u8>) -> bool {
-        if let Some(mut finished) = self.ready_slot.lock().unwrap().take() {
-            std::mem::swap(front_buf, &mut finished);
-            *self.spare_slot.lock().unwrap() = Some(finished);
-            return true;
+    /// Takes a completed raster result; when `wait_for_seq` is `Some((target, budget))` (e.g.
+    /// right after an Fn/Shift/layer change), waits up to `budget` so the new keycaps present on
+    /// the VERY SAME FRAME instead of lagging 1-2 frames behind!
+    fn take_ready(
+        &self,
+        front_buf: &mut Vec<u8>,
+        wait_for_seq: Option<(u64, std::time::Duration)>,
+    ) -> Option<(i32, i32)> {
+        let (rmtx, rcv) = &*self.ready_slot;
+        let mut g = rmtx.lock().unwrap();
+        if let Some((target_seq, budget)) = wait_for_seq {
+            let deadline = std::time::Instant::now() + budget;
+            while g.as_ref().is_none_or(|(s, _)| *s < target_seq) {
+                let rem = deadline.saturating_duration_since(std::time::Instant::now());
+                if rem.is_zero() {
+                    break;
+                }
+                let (ng, to) = rcv.wait_timeout(g, rem).unwrap();
+                g = ng;
+                if to.timed_out() {
+                    break;
+                }
+            }
         }
-        false
+        if let Some((_, mut finished)) = g.take() {
+            drop(g);
+            let band = (finished.dirty_y, finished.dirty_h);
+            std::mem::swap(front_buf, &mut finished.rgba);
+            *self.spare_slot.lock().unwrap() = Some(finished.rgba);
+            return Some(band);
+        }
+        None
     }
 }
 
@@ -229,6 +343,7 @@ pub struct KeyboardV2Display {
     pub particle_dots: Vec<ParticleDot>,
     pub time_sec: f32,
     pub overlay_dirty: bool,
+    pub overlay_dirty_band: (i32, i32),
     last_keys_hash: u64,
     cached_under_key_draws: Vec<keyglass_modules::DrawCommand>,
     last_tiles_hash: u64,
@@ -444,6 +559,7 @@ impl KeyboardV2Display {
             particle_dots: Vec::with_capacity(256),
             time_sec: 0.0,
             overlay_dirty: true,
+            overlay_dirty_band: (0, DISPLAY_HEIGHT_PX as i32),
             last_keys_hash: 0,
             cached_under_key_draws: Vec::new(),
             last_tiles_hash: 0,
@@ -1251,6 +1367,7 @@ impl KeyboardV2Display {
             || world_changed
             || (tiles_changed && now_ms.saturating_sub(self.last_tiles_ms) >= 140);
 
+        let mut submitted_key_seq: Option<u64> = None;
         if due_for_overlay {
             self.last_world_hash = world_hash;
             self.last_tiles_hash = tiles_hash;
@@ -1260,18 +1377,28 @@ impl KeyboardV2Display {
             } else {
                 scene.under_key_draws
             };
-            self.overlay_worker.submit(OverlayRasterReq {
+            let seq = self.overlay_worker.submit(OverlayRasterReq {
                 under_key_draws: active_under,
                 tile_draws: scene.tile_draws,
-                tiles_hash: tiles_hash,
+                tiles_hash,
                 world_overlay_draws: scene.world_overlay_draws,
                 has_custom_keys_renderer: scene.has_custom_keys_renderer,
                 has_custom_dock: scene.has_custom_dock,
                 geometry: self.geometry.clone(),
             });
+            if keys_changed {
+                submitted_key_seq = Some(seq);
+            }
         }
-        // Swap in the latest off-thread rasterized RGBA buffer in O(1) whenever ready!
-        self.overlay_dirty = self.overlay_worker.take_ready(&mut self.overlay_rgba);
+        // When keys changed (Fn / Shift / layer switch!), wait up to 10 ms for the fast
+        // key-band raster so the updated keycaps appear on THIS VERY FRAME (zero 1-2 frame lag)!
+        let wait_spec = submitted_key_seq.map(|s| (s, std::time::Duration::from_millis(10)));
+        if let Some(band) = self.overlay_worker.take_ready(&mut self.overlay_rgba, wait_spec) {
+            self.overlay_dirty = true;
+            self.overlay_dirty_band = band;
+        } else {
+            self.overlay_dirty = false;
+        }
         self.last_physics_us = t_phys.elapsed().as_micros() as u64;
     }
 

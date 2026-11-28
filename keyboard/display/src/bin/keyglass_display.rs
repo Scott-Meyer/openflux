@@ -552,6 +552,7 @@ fn main() {
                     &v2.particle_dots,
                     &v2.overlay_rgba,
                     v2.overlay_dirty,
+                    v2.overlay_dirty_band,
                     &stream_overlay_rects,
                 ) {
                     log_diag(&format!("render_v2_and_swap error: {e}"));

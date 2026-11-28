@@ -1988,6 +1988,7 @@ impl WaylandGpuPresenter {
         particle_dots: &[ParticleDot],
         overlay_rgba: &[u8],
         overlay_dirty: bool,
+        overlay_dirty_band: (i32, i32),
         stream_overlay_rects: &[(i32, i32, i32, i32)],
     ) -> Result<(), String> {
         let _ = self.queue.dispatch_pending(&mut self.state);
@@ -2222,16 +2223,20 @@ impl WaylandGpuPresenter {
                         );
                         self.v2_overlay_uploaded = true;
                     } else if overlay_dirty {
+                        let dy = overlay_dirty_band.0.clamp(0, self.height.saturating_sub(1));
+                        let dh = overlay_dirty_band.1.clamp(1, self.height - dy);
+                        let row_bytes = (self.width as usize) * 4;
+                        let offset = (dy as usize) * row_bytes;
                         (self.gl.gl_tex_sub_image_2d)(
                             GL_TEXTURE_2D,
                             0,
                             0,
-                            0,
+                            dy,
                             self.width,
-                            self.height,
+                            dh,
                             GL_RGBA,
                             GL_UNSIGNED_BYTE,
-                            overlay_rgba.as_ptr() as *const c_void,
+                            overlay_rgba.as_ptr().add(offset) as *const c_void,
                         );
                     }
                     (self.gl.gl_enable)(GL_BLEND);
