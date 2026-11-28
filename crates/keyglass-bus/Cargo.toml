@@ -1,6 +1,6 @@
 [package]
 name = "keyglass-bus"
-version = "2.0.0-alpha.1"
+version = "2.0.0-beta.1"
 edition.workspace = true
 description = "Keyglass v2 hierarchical pub/sub bus, shared semantic contracts, and physical keyboard geometry"
 license.workspace = true

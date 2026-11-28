@@ -1,6 +1,6 @@
 [package]
 name = "fluxctl"
-version = "2.0.0-alpha.1"
+version = "2.0.0-beta.1"
 edition.workspace = true
 description = "Keyglass v2 CLI with 100% parity for modules, pub/sub bus, disclosure inspection, simulation, and GPU preview capture"
 license.workspace = true

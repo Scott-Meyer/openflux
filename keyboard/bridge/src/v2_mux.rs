@@ -89,10 +89,10 @@ fn validate_bridge_path(raw: &str, allow_ipk_root: bool) -> Result<PathBuf, Stri
         ensure_no_symlink_escape(p, Path::new("/home/root/keyglass"))?;
         return Ok(p.to_path_buf());
     }
-    // Allow host USB install-confirmation to inspect/disarm the bridge rollback sentinel.
-    if raw == "/home/root/.keyglass/rollback/bridge"
-        || raw == "/home/root/.keyglass/rollback/bridge/armed"
-    {
+    // Allow host conversion, rollback confirmation (`attempt`, `trial-*`, `armed`), rescue
+    // staging, versions, and factory-restore state strictly beneath `/home/root/.keyglass/`.
+    if raw == "/home/root/.keyglass" || raw.starts_with("/home/root/.keyglass/") {
+        ensure_no_symlink_escape(p, Path::new("/home/root/.keyglass"))?;
         return Ok(p.to_path_buf());
     }
     if allow_ipk_root {
@@ -337,14 +337,16 @@ impl V2BridgeMux {
                 let display_ver = std::fs::read_to_string("/home/root/.keyglass/versions/display")
                     .or_else(|_| std::fs::read_to_string("/usr/lib/keyglass/display/version.txt"))
                     .or_else(|_| std::fs::read_to_string("/tmp/keyglass_display_version.txt"))
-                    .unwrap_or_else(|_| "2.0.0".into());
+                    .ok()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
                 let os_ver = std::fs::read_to_string("/etc/keyglass-os-version")
                     .or_else(|_| std::fs::read_to_string("/etc/os-release"))
                     .unwrap_or_default();
                 BulkRpcResponse::Ok {
                     data: serde_json::json!({
                         "bridge": crate::protocol::BRIDGE_VERSION,
-                        "display": display_ver.trim(),
+                        "display": display_ver,
                         "os": os_ver.lines().next().unwrap_or("").trim(),
                         "protocol": "ofv2",
                     }),
@@ -406,6 +408,60 @@ impl V2BridgeMux {
                     Err(e) => BulkRpcResponse::Err {
                         message: e.to_string(),
                     },
+                }
+            }
+            BulkRpcRequest::GetFileChunk {
+                path,
+                offset,
+                max_bytes,
+            } => {
+                use std::io::{Read, Seek, SeekFrom};
+                let p = match validate_bridge_path(&path, false) {
+                    Ok(p) => p,
+                    Err(message) => return BulkRpcResponse::Err { message },
+                };
+                let meta = match std::fs::metadata(&p) {
+                    Ok(m) => m,
+                    Err(e) => return BulkRpcResponse::Err { message: e.to_string() },
+                };
+                let total_len = meta.len();
+                if total_len > V2_MAX_FILE_BYTES {
+                    return BulkRpcResponse::Err {
+                        message: format!(
+                            "file exceeds maximum GetFile size ({total_len} > {V2_MAX_FILE_BYTES} bytes)"
+                        ),
+                    };
+                }
+                if offset >= total_len {
+                    return BulkRpcResponse::Ok {
+                        data: serde_json::json!({
+                            "data_b64": "",
+                            "eof": true,
+                            "total_len": total_len,
+                        }),
+                    };
+                }
+                let want = max_bytes.clamp(1, 512 * 1024);
+                let mut f = match std::fs::File::open(&p) {
+                    Ok(f) => f,
+                    Err(e) => return BulkRpcResponse::Err { message: e.to_string() },
+                };
+                if let Err(e) = f.seek(SeekFrom::Start(offset)) {
+                    return BulkRpcResponse::Err { message: e.to_string() };
+                }
+                let mut buf = vec![0u8; want];
+                let n = match f.read(&mut buf) {
+                    Ok(n) => n,
+                    Err(e) => return BulkRpcResponse::Err { message: e.to_string() },
+                };
+                buf.truncate(n);
+                let eof = offset.saturating_add(n as u64) >= total_len || n == 0;
+                BulkRpcResponse::Ok {
+                    data: serde_json::json!({
+                        "data_b64": base64::engine::general_purpose::STANDARD.encode(&buf),
+                        "eof": eof,
+                        "total_len": total_len,
+                    }),
                 }
             }
             BulkRpcRequest::GetFile { path } => {

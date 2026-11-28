@@ -260,19 +260,54 @@ impl V2UsbMux {
     }
 
     pub fn get_file(&self, remote_path: &str) -> Result<Vec<u8>, String> {
-        let data = self.bulk_rpc(
-            BulkRpcRequest::GetFile {
-                path: remote_path.to_string(),
-            },
-            Duration::from_secs(8),
-        )?;
-        let b64 = data
-            .get("data_b64")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing data_b64".to_string())?;
-        base64::engine::general_purpose::STANDARD
-            .decode(b64)
-            .map_err(|e| e.to_string())
+        // Use chunked 512 KiB reads so large files (e.g. 69 MB factory restore IPKs) never exceed
+        // the 2 MiB OFV2 frame payload cap, falling back to single-shot GetFile on older bridges.
+        const CHUNK: usize = 512 * 1024;
+        let mut out: Vec<u8> = Vec::new();
+        let mut offset: u64 = 0;
+        loop {
+            let resp = self.bulk_rpc(
+                BulkRpcRequest::GetFileChunk {
+                    path: remote_path.to_string(),
+                    offset,
+                    max_bytes: CHUNK,
+                },
+                Duration::from_secs(10),
+            );
+            match resp {
+                Ok(data) => {
+                    let b64 = data
+                        .get("data_b64")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| "missing data_b64".to_string())?;
+                    let chunk = base64::engine::general_purpose::STANDARD
+                        .decode(b64)
+                        .map_err(|e| e.to_string())?;
+                    offset = offset.saturating_add(chunk.len() as u64);
+                    out.extend_from_slice(&chunk);
+                    let eof = data.get("eof").and_then(|v| v.as_bool()).unwrap_or(true);
+                    if eof || chunk.is_empty() {
+                        return Ok(out);
+                    }
+                }
+                Err(_) if offset == 0 => {
+                    let data = self.bulk_rpc(
+                        BulkRpcRequest::GetFile {
+                            path: remote_path.to_string(),
+                        },
+                        Duration::from_secs(8),
+                    )?;
+                    let b64 = data
+                        .get("data_b64")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| "missing data_b64".to_string())?;
+                    return base64::engine::general_purpose::STANDARD
+                        .decode(b64)
+                        .map_err(|e| e.to_string());
+                }
+                Err(e) => return Err(e),
+            }
+        }
     }
 
     pub fn get_versions(&self) -> Result<serde_json::Value, String> {
@@ -320,14 +355,9 @@ impl V2UsbMux {
                 continue;
             };
             eprintln!("[keyglass-v2-usb] Connected in pure full-duplex OFV2 multiplexed stream mode!");
-            // Disarm any pending bridge upgrade rollback watchdog once OFV2 is proven alive!
-            let disarm_ref = self.clone();
-            let _ = thread::Builder::new()
-                .name("keyglass-v2-confirm-bridge".into())
-                .spawn(move || {
-                    thread::sleep(Duration::from_millis(600));
-                    let _ = disarm_ref.delete_file("/home/root/.keyglass/rollback/bridge/armed");
-                });
+            // Note: do NOT blindly delete `/home/root/.keyglass/rollback/bridge/armed` here —
+            // the update confirmation job verifies `attempt`, `trial-<id>`, and bridge version
+            // before disarming rollback!
             self.run_session(Arc::new(handle));
             drop(_usb_lock);
             self.connected.store(false, Ordering::Release);

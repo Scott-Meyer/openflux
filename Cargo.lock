@@ -1456,7 +1456,7 @@ checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
 
 [[package]]
 name = "fluxctl"
-version = "2.0.0-alpha.1"
+version = "2.0.0-beta.1"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -2715,7 +2715,7 @@ dependencies = [
 
 [[package]]
 name = "keyglass-bus"
-version = "2.0.0-alpha.1"
+version = "2.0.0-beta.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -2724,7 +2724,7 @@ dependencies = [
 
 [[package]]
 name = "keyglass-compositor"
-version = "2.0.0-alpha.1"
+version = "2.0.0-beta.1"
 dependencies = [
  "bytemuck",
  "fontdue",
@@ -2756,7 +2756,7 @@ dependencies = [
 
 [[package]]
 name = "keyglass-modules"
-version = "2.0.0-alpha.1"
+version = "2.0.0-beta.1"
 dependencies = [
  "base64 0.22.1",
  "keyglass-bus",

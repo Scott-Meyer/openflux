@@ -826,8 +826,29 @@ impl DeviceSink for UsbDeviceSink {
     }
 
     fn backup_device(&self, out_dir: &str) -> Result<String, String> {
-        let client = self.client()?;
         let versions = self.versions();
+        if let Some(m) = self.active_mux() {
+            // Backup directly over the live OFV2 mux without contending for the legacy v1 USB lock!
+            let out_path = std::path::Path::new(out_dir);
+            std::fs::create_dir_all(out_path).map_err(|e| format!("mkdir backup: {e}"))?;
+            let mut saved = 0usize;
+            for name in ["state.json", "display_prefs.json", "sync_meta.json", "resolved_keys.json"] {
+                let remote = format!("/home/root/keyglass/v2/{name}");
+                if let Ok(bytes) = m.get_file(&remote) {
+                    if std::fs::write(out_path.join(name), bytes).is_ok() {
+                        saved += 1;
+                    }
+                }
+            }
+            if let Ok(vj) = serde_json::to_vec_pretty(&versions) {
+                let _ = std::fs::write(out_path.join("versions.json"), vj);
+            }
+            return Ok(format!(
+                "Backed up {saved} Keyglass keyboard config files + versions to {}",
+                out_path.display()
+            ));
+        }
+        let client = self.client()?;
         execute_device_backup(client, std::path::Path::new(out_dir), &versions)
     }
 

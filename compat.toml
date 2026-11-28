@@ -1,4 +1,4 @@
-# Keyglass (Keyglass) interface registry.
+# Keyglass interface registry.
 #
 # Every boundary between independently released components is a named
 # interface with a MAJOR.MINOR version. A minor bump only adds; a major bump

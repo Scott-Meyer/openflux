@@ -280,22 +280,23 @@ static void on_uart_frame(const uint8_t *payload, size_t len, void *ctx) {
     fw_runtime_handle_uart_response(&g_rt, payload, len);
 }
 
-static void uart_send_hdlc(const uint8_t *payload, size_t len) {
-    /* Non-blocking HDLC enqueue into UART1 TX ring (atomic frame: drop only if ring is full). */
+static bool uart_send_hdlc(const uint8_t *payload, size_t len) {
+    /* Non-blocking HDLC enqueue into UART1 TX ring (atomic frame: returns false if ring is full). */
     static uint8_t wire[FW_HDLC_MAX_LEN * 2U + 16U];
     uart_tx_drain();
     int n = fw_hdlc_encode(payload, len, wire, sizeof(wire));
     if (n <= 0)
-        return;
+        return false;
     uint16_t used = (uint16_t)((g_uart_tx_head - g_uart_tx_tail) & (RP2040_UART_TX_RING_CAP - 1U));
     uint16_t avail = (uint16_t)((RP2040_UART_TX_RING_CAP - 1U) - used);
     if ((uint16_t)n > avail)
-        return;
+        return false;
     for (int i = 0; i < n; i++) {
         g_uart_tx_ring[g_uart_tx_head] = wire[i];
         g_uart_tx_head = (uint16_t)((g_uart_tx_head + 1U) & (RP2040_UART_TX_RING_CAP - 1U));
     }
     uart_tx_drain();
+    return true;
 }
 
 static fw_hid_report_t g_last_hid;
@@ -887,11 +888,10 @@ int main(void) {
         }
         if (resolved_dirty && (now_ms - last_resolved_tx_ms) >= 2U) {
             size_t rlen = fw_runtime_build_msg_resolved_keys(&g_rt, io.resolved, sizeof(io.resolved));
-            if (rlen > 0U) {
-                uart_send_hdlc(io.resolved, rlen);
+            if (rlen == 0U || uart_send_hdlc(io.resolved, rlen)) {
+                resolved_dirty = false;
+                last_resolved_tx_ms = now_ms;
             }
-            resolved_dirty = false;
-            last_resolved_tx_ms = now_ms;
         }
         if (g_rt.analog_mode && (now_ms - last_analog_tx_ms) >= 8U) {
             size_t alen = fw_runtime_build_msg_analog(&g_rt, now_ms, io.analog);

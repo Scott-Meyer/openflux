@@ -54,7 +54,7 @@ To rotate the release key from A to B:
 
 ## Published files
 
-GitHub Releases (`https://github.com/Scott-Meyer/keyglass/releases`):
+GitHub Releases (`https://github.com/keyglass-dev/keyglass/releases`):
 - Only `Keyglass Studio vX.Y.Z` releases, containing the 6 installers + `SHA256SUMS`.
 
 GitHub Pages (`https://scott-meyer.github.io/keyglass/`):

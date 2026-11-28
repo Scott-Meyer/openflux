@@ -3004,6 +3004,14 @@ async fn add_curated_list(
     State(state): State<Arc<ApiState>>,
     Json(sub): Json<CuratedListSubscription>,
 ) -> impl IntoResponse {
+    let id_lc = sub.id.trim().to_ascii_lowercase();
+    let name_lc = sub.name.trim().to_ascii_lowercase();
+    if id_lc == "official" || name_lc == "official" {
+        return err_resp(
+            StatusCode::BAD_REQUEST,
+            "\"official\" is reserved for the built-in Keyglass Official catalog",
+        );
+    }
     let mut saved = state.v2.registry.load_state();
     saved.curated_lists.retain(|l| l.id != sub.id);
     saved.curated_lists.push(sub);

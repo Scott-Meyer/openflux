@@ -68,12 +68,13 @@ pub fn conversion_steps(
     }
     let catalog = svc.sources().catalog();
     let inventory = view.inventory();
-    let engine = Engine::new(
-        &svc.profile,
-        &inventory,
-        &catalog,
-        keyglass_update::Preferences::default(),
-    );
+    // Respect the user's configured update channel, and when running a pre-release host (e.g.
+    // 2.0.0-beta.1) allow beta keyboard packages so Stock -> Keyglass conversion works during beta!
+    let mut prefs = svc.prefs();
+    if !svc.profile.version.pre.is_empty() {
+        prefs.beta = true;
+    }
+    let engine = Engine::new(&svc.profile, &inventory, &catalog, prefs);
     let proposal = engine
         .propose_conversion()
         .map_err(|r| refused("noPlan", r.to_string()))?;

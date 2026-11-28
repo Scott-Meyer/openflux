@@ -50,6 +50,8 @@ PLATFORMS = {
     "_x86_64.AppImage": ["linux-x86_64"],
     "_aarch64.AppImage": ["linux-aarch64"],
 }
+# Desktop platforms shipped in v2 (Linux desktop is omitted until hardware-tested).
+REQUIRED_PLATFORMS = {"darwin-aarch64", "darwin-x86_64", "windows-x86_64"}
 
 SEMVER = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
 
@@ -211,7 +213,7 @@ def main() -> int:
             sig = sign_archive(dest, target_version)
             for key in keys:
                 platforms[key] = {"signature": sig, "url": art["url"]}
-        missing = {k for v in PLATFORMS.values() for k in v} - platforms.keys()
+        missing = REQUIRED_PLATFORMS - platforms.keys()
         if missing:
             # Older release had its .app.tar.gz replaced by a newer release:
             # clear the feed rather than serving a withdrawn version.
@@ -221,7 +223,7 @@ def main() -> int:
             )
             return 0
 
-    missing = {k for v in PLATFORMS.values() for k in v} - platforms.keys()
+    missing = REQUIRED_PLATFORMS - platforms.keys()
     if missing:
         raise SystemExit(
             f"tauri-feed: host {target_version} has no update archive for {sorted(missing)}"

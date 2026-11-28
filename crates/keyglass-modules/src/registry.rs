@@ -519,6 +519,12 @@ impl ModuleRegistry {
             state.modules.remove(old_id);
             state.removed_sources.retain(|r| r.id != old_id && r.id != new_id);
             let _ = self.save_state(&state);
+            // Preserve per-module `data/` across migration before removing the old module directory.
+            let old_data = old_inst_path.join("data");
+            let new_data = installed.path.join("data");
+            if old_data.is_dir() && !new_data.exists() {
+                let _ = std::fs::rename(&old_data, &new_data);
+            }
             if old_inst_path.is_dir() {
                 let _ = std::fs::remove_dir_all(&old_inst_path);
             }
@@ -601,7 +607,22 @@ impl ModuleRegistry {
             }
         }
         match afinal.cmp(&bfinal) {
-            std::cmp::Ordering::Equal => apre.cmp(&bpre),
+            std::cmp::Ordering::Equal => {
+                // Compare dot-separated prerelease identifiers numerically when both are digits
+                // (so `beta.10 > beta.9` per SemVer 2.0.0!).
+                let ap: Vec<&str> = apre.split('.').collect();
+                let bp: Vec<&str> = bpre.split('.').collect();
+                for (x, y) in ap.iter().zip(bp.iter()) {
+                    let ord = match (x.parse::<u64>(), y.parse::<u64>()) {
+                        (Ok(nx), Ok(ny)) => nx.cmp(&ny),
+                        _ => x.cmp(y),
+                    };
+                    if ord != std::cmp::Ordering::Equal {
+                        return ord;
+                    }
+                }
+                ap.len().cmp(&bp.len())
+            }
             ord => ord,
         }
     }

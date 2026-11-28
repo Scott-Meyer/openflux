@@ -1,6 +1,6 @@
 [package]
 name = "keyglass-compositor"
-version = "2.0.0-alpha.1"
+version = "2.0.0-beta.1"
 edition.workspace = true
 description = "Keyglass v2 unified cross-platform wgpu layered GPU compositor (Metal, Vulkan, DX12, GLES)"
 license.workspace = true

@@ -204,6 +204,11 @@ pub enum BulkRpcRequest {
     DeleteFile { path: String },
     ListFiles { dir: String },
     GetFile { path: String },
+    GetFileChunk {
+        path: String,
+        offset: u64,
+        max_bytes: usize,
+    },
     PutFileStart { path: String, total_len: usize },
     PutFileChunk { offset: usize, data_b64: String },
     PutFileFinish { path: String },

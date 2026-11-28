@@ -1293,7 +1293,10 @@ impl KeyboardV2Display {
                     let _ = std::thread::Builder::new()
                         .name("kg-resolved-cache".into())
                         .spawn(move || {
-                            let _ = std::fs::write(path, txt);
+                            let tmp = path.with_extension("json.tmp");
+                            if std::fs::write(&tmp, txt).is_ok() {
+                                let _ = std::fs::rename(&tmp, &path);
+                            }
                         });
                 }
             }

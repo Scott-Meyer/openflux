@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { DaemonClient, SocStatsSample } from "../api/daemonClient";
 import {
   COMPONENT_LABELS,
@@ -84,18 +85,40 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
 
   const pollJobUntilDone = useCallback(
     async (jobId: string): Promise<Job> => {
-      for (let i = 0; i < 240; i++) {
+      for (let i = 0; i < 600; i++) {
         const j = await updatesClient.getJob(jobId);
         setActiveJob(j);
         if (j.state === "succeeded" || j.state === "failed") {
           return j;
         }
-        await new Promise((r) => window.setTimeout(r, 750));
+        await new Promise((r) => window.setTimeout(r, 1000));
       }
       throw new Error("Timed out waiting for keyboard update job to finish.");
     },
     [updatesClient],
   );
+
+  const handleInstallStudioUpdate = async () => {
+    setSwitchingSw(true);
+    setLog("Checking and downloading Keyglass Studio update…");
+    try {
+      const check = await invoke<{ available: boolean; version?: string; reason?: string }>("host_update_check", {
+        channel: updatesStatus?.channel ?? "beta",
+      });
+      if (!check?.available) {
+        setLog(check?.reason || "No downloadable Studio update found for this platform yet.");
+        return;
+      }
+      setLog(`Downloading Keyglass Studio v${check.version ?? ""}…`);
+      await invoke("host_update_download");
+      setLog("Installing update and restarting Keyglass Studio…");
+      await invoke("host_update_install");
+    } catch (e) {
+      setLog(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSwitchingSw(false);
+    }
+  };
 
   const handleRunStockToKeyglassConversion = async () => {
     const ok = window.confirm(
@@ -609,11 +632,27 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <div>
-                    <strong>Keyglass Studio:</strong> v{updatesStatus.host.installed}
-                    {updatesStatus.host.state === "updateAvailable" && updatesStatus.host.latest
-                      ? ` → v${updatesStatus.host.latest} available`
-                      : " (up to date)"}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span>
+                      <strong>Keyglass Studio:</strong> v{updatesStatus.host.installed}
+                      {updatesStatus.host.state === "updateAvailable" && updatesStatus.host.latest
+                        ? ` → v${updatesStatus.host.latest} available`
+                        : updatesStatus.host.state === "blocked"
+                          ? ` (blocked${updatesStatus.host.reason ? `: ${updatesStatus.host.reason}` : ""})`
+                          : updatesStatus.indexSource !== "online"
+                            ? " (offline — using bundled index)"
+                            : " (up to date)"}
+                    </span>
+                    {updatesStatus.host.state === "updateAvailable" && (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={switchingSw}
+                        onClick={() => void handleInstallStudioUpdate()}
+                      >
+                        Update Studio
+                      </button>
+                    )}
                   </div>
                   <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <span className="muted">Channel:</span>
@@ -682,11 +721,18 @@ export const DevicePanel: React.FC<DevicePanelProps> = ({
                 );
                 if (!ok) return;
                 setSwitchingSw(true);
+                setLog("Starting Return to Stock (restoring signed factory packages)...");
                 try {
-                  const res = await v2Client.returnKeyboardToStock();
-                  setLog(res.message);
+                  const started = await updatesClient.startConversion("restore");
+                  const done = await pollJobUntilDone(started.jobId);
+                  if (done.state === "succeeded") {
+                    setLog("Keyboard returned to Stock Factory software.");
+                  } else {
+                    setLog(`Return to Stock failed: ${done.error?.message ?? done.step?.label ?? done.state}`);
+                  }
+                  await refreshUpdates(false);
                 } catch (e) {
-                  setLog(String(e));
+                  setLog(e instanceof Error ? e.message : String(e));
                 } finally {
                   setSwitchingSw(false);
                 }

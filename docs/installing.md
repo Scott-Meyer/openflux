@@ -2,7 +2,7 @@
 
 Keyglass for your computer is released as **host** releases, tagged
 `host-vX.Y.Z` on the project's
-[GitHub Releases](https://github.com/Scott-Meyer/keyglass/releases) page.
+[GitHub Releases](https://github.com/keyglass-dev/keyglass/releases) page.
 Each installer contains Keyglass Studio, the background service `keyglassd`,
 and the newest stable keyboard software at the time of the release, so a
 keyboard can be set up without an internet connection.

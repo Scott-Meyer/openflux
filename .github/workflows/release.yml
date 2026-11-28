@@ -99,7 +99,7 @@ jobs:
           VER="${{ needs.validate.outputs.version }}"
           docker build -t keyglass-firmware-build -f keyboard/firmware/Dockerfile.build keyboard/firmware
           docker run --rm --network none -v "$PWD:/work" -w /work keyglass-firmware-build \
-            sh -c "cmake -S keyboard/firmware -B /tmp/fw-build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build /tmp/fw-build && cp /tmp/fw-build/keyglass_firmware.uf2 /work/keyglass-firmware-${VER}.uf2"
+            sh -c "cmake -S keyboard/firmware -B /tmp/fw-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DKEYGLASS_VERSION=${VER} && cmake --build /tmp/fw-build && cp /tmp/fw-build/keyglass_firmware.uf2 /work/keyglass-firmware-${VER}.uf2"
           .github/scripts/firmware-licenses.sh keyglass-firmware-build "keyglass-firmware-licenses.txt"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -115,16 +115,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Build ARM64 keyglass-bridge and keyglass-display IPKs
+      - name: Build ARM64 keyglass-bridge, keyglass-factory-restore, and keyglass-display IPKs
         run: |
           VER="${{ needs.validate.outputs.version }}"
           KEYGLASS_V2_VERSION="$VER" ./scripts/v2-build-keyboard.sh bridge
+          make -C keyboard/bridge factory-restore-ipk VERSION="$VER" OUT_DIR="$PWD/.work/v2-keyboard-builds"
           KEYGLASS_V2_VERSION="$VER" ./scripts/v2-build-keyboard.sh display
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: keyboard-linux-pkgs
           path: |
             .work/v2-keyboard-builds/keyglass-bridge_${{ needs.validate.outputs.version }}_aarch64.ipk
+            .work/v2-keyboard-builds/keyglass-factory-restore_${{ needs.validate.outputs.version }}_aarch64.ipk
             .work/v2-keyboard-builds/keyglass-display_${{ needs.validate.outputs.version }}_aarch64.ipk
 
   ffmpeg:
@@ -219,6 +221,7 @@ jobs:
                 ;;
               bridge)
                 cp "build/kb-in/keyglass-bridge_${VER}_aarch64.ipk" "${d}/artifacts/"
+                cp "build/kb-in/keyglass-factory-restore_${VER}_aarch64.ipk" "${d}/artifacts/"
                 ;;
               display)
                 cp "build/kb-in/keyglass-display_${VER}_aarch64.ipk" "${d}/artifacts/"
@@ -228,7 +231,7 @@ jobs:
               --arg component "$comp" \
               --arg version "$VER" \
               --arg channel "$CH" \
-              --arg tag "$TAG" \
+              --arg tag "${comp}-v${VER}" \
               --arg source_date_epoch "$EPOCH" \
               --arg notes_url "$NOTES_URL" \
               '{component:$component, version:$version, channel:$channel, tag:$tag, source_date_epoch:($source_date_epoch|tonumber), notes_url:$notes_url}' \
@@ -251,9 +254,14 @@ jobs:
             --expires-days 365 \
             -o build/site
           "$TOOL" bundle \
-            --index build/site \
+            --index build/site/index.json \
+            --pubkey host/packaging/keys/active-release.pub \
             --channel "$CH" \
-            --out build/keyboard-bundle
+            --component firmware \
+            --component bridge \
+            --component display \
+            --local-prefix "${PAGES_URL}=build/site" \
+            -o build/keyboard-bundle
           ls -la build/keyboard-bundle
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -408,6 +416,19 @@ jobs:
           setup="$(find "target/${TARGET}/release/bundle/nsis" -name '*-setup.exe' | head -n 1)"
           cp "$setup" "dist/keyglass-studio_${VERSION}_x64-setup.exe"
           .github/scripts/check-host-installer.sh "dist/keyglass-studio_${VERSION}_x64-setup.exe"
+      - name: Sign Windows installer (SignPath, when configured)
+        if: env.SIGNPATH_API_TOKEN != '' && env.SIGNPATH_ORGANIZATION_ID != '' && env.SIGNPATH_PROJECT_SLUG != '' && env.SIGNPATH_SIGNING_POLICY_SLUG != ''
+        uses: signpath/github-action-submit-signing-request@67f9c42e8032b8d9a396f49e845c96150ec0d1a0 # v1.1.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: default
+          github-artifact-id: ""
+          wait-for-completion: true
+          input-artifact-path: dist/keyglass-studio_${{ needs.validate.outputs.version }}_x64-setup.exe
+          output-artifact-path: dist/keyglass-studio_${{ needs.validate.outputs.version }}_x64-setup.exe
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-windows
@@ -449,7 +470,7 @@ jobs:
         with:
           name: keyboard-linux-pkgs
           path: dist-release
-      - name: Generate SHA256SUMS & publish unified GitHub Release
+      - name: Generate SHA256SUMS & stage draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.validate.outputs.tag }}
@@ -458,8 +479,8 @@ jobs:
           (cd dist-release && find . -maxdepth 1 -type f ! -name 'SHA256SUMS' -exec sha256sum {} + | sed 's|\./||' | sort -k2) > /tmp/SHA256SUMS
           mv /tmp/SHA256SUMS dist-release/SHA256SUMS
           cat dist-release/SHA256SUMS
-          FLAGS=""
-          [ "$PRE" = "true" ] && FLAGS="--prerelease"
+          FLAGS="--draft"
+          [ "$PRE" = "true" ] && FLAGS="${FLAGS} --prerelease"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist-release/* --clobber
           else
@@ -483,17 +504,18 @@ jobs:
         run: |
           cargo build --locked --release -p keyglass-update --bin keyglass-release --features production-keys
           TOOL="$PWD/target/release/keyglass-release"
-          mkdir -p build/staged/host/artifacts build/releases build/site
+          mkdir -p build/staged/host/artifacts build/staged/host/updater build/releases build/site
           cp compat.toml build/staged/host/compat.toml
           cp "dist-release/keyglass-studio_${VER}_universal.dmg" \
-             "dist-release/keyglass-studio_${VER}_universal.app.tar.gz" \
              "dist-release/keyglass-studio_${VER}_x64-setup.exe" \
              build/staged/host/artifacts/
+          cp "dist-release/keyglass-studio_${VER}_universal.app.tar.gz" \
+             build/staged/host/updater/
           jq -n \
             --arg component host \
             --arg version "$VER" \
             --arg channel "$CH" \
-            --arg tag "$TAG" \
+            --arg tag "host-v${VER}" \
             --arg source_date_epoch "$EPOCH" \
             --arg release_url "$RELEASE_URL" \
             --arg notes_url "$NOTES_URL" \
@@ -536,9 +558,10 @@ jobs:
           path: build/site
 
   deploy-pages:
-    needs: publish
+    needs: [validate, publish]
     runs-on: ubuntu-24.04
     permissions:
+      contents: write
       pages: write
       id-token: write
       deployments: write
@@ -556,3 +579,9 @@ jobs:
           jq -n --arg ref "$GITHUB_SHA" --argjson seq "$SEQ" \
             '{ref: $ref, environment: "update-index", auto_merge: false, required_contexts: [], payload: {sequence: $seq}}' \
             | gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments" --input - >/dev/null
+      - name: Publish GitHub Release now that update index & feeds are live
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          gh release edit "$TAG" --draft=false

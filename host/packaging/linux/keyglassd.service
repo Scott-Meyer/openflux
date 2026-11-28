@@ -12,7 +12,7 @@
 
 [Unit]
 Description=Keyglass keyboard daemon
-Documentation=https://github.com/Scott-Meyer/keyglass
+Documentation=https://github.com/keyglass-dev/keyglass
 
 [Service]
 Type=simple

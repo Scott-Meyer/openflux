@@ -368,7 +368,7 @@ impl UpdateService {
         source::write_durably(&updates_dir(&self.config).join("settings.json"), &raw)
     }
 
-    fn prefs(&self) -> Preferences {
+    pub(crate) fn prefs(&self) -> Preferences {
         Preferences {
             beta: self.settings().channel == UpdateChannel::Beta,
         }

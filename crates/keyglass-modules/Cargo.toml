@@ -1,6 +1,6 @@
 [package]
 name = "keyglass-modules"
-version = "2.0.0-alpha.1"
+version = "2.0.0-beta.1"
 edition.workspace = true
 description = "Keyglass v2 unified module system: plain-folder manifests, Lua 5.4 runtime, disclosure inspector, curated lists, presets, and host runner"
 license.workspace = true

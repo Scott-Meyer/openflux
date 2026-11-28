@@ -63,7 +63,7 @@
     "tileConfigs": [
       {},
       {},
-      { "city": "Denver", "celcius": false },
+      { "city": "", "celcius": false },
       { "main": "25", "shortBreak": "5", "longBreak": "15", "breakCount": "4" }
     ]
   },
