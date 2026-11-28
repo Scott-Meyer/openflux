@@ -55,13 +55,13 @@ restore_rollback() {
 }
 
 stop_services() {
-    for pattern in "$BRIDGE_BIN" "$OS_BOOT_LAUNCHER" "${ROOT}/usr/lib/garfield/garfield" "${ROOT}/usr/bin/garfield"; do
+    for pattern in "$BRIDGE_BIN" "$OS_BOOT_LAUNCHER" "${ROOT}/usr/lib/garfield/garfield" "${ROOT}/usr/bin/garfield" "/usr/lib/.*/bridge/.*-bridge" "/usr/lib/.*/display/.*-display"; do
         pkill -TERM -f "$pattern" 2>/dev/null || true
     done
     i=0
     while [ "$i" -lt "${KEYGLASS_STOP_WAIT_ITERS:-5}" ]; do
         alive=0
-        for pattern in "$BRIDGE_BIN" "$OS_BOOT_LAUNCHER"; do
+        for pattern in "$BRIDGE_BIN" "$OS_BOOT_LAUNCHER" "/usr/lib/.*/bridge/.*-bridge"; do
             if pgrep -f "$pattern" >/dev/null 2>&1; then
                 alive=1
             fi
@@ -70,7 +70,7 @@ stop_services() {
         sleep "${KEYGLASS_POSTINST_SLEEP:-1}"
         i=$((i + 1))
     done
-    for pattern in "$BRIDGE_BIN" "$OS_BOOT_LAUNCHER"; do
+    for pattern in "$BRIDGE_BIN" "$OS_BOOT_LAUNCHER" "/usr/lib/.*/bridge/.*-bridge" "/usr/lib/.*/display/.*-display"; do
         pkill -KILL -f "$pattern" 2>/dev/null || true
     done
 }

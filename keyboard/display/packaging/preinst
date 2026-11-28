@@ -4,11 +4,13 @@ mkdir -p "${ROOT}/tmp"
 touch "${ROOT}/tmp/keyglass_updating_display"
 pkill -TERM -f "${ROOT}/usr/lib/keyglass/display/keyglass-display" 2>/dev/null || true
 if [ -z "$ROOT" ]; then
+    pkill -TERM -f "/usr/lib/.*/display/.*-display" 2>/dev/null || true
     pkill -TERM -f "garfunkel -b" 2>/dev/null || true
 fi
 sleep "${KEYGLASS_STOP_SLEEP:-2}"
 pkill -KILL -f "${ROOT}/usr/lib/keyglass/display/keyglass-display" 2>/dev/null || true
 if [ -z "$ROOT" ]; then
+    pkill -KILL -f "/usr/lib/.*/display/.*-display" 2>/dev/null || true
     pkill -KILL -f "garfunkel -b" 2>/dev/null || true
 fi
 exit 0
